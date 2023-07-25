@@ -1,0 +1,47 @@
+.header {
+  background-image: url(../images/TP_banner_2500x750_L_01.jpg);
+  height: 10vh;
+  text-align: left;
+  padding: 1vh;
+}
+
+.toolbar {
+  margin: -44px;
+}
+
+.logo {
+  height: 10vh;
+}
+
+.centerContent {
+  height: 80vh;
+};
+
+.content {
+}
+
+.title {
+  padding-bottom: 2vh;
+}
+
+.textSection {
+  padding: 0vh 10vh 2vh 10vh;
+}
+
+.diveDeepSection {
+  display: flex;
+  flex-direction: column;
+  height: 65vh;
+  justify-content: center;
+  padding-top: 5vh;
+}
+
+.vertical {
+  height: 100vh;
+}
+
+.button {
+  background-color: #ff7d00;
+  color: white;
+  margin: 0vh 20vh;
+}
