@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "LicenseCopilot (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "LicenseCopilot (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

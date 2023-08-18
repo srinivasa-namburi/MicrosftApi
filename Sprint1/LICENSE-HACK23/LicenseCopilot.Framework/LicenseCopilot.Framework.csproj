@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="skills\actionplanner\skprompt.txt" />
+    <None Remove="skills\reverseclassifier\skprompt.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="skills\actionplanner\skprompt.txt" />
+    <EmbeddedResource Include="skills\reverseclassifier\skprompt.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Maps.Rendering" Version="1.0.0-beta.1" />
+    <PackageReference Include="Azure.Maps.Search" Version="1.0.0-beta.3" />
+    <PackageReference Include="Microsoft.SemanticKernel" Version="0.15.230531.5-preview" />
+  </ItemGroup>
+
+</Project>

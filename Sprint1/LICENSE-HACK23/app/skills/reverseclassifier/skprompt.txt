@@ -1,9 +1,0 @@
-Given the following section in a {{$documentType}} that will be submitted to {{$documentDestination}}, 
-identify the most important facets that a new author of the same document should take into consideration 
-when writing their {{$documentType}}. Avoid including similar facets where an intelligent human would have difficulty explaining the difference between them. 
-
-START SECTION
-{{$input}}
-END SECTION
-
-Return these important facets with the following json format: [{"label": "<label representing the important facet of the section>", "reason":"<reason why you believe this is important>"}]

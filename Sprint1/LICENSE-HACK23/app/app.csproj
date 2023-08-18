@@ -14,19 +14,14 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="7.0.4" />
     <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="7.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="7.0.0" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Remove="skills/reverseclassifier/skprompt.txt" />
-    <None Remove="skills/actionplanner/skprompt.txt" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <EmbeddedResource Include="skills/reverseclassifier/skprompt.txt" />
-    <EmbeddedResource Include="skills/actionplanner/skprompt.txt" />
+    <PackageReference Include="PdfPig" Version="0.1.8" />
   </ItemGroup>
   <ItemGroup>
     <None Include="appsettings.json;appsettings.development.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\LicenseCopilot.Framework\LicenseCopilot.Framework.csproj" />
   </ItemGroup>
 </Project>
