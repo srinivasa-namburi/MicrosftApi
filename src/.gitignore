@@ -12,6 +12,9 @@ dotnet/.config
 *.userosscache
 *.sln.docstates
 
+# Local configuration files
+appsettings.local.json
+
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 

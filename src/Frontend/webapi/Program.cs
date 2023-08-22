@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
 using ProjectVico.Frontend.API.Extensions;
 using ProjectVico.Frontend.API.Hubs;
 using ProjectVico.Frontend.API.Services;
@@ -33,9 +34,14 @@ public sealed class Program
     public static async Task Main(string[] args)
     {
         WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
-
-        // Load in configuration settings from appsettings.json, user-secrets, key vaults, etc...
-        builder.Host.AddConfiguration();
+        
+        builder.Host.ConfigureHostConfiguration(config =>
+        {
+            config.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+            config.AddJsonFile("appsettings.local.json", optional: true, reloadOnChange: true);
+            config.AddEnvironmentVariables();
+        });
+        
         builder.WebHost.UseUrls(); // Disables endpoint override warning message when using IConfiguration for Kestrel endpoint.
 
         // Add in configuration options and required services.
