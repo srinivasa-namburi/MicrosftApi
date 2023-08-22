@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Debug ProjectVicoWebApi",
+      "name": "WebAPI",
       "type": "coreclr",
       "preLaunchTask": "build (ProjectVicoWebApi)",
       "request": "launch",
@@ -10,7 +10,36 @@
       "cwd": "${workspaceFolder}/Frontend/webapi",
       "env": {
         "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "group": "copilot"
       }
+    },
+    {
+      "name": "WebApp",
+      "type": "node-terminal",
+      "preLaunchTask": "build (ProjectVicoChat)",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/Frontend/webapp",
+      "command": "yarn start",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "group": "copilot"
+      }
+    }
+  ],
+  "compounds": [
+    {
+      "presentation": {
+        "hidden": false,
+        "group": "copilot",
+        "order": 1
+      },
+      "name": "WebAPI & WebApp",
+      "configurations": ["WebAPI", "WebApp"]
     }
   ]
 }
