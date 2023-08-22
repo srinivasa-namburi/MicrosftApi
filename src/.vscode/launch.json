@@ -2,11 +2,11 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Debug CopilotChatWebApi",
+      "name": "Debug ProjectVicoWebApi",
       "type": "coreclr",
-      "preLaunchTask": "build (CopilotChatWebApi)",
+      "preLaunchTask": "build (ProjectVicoWebApi)",
       "request": "launch",
-      "program": "${workspaceFolder}/Frontend/webapi/bin/Debug/net6.0/CopilotChatWebApi.dll",
+      "program": "${workspaceFolder}/Frontend/webapi/bin/Debug/net6.0/ProjectVico.Frontend.API.dll",
       "cwd": "${workspaceFolder}/Frontend/webapi",
       "env": {
         "ASPNETCORE_ENVIRONMENT": "Development"
