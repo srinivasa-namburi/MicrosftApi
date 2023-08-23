@@ -9,6 +9,8 @@ using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Connectors.AI.OpenAI.TextEmbedding;
 using Microsoft.SemanticKernel.Connectors.Memory.AzureCognitiveSearch;
 using Microsoft.SemanticKernel.Memory;
+using Microsoft.SemanticKernel.Orchestration;
+using Microsoft.SemanticKernel.SemanticFunctions;
 
 namespace ProjectVico.Plugins.Sample.FunctionApp;
 
@@ -21,16 +23,16 @@ public class Ask
         //_logger = loggerFactory.CreateLogger<DemoHttpTrigger>();
     }
 
-    [Function("Ask")]
-    [OpenApiOperation(operationId: "Ask", tags: new[] { "ExecuteFunction" }, Description = "Ask the QnA bot a question about previous applications.")]
-    [OpenApiParameter(name: "query", Description = "The question for the bot", Required = true, In = ParameterLocation.Query)]
-    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "text/plain", bodyType: typeof(string), Description = "Returns the sum of the two numbers.")]
+    [Function("GetDescriptionOfSection")]
+    [OpenApiOperation(operationId: "GetDescriptionOfSection", tags: new[] { "ExecuteFunction" }, Description = "Get a description of a section in the application, include required data.")]
+    [OpenApiParameter(name: "sectionName", Description = "The name of the section", Required = true, In = ParameterLocation.Query)]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "text/plain", bodyType: typeof(string), Description = "Returns a description of the format of a section.")]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(string), Description = "Returns the error of the input.")]
     public async Task<HttpResponseData> RunAsync([HttpTrigger(AuthorizationLevel.Function, "get")] HttpRequestData req)
     {
         //_logger.LogInformation("C# HTTP trigger function processed a request.");
 
-        string query = req.Query.GetValues("query").First();
+        string sectionName = req.Query.GetValues("sectionName").First();
 
         SemanticTextMemory semanticMemory = new SemanticTextMemory(
             new AzureCognitiveSearchMemoryStore(
@@ -44,51 +46,82 @@ public class Ask
             )
         );
 
-        // var gitHubFiles = new Dictionary<string, string>
-        // {
-        //     ["https://github.com/microsoft/semantic-kernel/blob/main/README.md"]
-        //         = "README: Installation, getting started, and how to contribute",
-        //     ["https://github.com/microsoft/semantic-kernel/blob/main/samples/notebooks/dotnet/02-running-prompts-from-file.ipynb"]
-        //         = "Jupyter notebook describing how to pass prompts from a file to a semantic skill or function",
-        //     ["https://github.com/microsoft/semantic-kernel/blob/main/samples/notebooks/dotnet/00-getting-started.ipynb"]
-        //         = "Jupyter notebook describing how to get started with the Semantic Kernel",
-        //     ["https://github.com/microsoft/semantic-kernel/tree/main/samples/skills/ChatSkill/ChatGPT"]
-        //         = "Sample demonstrating how to create a chat skill interfacing with ChatGPT",
-        //     ["https://github.com/microsoft/semantic-kernel/blob/main/dotnet/src/SemanticKernel/Memory/VolatileMemoryStore.cs"]
-        //         = "C# class that defines a volatile embedding store",
-        //     ["https://github.com/microsoft/semantic-kernel/blob/main/samples/dotnet/KernelHttpServer/README.md"]
-        //         = "README: How to set up a Semantic Kernel Service API using Azure Function Runtime v4",
-        //     ["https://github.com/microsoft/semantic-kernel/blob/main/samples/apps/chat-summary-webapp-react/README.md"]
-        //         = "README: README associated with a sample chat summary react-based webapp",
-        // };
 
-        // foreach (var entry in gitHubFiles)
-        // {
-        //     await kernel.Memory.SaveReferenceAsync(
-        //         collection: "mabolan-test",
-        //         externalSourceName: "Matthew's Test Collection",
-        //         externalId: entry.Key,
-        //         description: "this is a description",
-        //         text: entry.Value);
-        // }
+        IAsyncEnumerable<MemoryQueryResult> memories = semanticMemory.SearchAsync("section-embeddings", sectionName, limit: 12);
 
+        var sections = new Dictionary<string, string>();
 
-        IAsyncEnumerable<MemoryQueryResult> memories = semanticMemory.SearchAsync("section-embeddings", query, limit: 10);
-
+        // Create a response to the user
         var textResponse = new StringBuilder();
-        textResponse.AppendLine("I found the following information:");
+        //textResponse.AppendLine("I found the following information:");
 
         await foreach (var memory in memories)
         {
-            textResponse.AppendLine("    Key: " + memory.Metadata.Id);
-            textResponse.AppendLine("    Section: " + memory.Metadata.Description);
-            textResponse.AppendLine("    Relevance: " + memory.Relevance);
-            textResponse.AppendLine();
+            // textResponse.AppendLine("    Key: " + memory.Metadata.Id);
+            // textResponse.AppendLine("    Relevance: " + memory.Relevance);
+            // textResponse.AppendLine();
+
+            var sectionParts = memory.Metadata.Id.Split('-');
+            var sectionKey = sectionParts[0];// + "-" + sectionParts[1];
+
+            // check if the section already exists
+            if (sections.ContainsKey(sectionKey))
+            {
+                continue;
+            }
+            sections.Add(sectionKey, memory.Metadata.Description);
         }
+
+
+        // Build the examples for the prompt
+        var sectionExample = new StringBuilder();
+        foreach (var section in sections)
+        {
+            sectionExample.AppendLine($"[EXAMPLE: {section.Key}]");
+            sectionExample.AppendLine(section.Value);
+            sectionExample.AppendLine();
+        }
+
+        // Create kernel
+        IKernel kernel = new KernelBuilder()
+            .WithAzureChatCompletionService(
+                "smrlicencegpt35",
+                "https://smrlicencesoldev.openai.azure.com/",
+                System.Environment.GetEnvironmentVariable("AzureOpenAIApiKey", EnvironmentVariableTarget.Process)!
+            )
+            .Build();
+
+        // Create semantic function that comes up with alternative section names
+        string prompt = "Below, there are several {{$sectionName}} sections from previous applications. Describe similarities of the sections so that I can write a new section with a similar format.\nBe sure to also identify common types of data that are included in the sections.\nDo not describe the differences between the articles.\n\n{{$input}}\n\n[FORMAT AND REQUIRED DATA FOR SECTION]\n";
+        var promptConfig = new PromptTemplateConfig
+        {
+            Completion =
+            {
+                MaxTokens = 2000,
+                Temperature = 0.2,
+                TopP = 0.5,
+            }
+        };
+        var promptTemplate = new PromptTemplate(
+            prompt,                          // Prompt template defined in natural language
+            promptConfig,                    // Prompt configuration
+            kernel                           // SK instance
+        );
+        var functionConfig = new SemanticFunctionConfig(promptConfig, promptTemplate);
+        var altSectionNames = kernel.RegisterSemanticFunction("AdHocPlugin", "AltSectionNames", functionConfig);
+
+        // Run the function with the input
+        var input = new ContextVariables()
+        {
+            ["input"] = sectionExample.ToString(),
+            ["sectionName"] = sectionName
+        };
+        var results = (await altSectionNames.InvokeAsync(input)).Result;
+        textResponse.Append(results);
 
         var response = req.CreateResponse(HttpStatusCode.OK);
         response.Headers.Add("Content-Type", "text/plain; charset=utf-8");
-        response.WriteString(textResponse.ToString() ?? string.Empty);
+        response.WriteString(textResponse.ToString());
 
         return response;
     }
