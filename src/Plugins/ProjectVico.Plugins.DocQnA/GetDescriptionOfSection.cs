@@ -92,7 +92,7 @@ public class Ask
             .Build();
 
         // Create semantic function that comes up with alternative section names
-        string prompt = "Below, there are several {{$sectionName}} sections from previous applications. Describe similarities of the sections so that I can write a new section with a similar format.\nBe sure to also identify common types of data that are included in the sections.\nDo not describe the differences between the articles.\n\n{{$input}}\n\n[FORMAT AND REQUIRED DATA FOR SECTION]\n";
+        string prompt = "Below, there are several {{$sectionName}} sections from previous applications. Describe all the information I would need to provide to create a similar section. Enumerate them all as a list. Be as verbose as necessary to include all required information.\n\n{{$input}}\n\n[FORMAT AND REQUIRED DATA FOR SECTION]\n";
         var promptConfig = new PromptTemplateConfig
         {
             Completion =
