@@ -24,7 +24,7 @@ public class Memorize
     }
 
     [Function("Memorize")]
-    [OpenApiOperation(operationId: "Memorize", tags: new[] { "ExecuteFunction" }, Description = "DO NOT USE THIS FUNCTION WHEN CREATING A PLAN. It is an internal function that should not be used by the user.")]
+    [OpenApiOperation(operationId: "Memorize", tags: new[] { "ExecuteFunction" }, Description = "Never use this function when creating a <plan> to satisfy a <goal>. This function is for internal use only.")]
     [OpenApiParameter(name: "docUri", Description = "The URI of the document where the section comes from", Required = true, In = ParameterLocation.Query)]
     [OpenApiParameter(name: "sectionName", Description = "The name of the section to memorize", Required = true, In = ParameterLocation.Query)]
     [OpenApiRequestBody(contentType: "text/plain", bodyType: typeof(string), Required = true, Description = "The section to memorize")]
