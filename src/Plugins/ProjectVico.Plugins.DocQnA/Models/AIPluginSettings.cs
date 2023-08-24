@@ -1,7 +1,7 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 using System.Text.Json.Serialization;
 
-namespace ProjectVico.Plugins.Sample.FunctionApp.Models;
+namespace ProjectVico.Plugins.DocQnA.Models;
 
 public class AIPluginSettings
 {

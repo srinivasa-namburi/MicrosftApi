@@ -3,11 +3,11 @@
 using System.Net;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
-using ProjectVico.Plugins.Sample.FunctionApp.Models;
+using ProjectVico.Plugins.DocQnA.Models;
 
 #pragma warning disable CA1822
 
-namespace ProjectVico.Plugins.Sample.FunctionApp;
+namespace ProjectVico.Plugins.DocQnA;
 
 public class AIPluginJson
 {
@@ -16,7 +16,7 @@ public class AIPluginJson
     {
         if (req is null)
         {
-            throw new System.ArgumentNullException(nameof(req));
+            throw new ArgumentNullException(nameof(req));
         }
 
         var currentDomain = $"{req.Url.Scheme}://{req.Url.Host}:{req.Url.Port}";

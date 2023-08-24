@@ -2,7 +2,7 @@
 
 using Microsoft.Extensions.Configuration;
 
-namespace ProjectVico.Plugins.Sample.FunctionApp.Models;
+namespace ProjectVico.Plugins.DocQnA.Models;
 
 public class AppSettings
 {
@@ -40,7 +40,7 @@ public class AppSettings
         }
 
         var configuration = new ConfigurationBuilder()
-            .SetBasePath(System.IO.Directory.GetCurrentDirectory())
+            .SetBasePath(Directory.GetCurrentDirectory())
             .AddJsonFile(configFile, optional: true, reloadOnChange: true)
             .Build();
 
