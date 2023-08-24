@@ -3,11 +3,11 @@
 using System.Net;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
-using ProjectVico.Plugins.DocQnA.Models;
+using ProjectVico.Plugins.GeographicalData.Models;
 
 #pragma warning disable CA1822
 
-namespace ProjectVico.Plugins.DocQnA;
+namespace ProjectVico.Plugins.GeographicalData;
 
 public class AIPluginJson
 {

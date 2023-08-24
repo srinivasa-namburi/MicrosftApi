@@ -12,7 +12,7 @@ using Microsoft.SemanticKernel.Memory;
 using Microsoft.SemanticKernel.Orchestration;
 using Microsoft.SemanticKernel.SemanticFunctions;
 
-namespace ProjectVico.Plugins.Sample.FunctionApp;
+namespace ProjectVico.Plugins.DocQnA;
 
 public class Ask
 {
@@ -37,12 +37,12 @@ public class Ask
         SemanticTextMemory semanticMemory = new SemanticTextMemory(
             new AzureCognitiveSearchMemoryStore(
                 "https://smrlicenseacs.search.windows.net",
-                System.Environment.GetEnvironmentVariable("AzureCognitiveSearchApiKey", EnvironmentVariableTarget.Process)!
+                Environment.GetEnvironmentVariable("AzureCognitiveSearchApiKey", EnvironmentVariableTarget.Process)!
             ),
             new AzureTextEmbeddingGeneration(
                 "smrlicenseembeddingada002",
                 "https://smrlicencesoldev.openai.azure.com/",
-                System.Environment.GetEnvironmentVariable("AzureOpenAIApiKey", EnvironmentVariableTarget.Process)!
+                Environment.GetEnvironmentVariable("AzureOpenAIApiKey", EnvironmentVariableTarget.Process)!
             )
         );
 
@@ -87,7 +87,7 @@ public class Ask
             .WithAzureChatCompletionService(
                 "smrlicencegpt35",
                 "https://smrlicencesoldev.openai.azure.com/",
-                System.Environment.GetEnvironmentVariable("AzureOpenAIApiKey", EnvironmentVariableTarget.Process)!
+                Environment.GetEnvironmentVariable("AzureOpenAIApiKey", EnvironmentVariableTarget.Process)!
             )
             .Build();
 

@@ -1,7 +1,7 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 using System.Text.Json.Serialization;
 
-namespace ProjectVico.Plugins.DocQnA.Models;
+namespace ProjectVico.Plugins.GeographicalData.Models;
 
 public class AIPluginSettings
 {

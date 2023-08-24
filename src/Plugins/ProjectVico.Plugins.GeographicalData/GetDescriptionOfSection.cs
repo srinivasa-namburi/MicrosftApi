@@ -12,49 +12,75 @@ using Microsoft.SemanticKernel.Memory;
 using Microsoft.SemanticKernel.Orchestration;
 using Microsoft.SemanticKernel.SemanticFunctions;
 
-namespace ProjectVico.Plugins.DocQnA;
+namespace ProjectVico.Plugins.GeographicalData;
 
-public class Memorize
+public class Ask
 {
     private readonly ILogger _logger;
 
-    public Memorize(ILoggerFactory loggerFactory)
+    public Ask(ILoggerFactory loggerFactory)
     {
         //_logger = loggerFactory.CreateLogger<DemoHttpTrigger>();
     }
 
-    [Function("Memorize")]
-    [OpenApiOperation(operationId: "Memorize", tags: new[] { "ExecuteFunction" }, Description = "Never use this function when creating a <plan> to satisfy a <goal>. This function is for internal use only.")]
-    [OpenApiParameter(name: "docUri", Description = "The URI of the document where the section comes from", Required = true, In = ParameterLocation.Query)]
-    [OpenApiParameter(name: "sectionName", Description = "The name of the section to memorize", Required = true, In = ParameterLocation.Query)]
-    [OpenApiRequestBody(contentType: "text/plain", bodyType: typeof(string), Required = true, Description = "The section to memorize")]
-    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "text/plain", bodyType: typeof(string), Description = "Returns the sum of the two numbers.")]
+    [Function("GetDescriptionOfSection")]
+    [OpenApiOperation(operationId: "GetDescriptionOfSection", tags: new[] { "ExecuteFunction" }, Description = "Get a description of a section in the application, include required data.")]
+    [OpenApiParameter(name: "sectionName", Description = "The name of the section", Required = true, In = ParameterLocation.Query)]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "text/plain", bodyType: typeof(string), Description = "Returns a description of the format of a section.")]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(string), Description = "Returns the error of the input.")]
-    public async Task<HttpResponseData> RunAsync([HttpTrigger(AuthorizationLevel.Function, "post")] HttpRequestData req)
+    public async Task<HttpResponseData> RunAsync([HttpTrigger(AuthorizationLevel.Function, "get")] HttpRequestData req)
     {
         //_logger.LogInformation("C# HTTP trigger function processed a request.");
 
-        // Get the input params
-        string docUri = req.Query.GetValues("docUri").First();
         string sectionName = req.Query.GetValues("sectionName").First();
 
-        StreamReader reader = new StreamReader(req.Body);
-        string sectionContent = reader.ReadToEnd();
-
-        // Create connection to the semantic memory
-        var AzureCognitiveSearch = new AzureCognitiveSearchMemoryStore(
-            "https://smrlicenseacs.search.windows.net",
-            Environment.GetEnvironmentVariable("AzureCognitiveSearchApiKey", EnvironmentVariableTarget.Process)!
-        );
-
         SemanticTextMemory semanticMemory = new SemanticTextMemory(
-            AzureCognitiveSearch,
+            new AzureCognitiveSearchMemoryStore(
+                "https://smrlicenseacs.search.windows.net",
+                Environment.GetEnvironmentVariable("AzureCognitiveSearchApiKey", EnvironmentVariableTarget.Process)!
+            ),
             new AzureTextEmbeddingGeneration(
                 "smrlicenseembeddingada002",
                 "https://smrlicencesoldev.openai.azure.com/",
                 Environment.GetEnvironmentVariable("AzureOpenAIApiKey", EnvironmentVariableTarget.Process)!
             )
         );
+
+
+        IAsyncEnumerable<MemoryQueryResult> memories = semanticMemory.SearchAsync("section-embeddings", sectionName, limit: 12);
+
+        var sections = new Dictionary<string, string>();
+
+        // Create a response to the user
+        var textResponse = new StringBuilder();
+        //textResponse.AppendLine("I found the following information:");
+
+        await foreach (var memory in memories)
+        {
+            // textResponse.AppendLine("    Key: " + memory.Metadata.Id);
+            // textResponse.AppendLine("    Relevance: " + memory.Relevance);
+            // textResponse.AppendLine();
+
+            var sectionParts = memory.Metadata.Id.Split('-');
+            var sectionKey = sectionParts[0];// + "-" + sectionParts[1];
+
+            // check if the section already exists
+            if (sections.ContainsKey(sectionKey))
+            {
+                continue;
+            }
+            sections.Add(sectionKey, memory.Metadata.Description);
+        }
+
+
+        // Build the examples for the prompt
+        var sectionExample = new StringBuilder();
+        foreach (var section in sections)
+        {
+            sectionExample.AppendLine($"[EXAMPLE: {section.Key}]");
+            sectionExample.AppendLine(section.Value);
+            sectionExample.AppendLine();
+        }
 
         // Create kernel
         IKernel kernel = new KernelBuilder()
@@ -66,7 +92,7 @@ public class Memorize
             .Build();
 
         // Create semantic function that comes up with alternative section names
-        string prompt = "Provide a list of 2 alternative section names for the section '{{$sectionName}}'. Use newlines to separate each alternative name. Do not use bullets, dashes, or numbers for the list.\n\n[EXAMPLE]\nSection A\nSection B\nSection C\n\n[SECTION]\n{{$input}}\n\n[ALTERNATIVES]\n";
+        string prompt = "Below, there are several {{$sectionName}} sections from previous applications. Describe all the information I would need to provide to create a similar section. Enumerate them all as a list. Be as verbose as necessary to include all required information.\n\n{{$input}}\n\n[FORMAT AND REQUIRED DATA FOR SECTION]\n";
         var promptConfig = new PromptTemplateConfig
         {
             Completion =
@@ -87,28 +113,15 @@ public class Memorize
         // Run the function with the input
         var input = new ContextVariables()
         {
-            ["input"] = sectionContent,
+            ["input"] = sectionExample.ToString(),
             ["sectionName"] = sectionName
         };
         var results = (await altSectionNames.InvokeAsync(input)).Result;
-
-        // Extract the section names from the results
-        var sectionNames = results.Split(new string[] { "\n" }, StringSplitOptions.None);
-        sectionNames.Append(sectionName);
-
-        // Save the section content and the section names to the semantic memory
-        foreach (var name in sectionNames)
-        {
-            await semanticMemory.SaveReferenceAsync(
-                collection: "section-embeddings",
-                externalSourceName: "Index of sections in documents",
-                externalId: docUri + "–" + sectionName + "-" + name,
-                description: sectionContent,
-                text: name);
-        }
+        textResponse.Append(results);
 
         var response = req.CreateResponse(HttpStatusCode.OK);
         response.Headers.Add("Content-Type", "text/plain; charset=utf-8");
+        response.WriteString(textResponse.ToString());
 
         return response;
     }

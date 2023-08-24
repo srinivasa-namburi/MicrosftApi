@@ -2,7 +2,7 @@
 
 using Microsoft.Extensions.Configuration;
 
-namespace ProjectVico.Plugins.DocQnA.Models;
+namespace ProjectVico.Plugins.GeographicalData.Models;
 
 public class AppSettings
 {
