@@ -1,13 +1,16 @@
-﻿using Azure;
+﻿using System.Globalization;
+using Azure;
 using Azure.Core.GeoJson;
 using Azure.Maps.Search;
 using Azure.Maps.Search.Models;
+using ProjectVico.Plugins.GeographicalData.Models;
 
 namespace ProjectVico.Plugins.GeographicalData.Connectors;
 
 public interface IMappingConnector
 {
     Task<List<string>> GetFacilitiesAsync(double latitude, double longitude, int radiusInMeters, int maxResults);
+    Task<GetLatitudeAndLongitudeForLocationResponse> GetLatitudeAndLongitudeForLocationAsync(string location);
 }
 
 public class AzureMapsConnector : IMappingConnector
@@ -40,7 +43,6 @@ public class AzureMapsConnector : IMappingConnector
             Top = maxResults
         });
 
-       
         foreach (var result in searchResult.Results)
         {
             resultList.Add(result.PointOfInterest.Name);
@@ -51,5 +53,27 @@ public class AzureMapsConnector : IMappingConnector
         return resultList;
 
 
+    }
+
+    public async Task<GetLatitudeAndLongitudeForLocationResponse> GetLatitudeAndLongitudeForLocationAsync(string location)
+    {
+        var locationResult= await this._mapsSearchClient.SearchAddressAsync(location, new SearchAddressOptions()
+        {
+            Top = 1,
+            Language = SearchLanguage.EnglishUsa
+        });
+
+        var result = new GetLatitudeAndLongitudeForLocationResponse()
+        {
+            Latitude = locationResult.Value.Results.First().Position.Latitude,
+            Longitude = locationResult.Value.Results.First().Position.Longitude
+        };
+
+        //var resultString = string.Join(", ",
+        //    "Latitude: "+locationResult.Value.Results.First().Position.Latitude.ToString(CultureInfo.InvariantCulture).Replace(",","."),
+        //    "Longitude: "+locationResult.Value.Results.First().Position.Longitude.ToString(CultureInfo.InvariantCulture).Replace(",", ".")
+        //    );
+
+        return result;
     }
 }
