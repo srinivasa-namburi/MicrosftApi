@@ -1,7 +1,9 @@
 {
   "IsEncrypted": false,
   "Host": {
-    "CORS": "*"
+    "LocalHttpPort": 7071,
+    "CORS": "*",
+    "CORSCredentials": false
   },
   "Values": {
     "OpenApi__Version": "v3"
