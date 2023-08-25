@@ -3,6 +3,8 @@
 using System.Globalization;
 using System.Net;
 using System.Text.Json;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
@@ -48,24 +50,25 @@ public class GetFacilities
 
 
     [Function("GetFacilitiesByLatitudeAngLongitude")]
-    [OpenApiOperation(operationId: "GetFacilities", tags: new[] { "ExecuteFunction" }, Description = "Gets a list of facilities from a location based on location's latitude and longitude (coordinates). If latitude and longitude are specified as a json document, please split the parameters out first.")]
-    [OpenApiParameter(name: "latitude", Type = typeof(double), Description = "The latitude to search for facilities. This is a decimal number. Typically the first in a list of 2 numbers.", Required = true, In = ParameterLocation.Query)]
-    [OpenApiParameter(name: "longitude", Type = typeof(double), Description = "The longitude to search for facilities. This is a decimal number. Typically the second and last in a list of 2 numbers", Required = true, In = ParameterLocation.Query)]
+    [OpenApiOperation(operationId: "GetFacilitiesByLatitudeAngLongitude", tags: new[] { "ExecuteFunction" }, Description = "Gets a list of facilities from a location based on location's <latitude> and <longitude> (coordinates). If latitude and longitude are specified as a json document, please split the parameters out first.")]
+    [OpenApiRequestBody(contentType: "application/json", bodyType: typeof(GetLatitudeAndLongitudeForLocationResponse), Required = true, Description = "JSON containing <latitude> and <longitude>")]
     [OpenApiParameter(name: "radiusInMeters", Type = typeof(int), Description = "The radius in meters to search for facilities. Must be an integer. If fractional, please round to nearest integer.", Required = false, In = ParameterLocation.Query)]
     [OpenApiParameter(name: "maxResults", Type = typeof(int), Description = "The maximum number of results to return. Maximum 100 per call.", Required = false, In = ParameterLocation.Query)]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "text/plain", bodyType: typeof(string), Description = "Returns a comma separated list of locations")]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(string), Description = "Returns the error of the input.")]
-    public async Task<HttpResponseData> GetFacilitiesByLatitudeAngLongitudeAsync([Microsoft.Azure.Functions.Worker.HttpTrigger(AuthorizationLevel.Function, "get")] HttpRequestData req)
+    public async Task<HttpResponseData> GetFacilitiesByLatitudeAngLongitudeAsync([HttpTrigger(AuthorizationLevel.Function, methods: "POST")] [FromBody] GetLatitudeAndLongitudeForLocationResponse bodyJson, HttpRequestData req)
     {
 
         // These are default values if not set in the query string.
         var maxResults = 100;
         var radius = 2000;
         
-        string? latitudeString = req.Query["latitude"];
-        string? longitudeString = req.Query["longitude"];
+
         string? radiusString = req.Query["radiusInMeters"];
         string? maxResultsString = req.Query["maxResults"];
+
+        string? latitudeString = bodyJson.Latitude.ToString(CultureInfo.InvariantCulture);
+        string? longitudeString = bodyJson.Longitude.ToString(CultureInfo.InvariantCulture);
 
         // Based on current culture, the decimal separator may be a comma or a period.
         // This is a problem for the SKContext, which expects a period.
