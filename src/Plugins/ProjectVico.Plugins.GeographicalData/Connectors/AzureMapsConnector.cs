@@ -60,8 +60,8 @@ public class AzureMapsConnector : IMappingConnector
 
         var result = new GetLatitudeAndLongitudeForLocationResponse()
         {
-            Latitude = locationResult.Value.Results.First().Position.Latitude,
-            Longitude = locationResult.Value.Results.First().Position.Longitude
+            Latitude = locationResult.Value.Results.First().Position.Latitude.ToString(CultureInfo.InvariantCulture),
+            Longitude = locationResult.Value.Results.First().Position.Longitude.ToString(CultureInfo.InvariantCulture)
         };
 
         return result;

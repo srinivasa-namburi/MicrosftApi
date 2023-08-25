@@ -1,5 +1,8 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Enums;
+
 namespace ProjectVico.Plugins.GeographicalData.Models;
 
 public class GetLatitudeAndLongitudeForLocationResponse
@@ -7,10 +10,13 @@ public class GetLatitudeAndLongitudeForLocationResponse
     /// <summary>
     /// The latitude part of the coordinates
     /// </summary>
-    public double Latitude { get; set; }
+    [OpenApiProperty(Description = "Latitude of the location")]
+    public string Latitude { get; set; }
     /// <summary>
     /// The longitude part of the coordinates
     /// </summary>
-    public double Longitude { get; set; }
+    
+    [OpenApiProperty(Description = "Longitude of the location")]
+    public string Longitude { get; set; }
 
 }

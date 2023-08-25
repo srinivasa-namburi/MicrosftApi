@@ -6,6 +6,7 @@ using System.Text.Json;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Enums;
 using Microsoft.OpenApi.Models;
 using ProjectVico.Plugins.GeographicalData.Connectors;
 using ProjectVico.Plugins.GeographicalData.Models;
@@ -28,11 +29,11 @@ public class GetFacilities
         In = ParameterLocation.Query)]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK,
         contentType: "application/json",
-        bodyType: typeof(GetLatitudeAndLongitudeForLocationResponse),
+        bodyType: typeof(GetLatitudeAndLongitudeForLocationResponse), 
         Description = "Coordinates split into latitude and longitude. Formatted as a json document.")]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json",
         bodyType: typeof(string), Description = "Returns the error of the input.")]
-    public async Task<HttpResponseData> GetLatitudeAndLongitudeForLocationAsync(
+    public async Task<HttpResponseData> GetLatitudeAndLongitudeForAddress(
         [HttpTrigger(AuthorizationLevel.Function, "get")] HttpRequestData req)
     {
         string? location = req.Query["query"];
@@ -56,7 +57,8 @@ public class GetFacilities
     [OpenApiRequestBody(contentType: "application/json", bodyType: typeof(GetFacilitiesForLocationRequest), Required = true, Description = "JSON containing <latitude> and <longitude> as well as radius <radiusinmeters> and maxresults")]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "text/plain", bodyType: typeof(string), Description = "Returns a comma separated list of locations")]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(string), Description = "Returns the error of the input.")]
-    public async Task<string> GetFacilitiesByLatitudeAngLongitudeAsync([HttpTrigger(AuthorizationLevel.Function, methods: "post")]
+    
+    public async Task<HttpResponseData> GetFacilitiesByLatitudeAngLongitude([HttpTrigger(AuthorizationLevel.Function, methods: "post")]
         HttpRequestData req,
         [FromBody] GetFacilitiesForLocationRequest bodyJson)
     {
@@ -108,6 +110,11 @@ public class GetFacilities
 
         var responseData = JsonSerializer.Serialize(facilities);
 
-        return responseData;
+        var response = req.CreateResponse(HttpStatusCode.OK);
+        response.Headers.Add("Content-Type", "application/json; charset=utf-8");
+        await response.WriteStringAsync(responseData);
+        return response;
+
+        
     }
 }
