@@ -19,6 +19,7 @@ using Microsoft.SemanticKernel.Connectors.Memory.Qdrant;
 using Microsoft.SemanticKernel.Memory;
 using Microsoft.SemanticKernel.Orchestration;
 using Microsoft.SemanticKernel.Skills.Core;
+using Microsoft.SemanticKernel.Skills.OpenAPI;
 using Microsoft.SemanticKernel.TemplateEngine;
 using Npgsql;
 using Pgvector.Npgsql;
@@ -138,6 +139,9 @@ internal static class SemanticKernelExtensions
 
         // Time skill
         kernel.ImportSkill(new TimeSkill(), nameof(TimeSkill));
+
+        // JsonPath Skill
+        kernel.ImportSkill(new JsonPathSkill(), nameof(JsonPathSkill));
 
         // Semantic skills
         ServiceOptions options = sp.GetRequiredService<IOptions<ServiceOptions>>().Value;

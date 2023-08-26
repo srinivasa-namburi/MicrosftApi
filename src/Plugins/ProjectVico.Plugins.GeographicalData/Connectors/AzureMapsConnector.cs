@@ -9,8 +9,12 @@ namespace ProjectVico.Plugins.GeographicalData.Connectors;
 
 public interface IMappingConnector
 {
-    Task<List<string>> GetFacilities(double latitude, double longitude, int radiusInMeters, int maxResults);
+    Task<List<string>> GetSchools(double latitude, double longitude, int radiusInMeters, int maxResults);
     Task<GetLatitudeAndLongitudeForLocationResponse> GetLatitudeAndLongitudeForLocation(string location);
+    Task<List<int>> GetCategoryIdsForCategoryName(string categoryName);
+
+    Task<List<string>> GetFacilitiesForCategoryname(double latitude, double longitude, int radiusInMeters,
+        int maxResults, string categoryName);
 }
 
 public class AzureMapsConnector : IMappingConnector
@@ -21,7 +25,44 @@ public class AzureMapsConnector : IMappingConnector
     {
         this._mapsSearchClient = new MapsSearchClient(new AzureKeyCredential(apiKey));
     }
-    public async Task<List<string>> GetFacilities(double latitude, double longitude, int radiusInMeters, int maxResults)
+
+    public async Task<List<int>> GetCategoryIdsForCategoryName(string categoryName)
+    {
+        var poiCategories = await this._mapsSearchClient.GetPointOfInterestCategoryTreeAsync(SearchLanguage.EnglishUsa);
+
+        var schoolCategories = poiCategories.Value.Categories.Where(x => x.Name.Contains(categoryName));
+        var schoolCategoryIds = schoolCategories.Select(x => x.Id).AsEnumerable().Cast<int>().Take(10);
+
+        return schoolCategoryIds.ToList();
+    }
+
+    public async Task<List<string>> GetFacilitiesForCategoryname(double latitude, double longitude, int radiusInMeters,
+        int maxResults, string categoryName)
+    {
+        var resultList = new List<string>();
+
+
+        var categoryIds = await this.GetCategoryIdsForCategoryName(categoryName);
+        // Call Azure Maps API
+
+        SearchAddressResult searchResult = await this._mapsSearchClient.SearchNearbyPointOfInterestAsync(new SearchNearbyPointOfInterestOptions()
+        {
+            Coordinates = new GeoPosition(longitude, latitude),
+            Language = SearchLanguage.EnglishUsa,
+            RadiusInMeters = radiusInMeters,
+            CategoryFilter = categoryIds,
+            Top = maxResults
+        });
+
+        foreach (var result in searchResult.Results)
+        {
+            resultList.Add(result.PointOfInterest.Name);
+        }
+        var tempResultString = string.Join(", ", resultList);
+        return resultList;
+    }
+
+    public async Task<List<string>> GetSchools(double latitude, double longitude, int radiusInMeters, int maxResults)
     {
         var resultList = new List<string>();
 
@@ -37,7 +78,6 @@ public class AzureMapsConnector : IMappingConnector
             Coordinates = new GeoPosition(longitude, latitude),
             Language = SearchLanguage.EnglishUsa,
             RadiusInMeters = radiusInMeters,
-            //CategoryFilter = new List<int>(schoolCategoryIds.First())
             CategoryFilter = schoolCategoryIds,
             Top = maxResults
         });
