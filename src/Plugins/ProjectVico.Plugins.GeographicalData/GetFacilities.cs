@@ -156,18 +156,18 @@ public class GetFacilities
         return response;
     }
 
-    [Function("GetFacilitiesByAddressOrLocation")]
-    [OpenApiOperation(operationId: "GetFacilitiesByAddressOrLocation", tags: new[] { "ExecuteFunction" },
+    [Function("GetFacilitiesByAddress")]
+    [OpenApiOperation(operationId: "GetFacilitiesByAddress", tags: new[] { "ExecuteFunction" },
         Description =
-            "Gets a list of facilities from a location based on location name or address (<address>). If no <categorySearchTerm> is supplied, it is set to 'School' by default.")]
+            "Gets a list of facilities from a location based on an address. Limit the type of facility to those of type <categorySearchTerm>. If no <categorySearchTerm> is supplied, it is set to 'School' by default.")]
     [OpenApiParameter(name: "address", Description = "The address or location name to find facilities for",
         Required = true, In = ParameterLocation.Query)]
     [OpenApiParameter(name: "maxResults",
-        Description = "The max number of results to return. Cannot be more than 100, must be an integer.",
+        Description = "The max number of results to return. Cannot be more than 100, must be an integer. Set to 100 by default.",
         Required = false, In = ParameterLocation.Query)]
     [OpenApiParameter(name: "radiusInMeters",
         Description =
-            "The radius/area in meters to search for facilities from the supplied geographical coordinate (latitude and longitude). Must be an integer, no fractional numbers.",
+            "The radius/area in meters to search for '<categorySearchTerm>' type of facilities from the supplied address. Must be an integer, no fractional numbers. Default 5km radius.",
         Required = false, In = ParameterLocation.Query)]
     [OpenApiParameter(name: "categorySearchTerm",
         Description =
@@ -177,20 +177,49 @@ public class GetFacilities
         Description = "Returns a comma separated list of locations")]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json",
         bodyType: typeof(string), Description = "Returns the error of the input.")]
-    public async Task<HttpResponseData> GetFacilitiesByAddressOrLocationAsync(
+    public async Task<HttpResponseData> GetFacilitiesByAddressAsync(
         [HttpTrigger(AuthorizationLevel.Function, methods: "get")] HttpRequestData req)
     {
         var latLongResponse = await this.GetLatandLongForLocationAsync(req.Query["address"]!);
+
         var latitudeString = latLongResponse.Latitude;
         var longitudeString = latLongResponse.Longitude;
+        var radiusString = req.Query["radiusInMeters"];
+        var maxResultsString = req.Query["maxResults"];
 
-        var latitude = Convert.ToDouble(latitudeString);
-        var longitude = Convert.ToDouble(longitudeString);
+        int radius = 5000;
+        int maxResults = 100;
 
         var categorySearchTerm = req.Query["categorySearchTerm"] ?? "School";
 
+        if (!double.TryParse(latitudeString, NumberStyles.Any, CultureInfo.InvariantCulture, out double latitude))
+        {
+            throw new ArgumentException("Latitude must be a double");
+        }
 
-        var responseData = await this.GetFacilitiesForLatLongAsync(Convert.ToDouble(latitude), Convert.ToDouble(longitude), 2000, 100, req.Query["categorySearchTerm"]!);
+        if (!double.TryParse(longitudeString, NumberStyles.Any, CultureInfo.InvariantCulture, out double longitude))
+        {
+            throw new ArgumentException("Longitude must be a double");
+        }
+
+        if (radiusString != null &&
+            !int.TryParse(radiusString, NumberStyles.Any, CultureInfo.InvariantCulture, out radius))
+        {
+            throw new ArgumentException("Radius must be an integer");
+        }
+
+        if (maxResultsString != null &&
+            !int.TryParse(maxResultsString, NumberStyles.Any, CultureInfo.InvariantCulture, out maxResults))
+        {
+            throw new ArgumentException("Max results must be an integer");
+        }
+
+        var responseData = await this.GetFacilitiesForLatLongAsync(
+            latitude,
+            longitude,
+            radius,
+            maxResults,
+            categorySearchTerm);
 
         var response = req.CreateResponse(HttpStatusCode.OK);
         response.Headers.Add("Content-Type", "text/plain; charset=utf-8");
