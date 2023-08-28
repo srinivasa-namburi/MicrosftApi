@@ -42,7 +42,7 @@ public class GetFacilities
             throw new ArgumentException("Location must be provided");
         }
 
-        return await this.GetLatandLongForLocationAsync(location);
+        return await this.GetLatLongForAddressAsync(location);
     }
 
     [Function("CreateGetFacilitiesForLocationRequestFromGetLatitudeAndLongitudeForLocationResponse")]
@@ -80,7 +80,7 @@ public class GetFacilities
         }
 
         var response = req.CreateResponse(HttpStatusCode.OK);
-        response.Headers.Add("Content-Type", "application/json; charset=utf-8");
+        response.Headers.Add("Content-Type", "application/json");
 
         var getFacilitiesForLocationRequest = new GetFacilitiesForLocationRequest
         {
@@ -95,16 +95,17 @@ public class GetFacilities
 
 
     [Function("GetFacilitiesByLatitudeAngLongitude")]
-    [OpenApiOperation(operationId: "GetFacilitiesByLatitudeAngLongitude", tags: new[] { "ExecuteFunction" }, Description = "Gets a list of facilities from a location based on location's coordinates (<latitude> and <longitude>). If no <categorySearchTerm> is supplied, it is set to 'School' by default.")]
+    [OpenApiOperation(operationId: "GetFacilitiesByLatitudeAngLongitude", tags: new[] { "ExecuteFunction" }, Description = "Gets a list of facilities from a location based on location's coordinates (<latitude> and <longitude>). If searching for an address, please use the function GetFacilitiesByAddress instead. If no <categorySearchTerm> is supplied, it is set to 'School' by default.")]
     //[OpenApiRequestBody(contentType: "application/json", bodyType: typeof(GetFacilitiesForLocationRequest), Required = true, Description = "JSON containing <latitude> and <longitude> as well as radius <radiusinmeters> and maxresults")]
     [OpenApiParameter(name: "maxResults", Description = "The max number of results to return. Cannot be more than 100, must be an integer.", Required = false, In = ParameterLocation.Query)]
     [OpenApiParameter(name: "radiusInMeters", Description = "The radius/area in meters to search for facilities from the supplied geographical coordinate (latitude and longitude). Must be an integer, no fractional numbers.", Required = false, In = ParameterLocation.Query)]
-    [OpenApiParameter(name: "latitude", Description="The latitude of the location to search for facilities. Use JsonPath skill to get if necessary", Required = true, In=ParameterLocation.Query)]
-    [OpenApiParameter(name: "longitude", Description= "The longitude of the location to search for facilities. Use JsonPath skill to get if necessary", Required = true, In = ParameterLocation.Query)]
-    [OpenApiParameter(name: "categorySearchTerm", Description = "The category/type of facility to search for, such as 'School', 'Healthcare', 'Elderly care', 'River', 'Lake', etc. Please capitalize the categorySearchTerm.", Required = false, In=ParameterLocation.Query)]
-    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "text/plain", bodyType: typeof(string), Description = "Returns a comma separated list of locations")]
+    [OpenApiParameter(name: "latitude", Description = "The latitude of the location to search for facilities. Use JsonPath skill to get if necessary", Required = true, In = ParameterLocation.Query)]
+    [OpenApiParameter(name: "longitude", Description = "The longitude of the location to search for facilities. Use JsonPath skill to get if necessary", Required = true, In = ParameterLocation.Query)]
+    [OpenApiParameter(name: "categorySearchTerm", Description = "The category/type of facility to search for, such as 'School', 'Healthcare', 'Elderly care', 'River', 'Lake', etc. Please capitalize the categorySearchTerm.", Required = false, In = ParameterLocation.Query)]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(List<FacilityDetail>),
+        Description = "Returns a list of FacilityDetail objects with name, address, distance from search point and categories of each facility found")]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(string), Description = "Returns the error of the input.")]
-    
+
     public async Task<HttpResponseData> GetFacilitiesByLatitudeAngLongitudeAsync([HttpTrigger(AuthorizationLevel.Function, methods: "get")]
         HttpRequestData req)
     {
@@ -135,24 +136,23 @@ public class GetFacilities
         {
             throw new ArgumentException("Longitude must be a double");
         }
-        
+
         if (radiusString != null &&
             !int.TryParse(radiusString, NumberStyles.Any, CultureInfo.InvariantCulture, out radius))
         {
             throw new ArgumentException("Radius must be an integer");
         }
-        
+
         if (maxResultsString != null &&
             !int.TryParse(maxResultsString, NumberStyles.Any, CultureInfo.InvariantCulture, out maxResults))
         {
             throw new ArgumentException("Max results must be an integer");
         }
 
-        var responseData = await this.GetFacilitiesForLatLongAsync(latitude, longitude, radius, maxResults, categorySearchTerm);
+        var responseData = await this.GetDetailedFacilitiesForLatLongAsync(latitude, longitude, radius, maxResults, categorySearchTerm);
 
         var response = req.CreateResponse(HttpStatusCode.OK);
-        response.Headers.Add("Content-Type", "text/plain; charset=utf-8");
-        await response.WriteStringAsync(responseData);
+        await response.WriteAsJsonAsync(responseData);
         return response;
     }
 
@@ -173,14 +173,16 @@ public class GetFacilities
         Description =
             "The category/type of facility to search for, such as 'School', 'Hospital', 'Elderly care', 'River', 'Lake', etc. Please capitalize the categorySearchTerm.",
         Required = false, In = ParameterLocation.Query)]
-    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "text/plain", bodyType: typeof(string),
-        Description = "Returns a comma separated list of locations")]
+    //[OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "text/plain", bodyType: typeof(string),
+    //    Description = "Returns a comma separated list of locations")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(List<FacilityDetail>),
+        Description = "Returns a list of FacilityDetail objects with name, address, distance from search point and categories of each facility found")]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json",
         bodyType: typeof(string), Description = "Returns the error of the input.")]
     public async Task<HttpResponseData> GetFacilitiesByAddressAsync(
         [HttpTrigger(AuthorizationLevel.Function, methods: "get")] HttpRequestData req)
     {
-        var latLongResponse = await this.GetLatandLongForLocationAsync(req.Query["address"]!);
+        var latLongResponse = await this.GetLatLongForAddressAsync(req.Query["address"]!);
 
         var latitudeString = latLongResponse.Latitude;
         var longitudeString = latLongResponse.Longitude;
@@ -214,35 +216,46 @@ public class GetFacilities
             throw new ArgumentException("Max results must be an integer");
         }
 
-        var responseData = await this.GetFacilitiesForLatLongAsync(
-            latitude,
-            longitude,
-            radius,
-            maxResults,
-            categorySearchTerm);
+        var facilities = await this.GetDetailedFacilitiesForLatLongAsync(
+                                 latitude,
+                                  longitude,
+                                  radius,
+                                  maxResults,
+                                  categorySearchTerm);
 
         var response = req.CreateResponse(HttpStatusCode.OK);
-        response.Headers.Add("Content-Type", "text/plain; charset=utf-8");
-        await response.WriteStringAsync(responseData);
+        await response.WriteAsJsonAsync(facilities);
         return response;
-
     }
 
 
     private async Task<string> GetFacilitiesForLatLongAsync(double latitude, double longitude, int radius, int maxResults, string categorySearchTerm)
     {
         var facilities = await this._mappingConnector.GetFacilitiesForCategoryname(
-                       latitude,
-                                  longitude,
-                                  radius,
-                                  maxResults,
-                                  categorySearchTerm);
+                      latitude,
+                      longitude,
+                      radius,
+                      maxResults,
+                      categorySearchTerm);
 
         var responseData = JsonSerializer.Serialize(facilities);
         return responseData;
     }
 
-    private async Task<GetLatitudeAndLongitudeForLocationResponse> GetLatandLongForLocationAsync(string location)
+    private async Task<List<FacilityDetail>> GetDetailedFacilitiesForLatLongAsync(double latitude, double longitude,
+        int radius, int maxResults, string categorySearchTerm)
+    {
+        var facilities = await this._mappingConnector.GetDetailedFacilitiesForCategoryName(
+                                 latitude,
+                                                      longitude,
+                                                      radius,
+                                                      maxResults,
+                                                      categorySearchTerm);
+
+        return facilities;
+    }
+
+    private async Task<GetLatitudeAndLongitudeForLocationResponse> GetLatLongForAddressAsync(string location)
     {
         var responseDocument = await this._mappingConnector.GetLatitudeAndLongitudeForLocation(location);
         return responseDocument;
