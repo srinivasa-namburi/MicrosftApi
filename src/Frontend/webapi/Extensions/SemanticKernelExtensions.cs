@@ -20,6 +20,7 @@ using Microsoft.SemanticKernel.Memory;
 using Microsoft.SemanticKernel.Orchestration;
 using Microsoft.SemanticKernel.Skills.Core;
 using Microsoft.SemanticKernel.Skills.OpenAPI;
+using Microsoft.SemanticKernel.Skills.OpenAPI.Extensions;
 using Microsoft.SemanticKernel.TemplateEngine;
 using Npgsql;
 using Pgvector.Npgsql;
@@ -156,6 +157,33 @@ internal static class SemanticKernelExtensions
                 catch (TemplateException e)
                 {
                     kernel.Logger.LogError("Could not load skill from {Directory}: {Message}", subDir, e.Message);
+                }
+            }
+        }
+
+        // Custom plugin skills
+        CustomPluginsOptions customPluginsOptions = sp.GetRequiredService<IOptions<CustomPluginsOptions>>().Value;
+
+        if (customPluginsOptions?.OpenAPIPlugins?.Count > 0)
+        {
+            var openApiSkillName = "OpenAPI-Plugin-";
+            int i = 0;
+            foreach (string openAPIPlugin in customPluginsOptions.OpenAPIPlugins)
+            {
+
+                //Test that openApiPlugin is a valid URL string
+                if (Uri.TryCreate(openAPIPlugin, UriKind.Absolute, out Uri? uri))
+                {
+                    i++;
+                    var skillName = openApiSkillName + i;
+
+                    var validUri = Uri.TryCreate(openAPIPlugin, UriKind.Absolute, out Uri? uriForSkill);
+
+                    kernel.ImportAIPluginAsync(skillName, uriForSkill);
+                }
+                else
+                {
+                    kernel.Logger.LogError("Could not load skill from {openAPIPlugin}: {Message}", openAPIPlugin, "Invalid URL");
                 }
             }
         }

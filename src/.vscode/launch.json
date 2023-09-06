@@ -29,6 +29,34 @@
         "panel": "shared",
         "group": "copilot"
       }
+    },
+    {
+      "name": "ProjectVico.Plugins.GeographicalData",
+      "type": "coreclr",
+      "preLaunchTask": "build (ProjectVico.Plugins.GeographicalData)",
+      "request": "launch",
+      "program": "${workspaceFolder}/Plugins/ProjectVico.Plugins.GeographicalData/bin/Debug/net6.0/ProjectVico.Plugins.GeographicalData.dll",
+      "cwd": "${workspaceFolder}/Plugins/ProjectVico.Plugins.GeographicalData",
+      "env": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "presentation": {
+        "reveal": "never"
+      }
+    },
+    {
+      "name": "ProjectVico.Plugins.DocQnA",
+      "type": "coreclr",
+      "preLaunchTask": "build (ProjectVico.Plugins.DocQnA)",
+      "request": "launch",
+      "program": "${workspaceFolder}/Plugins/ProjectVico.Plugins.DocQnA/bin/Debug/net6.0/ProjectVico.Plugins.DocQnA.dll",
+      "cwd": "${workspaceFolder}/Plugins/ProjectVico.Plugins.DocQnA",
+      "env": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "presentation": {
+        "reveal": "never"
+      }
     }
   ],
   "compounds": [
@@ -36,10 +64,24 @@
       "presentation": {
         "hidden": false,
         "group": "copilot",
-        "order": 1
+        "order": 2
       },
       "name": "WebAPI & WebApp",
       "configurations": ["WebAPI", "WebApp"]
+    },
+    {
+      "presentation": {
+        "hidden": false,
+        "group": "copilot",
+        "order": 1
+      },
+      "name": "WebAPI, WebApp & All Plugins",
+      "configurations": [
+        "WebAPI",
+        "WebApp",
+        "ProjectVico.Plugins.GeographicalData",
+        "ProjectVico.Plugins.DocQnA"
+      ]
     }
   ]
 }

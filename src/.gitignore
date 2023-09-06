@@ -8,6 +8,9 @@ dotnet/.config
 # Yarn Build Output
 **/webapp/build
 
+# Chat Session Storage
+**/data/chatstore*
+
 # User-specific files
 *.rsuser
 *.suo

@@ -115,6 +115,11 @@ public static class CopilotChatServiceExtensions
             .ValidateOnStart()
             .PostConfigure(TrimStringProperties);
 
+        // Custom OpenAPI plugin skill options
+        services.AddOptions<CustomPluginsOptions>()
+            .Bind(configuration.GetSection(CustomPluginsOptions.PropertyName))
+            .ValidateOnStart();
+
         return services;
     }
 
