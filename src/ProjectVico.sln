@@ -13,9 +13,9 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.Plugins.DocQnA"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.Plugins.GeographicalData", "Plugins\ProjectVico.Plugins.GeographicalData\ProjectVico.Plugins.GeographicalData.csproj", "{C1D00A1F-CFCC-4B60-9073-57E919819CB4}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProjectVico.Frontend.WordAddin", "Frontend\ProjectVico.Frontend.WordAddin\ProjectVico.Frontend.WordAddin.csproj", "{9F530468-2E77-46EB-9402-8B0E7E17703D}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "word-blazor-sideloader", "Frontend\Copilot\word-blazor-sideloader\word-blazor-sideloader.csproj", "{DD35DC75-F895-4508-B4AC-F7753FB52B9A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProjectVico.Frontend.WordAddinWeb", "Frontend\ProjectVico.Frontend.WordAddinWeb\ProjectVico.Frontend.WordAddinWeb.csproj", "{CCA28BC6-317E-44C1-BE41-626EC276F6BB}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BlazorAddIn", "Frontend\Copilot\word-blazor-add-in\BlazorAddIn.csproj", "{DC7CBF90-51C8-45C0-892E-40C2797401D3}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -35,16 +35,16 @@ Global
 		{C1D00A1F-CFCC-4B60-9073-57E919819CB4}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C1D00A1F-CFCC-4B60-9073-57E919819CB4}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C1D00A1F-CFCC-4B60-9073-57E919819CB4}.Release|Any CPU.Build.0 = Release|Any CPU
-		{9F530468-2E77-46EB-9402-8B0E7E17703D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{9F530468-2E77-46EB-9402-8B0E7E17703D}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{9F530468-2E77-46EB-9402-8B0E7E17703D}.Debug|Any CPU.Deploy.0 = Debug|Any CPU
-		{9F530468-2E77-46EB-9402-8B0E7E17703D}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{9F530468-2E77-46EB-9402-8B0E7E17703D}.Release|Any CPU.Build.0 = Release|Any CPU
-		{9F530468-2E77-46EB-9402-8B0E7E17703D}.Release|Any CPU.Deploy.0 = Release|Any CPU
-		{CCA28BC6-317E-44C1-BE41-626EC276F6BB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{CCA28BC6-317E-44C1-BE41-626EC276F6BB}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{CCA28BC6-317E-44C1-BE41-626EC276F6BB}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{CCA28BC6-317E-44C1-BE41-626EC276F6BB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DD35DC75-F895-4508-B4AC-F7753FB52B9A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DD35DC75-F895-4508-B4AC-F7753FB52B9A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DD35DC75-F895-4508-B4AC-F7753FB52B9A}.Debug|Any CPU.Deploy.0 = Debug|Any CPU
+		{DD35DC75-F895-4508-B4AC-F7753FB52B9A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DD35DC75-F895-4508-B4AC-F7753FB52B9A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DD35DC75-F895-4508-B4AC-F7753FB52B9A}.Release|Any CPU.Deploy.0 = Release|Any CPU
+		{DC7CBF90-51C8-45C0-892E-40C2797401D3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DC7CBF90-51C8-45C0-892E-40C2797401D3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DC7CBF90-51C8-45C0-892E-40C2797401D3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DC7CBF90-51C8-45C0-892E-40C2797401D3}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -53,8 +53,8 @@ Global
 		{12ADB85F-ED63-4D43-A77A-F5E2061698C7} = {25D74023-1262-4CF8-81BC-7974FE879A87}
 		{F9120346-6E9F-4D65-B239-6658FE238C49} = {7F6BB84A-0B49-49E7-AFA6-3C90CA54156B}
 		{C1D00A1F-CFCC-4B60-9073-57E919819CB4} = {7F6BB84A-0B49-49E7-AFA6-3C90CA54156B}
-		{9F530468-2E77-46EB-9402-8B0E7E17703D} = {25D74023-1262-4CF8-81BC-7974FE879A87}
-		{CCA28BC6-317E-44C1-BE41-626EC276F6BB} = {25D74023-1262-4CF8-81BC-7974FE879A87}
+		{DD35DC75-F895-4508-B4AC-F7753FB52B9A} = {25D74023-1262-4CF8-81BC-7974FE879A87}
+		{DC7CBF90-51C8-45C0-892E-40C2797401D3} = {25D74023-1262-4CF8-81BC-7974FE879A87}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {D57E1357-E9CC-4EFB-8AF4-910D4EE0E8F6}

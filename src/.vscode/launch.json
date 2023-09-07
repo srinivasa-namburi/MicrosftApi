@@ -79,8 +79,8 @@
       "configurations": [
         "WebAPI",
         "WebApp",
-        "ProjectVico.Plugins.GeographicalData",
-        "ProjectVico.Plugins.DocQnA"
+        // "ProjectVico.Plugins.DocQnA",
+        "ProjectVico.Plugins.GeographicalData"
       ]
     }
   ]
