@@ -6,6 +6,9 @@ export const Constants = {
         updateCheckIntervalSeconds: 60 * 5,
         CONNECTION_ALERT_ID: 'connection-alert',
     },
+    ui: {
+        header: 'Generative AI Copilot for SMR Licensing',
+    },
     msal: {
         method: 'redirect', // 'redirect' | 'popup'
         cache: {
