@@ -4,6 +4,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Models;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Connectors.AI.OpenAI.TextEmbedding;
@@ -11,15 +12,18 @@ using Microsoft.SemanticKernel.Connectors.Memory.AzureCognitiveSearch;
 using Microsoft.SemanticKernel.Memory;
 using Microsoft.SemanticKernel.Orchestration;
 using Microsoft.SemanticKernel.SemanticFunctions;
+using ProjectVico.Plugins.DocQnA.Options;
 
 namespace ProjectVico.Plugins.DocQnA;
 
 public class Ask
 {
+    private readonly IOptions<AiOptions> _aiOptions;
     private readonly ILogger _logger;
 
-    public Ask(ILoggerFactory loggerFactory)
+    public Ask(ILoggerFactory loggerFactory, IOptions<AiOptions> aiOptions)
     {
+        this._aiOptions = aiOptions;
         //_logger = loggerFactory.CreateLogger<DemoHttpTrigger>();
     }
 
@@ -36,18 +40,18 @@ public class Ask
 
         SemanticTextMemory semanticMemory = new SemanticTextMemory(
             new AzureCognitiveSearchMemoryStore(
-                "https://smrlicenseacs.search.windows.net",
-                Environment.GetEnvironmentVariable("AzureCognitiveSearchApiKey", EnvironmentVariableTarget.Process)!
+                this._aiOptions.Value.CognitiveSearch.Endpoint,
+                this._aiOptions.Value.CognitiveSearch.Key!
             ),
             new AzureTextEmbeddingGeneration(
-                "smrlicenseembeddingada002",
-                "https://smrlicencesoldev.openai.azure.com/",
-                Environment.GetEnvironmentVariable("AzureOpenAIApiKey", EnvironmentVariableTarget.Process)!
+                this._aiOptions.Value.OpenAI.EmbeddingModel,
+                this._aiOptions.Value.OpenAI.Endpoint,
+                this._aiOptions.Value.OpenAI.Key!
             )
         );
 
 
-        IAsyncEnumerable<MemoryQueryResult> memories = semanticMemory.SearchAsync("section-embeddings", sectionName, limit: 12);
+        IAsyncEnumerable<MemoryQueryResult> memories = semanticMemory.SearchAsync(this._aiOptions.Value.CognitiveSearch.Index, sectionName, limit: 12);
 
         var sections = new Dictionary<string, string>();
 
@@ -85,9 +89,9 @@ public class Ask
         // Create kernel
         IKernel kernel = new KernelBuilder()
             .WithAzureChatCompletionService(
-                "smrlicencegpt35",
-                "https://smrlicencesoldev.openai.azure.com/",
-                Environment.GetEnvironmentVariable("AzureOpenAIApiKey", EnvironmentVariableTarget.Process)!
+                this._aiOptions.Value.OpenAI.CompletionModel,
+                this._aiOptions.Value.OpenAI.Endpoint,
+                this._aiOptions.Value.OpenAI.Key!
             )
             .Build();
 

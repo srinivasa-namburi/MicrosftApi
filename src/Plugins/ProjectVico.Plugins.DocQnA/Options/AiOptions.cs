@@ -2,7 +2,7 @@
 
 namespace ProjectVico.Plugins.DocQnA.Options;
 
-public sealed class AiSettings
+public sealed class AiOptions
 {
     public const string PropertyName = "AI";
 

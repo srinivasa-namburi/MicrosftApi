@@ -7,5 +7,19 @@
   },
   "Values": {
     "OpenApi__Version": "v3"
+  },
+  "AI": {
+    "OpenAI": {
+      "Endpoint": "",
+      "Key": "",
+      "CompletionModel": "smrlicensegpt35-16k",
+      "EmbeddingModel": "smrlicenseembeddingada002"
+    },
+    "CognitiveSearch": {
+      "Endpoint": "",
+      "Key": "",
+      "Index": "section-embeddings"
+    }
+
   }
 }
