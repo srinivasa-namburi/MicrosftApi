@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
 using System;
+using System.Text.Json.Serialization;
 using ProjectVico.Frontend.API.Storage;
 
 namespace ProjectVico.Frontend.API.Models.Storage;
@@ -36,6 +37,12 @@ public class ChatSession : IStorageEntity
     /// the relevance threshold of long term memory and increasing the threshold score of working memory.
     /// </summary>
     public double MemoryBalance { get; set; } = 0.5;
+
+    /// <summary>
+    /// The partition key for the session.
+    /// </summary>
+    [JsonIgnore]
+    public string Partition => this.Id;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ChatSession"/> class.

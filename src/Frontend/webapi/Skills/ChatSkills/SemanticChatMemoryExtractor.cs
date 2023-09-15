@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.AI.TextCompletion;
-using Microsoft.SemanticKernel.Diagnostics;
 using Microsoft.SemanticKernel.Memory;
 using Microsoft.SemanticKernel.Orchestration;
 using ProjectVico.Frontend.API.Extensions;
@@ -53,7 +52,8 @@ internal static class SemanticChatMemoryExtractor
                     memoryName,
                     kernel,
                     context,
-                    options
+                    options,
+                    logger
                 );
                 foreach (var item in semanticMemory.Items)
                 {
@@ -64,7 +64,7 @@ internal static class SemanticChatMemoryExtractor
             {
                 // Skip semantic memory extraction for this item if it fails.
                 // We cannot rely on the model to response with perfect Json each time.
-                context.Logger.LogInformation("Unable to extract semantic memory for {0}: {1}. Continuing...", memoryName, ex.Message);
+                logger.LogInformation("Unable to extract semantic memory for {0}: {1}. Continuing...", memoryName, ex.Message);
                 continue;
             }
         }
@@ -77,12 +77,14 @@ internal static class SemanticChatMemoryExtractor
     /// <param name="kernel">The semantic kernel.</param>
     /// <param name="context">The SKContext</param>
     /// <param name="options">The prompts options.</param>
+    /// <param name="logger">The logger.</param>
     /// <returns>A SemanticChatMemory object.</returns>
     internal static async Task<SemanticChatMemory> ExtractCognitiveMemoryAsync(
         string memoryName,
         IKernel kernel,
         SKContext context,
-        PromptsOptions options)
+        PromptsOptions options,
+        ILogger logger)
     {
         if (!options.MemoryMap.TryGetValue(memoryName, out var memoryPrompt))
         {
@@ -110,7 +112,7 @@ internal static class SemanticChatMemoryExtractor
 
         // Get token usage from ChatCompletion result and add to context
         // Since there are multiple memory types, total token usage is calculated by cumulating the token usage of each memory type.
-        TokenUtilities.GetFunctionTokenUsage(result, context, $"SystemCognitive_{memoryName}");
+        TokenUtilities.GetFunctionTokenUsage(result, context, logger, $"SystemCognitive_{memoryName}");
 
         SemanticChatMemory memory = SemanticChatMemory.FromJson(result.ToString());
         return memory;
@@ -138,6 +140,7 @@ internal static class SemanticChatMemoryExtractor
     {
         var memoryCollectionName = MemoryCollectionName(chatId, memoryName);
 
+#pragma warning disable CA1031 // Each connector may throw different exception type
         try
         {
             // Search if there is already a memory item that has a high similarity score with the new item.
@@ -162,11 +165,12 @@ internal static class SemanticChatMemoryExtractor
                 );
             }
         }
-        catch (SKException connectorException)
+        catch (Exception connectorException)
         {
             // A store exception might be thrown if the collection does not exist, depending on the memory store connector.
             logger.LogError(connectorException, "Cannot search collection {0}", memoryCollectionName);
         }
+#pragma warning restore CA1031 // Each connector may throw different exception type
     }
 
     /// <summary>

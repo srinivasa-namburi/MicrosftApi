@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
 using System;
+using System.Text.Json.Serialization;
 using ProjectVico.Frontend.API.Storage;
 
 namespace ProjectVico.Frontend.API.Models.Storage;
@@ -25,6 +26,12 @@ public class ChatParticipant : IStorageEntity
     /// Chat ID that this participant belongs to.
     /// </summary>
     public string ChatId { get; set; }
+
+    /// <summary>
+    /// The partition key for the source.
+    /// </summary>
+    [JsonIgnore]
+    public string Partition => this.UserId;
 
     public ChatParticipant(string userId, string chatId)
     {

@@ -59,7 +59,7 @@ public class CosmosDbContext<T> : IStorageContext<T>, IDisposable where T : ISto
             throw new ArgumentOutOfRangeException(nameof(entity.Id), "Entity Id cannot be null or empty.");
         }
 
-        await this._container.CreateItemAsync(entity);
+        await this._container.CreateItemAsync(entity, new PartitionKey(entity.Partition));
     }
 
     /// <inheritdoc/>
@@ -70,11 +70,11 @@ public class CosmosDbContext<T> : IStorageContext<T>, IDisposable where T : ISto
             throw new ArgumentOutOfRangeException(nameof(entity.Id), "Entity Id cannot be null or empty.");
         }
 
-        await this._container.DeleteItemAsync<T>(entity.Id, new PartitionKey(entity.Id));
+        await this._container.DeleteItemAsync<T>(entity.Id, new PartitionKey(entity.Partition));
     }
 
     /// <inheritdoc/>
-    public async Task<T> ReadAsync(string entityId)
+    public async Task<T> ReadAsync(string entityId, string partitionKey)
     {
         if (string.IsNullOrWhiteSpace(entityId))
         {
@@ -83,7 +83,7 @@ public class CosmosDbContext<T> : IStorageContext<T>, IDisposable where T : ISto
 
         try
         {
-            var response = await this._container.ReadItemAsync<T>(entityId, new PartitionKey(entityId));
+            var response = await this._container.ReadItemAsync<T>(entityId, new PartitionKey(partitionKey));
             return response.Resource;
         }
         catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
@@ -100,7 +100,7 @@ public class CosmosDbContext<T> : IStorageContext<T>, IDisposable where T : ISto
             throw new ArgumentOutOfRangeException(nameof(entity.Id), "Entity Id cannot be null or empty.");
         }
 
-        await this._container.UpsertItemAsync(entity);
+        await this._container.UpsertItemAsync(entity, new PartitionKey(entity.Partition));
     }
 
     public void Dispose()

@@ -1,16 +1,16 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Microsoft.SemanticKernel.Diagnostics;
 using Microsoft.SemanticKernel.Memory;
 using Microsoft.SemanticKernel.SkillDefinition;
 using ProjectVico.Frontend.API.Options;
-using ProjectVico.Frontend.API.Skills;
 
 namespace ProjectVico.Frontend.API.Skills.ChatSkills;
 
@@ -52,12 +52,14 @@ public class DocumentMemorySkill
     /// </summary>
     /// <param name="query">Query to match.</param>
     /// <param name="context">The SkContext.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
     [SKFunction, Description("Query documents in the memory given a user message")]
     public async Task<string> QueryDocumentsAsync(
         [Description("Query to match.")] string query,
         [Description("ID of the chat that owns the documents")] string chatId,
         [Description("Maximum number of tokens")] int tokenLimit,
-        ISemanticTextMemory textMemory)
+        ISemanticTextMemory textMemory,
+        CancellationToken cancellationToken = default)
     {
         var remainingToken = tokenLimit;
 
@@ -71,23 +73,26 @@ public class DocumentMemorySkill
         List<MemoryQueryResult> relevantMemories = new();
         foreach (var documentCollection in documentCollections)
         {
+#pragma warning disable CA1031 // Each connector may throw different exception type
             try
             {
                 var results = textMemory.SearchAsync(
                     documentCollection,
                     query,
                     limit: 100,
-                    minRelevanceScore: this._promptOptions.DocumentMemoryMinRelevance);
+                    minRelevanceScore: this._promptOptions.DocumentMemoryMinRelevance,
+                    cancellationToken: cancellationToken);
                 await foreach (var memory in results)
                 {
                     relevantMemories.Add(memory);
                 }
             }
-            catch (SKException connectorException)
+            catch (Exception connectorException)
             {
                 // A store exception might be thrown if the collection does not exist, depending on the memory store connector.
                 this._logger.LogError(connectorException, "Cannot search collection {0}", documentCollection);
             }
+#pragma warning restore CA1031 // Each connector may throw different exception type
         }
 
         relevantMemories = relevantMemories.OrderByDescending(m => m.Relevance).ToList();

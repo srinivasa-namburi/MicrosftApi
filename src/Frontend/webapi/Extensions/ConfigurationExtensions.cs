@@ -29,6 +29,11 @@ internal static class ConfigExtensions
                 optional: true,
                 reloadOnChange: true);
 
+            configBuilder.AddJsonFile(
+                path: "appsettings.local.json",
+                optional: true,
+                reloadOnChange: true);
+
             configBuilder.AddEnvironmentVariables();
 
             configBuilder.AddUserSecrets(

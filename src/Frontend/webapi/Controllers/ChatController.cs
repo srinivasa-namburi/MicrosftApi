@@ -8,14 +8,17 @@ using System.Net.Http;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.Graph;
+using Microsoft.IdentityModel.Tokens;
 using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.AI;
+using Microsoft.SemanticKernel.Diagnostics;
 using Microsoft.SemanticKernel.Orchestration;
 using Microsoft.SemanticKernel.SkillDefinition;
 using Microsoft.SemanticKernel.Skills.MsGraph;
@@ -27,6 +30,7 @@ using ProjectVico.Frontend.API.Auth;
 using ProjectVico.Frontend.API.Hubs;
 using ProjectVico.Frontend.API.Models.Request;
 using ProjectVico.Frontend.API.Models.Response;
+using ProjectVico.Frontend.API.Options;
 using ProjectVico.Frontend.API.Services;
 using ProjectVico.Frontend.API.Skills.ChatSkills;
 using ProjectVico.Frontend.API.Storage;
@@ -43,15 +47,22 @@ public class ChatController : ControllerBase, IDisposable
     private readonly ILogger<ChatController> _logger;
     private readonly List<IDisposable> _disposables;
     private readonly ITelemetryService _telemetryService;
+    private readonly ServiceOptions _serviceOptions;
+    private readonly PlannerOptions _plannerOptions;
+    private readonly CustomPluginsOptions _customPluginOptions;
+
     private const string ChatSkillName = "ChatSkill";
     private const string ChatFunctionName = "Chat";
     private const string GeneratingResponseClientCall = "ReceiveBotResponseStatus";
 
-    public ChatController(ILogger<ChatController> logger, ITelemetryService telemetryService)
+    public ChatController(ILogger<ChatController> logger, ITelemetryService telemetryService, IOptions<ServiceOptions> serviceOptions, IOptions<PlannerOptions> plannerOptions, IOptions<CustomPluginsOptions> pluginOptions)
     {
         this._logger = logger;
         this._telemetryService = telemetryService;
         this._disposables = new List<IDisposable>();
+        this._serviceOptions = serviceOptions.Value;
+        this._customPluginOptions = pluginOptions.Value;
+        this._plannerOptions = plannerOptions.Value;
     }
 
     /// <summary>
@@ -72,6 +83,7 @@ public class ChatController : ControllerBase, IDisposable
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status504GatewayTimeout)]
     public async Task<IActionResult> ChatAsync(
         [FromServices] IKernel kernel,
         [FromServices] IHubContext<MessageRelayHub> messageRelayHubContext,
@@ -120,9 +132,9 @@ public class ChatController : ControllerBase, IDisposable
         {
             function = kernel.Skills.GetFunction(ChatSkillName, ChatFunctionName);
         }
-        catch (KernelException ke)
+        catch (SKException ex)
         {
-            this._logger.LogError("Failed to find {0}/{1} on server: {2}", ChatSkillName, ChatFunctionName, ke);
+            this._logger.LogError("Failed to find {0}/{1} on server: {2}", ChatSkillName, ChatFunctionName, ex);
 
             return this.NotFound($"Failed to find {ChatSkillName}/{ChatFunctionName} on server");
         }
@@ -131,7 +143,12 @@ public class ChatController : ControllerBase, IDisposable
         SKContext? result = null;
         try
         {
-            result = await kernel.RunAsync(contextVariables, function!);
+            using CancellationTokenSource? cts = this._serviceOptions.TimeoutLimitInS is not null
+                // Create a cancellation token source with the timeout if specified
+                ? new CancellationTokenSource(TimeSpan.FromSeconds((double)this._serviceOptions.TimeoutLimitInS))
+                : null;
+
+            result = await kernel.RunAsync(function!, contextVariables, cts?.Token ?? default);
         }
         finally
         {
@@ -140,12 +157,15 @@ public class ChatController : ControllerBase, IDisposable
 
         if (result.ErrorOccurred)
         {
-            if (result.LastException is AIException aiException && aiException.Detail is not null)
+            if (result.LastException is OperationCanceledException || result.LastException?.InnerException is OperationCanceledException)
             {
-                return this.BadRequest(string.Concat(aiException.Message, " - Detail: " + aiException.Detail));
+                // Log the timeout and return a 504 response
+                this._logger.LogError("The chat operation timed out.");
+                return this.StatusCode(StatusCodes.Status504GatewayTimeout, "The chat operation timed out.");
             }
 
-            return this.BadRequest(result.LastException!.Message);
+            var errorMessage = result.LastException!.Message.IsNullOrEmpty() ? result.LastException!.InnerException?.Message : result.LastException!.Message;
+            return this.BadRequest(errorMessage);
         }
 
         AskResult chatSkillAskResult = new()
@@ -195,8 +215,11 @@ public class ChatController : ControllerBase, IDisposable
     /// </summary>
     private async Task RegisterPlannerSkillsAsync(CopilotChatPlanner planner, Dictionary<string, string> openApiSkillsAuthHeaders, ContextVariables variables)
     {
-        // Register authenticated skills with the planner's kernel only if the request includes an auth header for the skill.
+        // Register custom OpenAPI plugins
 
+        await this.RegisterOpenApiPluginsAsync(planner);
+
+        // Register authenticated skills with the planner's kernel only if the request includes an auth header for the skill.
         // Klarna Shopping
         if (openApiSkillsAuthHeaders.TryGetValue("KLARNA", out string? KlarnaAuthHeader))
         {
@@ -270,11 +293,15 @@ public class ChatController : ControllerBase, IDisposable
                         var requiresAuth = !plugin.AuthType.Equals("none", StringComparison.OrdinalIgnoreCase);
                         BearerAuthenticationProvider authenticationProvider = new(() => Task.FromResult(PluginAuthValue));
 
+                        HttpClient httpClient = new();
+                        httpClient.Timeout = TimeSpan.FromSeconds(this._plannerOptions.PluginTimeoutLimitInS);
+
                         await planner.Kernel.ImportAIPluginAsync(
                             $"{plugin.NameForModel}Plugin",
                             uriBuilder.Uri,
                             new OpenApiSkillExecutionParameters
                             {
+                                HttpClient = httpClient,
                                 IgnoreNonCompliantErrors = true,
                                 AuthCallback = requiresAuth ? authenticationProvider.AuthenticateRequestAsync : null
                             });
@@ -284,6 +311,37 @@ public class ChatController : ControllerBase, IDisposable
             else
             {
                 this._logger.LogDebug("Failed to deserialize custom plugin details: {0}", customPluginsString);
+            }
+        }
+    }
+
+    private async Task RegisterOpenApiPluginsAsync(CopilotChatPlanner planner)
+    {
+        var kernel = planner.Kernel;
+
+        CustomPluginsOptions customPluginsOptions = this._customPluginOptions;
+
+        if (customPluginsOptions?.OpenAPIPlugins?.Count > 0)
+        {
+            var openApiSkillName = "openapiplugin";
+            int i = 0;
+            foreach (string openApiPlugin in customPluginsOptions.OpenAPIPlugins)
+            {
+
+                //Test that openApiPlugin is a valid URL string
+                if (Uri.TryCreate(openApiPlugin, UriKind.Absolute, out Uri? uri))
+                {
+                    i++;
+                    var skillName = openApiSkillName + i;
+
+                    var validUri = Uri.TryCreate(openApiPlugin, UriKind.Absolute, out Uri? uriForSkill);
+
+                    await kernel.ImportAIPluginAsync(skillName, uriForSkill);
+                }
+                else
+                {
+                    // Do nothing
+                }
             }
         }
     }

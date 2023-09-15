@@ -16,12 +16,10 @@ using Microsoft.SemanticKernel.Connectors.Memory.AzureCognitiveSearch;
 using Microsoft.SemanticKernel.Connectors.Memory.Chroma;
 using Microsoft.SemanticKernel.Connectors.Memory.Postgres;
 using Microsoft.SemanticKernel.Connectors.Memory.Qdrant;
+using Microsoft.SemanticKernel.Diagnostics;
 using Microsoft.SemanticKernel.Memory;
 using Microsoft.SemanticKernel.Orchestration;
 using Microsoft.SemanticKernel.Skills.Core;
-using Microsoft.SemanticKernel.Skills.OpenAPI;
-using Microsoft.SemanticKernel.Skills.OpenAPI.Extensions;
-using Microsoft.SemanticKernel.TemplateEngine;
 using Npgsql;
 using Pgvector.Npgsql;
 using ProjectVico.Frontend.API.Hubs;
@@ -52,7 +50,7 @@ internal static class SemanticKernelExtensions
         services.AddScoped(sp =>
         {
             IKernel kernel = Kernel.Builder
-                .WithLogger(sp.GetRequiredService<ILogger<IKernel>>())
+                .WithLoggerFactory(sp.GetRequiredService<ILoggerFactory>())
                 .WithMemory(sp.GetRequiredService<ISemanticTextMemory>())
                 .WithCompletionBackend(sp.GetRequiredService<IOptions<AIServiceOptions>>().Value)
                 .WithEmbeddingBackend(sp.GetRequiredService<IOptions<AIServiceOptions>>().Value)
@@ -83,12 +81,12 @@ internal static class SemanticKernelExtensions
         services.AddScoped(sp =>
         {
             IKernel plannerKernel = Kernel.Builder
-                .WithLogger(sp.GetRequiredService<ILogger<IKernel>>())
+                .WithLoggerFactory(sp.GetRequiredService<ILoggerFactory>())
                 .WithMemory(sp.GetRequiredService<ISemanticTextMemory>())
                 // TODO: [sk Issue #2046] verify planner has AI service configured
                 .WithPlannerBackend(sp.GetRequiredService<IOptions<AIServiceOptions>>().Value)
                 .Build();
-            return new CopilotChatPlanner(plannerKernel, plannerOptions?.Value);
+            return new CopilotChatPlanner(plannerKernel, plannerOptions?.Value, sp.GetRequiredService<ILogger<CopilotChatPlanner>>());
         });
 
         // Register Planner skills (AI plugins) here.
@@ -125,7 +123,8 @@ internal static class SemanticKernelExtensions
     {
         if (context.ErrorOccurred)
         {
-            context.Logger.LogError(context.LastException, "{0}", context.LastException?.Message);
+            var logger = context.LoggerFactory.CreateLogger(nameof(SKContext));
+            logger.LogError(context.LastException, "{0}", context.LastException?.Message);
             throw context.LastException!;
         }
     }
@@ -141,9 +140,6 @@ internal static class SemanticKernelExtensions
         // Time skill
         kernel.ImportSkill(new TimeSkill(), nameof(TimeSkill));
 
-        // JsonPath Skill
-        kernel.ImportSkill(new JsonPathSkill(), nameof(JsonPathSkill));
-
         // Semantic skills
         ServiceOptions options = sp.GetRequiredService<IOptions<ServiceOptions>>().Value;
         if (!string.IsNullOrWhiteSpace(options.SemanticSkillsDirectory))
@@ -154,36 +150,10 @@ internal static class SemanticKernelExtensions
                 {
                     kernel.ImportSemanticSkillFromDirectory(options.SemanticSkillsDirectory, Path.GetFileName(subDir)!);
                 }
-                catch (TemplateException e)
+                catch (SKException ex)
                 {
-                    kernel.Logger.LogError("Could not load skill from {Directory}: {Message}", subDir, e.Message);
-                }
-            }
-        }
-
-        // Custom plugin skills
-        CustomPluginsOptions customPluginsOptions = sp.GetRequiredService<IOptions<CustomPluginsOptions>>().Value;
-
-        if (customPluginsOptions?.OpenAPIPlugins?.Count > 0)
-        {
-            var openApiSkillName = "OpenAPI-Plugin-";
-            int i = 0;
-            foreach (string openAPIPlugin in customPluginsOptions.OpenAPIPlugins)
-            {
-
-                //Test that openApiPlugin is a valid URL string
-                if (Uri.TryCreate(openAPIPlugin, UriKind.Absolute, out Uri? uri))
-                {
-                    i++;
-                    var skillName = openApiSkillName + i;
-
-                    var validUri = Uri.TryCreate(openAPIPlugin, UriKind.Absolute, out Uri? uriForSkill);
-
-                    kernel.ImportAIPluginAsync(skillName, uriForSkill);
-                }
-                else
-                {
-                    kernel.Logger.LogError("Could not load skill from {openAPIPlugin}: {Message}", openAPIPlugin, "Invalid URL");
+                    var logger = kernel.LoggerFactory.CreateLogger(nameof(Kernel));
+                    logger.LogError("Could not load skill from {Directory}: {Message}", subDir, ex.Message);
                 }
             }
         }
@@ -225,7 +195,7 @@ internal static class SemanticKernelExtensions
                         httpClient: httpClient,
                         config.Qdrant.VectorSize,
                         endPointBuilder.ToString(),
-                        logger: sp.GetRequiredService<ILogger<IQdrantVectorDbClient>>()
+                        loggerFactory: sp.GetRequiredService<ILoggerFactory>()
                     );
                 });
                 break;
@@ -257,7 +227,7 @@ internal static class SemanticKernelExtensions
                     return new ChromaMemoryStore(
                         httpClient: httpClient,
                         endpoint: endPointBuilder.ToString(),
-                        logger: sp.GetRequiredService<ILogger<IChromaClient>>()
+                        loggerFactory: sp.GetRequiredService<ILoggerFactory>()
                     );
                 });
                 break;
@@ -288,7 +258,7 @@ internal static class SemanticKernelExtensions
         services.AddScoped<ISemanticTextMemory>(sp => new SemanticTextMemory(
             sp.GetRequiredService<IMemoryStore>(),
             sp.GetRequiredService<IOptions<AIServiceOptions>>().Value
-                .ToTextEmbeddingsService(logger: sp.GetRequiredService<ILogger<AIServiceOptions>>())));
+                .ToTextEmbeddingsService(loggerFactory: sp.GetRequiredService<ILoggerFactory>())));
     }
 
     /// <summary>
@@ -355,17 +325,17 @@ internal static class SemanticKernelExtensions
     /// </summary>
     /// <param name="options">The service configuration</param>
     /// <param name="httpClient">Custom <see cref="HttpClient"/> for HTTP requests.</param>
-    /// <param name="logger">Application logger</param>
+    /// <param name="loggerFactory">Custom <see cref="ILoggerFactory"/> for logging.</param>
     private static ITextEmbeddingGeneration ToTextEmbeddingsService(this AIServiceOptions options,
         HttpClient? httpClient = null,
-        ILogger? logger = null)
+        ILoggerFactory? loggerFactory = null)
     {
         return options.Type switch
         {
             AIServiceOptions.AIServiceType.AzureOpenAI
-                => new AzureTextEmbeddingGeneration(options.Models.Embedding, options.Endpoint, options.Key, httpClient: httpClient, logger: logger),
+                => new AzureTextEmbeddingGeneration(options.Models.Embedding, options.Endpoint, options.Key, httpClient: httpClient, loggerFactory: loggerFactory),
             AIServiceOptions.AIServiceType.OpenAI
-                => new OpenAITextEmbeddingGeneration(options.Models.Embedding, options.Key, httpClient: httpClient, logger: logger),
+                => new OpenAITextEmbeddingGeneration(options.Models.Embedding, options.Key, httpClient: httpClient, loggerFactory: loggerFactory),
             _
                 => throw new ArgumentException("Invalid AIService value in embeddings backend settings"),
         };

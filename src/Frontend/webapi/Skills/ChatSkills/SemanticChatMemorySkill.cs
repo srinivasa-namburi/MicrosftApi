@@ -4,10 +4,10 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Microsoft.SemanticKernel.Diagnostics;
 using Microsoft.SemanticKernel.Memory;
 using Microsoft.SemanticKernel.SkillDefinition;
 using ProjectVico.Frontend.API.Models.Storage;
@@ -47,16 +47,18 @@ public class SemanticChatMemorySkill
     /// </summary>
     /// <param name="query">Query to match.</param>
     /// <param name="context">The SKContext</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A string containing the relevant memories.</returns>
     [SKFunction, Description("Query chat memories")]
     public async Task<string> QueryMemoriesAsync(
         [Description("Query to match.")] string query,
         [Description("Chat ID to query history from")] string chatId,
         [Description("Maximum number of tokens")] int tokenLimit,
-        ISemanticTextMemory textMemory)
+        ISemanticTextMemory textMemory,
+        CancellationToken cancellationToken = default)
     {
         ChatSession? chatSession = null;
-        if (!await this._chatSessionRepository.TryFindByIdAsync(chatId, v => chatSession = v))
+        if (!await this._chatSessionRepository.TryFindByIdAsync(chatId, callback: v => chatSession = v))
         {
             throw new ArgumentException($"Chat session {chatId} not found.");
         }
@@ -68,23 +70,26 @@ public class SemanticChatMemorySkill
         foreach (var memoryName in this._promptOptions.MemoryMap.Keys)
         {
             string memoryCollectionName = SemanticChatMemoryExtractor.MemoryCollectionName(chatId, memoryName);
+#pragma warning disable CA1031 // Each connector may throw different exception type
             try
             {
                 var results = textMemory.SearchAsync(
                     memoryCollectionName,
                     query,
                     limit: 100,
-                    minRelevanceScore: this.CalculateRelevanceThreshold(memoryName, chatSession!.MemoryBalance));
+                    minRelevanceScore: this.CalculateRelevanceThreshold(memoryName, chatSession!.MemoryBalance),
+                    cancellationToken: cancellationToken);
                 await foreach (var memory in results)
                 {
                     relevantMemories.Add(memory);
                 }
             }
-            catch (SKException connectorException)
+            catch (Exception connectorException)
             {
                 // A store exception might be thrown if the collection does not exist, depending on the memory store connector.
                 this._logger.LogError(connectorException, "Cannot search collection {0}", memoryCollectionName);
             }
+#pragma warning restore CA1031 // Each connector may throw different exception type
         }
 
         relevantMemories = relevantMemories.OrderByDescending(m => m.Relevance).ToList();
