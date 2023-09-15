@@ -155,22 +155,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({ isDraggingOver, onDragLeav
         });
     };
 
-    const handleInsert = () => {
-        return Word.run(async (context) => {
-            /**
-             * Insert your Word code here
-             */
-
-            // insert a paragraph at the end of the document.
-            const paragraph = context.document.body.insertParagraph("Hello", Word.InsertLocation.end);
-
-            // change the paragraph color to blue.
-            paragraph.font.color = "blue";
-
-            await context.sync();
-        });
-    };
-
     const handleDrop = (e: React.DragEvent<HTMLTextAreaElement>) => {
         onDragLeave(e);
         void fileHandler.handleImport(selectedId, documentFileRef, undefined, e.dataTransfer.files);
@@ -270,7 +254,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({ isDraggingOver, onDragLeav
                         onClick={() => {
                             handleSubmit(value);
                         }}
-                        // onClick={() => {handleInsert()}}
                     />
                 </div>
             </div>

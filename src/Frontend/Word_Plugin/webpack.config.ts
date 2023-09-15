@@ -44,6 +44,15 @@ export default async (env: Record<string, string>, options: any) => {
           },
         },
         {
+            test: /\.svg$/,
+            use: {
+                loader: 'svg-url-loader',
+                options: {
+                  presets: ["@babel/preset-env", "@babel/preset-react"],
+                },
+            }
+        },
+        {
           test: /\.tsx?$/,
           exclude: /node_modules/,
           use: ["react-hot-loader/webpack", "ts-loader"],

@@ -1,42 +1,43 @@
 // Copyright (c) Microsoft. All rights reserved.
 
-import { AvatarProps, Persona, Text, makeStyles, mergeClasses, shorthands } from '@fluentui/react-components';
-import { ThumbDislikeFilled, ThumbLikeFilled } from '@fluentui/react-icons';
-import React from 'react';
-import { DefaultChatUser } from '../../../libs/auth/AuthHelper';
-import { GetResponseOptions, useChat } from '../../../libs/hooks/useChat';
-import { AuthorRoles, ChatMessageType, IChatMessage, UserFeedback } from '../../../libs/models/ChatMessage';
-import { useAppSelector } from '../../../redux/app/hooks';
-import { RootState } from '../../../redux/app/store';
-import { FeatureKeys } from '../../../redux/features/app/AppState';
-import { Breakpoints, customTokens } from '../../../styles';
-import { timestampToDateString } from '../../utils/TextUtils';
-import { PlanViewer } from '../plan-viewer/PlanViewer';
-import { PromptDialog } from '../prompt-dialog/PromptDialog';
-import { TypingIndicator } from '../typing-indicator/TypingIndicator';
-import * as utils from './../../utils/TextUtils';
-import { ChatHistoryDocumentContent } from './ChatHistoryDocumentContent';
-import { ChatHistoryTextContent } from './ChatHistoryTextContent';
-import { UserFeedbackActions } from './UserFeedbackActions';
+import { AvatarProps, Persona, Text, makeStyles, mergeClasses, shorthands } from "@fluentui/react-components";
+import { ThumbDislikeFilled, ThumbLikeFilled } from "@fluentui/react-icons";
+import React from "react";
+import { DefaultChatUser } from "../../../libs/auth/AuthHelper";
+import { GetResponseOptions, useChat } from "../../../libs/hooks/useChat";
+import { AuthorRoles, ChatMessageType, IChatMessage, UserFeedback } from "../../../libs/models/ChatMessage";
+import { useAppSelector } from "../../../redux/app/hooks";
+import { RootState } from "../../../redux/app/store";
+import { FeatureKeys } from "../../../redux/features/app/AppState";
+import { Breakpoints, customTokens } from "../../../styles";
+import { timestampToDateString } from "../../utils/TextUtils";
+import { PlanViewer } from "../plan-viewer/PlanViewer";
+import { PromptDialog } from "../prompt-dialog/PromptDialog";
+import { TypingIndicator } from "../typing-indicator/TypingIndicator";
+import * as utils from "./../../utils/TextUtils";
+import { ChatHistoryDocumentContent } from "./ChatHistoryDocumentContent";
+import { ChatHistoryTextContent } from "./ChatHistoryTextContent";
+import { UserFeedbackActions } from "./UserFeedbackActions";
+import { InsertText } from "../insert-text/InsertText";
 
 const useClasses = makeStyles({
     root: {
-        display: 'flex',
-        flexDirection: 'row',
-        maxWidth: '75%',
+        display: "flex",
+        flexDirection: "row",
+        maxWidth: "75%",
         ...shorthands.borderRadius(customTokens.borderRadiusMedium),
         ...Breakpoints.small({
-            maxWidth: '100%',
+            maxWidth: "100%",
         }),
         ...shorthands.gap(customTokens.spacingHorizontalXS),
     },
     debug: {
-        position: 'absolute',
-        top: '-4px',
-        right: '-4px',
+        position: "absolute",
+        top: "-4px",
+        right: "-4px",
     },
     alignEnd: {
-        alignSelf: 'flex-end',
+        alignSelf: "flex-end",
     },
     persona: {
         paddingTop: customTokens.spacingVerticalS,
@@ -55,20 +56,26 @@ const useClasses = makeStyles({
         fontWeight: 400,
     },
     header: {
-        position: 'relative',
-        display: 'flex',
-        flexDirection: 'row',
+        position: "relative",
+        display: "flex",
+        flexDirection: "row",
+        ...shorthands.gap(customTokens.spacingHorizontalL),
+    },
+    footer: {
+        position: "relative",
+        display: "flex",
+        flexDirection: "row",
         ...shorthands.gap(customTokens.spacingHorizontalL),
     },
     canvas: {
-        width: '100%',
-        textAlign: 'center',
+        width: "100%",
+        textAlign: "center",
     },
     image: {
-        maxWidth: '250px',
+        maxWidth: "250px",
     },
     blur: {
-        filter: 'blur(5px)',
+        filter: "blur(5px)",
     },
 });
 
@@ -96,8 +103,8 @@ export const ChatHistoryItem: React.FC<ChatHistoryItemProps> = ({ message, getRe
     const avatar: AvatarProps = isBot
         ? { image: { src: conversations[selectedId].botProfilePicture } }
         : isDefaultUser
-        ? { idForColor: selectedId, color: 'colorful' }
-        : { name: fullName, color: 'colorful' };
+        ? { idForColor: selectedId, color: "colorful" }
+        : { name: fullName, color: "colorful" };
 
     let content: JSX.Element;
     if (isBot && message.type === ChatMessageType.Plan) {
@@ -115,7 +122,7 @@ export const ChatHistoryItem: React.FC<ChatHistoryItemProps> = ({ message, getRe
         features[FeatureKeys.RLHF].enabled &&
         message.userFeedback === UserFeedback.Requested &&
         messageIndex === conversations[selectedId].messages.length - 1 &&
-        message.userId === 'bot';
+        message.userId === "bot";
 
     return (
         <div
@@ -125,25 +132,30 @@ export const ChatHistoryItem: React.FC<ChatHistoryItemProps> = ({ message, getRe
             data-username={fullName}
             data-content={utils.formatChatTextContent(message.content)}
         >
-            {isBot &&
+            {isBot && (
                 <Persona
                     className={classes.persona}
                     avatar={avatar}
                     presence={
                         !features[FeatureKeys.SimplifiedExperience].enabled && !isMe
-                            ? { status: 'available' }
+                            ? { status: "available" }
                             : undefined
                     }
                 />
-            }
-            <div className={isMe ? mergeClasses(classes.item, classes.me) : classes.item}>
-                <div className={classes.header}>
-                    {!isMe && <Text weight="semibold">{fullName}</Text>}
-                    <Text className={classes.time}>{timestampToDateString(message.timestamp, true)}</Text>
-                    {isBot && <PromptDialog message={message} />}
+            )}
+            <div>
+                <div className={isMe ? mergeClasses(classes.item, classes.me) : classes.item}>
+                    <div className={classes.header}>
+                        {!isMe && <Text weight="semibold">{fullName}</Text>}
+                        <Text className={classes.time}>{timestampToDateString(message.timestamp, true)}</Text>
+                        {isBot && <PromptDialog message={message} />}
+                    </div>
+                    {content}
+                    {showShowRLHFMessage && <UserFeedbackActions messageIndex={messageIndex} />}
                 </div>
-                {content}
-                {showShowRLHFMessage && <UserFeedbackActions messageIndex={messageIndex} />}
+                <div className={classes.footer}>
+                    {isBot && <InsertText message={message} />}
+                </div>
             </div>
             {features[FeatureKeys.RLHF].enabled && message.userFeedback === UserFeedback.Positive && (
                 <ThumbLikeFilled color="gray" />

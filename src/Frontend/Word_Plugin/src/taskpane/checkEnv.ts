@@ -15,12 +15,6 @@ export const getMissingEnvVariables = () => {
         missingVariables.push("REACT_APP_BACKEND_URI");
     }
 
-    // for (const variable of envVariables) {
-    //     if (!process.env[variable]) {
-    //         missingVariables.push(variable);
-    //     }
-    // }
-
     if (process.env.REACT_APP_AUTH_TYPE === AuthType.AAD) {
         const aadVariables = ["REACT_APP_AAD_AUTHORITY", "REACT_APP_AAD_CLIENT_ID"];
         for (const variable of aadVariables) {

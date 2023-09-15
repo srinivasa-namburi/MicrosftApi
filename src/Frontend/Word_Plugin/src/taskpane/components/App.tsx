@@ -1,4 +1,3 @@
-// import { DefaultButton } from "@fluentui/react";
 import * as React from "react";
 import Progress from "./Progress";
 
@@ -7,8 +6,6 @@ import { FluentProvider, Subtitle1, makeStyles, shorthands, tokens } from "@flue
 
 import { useEffect } from "react";
 import { Constants } from "../Constants";
-// import { UserSettingsMenu } from "./components/header/UserSettingsMenu";
-// import { PluginGallery } from "./components/open-api-plugins/PluginGallery";
 import { AuthHelper } from "../libs/auth/AuthHelper";
 import { useChat, useFile } from "../libs/hooks";
 import { AlertType } from "../libs/models/AlertType";
@@ -137,22 +134,6 @@ export const App: React.FC<AppProps> = ({ title, isOfficeInitialized }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [instance, inProgress, isAuthenticated, appState]);
 
-    const click = async () => {
-        return Word.run(async (context) => {
-            /**
-             * Insert your Word code here
-             */
-
-            // insert a paragraph at the end of the document.
-            const paragraph = context.document.body.insertParagraph("Hello", Word.InsertLocation.end);
-
-            // change the paragraph color to blue.
-            paragraph.font.color = "blue";
-
-            await context.sync();
-        });
-    };
-
     if (!isOfficeInitialized) {
         return (
             <Progress
@@ -188,18 +169,6 @@ export const App: React.FC<AppProps> = ({ title, isOfficeInitialized }) => {
             )}
         </FluentProvider>
     );
-
-    // return (
-    //     <div className="ms-welcome">
-    //         <p className="ms-font-l">
-    //             Modify the source files, then click <b>Run</b>.
-    //         </p>
-    //         <DefaultButton className="ms-welcome__action" iconProps={{ iconName: "ChevronRight" }} onClick={click}>
-    //             Run
-    //         </DefaultButton>
-    //         <ChatWindow />
-    //     </div>
-    // );
 };
 
 const Chat = ({
@@ -213,21 +182,6 @@ const Chat = ({
 }) => {
     return (
         <div className={classes.container}>
-            {/* <div className={classes.header}>
-                <Subtitle1 as="h1">{Constants.ui.header}</Subtitle1>
-                {appState > AppState.SettingUserInfo && (
-                    <div className={classes.cornerItems}>
-                        <div data-testid="logOutMenuList" className={classes.cornerItems}>
-                            <PluginGallery />
-                            <UserSettingsMenu
-                                setLoadingState={() => {
-                                    setAppState(AppState.SigningOut);
-                                }}
-                            />
-                        </div>
-                    </div>
-                )}
-            </div> */}
             {appState === AppState.ProbeForBackend && (
                 <BackendProbe
                     uri={process.env.REACT_APP_BACKEND_URI as string}
@@ -251,100 +205,3 @@ const Chat = ({
         </div>
     );
 };
-
-// import * as React from "react";
-// import { DefaultButton } from "@fluentui/react";
-// import Header from "./Header";
-// import HeroList, { HeroListItem } from "./HeroList";
-// import Progress from "./Progress";
-
-// /* global Word, require */
-
-// export interface AppProps {
-//     title: string;
-//     isOfficeInitialized: boolean;
-// }
-
-// export interface AppState {
-//     listItems: HeroListItem[];
-// }
-
-// export default class App extends React.Component<AppProps, AppState> {
-//     constructor(props, context) {
-//         super(props, context);
-//         this.state = {
-//             listItems: [],
-//         };
-//     }
-
-//     componentDidMount() {
-//         this.setState({
-//             listItems: [
-//                 {
-//                     icon: "Ribbon",
-//                     primaryText: "Achieve more with Office integration",
-//                 },
-//                 {
-//                     icon: "Unlock",
-//                     primaryText: "Unlock features and functionality",
-//                 },
-//                 {
-//                     icon: "Design",
-//                     primaryText: "Create and visualize like a pro",
-//                 },
-//             ],
-//         });
-//     }
-
-//     click = async () => {
-//         return Word.run(async (context) => {
-//             /**
-//              * Insert your Word code here
-//              */
-
-//             // insert a paragraph at the end of the document.
-//             const paragraph = context.document.body.insertParagraph("Hello", Word.InsertLocation.end);
-
-//             // change the paragraph color to blue.
-//             paragraph.font.color = "blue";
-
-//             await context.sync();
-//         });
-//     };
-
-//     render() {
-//         const { title, isOfficeInitialized } = this.props;
-
-//         if (!isOfficeInitialized) {
-//             return (
-//                 <Progress
-//                     title={title}
-//                     logo={require("./../../../assets/logo-filled.png")}
-//                     message="Please sideload your addin to see app body."
-//                 />
-//             );
-//         }
-
-//         return (
-//             <div className="ms-welcome">
-//                 <Header
-//                     logo={require("./../../../assets/logo-filled.png")}
-//                     title={this.props.title}
-//                     message="Welcome"
-//                 />
-//                 <HeroList message="Discover what Office Add-ins can do for you today!" items={this.state.listItems}>
-//                     <p className="ms-font-l">
-//                         Modify the source files, then click <b>Run</b>.
-//                     </p>
-//                     <DefaultButton
-//                         className="ms-welcome__action"
-//                         iconProps={{ iconName: "ChevronRight" }}
-//                         onClick={this.click}
-//                     >
-//                         Run
-//                     </DefaultButton>
-//                 </HeroList>
-//             </div>
-//         );
-//     }
-// }

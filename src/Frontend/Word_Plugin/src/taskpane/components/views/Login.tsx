@@ -3,7 +3,7 @@
 import { useMsal } from "@azure/msal-react";
 import { Body1, Button, Image, Title3 } from "@fluentui/react-components";
 import React from "react";
-// import signInLogo from '../../ms-symbollockup_signin_light.svg';
+import signInLogo from '../../ms-symbollockup_signin_light.svg';
 import { useSharedClasses } from "../../styles";
 
 export const Login: React.FC = () => {
@@ -27,8 +27,7 @@ export const Login: React.FC = () => {
                     instance.loginRedirect().catch(() => {});
                 }}
             >
-                <Image src={null} />
-                {/* <Image src={signInLogo} /> */}
+                <Image src={signInLogo} />
             </Button>
         </div>
     );

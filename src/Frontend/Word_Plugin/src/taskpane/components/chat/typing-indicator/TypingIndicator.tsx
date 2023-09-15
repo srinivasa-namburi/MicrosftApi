@@ -2,7 +2,7 @@
 
 import { Image, makeStyles } from "@fluentui/react-components";
 import React from "react";
-// import typingBalls from '../../../assets/typing-balls-light.svg';
+import typingBalls from '../../../assets/typing-balls-light.svg';
 
 const useStyles = makeStyles({
     root: {
@@ -28,8 +28,7 @@ export const TypingIndicator: React.FC = () => {
 
     return (
         <div className={classes.root}>
-            {/* <Image role="presentation" className={classes.image} src={typingBalls} /> */}
-            <Image role="presentation" className={classes.image} src={null} />
+            <Image role="presentation" className={classes.image} src={typingBalls} />
         </div>
     );
 };
