@@ -90,6 +90,17 @@ export const useChat = () => {
                         userDataLoaded: false,
                     };
 
+                    Word.run(async (context) => {
+                        const settings = context.document.settings;
+                        const setting = settings.add("chatId", newChat.id);
+                        setting.load();
+                        await context.sync();
+
+                        console.log("createChat chat id check: ");
+                        console.log(setting.key);
+                        console.log(setting.value);
+                    });
+
                     dispatch(addConversation(newChat));
                     return newChat.id;
                 });
@@ -141,12 +152,35 @@ export const useChat = () => {
 
     const loadChats = async () => {
         try {
+            var documentChatId = "";
+
+            Word.run(async (context) => {
+                try {
+                    const chatId = context.document.settings.getItem("chatId");
+                    chatId.load();
+                    await context.sync();
+
+                    console.log("loadChats chat Id check:");
+                    console.log(chatId.key);
+                    console.log(chatId.value);
+                    documentChatId = chatId.value;
+                    await context.sync();
+                } catch {
+                    console.log("Chat Id not found for document");
+                }
+            });
+
             const accessToken = await AuthHelper.getSKaaSAccessToken(instance, inProgress);
             const chatSessions = await chatService.getAllChatsAsync(userId, accessToken);
+
+            var selectedSessionId = null;
 
             if (chatSessions.length > 0) {
                 const loadedConversations: Conversations = {};
                 for (const chatSession of chatSessions) {
+                    if (chatSession.id === documentChatId) {
+                        selectedSessionId = chatSession.id;
+                    }
                     const chatMessages = await chatService.getChatMessagesAsync(chatSession.id, 0, 100, accessToken);
 
                     const chatUsers = await chatService.getAllChatParticipantsAsync(chatSession.id, accessToken);
@@ -170,10 +204,14 @@ export const useChat = () => {
                 }
 
                 dispatch(setConversations(loadedConversations));
-                dispatch(setSelectedConversation(chatSessions[0].id));
-            } else {
-                // No chats exist, create first chat window
-                await createChat();
+
+                if(selectedSessionId) {
+                    // If there is an existing session associated with this document, set it
+                    dispatch(setSelectedConversation(selectedSessionId));
+                } else {
+                    // Else create a new chat and associate it with this document
+                    await createChat();
+                }
             }
 
             return true;
