@@ -387,6 +387,17 @@ export const useChat = () => {
         }
     };
 
+    const deleteChatSession = async (chatId: string) => {
+        try {
+            return await chatService.deleteChatSessionAsync(chatId, await AuthHelper.getSKaaSAccessToken(instance, inProgress));
+        } catch (e: any) {
+            const errorMessage = `Error deleting chat memory. Details: ${getErrorDetails(e)}`;
+            dispatch(addAlert({ message: errorMessage, type: AlertType.Error }));
+
+            return undefined;
+        }
+    };
+
     return {
         getChatUserById,
         createChat,
@@ -400,6 +411,7 @@ export const useChat = () => {
         joinChat,
         editChat,
         getServiceOptions,
+        deleteChatSession,
     };
 };
 

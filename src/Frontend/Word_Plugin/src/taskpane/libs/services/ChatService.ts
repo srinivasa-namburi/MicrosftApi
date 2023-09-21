@@ -196,6 +196,18 @@ export class ChatService extends BaseService {
         return result;
     };
 
+    public deleteChatSessionAsync = async (chatId: string, accessToken: string): Promise<any> => {
+        await this.getResponseAsync<any>(
+            {
+                commandPath: `chatSession/${chatId}`,
+                method: 'DELETE',
+            },
+            accessToken,
+        );
+
+        return;
+    };
+
     public getAllChatParticipantsAsync = async (chatId: string, accessToken: string): Promise<IChatUser[]> => {
         const result = await this.getResponseAsync<IChatParticipant[]>(
             {
