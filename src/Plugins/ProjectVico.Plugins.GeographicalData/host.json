@@ -1,16 +1,34 @@
 {
   "version": "2.0",
   "logging": {
-      "applicationInsights": {
-          "samplingSettings": {
-              "isEnabled": true,
-              "excludedTypes": "Request"
-          }
+    "applicationInsights": {
+      "samplingSettings": {
+        "isEnabled": true,
+        "excludedTypes": "Request"
       }
+    },
+    "http": {
+      "applicationName": "Microsoft.ApplicationInsights.AspNetCore",
+      "LogLevel": {
+        "Default": "Information",
+        "Microsoft": "Warning",
+        "System": "Error"
+      },
+      "requestHandling": {
+        "default": {
+          "forwardDefault": true,
+          "authLevel": "anonymous",
+          "cors": {
+            "allowedOrigins": [ "*" ]
+          }
+        }
+      }
+    }
   },
   "extensions": {
     "http": {
       "routePrefix": ""
+
     }
   }
 }

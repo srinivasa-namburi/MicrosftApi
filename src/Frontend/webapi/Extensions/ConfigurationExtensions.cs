@@ -51,6 +51,21 @@ internal static class ConfigExtensions
 
                 // for more information on how to use DefaultAzureCredential, see https://learn.microsoft.com/en-us/dotnet/api/azure.identity.defaultazurecredential?view=azure-dotnet
             }
+
+            // For settings from Azure App Configuration, see https://docs.microsoft.com/en-us/azure/azure-app-configuration/quickstart-aspnet-core-app?tabs=core5x
+            string? appConfigConnectionString = builderContext.Configuration["Service:AppConfigService"];
+            if (!string.IsNullOrWhiteSpace(appConfigConnectionString))
+            {
+                configBuilder.AddAzureAppConfiguration(
+                    options =>
+                    {
+                        options.Connect(connectionString:appConfigConnectionString);
+                        options.ConfigureRefresh(refresh =>
+                        {
+                            refresh.Register("Service:AppConfigService", refreshAll: true);
+                        });
+                    });
+            }
         });
 
         return host;

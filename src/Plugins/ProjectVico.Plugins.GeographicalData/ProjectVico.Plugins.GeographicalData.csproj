@@ -7,17 +7,20 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.ApplicationInsights.WorkerService" Version="2.15.0" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="1.19.0" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http" Version="3.1.0" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.OpenApi" Version="2.0.0-preview2" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="1.14.1" />
-    <!--<PackageReference Include="Microsoft.Azure.WebJobs.Extensions.OpenApi" Version="2.0.0-preview2" />-->
     <PackageReference Include="Microsoft.SemanticKernel" Version="0.20.230821.4-preview" />
     <PackageReference Include="Microsoft.SemanticKernel.Connectors.Memory.AzureCognitiveSearch" Version="0.20.230821.4-preview" />
     <PackageReference Include="System.Configuration.ConfigurationManager" Version="6.0.0" />
     <PackageReference Include="System.Linq.Async" Version="6.0.1" />
     <PackageReference Include="Azure.Maps.Rendering" Version="1.0.0-beta.1" />
     <PackageReference Include="Azure.Maps.Search" Version="1.0.0-beta.3" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ProjectVico.Plugins.Shared\ProjectVico.Plugins.Shared.csproj" />
   </ItemGroup>
 
   <ItemGroup>

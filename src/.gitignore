@@ -5,6 +5,10 @@ dotnet/.config
 ##
 ## Get latest from https://github.com/github/gitignore/blob/main/VisualStudio.gitignore
 
+# Local Build/Publish definitions
+
+**/Properties/**/*.json
+
 # Yarn Build Output
 **/webapp/build
 
