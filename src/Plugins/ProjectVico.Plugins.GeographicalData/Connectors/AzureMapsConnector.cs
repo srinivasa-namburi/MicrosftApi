@@ -4,6 +4,7 @@ using Azure.Core.GeoJson;
 using Azure.Maps.Search;
 using Azure.Maps.Search.Models;
 using Azure.Search.Documents.Models;
+using Microsoft.Extensions.Configuration;
 using ProjectVico.Plugins.GeographicalData.Models;
 
 namespace ProjectVico.Plugins.GeographicalData.Connectors;
@@ -29,6 +30,11 @@ public class AzureMapsConnector : IMappingConnector
     public AzureMapsConnector(string apiKey)
     {
         this._mapsSearchClient = new MapsSearchClient(new AzureKeyCredential(apiKey));
+    }
+
+    public AzureMapsConnector(IConfiguration configuration)
+    {
+        this._mapsSearchClient = new MapsSearchClient(new AzureKeyCredential(configuration["AzureMapsKey"]));
     }
 
     public async Task<List<int>> GetCategoryIdsForCategoryName(string categoryName)

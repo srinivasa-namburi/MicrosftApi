@@ -25,7 +25,7 @@ public class GetEnvironmentalReportSections
     [OpenApiOperation(operationId: "GetEnvironmentalReportSections", tags: new[] { "ExecuteFunction" }, Description = "Gets a list of sections for an environmental report section.")]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "text/plain", bodyType: typeof(string), Description = "Returns a full list of all sections required to complete an environmental report as plain text")]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(string), Description = "Returns the error of the input.")]
-    public async Task<HttpResponseData> RunAsync([HttpTrigger(AuthorizationLevel.Function, "get")] HttpRequestData req)
+    public async Task<HttpResponseData> RunAsync([HttpTrigger(AuthorizationLevel.Anonymous, "get")] HttpRequestData req)
     {
         //_logger.LogInformation("C# HTTP trigger function processed a request.");
       

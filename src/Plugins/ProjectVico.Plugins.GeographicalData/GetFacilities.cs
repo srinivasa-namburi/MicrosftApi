@@ -33,7 +33,7 @@ public class GetFacilities
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json",
         bodyType: typeof(string), Description = "Returns the error of the input.")]
     public async Task<GetLatitudeAndLongitudeForLocationResponse> GetLatitudeAndLongitudeForAddressAsync(
-        [HttpTrigger(AuthorizationLevel.Function, "get")] HttpRequestData req)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get")] HttpRequestData req)
     {
         string? location = req.Query["query"];
 
@@ -57,7 +57,7 @@ public class GetFacilities
         bodyType: typeof(string), Description = "Returns the error of the input.")]
     public async Task<GetFacilitiesForLocationRequest>
         CreateGetFacilitiesForLocationRequestFromGetLatitudeAndLongitudeForLocationResponseAsync(
-            [HttpTrigger(AuthorizationLevel.Function, methods: "post")]
+            [HttpTrigger(AuthorizationLevel.Anonymous, methods: "post")]
             HttpRequestData req,
             [FromBody] GetLatitudeAndLongitudeForLocationResponse bodyJson)
     {
@@ -106,7 +106,7 @@ public class GetFacilities
         Description = "Returns a list of FacilityDetail objects with name, address, distance from search point and categories of each facility found")]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(string), Description = "Returns the error of the input.")]
 
-    public async Task<HttpResponseData> GetFacilitiesByLatitudeAngLongitudeAsync([HttpTrigger(AuthorizationLevel.Function, methods: "get")]
+    public async Task<HttpResponseData> GetFacilitiesByLatitudeAngLongitudeAsync([HttpTrigger(AuthorizationLevel.Anonymous, methods: "get")]
         HttpRequestData req)
     {
         // These are default values if not set in the query string.
@@ -180,7 +180,7 @@ public class GetFacilities
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json",
         bodyType: typeof(string), Description = "Returns the error of the input.")]
     public async Task<HttpResponseData> GetFacilitiesByAddressAsync(
-        [HttpTrigger(AuthorizationLevel.Function, methods: "get")] HttpRequestData req)
+        [HttpTrigger(AuthorizationLevel.Anonymous, methods: "get")] HttpRequestData req)
     {
         var latLongResponse = await this.GetLatLongForAddressAsync(req.Query["address"]!);
 

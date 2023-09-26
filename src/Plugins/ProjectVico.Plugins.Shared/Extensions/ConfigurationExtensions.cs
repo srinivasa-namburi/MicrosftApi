@@ -13,6 +13,19 @@ public static class ConfigExtensions
     {
         string? environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
 
+        //Add the host.json file only if running in the Azure Functions environment in the cloud
+        //if (string.Equals(environment, "Production", StringComparison.OrdinalIgnoreCase))
+        //{
+        //    configBuilder.AddJsonFile(
+        //        path: "host.json",
+        //        optional: true,
+        //        reloadOnChange: true);
+        //}
+        configBuilder.AddJsonFile(
+            path: "host.json",
+            optional: true,
+            reloadOnChange: true);
+
         configBuilder.AddJsonFile(
             path: "appsettings.json",
             optional: true,
@@ -28,8 +41,13 @@ public static class ConfigExtensions
             optional: true,
             reloadOnChange: true);
 
+        configBuilder.AddEnvironmentVariables();
+
         // For settings from Azure App Configuration, see https://docs.microsoft.com/en-us/azure/azure-app-configuration/quickstart-aspnet-core-app?tabs=core5x
-        string? appConfigConnectionString = configBuilder.Build()["Service:AppConfigService"];
+
+        //Get the "Service:AppConfigService" key from the currently built-up configuration in configBuilder and add it to a variable
+        string? appConfigConnectionString = configBuilder.Build().GetValue<string>("Service:AppConfigService");
+
         if (!string.IsNullOrWhiteSpace(appConfigConnectionString))
         {
             configBuilder.AddAzureAppConfiguration(
@@ -42,8 +60,6 @@ public static class ConfigExtensions
                     });
                 });
         }
-
-        configBuilder.AddEnvironmentVariables();
 
         configBuilder.AddUserSecrets(
             assembly: Assembly.GetExecutingAssembly(),
