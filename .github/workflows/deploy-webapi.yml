@@ -1,0 +1,72 @@
+name: deploy-webapi
+
+on:
+  workflow_dispatch:
+  # pull_request:
+  #   branches: ["main"]
+  #   paths:
+  #     - "src/Frontend/webapi/**"
+
+permissions:
+  contents: read
+
+jobs:
+  package-and-deploy-webapi:
+    strategy:
+        fail-fast: false
+        matrix:
+            include:
+                - { dotnet: "6.0", configuration: Release, os: windows-latest }
+  
+    runs-on: ${{ matrix.os }}
+  
+    env:
+        NUGET_CERT_REVOCATION_MODE: offline
+  
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        clean: true
+        fetch-depth: 0
+  
+    - name: Install GitVersion
+      uses: gittools/actions/gitversion/setup@v0
+      with:
+        versionSpec: '5.x'
+  
+    - name: Determine version
+      id: gitversion
+      uses: gittools/actions/gitversion/execute@v0
+  
+    - name: Set version tag
+      id: versiontag
+      run: |
+        $VERSION_TAG = "${{ steps.gitversion.outputs.Major }}."
+        $VERSION_TAG += "${{ steps.gitversion.outputs.Minor }}."
+        $VERSION_TAG += "${{ steps.gitversion.outputs.CommitsSinceVersionSource }}"
+        echo $VERSION_TAG
+        Write-Output "versiontag=$VERSION_TAG" >> $env:GITHUB_OUTPUT
+  
+    - name: Package Project Vico WebAPI
+      run: |
+        cd src/Frontend/
+        .\scripts\deploy\package-webapi.ps1 -Configuration Release -DotnetFramework net6.0 --self-contained -TargetRuntime win-x64 -OutputDirectory ${{ github.workspace }}\scripts\deploy -Version ${{ steps.versiontag.outputs.versiontag }} -InformationalVersion "Built from commit ${{ steps.gitversion.outputs.ShortSha }} on $(Get-Date -Format "yyyy-MM-dd")"
+    - name: Azure login
+      uses: azure/login@v1
+      with:
+        creds: '${{ secrets.AZURE_CREDENTIALS }}'
+    - name: Get app name
+      run: |
+        $WEB_APP_NAME=$(az resource list --resource-group ${{secrets.AZURE_RESOURCE_GROUP}} | ConvertFrom-Json | where {$_.type -eq 'Microsoft.Web/sites' -and $_.name -like '*webapi*'} | select name).name
+        echo "AZURE_WEBAPP_NAME=$WEB_APP_NAME" >> $env:GITHUB_ENV
+    
+    - name: Enable Run From Package
+      run: |
+        az webapp config appsettings set --resource-group ${{secrets.AZURE_RESOURCE_GROUP}} --name ${{ env.AZURE_WEBAPP_NAME }} --settings WEBSITE_RUN_FROM_PACKAGE="1" -o none
+    
+    - name: Deploy package
+      run: |
+        az extension add --name webapp
+        ls ${{ github.workspace }}\scripts\deploy\out
+        az webapp deploy --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group ${{secrets.AZURE_RESOURCE_GROUP}} --type zip --src-path ${{ github.workspace }}\scripts\deploy\out\webapi.zip --async false
+  

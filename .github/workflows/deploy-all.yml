@@ -1,0 +1,222 @@
+
+name: deploy-all
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push or pull request events but only for the main branch
+#push:
+#   branches: [ main ]
+#    paths:
+#      - 'bicep/**.bicep'
+#  pull_request:
+#    branches: [ main ]
+#    paths:
+#      - 'bicep/**.bicep'
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+ lint-bicep:
+  runs-on: ubuntu-latest
+  steps:
+  - uses: actions/checkout@v2
+  - name: Run Bicep linter
+    run: az bicep build --file bicep/main.bicep
+    
+ validate-bicep: 
+  runs-on: ubuntu-latest
+  steps:
+  - uses: actions/checkout@v2
+  - uses: azure/login@v1
+    name: Sign in to Azure
+    with:
+      creds: ${{ secrets.AZURE_CREDENTIALS }}
+  - uses: azure/arm-deploy@v1
+    name: Run preflight validation
+    with:
+      deploymentName: ${{ github.run_number }}
+      scope: resourcegroup
+      resourceGroupName: ${{ secrets.AZURE_RESOURCE_GROUP }}
+      template: ./bicep/main.bicep
+      parameters: ./bicep/main.bicepparam
+      deploymentMode: Validate
+      failOnStdErr: false
+
+      
+ build-and-deploy-bicep:
+    runs-on: ubuntu-latest
+    needs: [lint-bicep, validate-bicep]
+    steps:
+      # Checkout code
+    - uses: actions/checkout@main
+      # Log into Azure
+    - uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # Deploy Bicep file
+    - name: deploy
+      uses: azure/arm-deploy@v1
+      with:
+        scope: resourcegroup
+        subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION }}
+        resourceGroupName: ${{ secrets.AZURE_RESOURCE_GROUP }}
+        template: ./bicep/main.bicep
+        parameters: ./bicep/main.bicepparam
+        failOnStdErr: false
+
+ syncconfig: 
+    strategy:
+        fail-fast: false
+        matrix:
+            include:
+                - { dotnet: "6.0", configuration: Release, os: windows-latest }
+    runs-on: ${{ matrix.os }}
+    needs: [build-and-deploy-bicep]
+    steps: 
+        - uses: actions/checkout@v2
+        - name: Azure login
+          uses: azure/login@v1
+          with:
+            creds: '${{ secrets.AZURE_CREDENTIALS }}'
+        - name: Get store name and connection string
+          run: |
+            $APP_STORE_NAME=$(az resource list --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --query "[?type=='Microsoft.AppConfiguration/configurationStores' && contains(name, 'appConfStore')].name" -o tsv) 
+            $APP_STORE_CONNECTION_STRING=$(az appconfig credential list -g ${{ secrets.AZURE_RESOURCE_GROUP }} -n $APP_STORE_NAME --query "[?name=='Primary'].connectionString" -o tsv)
+            echo "APP_STORE_CONNECTION_STRING=$APP_STORE_CONNECTION_STRING" >> $env:GITHUB_ENV
+        - uses: azure/appconfiguration-sync@v1 
+          with: 
+            configurationFile: './bicep/appconfigstore.json' 
+            format: 'json' 
+            connectionString: ${{ env.APP_STORE_CONNECTION_STRING }}
+            separator: ':'
+           
+ package-and-deploy-plugins:
+  needs: [build-and-deploy-bicep, syncconfig]
+  strategy:
+      fail-fast: false
+      matrix:
+          include:
+              - { dotnet: "6.0", configuration: Release, os: windows-latest }
+          plugin: [DoCQnA, GeographicalData]
+
+  runs-on: ${{ matrix.os }}
+
+  env:
+      NUGET_CERT_REVOCATION_MODE: offline
+
+  outputs:
+      artifact: ${{steps.artifactoutput.outputs.artifactname}}
+
+  steps:
+  - uses: actions/checkout@v3
+    with:
+      clean: true
+      fetch-depth: 0
+
+  - name: Install GitVersion
+    uses: gittools/actions/gitversion/setup@v0
+    with:
+      versionSpec: '5.x'
+
+  - name: Determine version
+    id: gitversion
+    uses: gittools/actions/gitversion/execute@v0
+
+  - name: Set version tag
+    id: versiontag
+    run: |
+      $VERSION_TAG = "${{ steps.gitversion.outputs.Major }}."
+      $VERSION_TAG += "${{ steps.gitversion.outputs.Minor }}."
+      $VERSION_TAG += "${{ steps.gitversion.outputs.CommitsSinceVersionSource }}"
+      echo $VERSION_TAG
+      Write-Output "versiontag=$VERSION_TAG" >> $env:GITHUB_OUTPUT
+
+  - name: Package Project Vico Plugin
+    run: |
+      cd src/Plugins
+      .\scripts\deploy\package-plugin.ps1 -Configuration Release -PluginName ${{ matrix.plugin }} -DotnetFramework net6.0 -TargetRuntime win-x64 -OutputDirectory ${{ github.workspace }}\scripts\deploy -Version ${{ steps.versiontag.outputs.versiontag }} -InformationalVersion "Built from commit ${{ steps.gitversion.outputs.ShortSha }} on $(Get-Date -Format "yyyy-MM-dd")"
+  - name: Azure login
+    uses: azure/login@v1
+    with:
+      creds: '${{ secrets.AZURE_CREDENTIALS }}'
+  - name: Get app name
+    run: |
+      $FUNC_NAME=$(az resource list --resource-group ${{secrets.AZURE_RESOURCE_GROUP}} | ConvertFrom-Json | where {$_.type -eq 'Microsoft.Web/sites' -and $_.name -like '*${{ matrix.plugin }}*'} | select name).name
+      echo "FUNC_NAME=$FUNC_NAME" >> $env:GITHUB_ENV
+  
+  - name: Enable Run From Package
+    run: |
+      az webapp config appsettings set --resource-group ${{secrets.AZURE_RESOURCE_GROUP}} --name ${{ env.FUNC_NAME }} --settings WEBSITE_RUN_FROM_PACKAGE="1" -o none
+  
+  - name: Deploy package
+    run: |
+      az extension add --name webapp
+      ls ${{ github.workspace }}\scripts\deploy\out
+      az webapp deploy --name ${{ env.FUNC_NAME }} --resource-group ${{secrets.AZURE_RESOURCE_GROUP}} --type zip --src-path ${{ github.workspace }}\scripts\deploy\out\${{ matrix.plugin }}.zip --async false
+
+            
+ package-and-deploy-webapi:
+  needs: [build-and-deploy-bicep, syncconfig, package-and-deploy-plugins]
+  strategy:
+      fail-fast: false
+      matrix:
+          include:
+              - { dotnet: "6.0", configuration: Release, os: windows-latest }
+
+  runs-on: ${{ matrix.os }}
+
+  env:
+      NUGET_CERT_REVOCATION_MODE: offline
+
+  outputs:
+      artifact: ${{steps.artifactoutput.outputs.artifactname}}
+
+  steps:
+  - uses: actions/checkout@v3
+    with:
+      clean: true
+      fetch-depth: 0
+
+  - name: Install GitVersion
+    uses: gittools/actions/gitversion/setup@v0
+    with:
+      versionSpec: '5.x'
+
+  - name: Determine version
+    id: gitversion
+    uses: gittools/actions/gitversion/execute@v0
+
+  - name: Set version tag
+    id: versiontag
+    run: |
+      $VERSION_TAG = "${{ steps.gitversion.outputs.Major }}."
+      $VERSION_TAG += "${{ steps.gitversion.outputs.Minor }}."
+      $VERSION_TAG += "${{ steps.gitversion.outputs.CommitsSinceVersionSource }}"
+      echo $VERSION_TAG
+      Write-Output "versiontag=$VERSION_TAG" >> $env:GITHUB_OUTPUT
+
+  - name: Package Project Vico WebAPI
+    run: |
+      cd src/Frontend/
+      .\scripts\deploy\package-webapi.ps1 -Configuration Release -DotnetFramework net6.0 --self-contained -TargetRuntime win-x64 -OutputDirectory ${{ github.workspace }}\scripts\deploy -Version ${{ steps.versiontag.outputs.versiontag }} -InformationalVersion "Built from commit ${{ steps.gitversion.outputs.ShortSha }} on $(Get-Date -Format "yyyy-MM-dd")"
+  - name: Azure login
+    uses: azure/login@v1
+    with:
+      creds: '${{ secrets.AZURE_CREDENTIALS }}'
+  - name: Get app name
+    run: |
+      $WEB_APP_NAME=$(az resource list --resource-group ${{secrets.AZURE_RESOURCE_GROUP}} | ConvertFrom-Json | where {$_.type -eq 'Microsoft.Web/sites' -and $_.name -like '*webapi*'} | select name).name
+      echo "AZURE_WEBAPP_NAME=$WEB_APP_NAME" >> $env:GITHUB_ENV
+  
+  - name: Enable Run From Package
+    run: |
+      az webapp config appsettings set --resource-group ${{secrets.AZURE_RESOURCE_GROUP}} --name ${{ env.AZURE_WEBAPP_NAME }} --settings WEBSITE_RUN_FROM_PACKAGE="1" -o none
+  
+  - name: Deploy package
+    run: |
+      az extension add --name webapp
+      ls ${{ github.workspace }}\scripts\deploy\out
+      az webapp deploy --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group ${{secrets.AZURE_RESOURCE_GROUP}} --type zip --src-path ${{ github.workspace }}\scripts\deploy\out\webapi.zip --async false
+

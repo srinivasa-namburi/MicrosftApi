@@ -1,0 +1,91 @@
+
+name: deploy-azure-environment
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push or pull request events but only for the main branch
+  # push:
+  #  branches: [ main ]
+  #  paths:
+  #    - 'bicep/**.bicep'
+  # pull_request:
+  #   branches: [ main ]
+  #   paths:
+  #     - 'bicep/**.bicep'
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+ lint-bicep:
+  runs-on: ubuntu-latest
+  steps:
+  - uses: actions/checkout@v2
+  - name: Run Bicep linter
+    run: az bicep build --file bicep/main.bicep
+    
+ validate-bicep: 
+  runs-on: ubuntu-latest
+  steps:
+  - uses: actions/checkout@v2
+  - uses: azure/login@v1
+    name: Sign in to Azure
+    with:
+      creds: ${{ secrets.AZURE_CREDENTIALS }}
+  - uses: azure/arm-deploy@v1
+    name: Run preflight validation
+    with:
+      deploymentName: ${{ github.run_number }}
+      scope: resourcegroup
+      resourceGroupName: ${{ secrets.AZURE_RESOURCE_GROUP }}
+      template: ./bicep/main.bicep
+      parameters: ./bicep/main.bicepparam
+      deploymentMode: Validate
+      
+ build-and-deploy-bicep:
+    runs-on: ubuntu-latest
+    needs: [lint-bicep, validate-bicep]
+    steps:
+      # Checkout code
+    - uses: actions/checkout@main
+      # Log into Azure
+    - uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # Deploy Bicep file
+    - name: deploy
+      uses: azure/arm-deploy@v1
+      with:
+        scope: resourcegroup
+        subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION }}
+        resourceGroupName: ${{ secrets.AZURE_RESOURCE_GROUP }}
+        template: ./bicep/main.bicep
+        parameters: ./bicep/main.bicepparam
+        failOnStdErr: false
+ 
+ syncconfig: 
+  strategy:
+      fail-fast: false
+      matrix:
+          include:
+              - { dotnet: "6.0", configuration: Release, os: windows-latest }
+  runs-on: ${{ matrix.os }}
+  needs: [build-and-deploy-bicep]
+  steps: 
+      - uses: actions/checkout@v2
+      - name: Azure login
+        uses: azure/login@v1
+        with:
+          creds: '${{ secrets.AZURE_CREDENTIALS }}'
+      - name: Get store name and connection string
+        run: |
+          $APP_STORE_NAME=$(az resource list --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --query "[?type=='Microsoft.AppConfiguration/configurationStores' && contains(name, 'appConfStore')].name" -o tsv) 
+          $APP_STORE_CONNECTION_STRING=$(az appconfig credential list -g ${{ secrets.AZURE_RESOURCE_GROUP }} -n $APP_STORE_NAME --query "[?name=='Primary'].connectionString" -o tsv)
+          echo "APP_STORE_CONNECTION_STRING=$APP_STORE_CONNECTION_STRING" >> $env:GITHUB_ENV
+      - uses: azure/appconfiguration-sync@v1 
+        with: 
+          configurationFile: './bicep/appconfigstore.json' 
+          format: 'json' 
+          connectionString: ${{ env.APP_STORE_CONNECTION_STRING }}
+          separator: ':'
