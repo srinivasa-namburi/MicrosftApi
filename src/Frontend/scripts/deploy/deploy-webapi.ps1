@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Deploy CopilotChat's WebAPI to Azure
+Deploy Project Vico's WebAPI to Azure
 #>
 
 param(
@@ -13,14 +13,9 @@ param(
     [string]
     # Resource group to which to make the deployment
     $ResourceGroupName,
-    
-    [Parameter(Mandatory)]
-    [string]
-    # Name of the previously deployed Azure deployment 
-    $DeploymentName,
 
     [string]
-    # CopilotChat WebApi package to deploy
+    # Project Vico WebApi package to deploy
     $PackageFilePath = "$PSScriptRoot/out/webapi.zip"
 )
 
@@ -42,9 +37,9 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "Getting Azure WebApp resource name..."
-$webappName=$(az deployment group show --name $DeploymentName --resource-group $ResourceGroupName --output json | ConvertFrom-Json).properties.outputs.webapiName.value
+$webAppName=(az resource list --resource-group rg-vico-openai | ConvertFrom-Json | where {$_.type -eq 'Microsoft.Web/sites' -and $_.name -like '*webapi*'} | select name).name
 if ($null -eq $webAppName) {
-    Write-Error "Could not get Azure WebApp resource name from deployment output."
+    Write-Error "Could not get Azure WebApp resource name from resource group."
     exit 1
 }
 

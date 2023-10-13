@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Package CopilotChat's WebAPI for deployment to Azure
+Package a Project Vico's plugin for deployment to Azure
 #>
 
 param(
@@ -21,6 +21,10 @@ param(
     $OutputDirectory = "$PSScriptRoot",
 
     [string]
+    # Name of the plugin to package.
+    $PluginName = "DocQnA",
+
+    [string]
     # Version to give to assemblies and files.
     $Version = "1.0.0",
 
@@ -36,7 +40,7 @@ Write-Host "OutputDirectory: $OutputDirectory"
 
 $publishOutputDirectory = "$OutputDirectory/publish"
 $publishedZipDirectory = "$OutputDirectory/out"
-$publishedZipFilePath = "$publishedZipDirectory/webapi.zip"
+$publishedZipFilePath = "$publishedZipDirectory/$PluginName.zip"
 if (!(Test-Path $publishedZipDirectory)) {
     New-Item -ItemType Directory -Force -Path $publishedZipDirectory | Out-Null
 }
@@ -45,7 +49,7 @@ if (!(Test-Path $publishOutputDirectory)) {
 }
 
 Write-Host "Build configuration: $BuildConfiguration"
-dotnet publish "$PSScriptRoot/../../webapi/ProjectVico.Frontend.API.csproj" --configuration $BuildConfiguration --framework $DotNetFramework --runtime $TargetRuntime --self-contained --output "$publishOutputDirectory" /p:AssemblyVersion=$Version /p:FileVersion=$Version /p:InformationalVersion=$InformationalVersion
+dotnet publish "$PSScriptRoot/../../ProjectVico.Plugins.$PluginName/ProjectVico.Plugins.$PluginName.csproj" --configuration $BuildConfiguration --framework $DotNetFramework --runtime $TargetRuntime --self-contained --output "$publishOutputDirectory" /p:AssemblyVersion=$Version /p:FileVersion=$Version /p:InformationalVersion=$InformationalVersion
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
