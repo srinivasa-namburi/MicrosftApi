@@ -15,16 +15,36 @@ Build a Good Understanding of Generative AI with these courses: 
 * [Generative AI with Azure OpenAI Service (DALL-E Overview) - C# Corner](https://www.c-sharpcorner.com/article/generative-ai-with-azure-openai-dall-e-overview/)
 * [Develop Generative AI solutions with Azure OpenAI Service Tutorial](https://learn.microsoft.com/en-us/training/paths/develop-ai-solutions-azure-openai/)
 
-## Running the Solution
-* Close the repository
+## Running the Word Copilot Solution
+The Word Copilot connects to a WebAPI backend which is interfacing with the Semantic Kernal. This can either be running on your local machine, or it can be running in Azure. If you are running it from your own machine, see steps below in section 
+* Install NodeJS on your local machine
+* Clone the repository
 * Deploy the backend of the solution with the steps outlined in [bicep/README.md](https://github.com/Azure/AI-For-SMRs/blob/main/bicep/README.md)
-* Open the solution in Visual Studio Code as Administrator
+* Open Visual Studio Code as Administrator
+* Open the solution in Visual Studio Code
 * Copy and paste the .env.sample file and rename it to .env
 * Add a line to this file with the URL of the solution backend:
   * REACT_APP_BACKEND_URI={InsertURLHere}
-* CD to ..\SC_AI-for_SMRs\src\Frontend\Word_Plugin
+* In the terminal CD to ..\SC_AI-for_SMRs\src\Frontend\Word_Plugin
 * Run npm install
-* Run npm start
+* To Run with NPM, Run "npm start"
+* To Run with Visual Studio Code debugger: Open the debugging pane, hit the dropdown to select the debugging environmnent and select "Word Desktop (Edge Chromium)". Now Hit the debugging start green arrow to launch the Word Copilot
+* When the project is launching, hit yes to trust certificates and to allow LocalHost loopback for Microsoft Edge Webview:
+  *  ![image](https://github.com/Azure/AI-For-SMRs/assets/18575224/aeaaafe7-fb49-4266-b375-01b75451982d)
+*  Hit okay as Word opens:
+   *  ![image](https://github.com/Azure/AI-For-SMRs/assets/18575224/1f03b1a0-95f5-448d-9f05-855fd5ef4858)
+
+
+
+## Running the WebAPI on your local machine
+* Open Visual Studio 2022 and open ProjectVICO.sln
+* Open Frontend/ProjectVico / appsettings.json.local
+	- ToDo: Henning will add the list of settings which need to be updated for local running
+*  Hit Solution > Properties > StartUp projects and set the FrontEnd.API and Plugins.DocQnA as the startup projects:
+*   ![image](https://github.com/Azure/AI-For-SMRs/assets/18575224/d35c1ca6-35ca-48ee-9ef3-6e00944bbda7)
+*  Start with or without debugging
+*  Hit yes to trust the local certificates (you will only need to do this the first time)
+* When the projects launch, they should report their URL, which is the URL to use in the .env of the Word Colpilot project to point to this WebAPI
 
 ## Trademarks
 
