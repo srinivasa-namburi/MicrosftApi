@@ -28,6 +28,7 @@ param deployCosmosDB = false
 param memoryStore = 'AzureCognitiveSearch' // CognitiveSearch, Volatile
 
 param location = 'eastus'
+param azureMapsLocation = 'eastus'
 param webappLocation = 'eastus2'
 
 param tags = {

@@ -87,6 +87,9 @@ param memoryStore string = 'AzureCognitiveSearch'
 */
 param location string = resourceGroup().location
 
+@description('Region for the Azure Maps account')
+param azureMapsLocation string = 'eastus'
+
 @description('Tags to apply to all resources')
 param tags object = {
   project: 'vico'
@@ -285,7 +288,7 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
 // Deploy Azure Maps
 resource mapAccount 'Microsoft.Maps/accounts@2023-06-01' = {
   name: 'map-${uniqueName}'
-  location: location
+  location: azureMapsLocation
   tags: tags
   sku: {
     name: 'G2'
