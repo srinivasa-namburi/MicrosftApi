@@ -1,9 +1,9 @@
-$targetSearchServiceName = Read-Host -Prompt "Enter the name of the search service you want to script to prepopulate with data."
+$targetSearchServiceName = Read-Host -Prompt "Enter the name of the search service you want to back up data from"
 $targetAdminKey = Read-Host -Prompt "Enter the admin key for your search service."
 
 $serviceUri = "https://" + $targetSearchServiceName + ".search.windows.net"
 
-$uri = $serviceUri + "/indexes?api-version=2023-10-01-preview"
+$uri = $serviceUri + "/indexes?api-version=2023-07-01-preview"
 
 $headers = @{
     'api-key' = $targetAdminKey
@@ -22,7 +22,7 @@ $selectedIndexIdx = $host.ui.PromptForChoice('Enter the desired Index','Copy and
 $selectedIndexName = $result[$selectedIndexIdx]
 
 #Downloading a copy of the index schema
-$uri = $serviceUri + "/indexes/$($selectedIndexName.Name)?api-version=2023-10-01-preview"
+$uri = $serviceUri + "/indexes/$($selectedIndexName.Name)?api-version=2023-07-01-preview"
 $result = Invoke-RestMethod -Uri $uri -Method GET -Headers $headers -ContentType "application/json" |
     ConvertTo-Json -Depth 9 |
     Set-Content "$($selectedIndexName.Name).schema"
@@ -32,7 +32,7 @@ $result = Invoke-RestMethod -Uri $uri -Method GET -Headers $headers -ContentType
 #Using .NET WebRequest because of some weird encoding issue in Invoke-RestMethod
 #Ref:https://social.technet.microsoft.com/Forums/en-US/26f6a32e-e0e0-48f8-b777-06c331883555/invokewebrequest-encoding?forum=winserverpowershell
 
-$uri = $serviceUri + "/indexes/$($selectedIndexName.Name)/docs/`$count?api-version=2023-10-01-preview"
+$uri = $serviceUri + "/indexes/$($selectedIndexName.Name)/docs/`$count?api-version=2023-07-01-preview"
 $req = [System.Net.WebRequest]::Create($uri)
 
 $req.ContentType = "application/json; charset=utf-8"
@@ -49,7 +49,7 @@ $pageCount = [math]::ceiling($documentCount / 500)
 
 $job = 1..$pageCount  | ForEach-Object -Parallel {
     $skip = ($_ - 1) * 500
-    $uri = $using:serviceUri + "/indexes/$($using:selectedIndexName.name)/docs?api-version=2023-10-01-preview&search=*&`$skip=$($skip)&`$top=500&searchMode=all"
+    $uri = $using:serviceUri + "/indexes/$($using:selectedIndexName.name)/docs?api-version=2023-07-01-preview&search=*&`$skip=$($skip)&`$top=500&searchMode=all"
     Invoke-RestMethod -Uri $uri -Method GET -Headers $using:headers -ContentType "application/json" |
         ConvertTo-Json -Depth 9 |
         Set-Content "$($using:selectedIndexName.Name)_$($_).json"
@@ -57,5 +57,23 @@ $job = 1..$pageCount  | ForEach-Object -Parallel {
 } -ThrottleLimit 5 -AsJob
 $job | Receive-Job -Wait
 
+# Go through the resultant schema file and rename the field vectorSearchProfile to vectorSearchConfiguration every time it occurs.
 
+# $schemaFile = "$($selectedIndexName.Name).schema"
+# $schema = Get-Content $schemaFile
+# #$schema = $schema -replace 'vectorSearchProfile', 'vectorSearchConfiguration'
 
+# # Get the "fields" array from the schema file and process each record acccording to the following rules:
+# # If the vectorSearchProfile is in the record with name "Embedding", set the content of the field to "SearchConfig" instad of null
+
+# $schema = $schema | ConvertFrom-Json
+# $fields = $schema.fields
+# foreach ($field in $fields) {
+#     if ($field.name -eq "Embedding") {
+#         $field.vectorSearchProfile = "searchConfig"
+#         $field | Add-Member -MemberType NoteProperty -Name vectorSearchConfiguration -Value "searchConfig"
+#     }
+# }
+
+# # Save the schema file back to disk
+# $schema | ConvertTo-Json -Depth 9 | Set-Content $schemaFile

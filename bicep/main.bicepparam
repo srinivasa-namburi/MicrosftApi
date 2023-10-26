@@ -7,14 +7,18 @@ Bicep parameters for main.bicep template for deploying Project Vico Azure resour
 
 using 'main.bicep'
 
+param uniqueName = ''
+
 // param deploymentName = 'vico-deployment'
 param webapiASPsku = 'P3V3'
 param pluginASPsku = 'EP3'
 param aiService = 'AzureOpenAI'
 
-param completionModel = 'gpt-35-turbo'
+param completionModel = 'gpt-4-32k'
+param completionModelVersion = '0613'
 param embeddingModel = 'text-embedding-ada-002'
-param plannerModel = 'gpt-35-turbo'
+param embeddingModelVersion = '2'
+param plannerModel = 'gpt-4-32k'
 
 param aiEndpoint = ''
 param aiApiKey = ''
@@ -27,9 +31,9 @@ param deployCosmosDB = false
 
 param memoryStore = 'AzureCognitiveSearch' // CognitiveSearch, Volatile
 
-param location = 'eastus'
-param azureMapsLocation = 'eastus'
-param webappLocation = 'eastus2'
+param location = 'swedencentral'
+param azureMapsLocation = 'northeurope'
+param webappLocation = 'swedencentral'
 
 param tags = {
   project: 'vico'

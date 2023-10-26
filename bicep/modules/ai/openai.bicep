@@ -1,7 +1,9 @@
 param uniqueName string
 param location string
 param completionModel string
+param completionModelVersion string
 param embeddingModel string
+param embeddingModelVersion string
 param completionModelTPM int
 param embeddingModelTPM int
 param tags object = {}
@@ -26,6 +28,7 @@ resource openAI_completionModel 'Microsoft.CognitiveServices/accounts/deployment
     model: {
       format: 'OpenAI'
       name: completionModel
+      version: completionModelVersion
     }
   }
   sku: {
@@ -41,6 +44,7 @@ resource openAI_embeddingModel 'Microsoft.CognitiveServices/accounts/deployments
     model: {
       format: 'OpenAI'
       name: embeddingModel
+      version: embeddingModelVersion
     }
   }
     sku: {

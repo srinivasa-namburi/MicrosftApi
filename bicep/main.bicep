@@ -8,6 +8,10 @@ Bicep template for deploying Project Vico Azure resources.
 @description('Deployment name')
 param deploymentName string = 'vico-deployment'
 */
+
+@description ('Unique deployment name')
+param uniqueName string = ''
+
 @description('SKU for the Azure App Service plan for webapi')
 @allowed([ 'B1', 'S1', 'S2', 'S3', 'P1V3', 'P2V3', 'P3V3', 'I1V2', 'I2V2', 'EP3' ])
 param webapiASPsku string = 'P3V3'
@@ -24,19 +28,25 @@ param pluginASPsku string = 'EP3'
 param aiService string = 'AzureOpenAI'
 
 @description('Model to use for chat completions')
-param completionModel string = 'gpt-35-turbo'
+param completionModel string = 'gpt-4-32k'
+
+@description('Model version for chat completions')
+param completionModelVersion string = '0613'
 
 @description('Model to use for text embeddings')
 param embeddingModel string = 'text-embedding-ada-002'
 
+@description('Model version for text embeddings')
+param embeddingModelVersion string = '2'
+
 @description('Completion model tokens per Minute Rate Limit (thousands)')
-param completionModelTPM int = 120
+param completionModelTPM int = 80
 
 @description('Embedding model tokens per Minute Rate Limit (thousands)')
-param embeddingModelTPM int = 120
+param embeddingModelTPM int = 240
 
 @description('Completion model the task planner should use')
-param plannerModel string = 'gpt-35-turbo'
+param plannerModel string = 'gpt-4-32k'
 
 @description('Azure OpenAI endpoint to use (Azure OpenAI only)')
 param aiEndpoint string = ''
@@ -55,10 +65,11 @@ param azureAdTenantId string = ''
 param azureAdInstance string = environment().authentication.loginEndpoint
 
 @description('Whether to deploy a new Azure OpenAI instance')
-param deployNewAzureOpenAI bool = false
+param deployNewAzureOpenAI bool = true
 
 @description('Whether to deploy Cosmos DB for persistent chat storage')
 param deployCosmosDB bool = false
+
 
 @description('What method to use to persist embeddings')
 @allowed([
@@ -88,6 +99,13 @@ param memoryStore string = 'AzureCognitiveSearch'
 param location string = resourceGroup().location
 
 @description('Region for the Azure Maps account')
+@allowed([
+  'westcentralus'
+  'westus2'
+  'eastus'
+  'westeurope'
+  'northeurope'
+])
 param azureMapsLocation string = 'eastus'
 
 @description('Tags to apply to all resources')
@@ -105,6 +123,8 @@ param tags object = {
   'westeurope'
   'eastasia'
   'eastasiastage'
+  'swedencentral'
+  'switzerlandnorth'
 ])
 param webappLocation string = 'westus2'
 
@@ -124,11 +144,12 @@ param privateDnsZoneNames array = [
 @description('Maximum capacity for the application gateway')
 param appgwMaxCapacity int = 10
 
-@description('Hash of the resource group ID')
-var rgIdHash = uniqueString(resourceGroup().id)
+// Removed to facilitate redeploys under different name
+// @description('Hash of the resource group ID')
+// var rgIdHash = uniqueString(resourceGroup().id)
 
-@description('Deployment name unique to resource group')
-var uniqueName = rgIdHash
+// @description('Deployment name unique to resource group')
+// var uniqueName = rgIdHash
 
 @description('VNET object for the Project Vico spoke')
 param vnetObject object = {}
@@ -157,6 +178,7 @@ resource openAI_completionModel 'Microsoft.CognitiveServices/accounts/deployment
     model: {
       format: 'OpenAI'
       name: completionModel
+      version: completionModelVersion
     }
   }
   sku: {
@@ -172,6 +194,7 @@ resource openAI_embeddingModel 'Microsoft.CognitiveServices/accounts/deployments
     model: {
       format: 'OpenAI'
       name: embeddingModel
+      version: embeddingModelVersion
     }
   }
     sku: {
@@ -602,17 +625,18 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = [for (functionAppName, i
 }]
 
 // Deploy static webapp frontend
-resource staticWebApp 'Microsoft.Web/staticSites@2022-09-01' = {
-  name: 'swa-${uniqueName}'
-  location: webappLocation
-  properties: {
-    provider: 'None'
-  }
-  sku: {
-    name: 'Standard'
-    tier: 'Standard'
-  }
-}
+// DEPRECATED - will use WebApp instead
+// resource staticWebApp 'Microsoft.Web/staticSites@2022-09-01' = {
+//   name: 'swa-${uniqueName}'
+//   location: webappLocation
+//   properties: {
+//     provider: 'None'
+//   }
+//   sku: {
+//     name: 'Standard'
+//     tier: 'Standard'
+//   }
+// }
 
 // Deploy Cosmos DB
 module cosmosDB 'modules/storage/cosmosdb.bicep' = if (deployCosmosDB) {
