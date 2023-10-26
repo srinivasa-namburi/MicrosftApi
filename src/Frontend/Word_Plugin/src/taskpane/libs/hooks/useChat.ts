@@ -212,6 +212,9 @@ export const useChat = () => {
                     // Else create a new chat and associate it with this document
                     await createChat();
                 }
+            } else {
+                // create a new chat if no chats are found
+                await createChat();
             }
 
             return true;
