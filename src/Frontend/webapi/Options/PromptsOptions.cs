@@ -1,5 +1,6 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 
@@ -77,6 +78,7 @@ public class PromptsOptions
     internal string[] SystemIntentPromptComponents => new string[]
     {
         this.SystemDescription,
+        $"The current date and time is {DateTime.UtcNow} in the UTC time zone.",
         this.SystemIntent,
         "{{ChatSkill.ExtractChatHistory}}",
         this.SystemIntentContinuation

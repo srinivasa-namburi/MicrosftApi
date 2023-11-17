@@ -49,7 +49,7 @@ public class GetFacilities
     [OpenApiOperation(operationId: "CreateGetFacilitiesForLocationRequestFromGetLatitudeAndLongitudeForLocationResponse", tags: new[] { "ExecuteFunction" }, Description = "Creates a GetFacilitiesForLocationRequest from a GetLatitudeAndLongitudeForLocationResponse containing <latitude> and <longitude>")]
     [OpenApiRequestBody(contentType: "application/json", bodyType: typeof(GetLatitudeAndLongitudeForLocationResponse),
         Required = true, Description = "JSON containing <latitude> and <longitude> properties. Prefill these properties with <latitude> and <longitude>")]
-    [OpenApiParameter(name: "maxResults", Description = "The max number of results to return. Cannot be more than 100, must be an integer.", Required = false, In = ParameterLocation.Query)]
+    [OpenApiParameter(name: "maxResults", Description = "The max number of results to return. Cannot be more than 50, must be an integer.", Required = false, In = ParameterLocation.Query)]
     [OpenApiParameter(name: "radiusInMeters", Description = "The radius/area in meters to search for facilities from the supplied geographical coordinate (latitude and longitude). Must be an integer, no fractional numbers.", Required = false, In = ParameterLocation.Query)]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json",
         bodyType: typeof(GetFacilitiesForLocationRequest), Description = "Returns a GetFacilitiesForLocationRequest")]
@@ -62,7 +62,7 @@ public class GetFacilities
             [FromBody] GetLatitudeAndLongitudeForLocationResponse bodyJson)
     {
 
-        var maxResults = 100;
+        var maxResults = 50;
         var radius = 2000;
 
         string? radiusString = req.Query["radiusInMeters"];
@@ -97,11 +97,11 @@ public class GetFacilities
     [Function("GetFacilitiesByLatitudeAngLongitude")]
     [OpenApiOperation(operationId: "GetFacilitiesByLatitudeAngLongitude", tags: new[] { "ExecuteFunction" }, Description = "Gets a list of facilities from a location based on location's coordinates (<latitude> and <longitude>). If searching for an address, please use the function GetFacilitiesByAddress instead. If no <categorySearchTerm> is supplied, it is set to 'School' by default.")]
     //[OpenApiRequestBody(contentType: "application/json", bodyType: typeof(GetFacilitiesForLocationRequest), Required = true, Description = "JSON containing <latitude> and <longitude> as well as radius <radiusinmeters> and maxresults")]
-    [OpenApiParameter(name: "maxResults", Description = "The max number of results to return. Cannot be more than 100, must be an integer.", Required = false, In = ParameterLocation.Query)]
+    [OpenApiParameter(name: "maxResults", Description = "The max number of results to return. Cannot be more than 50, must be an integer.", Required = false, In = ParameterLocation.Query)]
     [OpenApiParameter(name: "radiusInMeters", Description = "The radius/area in meters to search for facilities from the supplied geographical coordinate (latitude and longitude). Must be an integer, no fractional numbers.", Required = false, In = ParameterLocation.Query)]
     [OpenApiParameter(name: "latitude", Description = "The latitude of the location to search for facilities. Use JsonPath skill to get if necessary", Required = true, In = ParameterLocation.Query)]
     [OpenApiParameter(name: "longitude", Description = "The longitude of the location to search for facilities. Use JsonPath skill to get if necessary", Required = true, In = ParameterLocation.Query)]
-    [OpenApiParameter(name: "categorySearchTerm", Description = "The category/type of facility to search for, such as 'School', 'Healthcare', 'Elderly care', 'River', 'Lake', etc. Please capitalize the categorySearchTerm.", Required = false, In = ParameterLocation.Query)]
+    [OpenApiParameter(name: "categorySearchTerm", Description = "The category/type of facility to search for, such as 'School', 'Healthcare', 'Elderly care', 'River', 'Lake', etc. Please capitalize the categorySearchTerm. Doing the search without categories is meaningless as the number of results would be far too great. For envirnomental reports, please limit yourself to facilities that are specifically thought to be vulnerable to radiaton or other fallout after a nuclear accident.", Required = false, In = ParameterLocation.Query)]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(List<FacilityDetail>),
         Description = "Returns a list of FacilityDetail objects with name, address, distance from search point and categories of each facility found")]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(string), Description = "Returns the error of the input.")]
@@ -110,7 +110,7 @@ public class GetFacilities
         HttpRequestData req)
     {
         // These are default values if not set in the query string.
-        var maxResults = 100;
+        var maxResults = 50;
         var radius = 2000;
 
         string? radiusString = req.Query["radiusInMeters"];
@@ -169,10 +169,7 @@ public class GetFacilities
         Description =
             "The radius/area in meters to search for '<categorySearchTerm>' type of facilities from the supplied address. Must be an integer, no fractional numbers. Default 5km radius.",
         Required = false, In = ParameterLocation.Query)]
-    [OpenApiParameter(name: "categorySearchTerm",
-        Description =
-            "The category/type of facility to search for, such as 'School', 'Hospital', 'Elderly care', 'River', 'Lake', etc. Please capitalize the categorySearchTerm.",
-        Required = false, In = ParameterLocation.Query)]
+    [OpenApiParameter(name: "categorySearchTerm", Description = "The category/type of facility to search for, such as 'School', 'Healthcare', 'Elderly care', 'River', 'Lake', etc. Please capitalize the categorySearchTerm. Doing the search without categories is meaningless as the number of results would be far too great. For envirnomental reports, please limit yourself to facilities that are specifically thought to be vulnerable to radiaton or other fallout after a nuclear accident.", Required = false, In = ParameterLocation.Query)]
     //[OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "text/plain", bodyType: typeof(string),
     //    Description = "Returns a comma separated list of locations")]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(List<FacilityDetail>),

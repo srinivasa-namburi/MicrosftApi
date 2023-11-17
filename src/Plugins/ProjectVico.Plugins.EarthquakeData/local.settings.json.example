@@ -1,7 +1,7 @@
 {
   "IsEncrypted": false,
   "Host": {
-    "LocalHttpPort": 7172,
+    "LocalHttpPort": 7072,
     "CORS": "*",
     "CORSCredentials": false
   },

@@ -10,7 +10,6 @@ var hostBuilder = new HostBuilder()
 hostBuilder.ConfigureServices((hostContext, services) =>
 {
     services.AddScoped<IMappingConnector, AzureMapsConnector>();
-    services.AddScoped<IEarthquakeConnector, USGSEarthquakeConnector>();
 });
 
 

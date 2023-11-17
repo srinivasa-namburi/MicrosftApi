@@ -96,7 +96,7 @@ public class SectionPlugin
         {
             Completion =
             {
-                MaxTokens = 2000,
+                MaxTokens = 2500,
                 Temperature = 0.2,
                 TopP = 0.5,
             }
@@ -199,7 +199,7 @@ public class SectionPlugin
         {
             Completion =
             {
-                MaxTokens = 3000,
+                MaxTokens = 2500,
                 Temperature = 0.2,
                 TopP = 0.4
             }
