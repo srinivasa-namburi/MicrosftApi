@@ -27,7 +27,7 @@ param webApiClientId = ''
 param azureAdTenantId = ''
 
 param deployNewAzureOpenAI = true
-param deployCosmosDB = false
+param deployCosmosDB = true
 
 param memoryStore = 'AzureCognitiveSearch' // CognitiveSearch, Volatile
 

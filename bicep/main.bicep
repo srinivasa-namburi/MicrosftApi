@@ -68,7 +68,7 @@ param azureAdInstance string = environment().authentication.loginEndpoint
 param deployNewAzureOpenAI bool = true
 
 @description('Whether to deploy Cosmos DB for persistent chat storage')
-param deployCosmosDB bool = false
+param deployCosmosDB bool = true
 
 
 @description('What method to use to persist embeddings')

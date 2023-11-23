@@ -22,14 +22,14 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2023-04-15' = {
 
 resource cosmosDatabase 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2023-04-15' = {
   parent: cosmosAccount
-  name: 'CopilotChat'
+  name: 'DocumentChunks'
   properties: {
     resource: {
-      id: 'CopilotChat'
+      id: 'DocumentChunks'
     }
   }
 }
-
+/*
 resource messageContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2023-04-15' = {
   parent: cosmosDatabase
   name: 'chatmessages'
@@ -153,3 +153,4 @@ resource memorySourcesContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDataba
     }
   }
 }
+*/
