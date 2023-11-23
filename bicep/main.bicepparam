@@ -33,7 +33,7 @@ param memoryStore = 'AzureCognitiveSearch' // CognitiveSearch, Volatile
 
 param location = 'swedencentral'
 param azureMapsLocation = 'northeurope'
-param webappLocation = 'swedencentral'
+param documentIntelligenceLocation = 'westeurope'
 
 param tags = {
   project: 'vico'

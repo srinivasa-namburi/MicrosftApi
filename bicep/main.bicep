@@ -108,25 +108,43 @@ param location string = resourceGroup().location
 ])
 param azureMapsLocation string = 'eastus'
 
+@description('Region for the Document Intelligence account')
+@allowed([
+  'australiaeast'
+  'brazilsouth'
+  'canadacentral'
+  'centralindia'
+  'centralus'
+  'eastasia'
+  'eastus'
+  'eastus2'
+  'francecentral'
+  'japaneast'
+  'southcentralus'
+  'southeastasia'
+  'uksouth'
+  'westeurope'
+  'westus2'
+])
+param documentIntelligenceLocation string = 'eastus'
+
+// https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models#gpt-4-and-gpt-4-turbo-preview-model-availability
+@description('Region for the OpenAI account')
+@allowed([
+  'australiaeast'
+  'canadaeast'
+  'francecentral'
+  'swedencentral'
+  'switzerlandnorth'
+])
+param openaiLocation string = 'swedencentral'
+
 @description('Tags to apply to all resources')
 param tags object = {
   project: 'vico'
   environment: 'dev'
   version: '0.1'
 }
-
-@description('Region for the webapp frontend')
-@allowed([
-  'westus2'
-  'centralus'
-  'eastus2'
-  'westeurope'
-  'eastasia'
-  'eastasiastage'
-  'swedencentral'
-  'switzerlandnorth'
-])
-param webappLocation string = 'westus2'
 
 @description('Function apps to deploy')
 param functionAppNameArray array = [
@@ -160,7 +178,7 @@ param vnetObject object = {}
 
 resource openAI 'Microsoft.CognitiveServices/accounts@2023-05-01' = {
   name: 'openai-${uniqueName}'
-  location: location
+  location: openaiLocation
   kind: 'OpenAI'
   sku: {
     name: 'S0'
@@ -337,7 +355,7 @@ resource mapAccount 'Microsoft.Maps/accounts@2023-06-01' = {
 // Deploy Form Recognizer
 resource formRecognizer 'Microsoft.CognitiveServices/accounts@2023-05-01' = {
   name: 'formr-${uniqueName}'
-  location: location
+  location: documentIntelligenceLocation
   tags: tags
   sku: {
     name: 'S0'
@@ -624,19 +642,6 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = [for (functionAppName, i
   }
 }]
 
-// Deploy static webapp frontend
-// DEPRECATED - will use WebApp instead
-// resource staticWebApp 'Microsoft.Web/staticSites@2022-09-01' = {
-//   name: 'swa-${uniqueName}'
-//   location: webappLocation
-//   properties: {
-//     provider: 'None'
-//   }
-//   sku: {
-//     name: 'Standard'
-//     tier: 'Standard'
-//   }
-// }
 
 // Deploy Cosmos DB
 module cosmosDB 'modules/storage/cosmosdb.bicep' = if (deployCosmosDB) {
@@ -683,41 +688,6 @@ resource CosmosEndpointAEntry 'Microsoft.Network/privateDnsZones/A@2020-06-01' =
 }
 */
 
-
-/*
-resource SWAPrivateEndpoint 'Microsoft.Network/privateEndpoints@2021-08-01' = {
-  name: '${staticWebApp.name}-pl'
-  tags: tags
-  location: location
-  properties: {
-    subnet: {
-      id: virtualNetwork.properties.subnets[3].id
-    }
-    privateLinkServiceConnections: [
-      {
-        name: '${staticWebApp.name}-pl'
-        properties: {
-          privateLinkServiceId: staticWebApp.id
-          groupIds: [ 'staticSites' ]
-        }
-      }
-    ]
-  }
-}
-
-resource SAWEndpointAEntry 'Microsoft.Network/privateDnsZones/A@2020-06-01' = {
-  name: staticWebApp.name
-  parent: privateDnsZones[1]
-  properties: {
-    ttl: 3600
-    aRecords: [
-      {
-        ipv4Address: SWAPrivateEndpoint.properties.customDnsConfigs[0].ipAddresses[0]
-      }
-    ]
-  }
-}
-*/
 
 /*
 resource FAPrivateEndpoint 'Microsoft.Network/privateEndpoints@2021-08-01' = [for (functionAppName, i) in functionAppNameArray: {
@@ -906,7 +876,7 @@ resource SKPrivateEndpoint 'Microsoft.Network/privateEndpoints@2021-08-01' = {
 }
 
 resource SKEndpointAEntry 'Microsoft.Network/privateDnsZones/A@2020-06-01' = {
-  name: staticWebApp.name
+  name: SemanticKernelWeb.name
   parent: privateDnsZones[3]
   properties: {
     ttl: 3600
