@@ -13,14 +13,6 @@ public static class ConfigExtensions
     {
         string? environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
 
-        //Add the host.json file only if running in the Azure Functions environment in the cloud
-        //if (string.Equals(environment, "Production", StringComparison.OrdinalIgnoreCase))
-        //{
-        //    configBuilder.AddJsonFile(
-        //        path: "host.json",
-        //        optional: true,
-        //        reloadOnChange: true);
-        //}
         configBuilder.AddJsonFile(
             path: "host.json",
             optional: true,
@@ -28,11 +20,6 @@ public static class ConfigExtensions
 
         configBuilder.AddJsonFile(
             path: "appsettings.json",
-            optional: true,
-            reloadOnChange: true);
-
-        configBuilder.AddJsonFile(
-            path: $"appsettings.{environment}.json",
             optional: true,
             reloadOnChange: true);
 

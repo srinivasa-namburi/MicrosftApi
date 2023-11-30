@@ -45,8 +45,35 @@ param completionModelTPM int = 80
 @description('Embedding model tokens per Minute Rate Limit (thousands)')
 param embeddingModelTPM int = 240
 
+@description('Model to use for summarization')
+param summarizationModel string = 'davinci-002'
+
+@description('Model version for summarization')
+param summarizationModelVersion string = '1'
+
+@description('Summarization model tokens per Minute Rate Limit (thousands)')
+param summarizationModelTPM int = 100
+
 @description('Completion model the task planner should use')
 param plannerModel string = 'gpt-4-32k'
+
+@description('Cognitive Search legacy index name')
+param csLegacyIndexName string = 'section-embeddings'
+
+@description('Cognitive Search Title index name')
+param csTitleIndexName string = 'index-01-titles'
+
+@description('Cognitive Search Section index name')
+param csSectionIndexName string = 'index-01-sections'
+
+@description('Cognitive Search Semantic Search config name')
+param csSemanticSearchConfigName string = 'smr-semantic-search-config'
+
+@description('Cognitive Search Vector Search profile name')
+param csVectorSearchProfileName string = 'smr-vector-search-profile'
+
+@description('Cognitive Search Vector Search HNSW config name')
+param csVectorSearchHnswConfigName string = 'smr-hnsw-config'
 
 @description('Azure OpenAI endpoint to use (Azure OpenAI only)')
 param aiEndpoint string = ''
@@ -78,7 +105,7 @@ param deployCosmosDB bool = true
   // 'Qdrant' - not implemented
   // 'Postgres' - not implemented
 ])
-param memoryStore string = 'AzureCognitiveSearch'
+param memoryStore string = 'Volatile'
 
 @description('Region for the resources')
 /*
@@ -143,7 +170,7 @@ param openaiLocation string = 'swedencentral'
 param tags object = {
   project: 'vico'
   environment: 'dev'
-  version: '0.1'
+  version: '0.2'
 }
 
 @description('Function apps to deploy')
@@ -221,6 +248,25 @@ resource openAI_embeddingModel 'Microsoft.CognitiveServices/accounts/deployments
     }
   dependsOn: [// This "dependency" is to create models sequentially because the resource
     openAI_completionModel // provider does not support parallel creation of models properly.
+  ]
+}
+
+resource openAI_summarizationModel 'Microsoft.CognitiveServices/accounts/deployments@2023-05-01' = {
+  parent: openAI
+  name: summarizationModel
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: summarizationModel
+      version: summarizationModelVersion
+    }
+  }
+    sku: {
+      name: 'Standard'
+      capacity: summarizationModelTPM
+    }
+  dependsOn: [// This "dependency" is to create models sequentially because the resource
+    openAI_embeddingModel // provider does not support parallel creation of models properly.
   ]
 }
 
@@ -352,7 +398,7 @@ resource mapAccount 'Microsoft.Maps/accounts@2023-06-01' = {
   }
 }
 
-// Deploy Form Recognizer
+// Deploy Form Recognizer / Azure Document Intelligence
 resource formRecognizer 'Microsoft.CognitiveServices/accounts@2023-05-01' = {
   name: 'formr-${uniqueName}'
   location: documentIntelligenceLocation
@@ -388,8 +434,17 @@ resource azureCognitiveSearch 'Microsoft.Search/searchServices@2022-09-01' = if 
 var secretKeyValueNames = [
   'AI:CognitiveSearch:Endpoint'
   'AI:CognitiveSearch:Key'
+  'AI:CognitiveSearch:Index'
+  'AI:CognitiveSearch:TitleIndex'
+  'AI:CognitiveSearch:SectionIndex'
+  'AI:CognitiveSearch:SemanticSearchConfigName'
+  'AI:CognitiveSearch:VectorSearchProfileName'
+  'AI:CognitiveSearch:VectorSearchHnswConfigName'
+  'AI:DocumentIntelligence:Endpoint'
+  'AI:DocumentIntelligence:Key'
   'AI:OpenAI:CompletionModel'
   'AI:OpenAI:EmbeddingModel'
+  'AI:OpenAI:SummarizationModel'
   'AI:OpenAI:Endpoint'
   'AI:OpenAI:Key'
   'AIService:Endpoint'
@@ -410,8 +465,17 @@ var hostNamesFapp = [for (functionAppName, i) in functionAppNameArray: 'https://
 var secretKeyValueValues = [
   (memoryStore) == 'AzureCognitiveSearch'? 'https://${azureCognitiveSearch.name}.search.windows.net': ''
   (memoryStore) == 'AzureCognitiveSearch'? azureCognitiveSearch.listAdminKeys().primaryKey: ''
+  csLegacyIndexName
+  csTitleIndexName
+  csSectionIndexName
+  csSemanticSearchConfigName
+  csVectorSearchProfileName
+  csVectorSearchHnswConfigName
+  formRecognizer.properties.endpoint
+  formRecognizer.listKeys().key1
   completionModel
   embeddingModel
+  summarizationModel
   openAI.properties.endpoint
   openAI.listKeys().key1
   openAI.properties.endpoint
@@ -500,13 +564,6 @@ resource SemanticKernelWebConfig 'Microsoft.Web/sites/config@2022-09-01' = {
     ]
     healthCheckPath: '/healthz'
     alwaysOn: true
-    /*cors: {
-      allowedOrigins: [
-        'http://localhost:3000' // replace with frontend URL 
-        'https://localhost:3000' // replace with frontend URL
-      ]
-      supportCredentials: true
-    }*/
     cors: {
       allowedOrigins: [
         '*'

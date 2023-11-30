@@ -12,7 +12,7 @@ using Microsoft.SemanticKernel.Connectors.Memory.AzureCognitiveSearch;
 using Microsoft.SemanticKernel.Memory;
 using Microsoft.SemanticKernel.Orchestration;
 using Microsoft.SemanticKernel.SemanticFunctions;
-using ProjectVico.Plugins.DocQnA.Options;
+using ProjectVico.Backend.DocumentIngestion.Shared.Options;
 
 namespace ProjectVico.Plugins.DocQnA;
 

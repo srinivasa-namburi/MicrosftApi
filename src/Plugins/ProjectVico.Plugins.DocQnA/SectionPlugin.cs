@@ -11,8 +11,9 @@ using Microsoft.SemanticKernel.Connectors.AI.OpenAI.TextEmbedding;
 using Microsoft.SemanticKernel.Connectors.Memory.AzureCognitiveSearch;
 using Microsoft.SemanticKernel.Memory;
 using Microsoft.SemanticKernel.Orchestration;
+using Microsoft.SemanticKernel.Reliability;
 using Microsoft.SemanticKernel.SemanticFunctions;
-using ProjectVico.Plugins.DocQnA.Options;
+using ProjectVico.Backend.DocumentIngestion.Shared.Options;
 
 namespace ProjectVico.Plugins.DocQnA;
 
@@ -27,11 +28,12 @@ public class SectionPlugin
         //_logger = loggerFactory.CreateLogger<DemoHttpTrigger>();
     }
 
-    [Function("GetOutputForSection")]
-    [OpenApiOperation(operationId: "GetOutputForSection", tags: new[] { "ExecuteFunction" }, Description = "Using your knowledge of similar written section from earlier environmental reports, write output for a specific section indicated by <sectionName>.")]
-    [OpenApiParameter(name: "sectionName", Description = "The name of the section", Required = true, In = ParameterLocation.Query)]
-    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "text/plain", bodyType: typeof(string), Description = "Returns a output for a particular section indicated by <sectionName>")]
-    [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(string), Description = "Returns the error of the input.")]
+    // Commented out to avoid conflict with DocumentIntelligencePlugin which is under development and testing
+    //[Function("GetOutputForSection")]
+    //[OpenApiOperation(operationId: "GetOutputForSection", tags: new[] { "ExecuteFunction" }, Description = "Using your knowledge of similar written section from earlier environmental reports, write output for a specific section indicated by <sectionName>.")]
+    //[OpenApiParameter(name: "sectionName", Description = "The name of the section", Required = true, In = ParameterLocation.Query)]
+    //[OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "text/plain", bodyType: typeof(string), Description = "Returns a output for a particular section indicated by <sectionName>")]
+    //[OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(string), Description = "Returns the error of the input.")]
     public async Task<HttpResponseData> GetOutputForSectionAsync([HttpTrigger(AuthorizationLevel.Anonymous, "get")] HttpRequestData req)
     {
         //_logger.LogInformation("C# HTTP trigger function processed a request.");
@@ -88,6 +90,14 @@ public class SectionPlugin
                 this._aiOptions.Value.OpenAI.Endpoint,
                 this._aiOptions.Value.OpenAI.Key!
             )
+            .Configure(config =>
+            {
+                
+                config.SetDefaultHttpRetryConfig(new HttpRetryConfig()
+                {
+                    MaxTotalRetryTime = TimeSpan.FromSeconds(500),
+                });
+            })
             .Build();
 
         // Create semantic function that comes up with alternative section names
@@ -108,13 +118,15 @@ public class SectionPlugin
         );
         var functionConfig = new SemanticFunctionConfig(promptConfig, promptTemplate);
         var altSectionNames = kernel.RegisterSemanticFunction("AdHocPlugin", "AltSectionNames", functionConfig);
-
+        
         // Run the function with the input
         var input = new ContextVariables()
         {
             ["input"] = sectionExample.ToString(),
             ["sectionName"] = sectionName
         };
+
+        
         var results = (await altSectionNames.InvokeAsync(input)).Result;
         textResponse.Append(results);
 
@@ -125,11 +137,12 @@ public class SectionPlugin
         return response;
     }
 
-    [Function("GetDescriptionOfSection")]
-    [OpenApiOperation(operationId: "GetDescriptionOfSection", tags: new[] { "ExecuteFunction" }, Description = "Get a description of a section in the application, include required data.")]
-    [OpenApiParameter(name: "sectionName", Description = "The name of the section", Required = true, In = ParameterLocation.Query)]
-    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "text/plain", bodyType: typeof(string), Description = "Returns a description of the format of a section.")]
-    [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(string), Description = "Returns the error of the input.")]
+    // Commented out to avoid conflict with DocumentIntelligencePlugin which is under development and testing
+    //[Function("GetDescriptionOfSection")]
+    //[OpenApiOperation(operationId: "GetDescriptionOfSection", tags: new[] { "ExecuteFunction" }, Description = "Get a description of a section in the application, include required data.")]
+    //[OpenApiParameter(name: "sectionName", Description = "The name of the section", Required = true, In = ParameterLocation.Query)]
+    //[OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "text/plain", bodyType: typeof(string), Description = "Returns a description of the format of a section.")]
+    //[OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(string), Description = "Returns the error of the input.")]
     public async Task<HttpResponseData> GetDescriptionOfSectionAsync([HttpTrigger(AuthorizationLevel.Anonymous, "get")] HttpRequestData req)
     {
         //_logger.LogInformation("C# HTTP trigger function processed a request.");

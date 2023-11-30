@@ -51,11 +51,17 @@ public class GetEarthqukes
         string? radiusString = req.Query["maxRadiusKm"];
         string? maxResultsString = req.Query["maxResults"];
         string? minMagnitudeString = req.Query["minMagnitude"];
+
+        if (string.IsNullOrEmpty(minMagnitudeString))
+        {
+            minMagnitudeString = minMagnitude.ToString(CultureInfo.InvariantCulture);
+        }
+
         string? latitudeString = req.Query["latitude"];
         string? longitudeString = req.Query["longitude"];
         string? sortorderString = req.Query["sortorder"];
 
-        if (sortorderString != null)
+        if (!string.IsNullOrEmpty(sortorderString))
         {
             // Sort Order must be one of time, time-asc, magnitude or magnitude-asc.
             if (sortorderString != "time" &&

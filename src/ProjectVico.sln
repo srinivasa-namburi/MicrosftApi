@@ -17,7 +17,15 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.Frontend.API", 
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Shared", "Shared", "{C2A16DA3-6D19-4F17-AF5E-04D5F23300EA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProjectVico.Plugins.Shared", "Plugins\ProjectVico.Plugins.Shared\ProjectVico.Plugins.Shared.csproj", "{16D67700-01C5-401B-89D9-8B8E020A982C}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.Plugins.Shared", "Plugins\ProjectVico.Plugins.Shared\ProjectVico.Plugins.Shared.csproj", "{16D67700-01C5-401B-89D9-8B8E020A982C}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Backend", "Backend", "{540F99C7-FE27-467D-B360-62DDBC588441}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.Backend.PDFIngest.ConsoleApp", "Backend\ProjectVico.Backend.PDFIngest.ConsoleApp\ProjectVico.Backend.PDFIngest.ConsoleApp.csproj", "{1B699599-5354-4D33-B42D-FC016A895DB4}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.Backend.DocumentIngestion.Shared", "Backend\ProjectVico.Backend.DocumentIngestion.Shared\ProjectVico.Backend.DocumentIngestion.Shared.csproj", "{B09E955E-9E26-4423-8551-599D657F6F1C}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.Backend.DocumentIngestion.Functions", "Backend\ProjectVico.Backend.DocumentIngestion.Functions\ProjectVico.Backend.DocumentIngestion.Functions.csproj", "{1BAF7D3F-B923-4D55-AA6A-32EE3A6E236D}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -41,6 +49,18 @@ Global
 		{16D67700-01C5-401B-89D9-8B8E020A982C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{16D67700-01C5-401B-89D9-8B8E020A982C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{16D67700-01C5-401B-89D9-8B8E020A982C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1B699599-5354-4D33-B42D-FC016A895DB4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1B699599-5354-4D33-B42D-FC016A895DB4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1B699599-5354-4D33-B42D-FC016A895DB4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1B699599-5354-4D33-B42D-FC016A895DB4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B09E955E-9E26-4423-8551-599D657F6F1C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B09E955E-9E26-4423-8551-599D657F6F1C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B09E955E-9E26-4423-8551-599D657F6F1C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B09E955E-9E26-4423-8551-599D657F6F1C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1BAF7D3F-B923-4D55-AA6A-32EE3A6E236D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1BAF7D3F-B923-4D55-AA6A-32EE3A6E236D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1BAF7D3F-B923-4D55-AA6A-32EE3A6E236D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1BAF7D3F-B923-4D55-AA6A-32EE3A6E236D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -50,6 +70,9 @@ Global
 		{C1D00A1F-CFCC-4B60-9073-57E919819CB4} = {7F6BB84A-0B49-49E7-AFA6-3C90CA54156B}
 		{D621AD44-B4E3-42A0-976D-42B35CA6FD36} = {25D74023-1262-4CF8-81BC-7974FE879A87}
 		{16D67700-01C5-401B-89D9-8B8E020A982C} = {C2A16DA3-6D19-4F17-AF5E-04D5F23300EA}
+		{1B699599-5354-4D33-B42D-FC016A895DB4} = {540F99C7-FE27-467D-B360-62DDBC588441}
+		{B09E955E-9E26-4423-8551-599D657F6F1C} = {540F99C7-FE27-467D-B360-62DDBC588441}
+		{1BAF7D3F-B923-4D55-AA6A-32EE3A6E236D} = {540F99C7-FE27-467D-B360-62DDBC588441}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {D57E1357-E9CC-4EFB-8AF4-910D4EE0E8F6}

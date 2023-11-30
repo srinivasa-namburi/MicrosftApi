@@ -1,22 +1,28 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net6.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <AzureFunctionsVersion>v4</AzureFunctionsVersion>
     <OutputType>Exe</OutputType>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.ApplicationInsights.WorkerService" Version="2.15.0" />
-    <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="1.18.0" />
-    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http" Version="3.0.13" />
+    <PackageReference Include="Azure.Identity" Version="1.10.4" />
+    <PackageReference Include="Azure.Storage.Blobs" Version="12.19.1" />
+    <PackageReference Include="Grpc.Net.ClientFactory" Version="2.59.0" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="1.20.0" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.ApplicationInsights" Version="1.1.0" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Storage.Blobs" Version="6.2.0" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="1.16.2" />
+    <PackageReference Include="Microsoft.ApplicationInsights.WorkerService" Version="2.21.0" />
+    <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Azure" Version="1.7.1" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Configuration" Version="8.0.0" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.OpenApi" Version="2.0.0-preview2" />
-    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="1.10.0" />
-    <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.OpenApi" Version="2.0.0-preview2" />
     <PackageReference Include="Microsoft.SemanticKernel" Version="0.20.230821.4-preview" />
     <PackageReference Include="Microsoft.SemanticKernel.Connectors.Memory.AzureCognitiveSearch" Version="0.20.230821.4-preview" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.AzureAppConfiguration" Version="6.1.0" />
-    <PackageReference Include="System.Linq.Async" Version="6.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.AzureAppConfiguration" Version="7.0.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -39,8 +45,10 @@
   </ItemGroup>
   <ItemGroup>
     <Folder Include="data\" />
+    <Folder Include="Options\" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\Backend\ProjectVico.Backend.DocumentIngestion.Shared\ProjectVico.Backend.DocumentIngestion.Shared.csproj" />
     <ProjectReference Include="..\ProjectVico.Plugins.Shared\ProjectVico.Plugins.Shared.csproj" />
   </ItemGroup>
 </Project>

@@ -5,7 +5,7 @@ using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using ProjectVico.Plugins.DocQnA.Options;
+using ProjectVico.Backend.DocumentIngestion.Shared.Options;
 
 
 namespace ProjectVico.Plugins.DocQnA;
@@ -22,7 +22,7 @@ public class GetEnvironmentalReportSections
     }
 
     [Function("GetEnvironmentalReportSections")]
-    [OpenApiOperation(operationId: "GetEnvironmentalReportSections", tags: new[] { "ExecuteFunction" }, Description = "Gets a list of sections for an environmental report section.")]
+    [OpenApiOperation(operationId: "GetEnvironmentalReportSections", tags: new[] { "ExecuteFunction" }, Description = "Gets a list of sections for an environmental report section. Use this output with the GetFullChaptersForQuery plugin to get a more complete and detailed list of sections and subsections. ")]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "text/plain", bodyType: typeof(string), Description = "Returns a full list of all sections required to complete an environmental report as plain text")]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(string), Description = "Returns the error of the input.")]
     public async Task<HttpResponseData> RunAsync([HttpTrigger(AuthorizationLevel.Anonymous, "get")] HttpRequestData req)
