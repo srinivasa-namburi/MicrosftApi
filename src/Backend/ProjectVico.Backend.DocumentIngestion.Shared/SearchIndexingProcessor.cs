@@ -229,8 +229,8 @@ public class SearchIndexingProcessor : IIndexingProcessor
                     new VectorizedQuery(queryEmbeddings.ToArray())
                     {
                         KNearestNeighborsCount = k,
-                        //Fields = { "TitleVector", "ContentVector" }
-                        Fields = { "TitleVector" }
+                        Fields = { "TitleVector", "ContentVector" }
+                        //Fields = { "TitleVector" }
                     }
                 }
             },
