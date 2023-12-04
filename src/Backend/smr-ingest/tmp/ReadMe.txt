@@ -1,1 +1,0 @@
-The code will leave text files here for debugging. One file with all the text from a pdf, one with the extracted headers and one json file pr header

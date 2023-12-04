@@ -1,6 +1,0 @@
-Given the following paragraphs, identify common facets between them, and list them in order from most frequently occurring to least frequently occurring facet. Provide key questions answered per facet.
-
-{{$input}}
-
-Return the facets in the following json format: [{"label": "<label representing the facet>", "summary": "<Key questions answered per facet>"}]
-
