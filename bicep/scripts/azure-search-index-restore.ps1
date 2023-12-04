@@ -2,7 +2,7 @@ $targetSearchServiceName = Read-Host -Prompt "Enter the name of the search servi
 $targetAdminKey = Read-Host -Prompt "Enter the admin key for your search service."
 
 $serviceUri = "https://" + $targetSearchServiceName + ".search.windows.net"
-$uri = $serviceUri + "/indexes?api-version=2023-07-01-preview"
+$uri = $serviceUri + "/indexes?api-version=2023-10-01-preview"
 
 $headers = @{
     'api-key' = $targetAdminKey
@@ -36,7 +36,10 @@ $result = Invoke-RestMethod  -Uri $uri -Method POST -Body $indexSchemaFile -Head
 Write-Host "Starting to upload index documents from saved JSON files."
 
 $uri = $serviceUri + "/indexes/$($selectedIndexName)/docs/index?api-version=2023-07-01-preview"
-$files = Get-ChildItem "." -Filter *.json 
+
+# Filter on files matching schema file name with _n + .json extension
+
+$files = Get-ChildItem "." -Filter "$($selectedIndexName)_*.json"
 foreach ($f in $files){
     $content = Get-Content $f.FullName
     Write-Host "Uploading documents from file" $f.Name

@@ -3,7 +3,7 @@ $targetAdminKey = Read-Host -Prompt "Enter the admin key for your search service
 
 $serviceUri = "https://" + $targetSearchServiceName + ".search.windows.net"
 
-$uri = $serviceUri + "/indexes?api-version=2023-07-01-preview"
+$uri = $serviceUri + "/indexes?api-version=2023-10-01-preview"
 
 $headers = @{
     'api-key' = $targetAdminKey
@@ -22,10 +22,11 @@ $selectedIndexIdx = $host.ui.PromptForChoice('Enter the desired Index','Copy and
 $selectedIndexName = $result[$selectedIndexIdx]
 
 #Downloading a copy of the index schema
-$uri = $serviceUri + "/indexes/$($selectedIndexName.Name)?api-version=2023-07-01-preview"
-$result = Invoke-RestMethod -Uri $uri -Method GET -Headers $headers -ContentType "application/json" |
-    ConvertTo-Json -Depth 9 |
-    Set-Content "$($selectedIndexName.Name).schema"
+#DISABLED - use schema files in directory
+# $uri = $serviceUri + "/indexes/$($selectedIndexName.Name)?api-version=2023-07-01-preview"
+# $result = Invoke-RestMethod -Uri $uri -Method GET -Headers $headers -ContentType "application/json" |
+#     ConvertTo-Json -Depth 9 |
+#     Set-Content "$($selectedIndexName.Name).schema"
 
 #Get Document Count 
 
@@ -56,24 +57,3 @@ $job = 1..$pageCount  | ForEach-Object -Parallel {
     "Output: $uri"
 } -ThrottleLimit 5 -AsJob
 $job | Receive-Job -Wait
-
-# Go through the resultant schema file and rename the field vectorSearchProfile to vectorSearchConfiguration every time it occurs.
-
-# $schemaFile = "$($selectedIndexName.Name).schema"
-# $schema = Get-Content $schemaFile
-# #$schema = $schema -replace 'vectorSearchProfile', 'vectorSearchConfiguration'
-
-# # Get the "fields" array from the schema file and process each record acccording to the following rules:
-# # If the vectorSearchProfile is in the record with name "Embedding", set the content of the field to "SearchConfig" instad of null
-
-# $schema = $schema | ConvertFrom-Json
-# $fields = $schema.fields
-# foreach ($field in $fields) {
-#     if ($field.name -eq "Embedding") {
-#         $field.vectorSearchProfile = "searchConfig"
-#         $field | Add-Member -MemberType NoteProperty -Name vectorSearchConfiguration -Value "searchConfig"
-#     }
-# }
-
-# # Save the schema file back to disk
-# $schema | ConvertTo-Json -Depth 9 | Set-Content $schemaFile

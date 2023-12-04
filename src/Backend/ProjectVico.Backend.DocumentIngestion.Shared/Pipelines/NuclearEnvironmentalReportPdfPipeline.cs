@@ -30,6 +30,7 @@ public class NuclearEnvironmentalReportPdfPipeline : IPdfPipeline
 
     public async Task<List<ContentNode>> RunAsync(MemoryStream pdfStream, string pdfName)
     {
+        pdfStream.Position = 0;
         // Do all PDF and Content Tree processing here. This class should replicate the process in the console app Program.cs. (ProjectVico.Backend.DocumentIngestion.ConsoleApp)
         // The only difference is that this class should return a list of ContentNodes instead of writing them to a file, since we want to store them in CosmosDB.
 

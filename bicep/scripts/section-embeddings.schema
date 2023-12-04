@@ -18,7 +18,7 @@
       "analyzer": null,
       "normalizer": null,
       "dimensions": null,
-      "vectorSearchConfiguration": null,
+      "vectorSearchProfile": null,
       "synonymMaps": []
     },
     {
@@ -35,7 +35,7 @@
       "analyzer": null,
       "normalizer": null,
       "dimensions": 1536,
-      "vectorSearchConfiguration": "searchConfig",
+      "vectorSearchProfile": "smr-vector-search-profile",
       "synonymMaps": []
     },
     {
@@ -52,7 +52,7 @@
       "analyzer": null,
       "normalizer": null,
       "dimensions": null,
-      "vectorSearchConfiguration": null,
+      "vectorSearchProfile": null,
       "synonymMaps": []
     },
     {
@@ -69,7 +69,7 @@
       "analyzer": null,
       "normalizer": null,
       "dimensions": null,
-      "vectorSearchConfiguration": null,
+      "vectorSearchProfile": null,
       "synonymMaps": []
     },
     {
@@ -86,7 +86,7 @@
       "analyzer": null,
       "normalizer": null,
       "dimensions": null,
-      "vectorSearchConfiguration": null,
+      "vectorSearchProfile": null,
       "synonymMaps": []
     },
     {
@@ -103,7 +103,7 @@
       "analyzer": null,
       "normalizer": null,
       "dimensions": null,
-      "vectorSearchConfiguration": null,
+      "vectorSearchProfile": null,
       "synonymMaps": []
     },
     {
@@ -120,7 +120,7 @@
       "analyzer": null,
       "normalizer": null,
       "dimensions": null,
-      "vectorSearchConfiguration": null,
+      "vectorSearchProfile": null,
       "synonymMaps": []
     }
   ],
@@ -140,7 +140,7 @@
   },
   "semantic": null,
   "vectorSearch": {
-    "algorithmConfigurations": [
+    "algorithms": [
       {
         "name": "searchConfig",
         "kind": "hnsw",
@@ -151,6 +151,13 @@
           "efSearch": 500
         },
         "exhaustiveKnnParameters": null
+      }
+    ],
+    "profiles": [
+      {
+        "name": "smr-vector-search-profile",
+        "algorithm": "searchConfig",
+        "vectorizer": null
       }
     ]
   }

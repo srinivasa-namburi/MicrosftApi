@@ -61,12 +61,15 @@ public class IngestPdf
     {
         MemoryStream originalPdfStream = new();
         await pdfStream.CopyToAsync(originalPdfStream);
+        originalPdfStream.Position = 0;
 
         MemoryStream outputStream = new();
         await pdfStream.CopyToAsync(outputStream);
+        outputStream.Position = 0;
 
         MemoryStream indexingStreamForHashing = new();
         await pdfStream.CopyToAsync(indexingStreamForHashing);
+        indexingStreamForHashing.Position = 0;
 
         List<ContentNode> contentTree = new List<ContentNode>();
 

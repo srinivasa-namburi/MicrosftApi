@@ -69,7 +69,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { dotnet: "6.0", configuration: Release, os: windows-latest }
+          - { dotnet: "8.0", configuration: Release, os: windows-latest }
     runs-on: ${{ matrix.os }}
     needs: [build-and-deploy-bicep]
     steps:
@@ -96,7 +96,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { dotnet: "6.0", configuration: Release, os: windows-latest }
+          - { dotnet: "8.0", configuration: Release, os: windows-latest }
         plugin: [DoCQnA, GeographicalData]
 
     runs-on: ${{ matrix.os }}
@@ -134,7 +134,7 @@ jobs:
       - name: Package Project Vico Plugin
         run: |
           cd src/Plugins
-          .\scripts\deploy\package-plugin.ps1 -Configuration Release -PluginName ${{ matrix.plugin }} -DotnetFramework net6.0 -TargetRuntime win-x64 -OutputDirectory ${{ github.workspace }}\scripts\deploy -Version ${{ steps.versiontag.outputs.versiontag }} -InformationalVersion "Built from commit ${{ steps.gitversion.outputs.ShortSha }} on $(Get-Date -Format "yyyy-MM-dd")"
+          .\scripts\deploy\package-plugin.ps1 -Configuration Release -PluginName ${{ matrix.plugin }} -DotnetFramework net8.0 -TargetRuntime win-x64 -OutputDirectory ${{ github.workspace }}\scripts\deploy -Version ${{ steps.versiontag.outputs.versiontag }} -InformationalVersion "Built from commit ${{ steps.gitversion.outputs.ShortSha }} on $(Get-Date -Format "yyyy-MM-dd")"
       - name: Azure login
         uses: azure/login@v1
         with:

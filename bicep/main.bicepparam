@@ -7,7 +7,7 @@ Bicep parameters for main.bicep template for deploying Project Vico Azure resour
 
 using 'main.bicep'
 
-param uniqueName = ''
+param uniqueName = 'smrai02'
 
 // param deploymentName = 'vico-deployment'
 param webapiASPsku = 'P3V3'
@@ -31,9 +31,10 @@ param deployCosmosDB = true
 
 param memoryStore = 'AzureCognitiveSearch' // CognitiveSearch, Volatile
 
-param location = 'swedencentral'
+param location = 'northeurope'
 param azureMapsLocation = 'northeurope'
 param documentIntelligenceLocation = 'westeurope'
+param openaiLocation = 'swedencentral'
 
 param tags = {
   project: 'vico'
@@ -44,8 +45,6 @@ param tags = {
 param functionAppNameArray = [
   'DocQnA'
   'GeographicalData'
-  // 'Earthquake'
-  // 'Weather'
 ]
 
 /*
