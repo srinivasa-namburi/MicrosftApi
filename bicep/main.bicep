@@ -97,6 +97,12 @@ param deployNewAzureOpenAI bool = true
 @description('Whether to deploy Cosmos DB for persistent chat storage')
 param deployCosmosDB bool = true
 
+@description('Blob containers to deploy for linked Form Recognizer')
+param blobContainers array = [
+  'ingest'
+  'trainingdata'
+  'ingest-results'
+]
 
 @description('What method to use to persist embeddings')
 @allowed([
@@ -407,11 +413,96 @@ resource formRecognizer 'Microsoft.CognitiveServices/accounts@2023-05-01' = {
     name: 'S0'
   }
   kind: 'FormRecognizer'
+  identity: {
+    type: 'SystemAssigned'
+  }
   properties: {
     disableLocalAuth: false // TODO replace with AAD auth
     apiProperties: {
       statisticsEnabled: false
     }
+  }
+}
+
+resource staFormRecognizer 'Microsoft.Storage/storageAccounts@2022-09-01' = {
+  name: take('stadi${uniqueName}', 23)
+  location: location
+  tags: tags
+  sku: {
+    name: 'Standard_ZRS'
+  }
+  identity: {
+    type: 'SystemAssigned'
+  }
+  kind: 'StorageV2'
+  properties: {
+    isHnsEnabled: true
+    supportsHttpsTrafficOnly: true
+    accessTier: 'Hot'
+    allowBlobPublicAccess: false // require auth to read blobs
+    allowSharedKeyAccess: true // change to false when access keys are no longer required
+    minimumTlsVersion: 'TLS1_2'
+    networkAcls: {
+      defaultAction: 'Allow' // Deny when proper network segmentation is done and PE are created
+      // bypass: 'AzureServices'
+      // ipRules: (allowIpRanges == []) ? null : ipRules
+    }
+  }
+}
+
+resource blobFeed 'Microsoft.Storage/storageAccounts/blobServices@2022-09-01' = {
+  name: 'default'
+  parent: staFormRecognizer
+  properties: {
+    changeFeed: {
+      enabled: false
+    }
+    cors: {
+      corsRules: [
+          {
+              allowedOrigins: [
+                  'https://documentintelligence.ai.azure.com'
+              ]
+              allowedMethods: [
+                  'DELETE'
+                  'GET'
+                  'HEAD'
+                  'MERGE'
+                  'OPTIONS'
+                  'PATCH'
+                  'POST'
+                  'PUT'
+              ]
+              maxAgeInSeconds: 120
+              exposedHeaders: [
+                  '*'
+              ]
+              allowedHeaders: [
+                  '*'
+              ]
+          }
+      ]
+  }
+  }
+}
+
+resource containers 'Microsoft.Storage/storageAccounts/blobServices/containers@2021-09-01' = [for blobContainer in blobContainers: {
+  parent: blobFeed
+  name: blobContainer
+  properties: {
+    publicAccess: 'None'
+  }
+  dependsOn: []
+}]
+
+resource assignStorageRoles 'Microsoft.Authorization/roleAssignments@2020-10-01-preview' = {
+  name: guid('stadi${uniqueName}', 'StorageBlobDataContributor', resourceGroup().name, 'stadi', formRecognizer.id)
+  scope: staFormRecognizer
+  properties: {
+    description: 'Assign storage Role'
+    principalId: formRecognizer.id // objectId of the VMSS MSI
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: '/subscriptions/${subscription().subscriptionId}/providers/Microsoft.Authorization/roleDefinitions/ba92f5b4-2d11-453d-a403-e96b0029c9fe'
   }
 }
 

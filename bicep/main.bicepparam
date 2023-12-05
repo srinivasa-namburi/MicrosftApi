@@ -47,6 +47,12 @@ param functionAppNameArray = [
   'GeographicalData'
 ]
 
+param blobContainers = [
+  'ingest'
+  'trainingdata'
+  'ingest-results'
+]
+
 /*
 param privateDnsZoneNames = [
   'privatelink.search.windows.net' // Azure Cognitive Search
