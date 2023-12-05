@@ -36,7 +36,7 @@ jobs:
         with:
           deploymentName: ${{ github.run_number }}
           scope: resourcegroup
-          resourceGroupName: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          resourceGroupName: ${{ vars.AZURE_RESOURCE_GROUP }}
           template: ./bicep/main.bicep
           parameters: ./bicep/main.bicepparam
           deploymentMode: Validate
@@ -58,8 +58,8 @@ jobs:
         uses: azure/arm-deploy@v1
         with:
           scope: resourcegroup
-          subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION }}
-          resourceGroupName: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          subscriptionId: ${{ vars.AZURE_SUBSCRIPTION }}
+          resourceGroupName: ${{ vars.AZURE_RESOURCE_GROUP }}
           template: ./bicep/main.bicep
           parameters: ./bicep/main.bicepparam
           failOnStdErr: false
@@ -80,8 +80,8 @@ jobs:
           creds: "${{ secrets.AZURE_CREDENTIALS }}"
       - name: Get store name and connection string
         run: |
-          $APP_STORE_NAME=$(az resource list --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --query "[?type=='Microsoft.AppConfiguration/configurationStores' && contains(name, 'appConfStore')].name" -o tsv) 
-          $APP_STORE_CONNECTION_STRING=$(az appconfig credential list -g ${{ secrets.AZURE_RESOURCE_GROUP }} -n $APP_STORE_NAME --query "[?name=='Primary'].connectionString" -o tsv)
+          $APP_STORE_NAME=$(az resource list --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} --query "[?type=='Microsoft.AppConfiguration/configurationStores' && contains(name, 'appConfStore')].name" -o tsv) 
+          $APP_STORE_CONNECTION_STRING=$(az appconfig credential list -g ${{ vars.AZURE_RESOURCE_GROUP }} -n $APP_STORE_NAME --query "[?name=='Primary'].connectionString" -o tsv)
           echo "APP_STORE_CONNECTION_STRING=$APP_STORE_CONNECTION_STRING" >> $env:GITHUB_ENV
       - uses: azure/appconfiguration-sync@v1
         with:
@@ -141,18 +141,18 @@ jobs:
           creds: "${{ secrets.AZURE_CREDENTIALS }}"
       - name: Get app name
         run: |
-          $FUNC_NAME=$(az resource list --resource-group ${{secrets.AZURE_RESOURCE_GROUP}} | ConvertFrom-Json | where {$_.type -eq 'Microsoft.Web/sites' -and $_.name -like '*${{ matrix.plugin }}*'} | select name).name
+          $FUNC_NAME=$(az resource list --resource-group ${{vars.AZURE_RESOURCE_GROUP}} | ConvertFrom-Json | where {$_.type -eq 'Microsoft.Web/sites' -and $_.name -like '*${{ matrix.plugin }}*'} | select name).name
           echo "FUNC_NAME=$FUNC_NAME" >> $env:GITHUB_ENV
 
       - name: Enable Run From Package
         run: |
-          az webapp config appsettings set --resource-group ${{secrets.AZURE_RESOURCE_GROUP}} --name ${{ env.FUNC_NAME }} --settings WEBSITE_RUN_FROM_PACKAGE="1" -o none
+          az webapp config appsettings set --resource-group ${{vars.AZURE_RESOURCE_GROUP}} --name ${{ env.FUNC_NAME }} --settings WEBSITE_RUN_FROM_PACKAGE="1" -o none
 
       - name: Deploy package
         run: |
           az extension add --name webapp
           ls ${{ github.workspace }}\scripts\deploy\out
-          az webapp deploy --name ${{ env.FUNC_NAME }} --resource-group ${{secrets.AZURE_RESOURCE_GROUP}} --type zip --src-path ${{ github.workspace }}\scripts\deploy\out\${{ matrix.plugin }}.zip --async false
+          az webapp deploy --name ${{ env.FUNC_NAME }} --resource-group ${{vars.AZURE_RESOURCE_GROUP}} --type zip --src-path ${{ github.workspace }}\scripts\deploy\out\${{ matrix.plugin }}.zip --async false
 
   package-and-deploy-webapi:
     needs: [build-and-deploy-bicep, syncconfig, package-and-deploy-plugins]
@@ -204,15 +204,15 @@ jobs:
           creds: "${{ secrets.AZURE_CREDENTIALS }}"
       - name: Get app name
         run: |
-          $WEB_APP_NAME=$(az resource list --resource-group ${{secrets.AZURE_RESOURCE_GROUP}} | ConvertFrom-Json | where {$_.type -eq 'Microsoft.Web/sites' -and $_.name -like '*webapi*'} | select name).name
+          $WEB_APP_NAME=$(az resource list --resource-group ${{vars.AZURE_RESOURCE_GROUP}} | ConvertFrom-Json | where {$_.type -eq 'Microsoft.Web/sites' -and $_.name -like '*webapi*'} | select name).name
           echo "AZURE_WEBAPP_NAME=$WEB_APP_NAME" >> $env:GITHUB_ENV
 
       - name: Enable Run From Package
         run: |
-          az webapp config appsettings set --resource-group ${{secrets.AZURE_RESOURCE_GROUP}} --name ${{ env.AZURE_WEBAPP_NAME }} --settings WEBSITE_RUN_FROM_PACKAGE="1" -o none
+          az webapp config appsettings set --resource-group ${{vars.AZURE_RESOURCE_GROUP}} --name ${{ env.AZURE_WEBAPP_NAME }} --settings WEBSITE_RUN_FROM_PACKAGE="1" -o none
 
       - name: Deploy package
         run: |
           az extension add --name webapp
           ls ${{ github.workspace }}\scripts\deploy\out
-          az webapp deploy --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group ${{secrets.AZURE_RESOURCE_GROUP}} --type zip --src-path ${{ github.workspace }}\scripts\deploy\out\webapi.zip --async false
+          az webapp deploy --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group ${{vars.AZURE_RESOURCE_GROUP}} --type zip --src-path ${{ github.workspace }}\scripts\deploy\out\webapi.zip --async false

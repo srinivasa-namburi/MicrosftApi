@@ -16,32 +16,32 @@ on:
   workflow_dispatch:
 
 jobs:
-  lint-bicep:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Run Bicep linter
-        run: az bicep build --file bicep/main.bicep
-
-  validate-bicep:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: azure/login@v1
-        name: Sign in to Azure
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-      - uses: azure/arm-deploy@v1
-        name: Run preflight validation
-        with:
-          deploymentName: ${{ github.run_number }}
-          scope: resourcegroup
-          resourceGroupName: ${{ secrets.AZURE_RESOURCE_GROUP }}
-          template: ./bicep/main.bicep
-          parameters: ./bicep/main.bicepparam
-          deploymentMode: Validate
-
-  build-and-deploy-bicep:
+ lint-bicep:
+  runs-on: ubuntu-latest
+  steps:
+  - uses: actions/checkout@v2
+  - name: Run Bicep linter
+    run: az bicep build --file bicep/main.bicep
+    
+ validate-bicep: 
+  runs-on: ubuntu-latest
+  steps:
+  - uses: actions/checkout@v2
+  - uses: azure/login@v1
+    name: Sign in to Azure
+    with:
+      creds: ${{ secrets.AZURE_CREDENTIALS }}
+  - uses: azure/arm-deploy@v1
+    name: Run preflight validation
+    with:
+      deploymentName: ${{ github.run_number }}
+      scope: resourcegroup
+      resourceGroupName: ${{ vars.AZURE_RESOURCE_GROUP }}
+      template: ./bicep/main.bicep
+      parameters: ./bicep/main.bicepparam
+      deploymentMode: Validate
+      
+ build-and-deploy-bicep:
     runs-on: ubuntu-latest
     needs: [lint-bicep, validate-bicep]
     steps:
@@ -52,18 +52,18 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-        # Deploy Bicep file
+      # Deploy Bicep file
       - name: deploy
         uses: azure/arm-deploy@v1
         with:
           scope: resourcegroup
-          subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION }}
-          resourceGroupName: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          subscriptionId: ${{ vars.AZURE_SUBSCRIPTION }}
+          resourceGroupName: ${{ vars.AZURE_RESOURCE_GROUP }}
           template: ./bicep/main.bicep
           parameters: ./bicep/main.bicepparam
           failOnStdErr: false
-
-  syncconfig:
+ 
+ syncconfig: 
     strategy:
       fail-fast: false
       matrix:
@@ -79,8 +79,8 @@ jobs:
           creds: "${{ secrets.AZURE_CREDENTIALS }}"
       - name: Get store name and connection string
         run: |
-          $APP_STORE_NAME=$(az resource list --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --query "[?type=='Microsoft.AppConfiguration/configurationStores' && contains(name, 'appConfStore')].name" -o tsv) 
-          $APP_STORE_CONNECTION_STRING=$(az appconfig credential list -g ${{ secrets.AZURE_RESOURCE_GROUP }} -n $APP_STORE_NAME --query "[?name=='Primary'].connectionString" -o tsv)
+          $APP_STORE_NAME=$(az resource list --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} --query "[?type=='Microsoft.AppConfiguration/configurationStores' && contains(name, 'appConfStore')].name" -o tsv) 
+          $APP_STORE_CONNECTION_STRING=$(az appconfig credential list -g ${{ vars.AZURE_RESOURCE_GROUP }} -n $APP_STORE_NAME --query "[?name=='Primary'].connectionString" -o tsv)
           echo "APP_STORE_CONNECTION_STRING=$APP_STORE_CONNECTION_STRING" >> $env:GITHUB_ENV
       - uses: azure/appconfiguration-sync@v1
         with:

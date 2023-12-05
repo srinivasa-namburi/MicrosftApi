@@ -715,7 +715,7 @@ resource PluginsKernelASP 'Microsoft.Web/serverfarms@2022-09-01' = {
 }
 
 resource storageAccount 'Microsoft.Storage/storageAccounts@2022-09-01' = [for functionAppName in functionAppNameArray: {
-  name: toLower(take('sta${toLower(functionAppName)}${uniqueName}', 23))
+  name: toLower(take('sta${take(toLower(functionAppName), 4)}${uniqueName}', 23))
   location: location
   sku: {
     name: 'Standard_LRS'
@@ -748,11 +748,11 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = [for (functionAppName, i
       appSettings: [
         {
           name: 'AzureWebJobsStorage'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${toLower(take('sta${toLower(functionAppName)}${uniqueName}', 23))};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccount[i].listKeys().keys[0].value}'
+          value: 'DefaultEndpointsProtocol=https;AccountName=${toLower(take('sta${take(toLower(functionAppName), 4)}${uniqueName}', 23))};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccount[i].listKeys().keys[0].value}'
         }
         {
           name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${toLower(take('sta${toLower(functionAppName)}${uniqueName}', 23))};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccount[i].listKeys().keys[0].value}'
+          value: 'DefaultEndpointsProtocol=https;AccountName=${toLower(take('sta${take(toLower(functionAppName), 4)}${uniqueName}', 23))};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccount[i].listKeys().keys[0].value}'
         }
         {
           name: 'FUNCTIONS_EXTENSION_VERSION'
