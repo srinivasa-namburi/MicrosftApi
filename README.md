@@ -57,6 +57,9 @@ The Word Copilot connects to a WebAPI backend which is interfacing with the Sema
 - Hit yes to trust the local certificates (you will only need to do this the first time)
 - When the projects launch, they should report their URL, which is the URL to use in the .env of the Word Colpilot project to point to this WebAPI
 
+## Exploring Deployment, Customizing and Debugging the Solution
+See [ExploringCustomizingAndDebuggingSolution.md](https://github.com/Azure/AI-For-SMRs/blob/main/ExploringCustomizingAndDebuggingSolution.md)
+
 ## Trademarks
 
 This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft
