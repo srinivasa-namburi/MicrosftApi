@@ -33,11 +33,11 @@ public class NrcAdamsDocumentClassifier : IDocumentClassifier
             var result = operation.Value;
             var documentClassificationType = result.Documents[0].DocumentType switch
             {
-                "er-mixedchaptertitles" => DocumentClassificationType.EnvironmentalReportWithMixedTitles,
-                "er-numberedchapters" => DocumentClassificationType.EnvironmentalReportWithNumberedChapters,
-                "figures-tables-only" => DocumentClassificationType.FiguresAndTablesOnly,
-                "headings-only" => DocumentClassificationType.HeadingsOnly,
-                "withheld-section-coverpage" => DocumentClassificationType.WithHeldSectionCover,
+                "er-mixedchaptertitles" => DocumentClassificationType.NrcEnvironmentalReportWithMixedTitles,
+                "er-numberedchapters" => DocumentClassificationType.NrcEnvironmentalReportWithNumberedChapters,
+                "figures-tables-only" => DocumentClassificationType.NrcFiguresAndTablesOnly,
+                "headings-only" => DocumentClassificationType.NrcHeadingsOnly,
+                "withheld-section-coverpage" => DocumentClassificationType.NrcWithHeldSectionCover,
             };
 
             var confidence = result.Documents[0].Confidence;

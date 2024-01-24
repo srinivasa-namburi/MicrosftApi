@@ -13,4 +13,25 @@ namespace ProjectVico.Backend.DocumentIngestion.Shared.Pipelines;
 
 public class BaselinePipeline : IPdfPipeline
 {
+
+    private readonly AiOptions _aiOptions;
+    private readonly IContentTreeProcessor _contentTreeProcessor;
+    private readonly IContentTreeJsonTransformer _contentTreeJsonTransformer;
+
+    private const string LineSeparator = "------------------------------------------------------------------";
+
+    public BaselinePipeline(
+        IOptions<AiOptions> aiOptions,
+        IContentTreeProcessor contentTreeProcessor,
+        IContentTreeJsonTransformer contentTreeJsonTransformer)
+    {
+        this._aiOptions = aiOptions.Value;
+        this._contentTreeProcessor = contentTreeProcessor;
+        this._contentTreeJsonTransformer = contentTreeJsonTransformer;
+    }
+
+    public Task<List<ContentNode>> RunAsync(MemoryStream pdfStream, string pdfName)
+    {
+        throw new NotImplementedException();
+    }
 }

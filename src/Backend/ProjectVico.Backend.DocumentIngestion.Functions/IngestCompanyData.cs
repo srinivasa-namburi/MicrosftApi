@@ -51,11 +51,11 @@ public class IngestCompanyData
     }
 
     [Function(nameof(IngestCompanyData))]
-    [BlobOutput("ingest/processed-pdf/{name}", Connection = "ConnectionStrings:IngestionBlobConnectionString")]
+    [BlobOutput("ingest-custom/processed-pdf/{name}", Connection = "ConnectionStrings:IngestionBlobConnectionString")]
     public async Task<Stream> Run(
-        [BlobTrigger("ingest/input-pdf/{name}", Connection = "ConnectionStrings:IngestionBlobConnectionString")]
+        [BlobTrigger("ingest-custom/input-pdf/{name}", Connection = "ConnectionStrings:IngestionBlobConnectionString")]
             string pdfItem, string name,
-        [BlobInput("ingest/input-pdf/{name}", Connection = "ConnectionStrings:IngestionBlobConnectionString")]
+        [BlobInput("ingest-custom/input-pdf/{name}", Connection = "ConnectionStrings:IngestionBlobConnectionString")]
             Stream pdfStream,
         FunctionContext executionContext)
     {
@@ -74,14 +74,14 @@ public class IngestCompanyData
         List<ContentNode> contentTree = new List<ContentNode>();
 
         var blobServiceClient = new BlobServiceClient(this._ingestionOptions.BlobStorageConnectionString);
-        var containerClient = blobServiceClient.GetBlobContainerClient("companydata");
+        var containerClient = blobServiceClient.GetBlobContainerClient("ingest-custom");
         var originalBlobClient = containerClient.GetBlobClient($"input-pdf/{name}");
 
         // If classification is disabled, we don't want to process it.
         if (!this._ingestionOptions.PerformClassification)
         {
             Console.WriteLine("Classification is disabled - assuming we are dealing with an Environmental report with numbered chapters and sections");
-            this._pdfPipeline = new NuclearEnvironmentalReportPdfPipeline(this._aiOptionsOptionsContainer, this._contentTreeProcessor, this._jsonTransformer);
+            this._pdfPipeline = new BaselinePipeline(this._aiOptionsOptionsContainer, this._contentTreeProcessor, this._jsonTransformer);
             contentTree = await this._pdfPipeline.RunAsync(originalPdfStream, name);
         }
         else
@@ -89,7 +89,7 @@ public class IngestCompanyData
             // Generate a 15-minute SAS token for the blob
             var sasBuilder = new BlobSasBuilder
             {
-                BlobContainerName = "companydata",
+                BlobContainerName = "ingest-custom",
                 BlobName = $"input-pdf/{name}",
                 Resource = "b",
                 StartsOn = DateTimeOffset.UtcNow,
@@ -120,26 +120,29 @@ public class IngestCompanyData
                 this._pdfPipeline = new BaselinePipeline(this._aiOptionsOptionsContainer,
                     this._contentTreeProcessor, this._jsonTransformer);
                 contentTree = await this._pdfPipeline.RunAsync(originalPdfStream, name);
-                break;
             }
-
-            switch (documentClassification.ClassificationType)
+            else
             {
-      
-                case DocumentClassificationType.ProductSpecificInput:
-                    // file with a pre-set structure with details of this new project (e.g. The Reactor Type, Temperature, GPS Coords of the project, etc.)
-                    Console.WriteLine("Document classified as ProductSpecificInput");
-                    this._pdfPipeline = new ProductSpecificInputPipeline(this._aiOptionsOptionsContainer,
-                        this._contentTreeProcessor, this._jsonTransformer);
-                    contentTree = await this._pdfPipeline.RunAsync(originalPdfStream, name);
-                    break;
-                case DocumentClassificationType.EnvironmentalReportWithNumberedChapters:
-                    // Document is a Numbered Structured Document
-                    Console.WriteLine("Document classified as NumberedStructuredDocument");
-                    this._pdfPipeline = new NuclearEnvironmentalReportPdfPipeline(this._aiOptionsOptionsContainer,
-                        this._contentTreeProcessor, this._jsonTransformer);
-                    contentTree = await this._pdfPipeline.RunAsync(originalPdfStream, name);
-                    break;
+                switch (documentClassification.ClassificationType)
+                {
+
+                    case DocumentClassificationType.CustomDataProductSpecificInput:
+                        // file with a pre-set structure with details of this new project (e.g. The Reactor Type, Temperature, GPS Coords of the project, etc.)
+                        Console.WriteLine("Document classified as ProductSpecificInput");
+                        this._pdfPipeline = new ProductSpecificInputPipeline(this._aiOptionsOptionsContainer,
+                            this._contentTreeProcessor, this._jsonTransformer);
+                        contentTree = await this._pdfPipeline.RunAsync(originalPdfStream, name);
+                        break;
+
+                    default:
+                    case DocumentClassificationType.CustomDataBasicDocument:
+                        // Document is a Numbered Structured Document
+                        Console.WriteLine("Document classified as NumberedStructuredDocument");
+                        this._pdfPipeline = new BaselinePipeline(this._aiOptionsOptionsContainer,
+                            this._contentTreeProcessor, this._jsonTransformer);
+                        contentTree = await this._pdfPipeline.RunAsync(originalPdfStream, name);
+                        break;
+                }
             }
         }
 

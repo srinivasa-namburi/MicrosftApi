@@ -121,32 +121,32 @@ public class IngestPdf
 
             switch (documentClassification.ClassificationType)
             {
-                case DocumentClassificationType.EnvironmentalReportWithMixedTitles:
-                    Console.WriteLine("Document classified as EnvironmentalReportWithMixedTitles");
+                case DocumentClassificationType.NrcEnvironmentalReportWithMixedTitles:
+                    Console.WriteLine("Document classified as NrcEnvironmentalReportWithMixedTitles");
                     Console.WriteLine("We can't process this further - moving to processed without further work");
                     // Delete the original blob
                     await originalBlobClient.DeleteIfExistsAsync();
                     return outputStream;
-                case DocumentClassificationType.EnvironmentalReportWithNumberedChapters:
-                    Console.WriteLine("Document classified as EnvironmentalReportWithNumberedChapters");
+                case DocumentClassificationType.NrcEnvironmentalReportWithNumberedChapters:
+                    Console.WriteLine("Document classified as NrcEnvironmentalReportWithNumberedChapters");
                     this._pdfPipeline = new NuclearEnvironmentalReportPdfPipeline(this._aiOptionsOptionsContainer,
                         this._contentTreeProcessor, this._jsonTransformer);
                     contentTree = await this._pdfPipeline.RunAsync(originalPdfStream, name);
                     break;
-                case DocumentClassificationType.FiguresAndTablesOnly:
-                    Console.WriteLine("Document classified as FiguresAndTablesOnly");
+                case DocumentClassificationType.NrcFiguresAndTablesOnly:
+                    Console.WriteLine("Document classified as NrcFiguresAndTablesOnly");
                     Console.WriteLine("We can't process this further - moving to processed without further work");
                     // Delete the original blob
                     await originalBlobClient.DeleteIfExistsAsync();
                     return outputStream;
-                case DocumentClassificationType.HeadingsOnly:
-                    Console.WriteLine("Document classified as HeadingsOnly");
+                case DocumentClassificationType.NrcHeadingsOnly:
+                    Console.WriteLine("Document classified as NrcHeadingsOnly");
                     Console.WriteLine("We can't process this further - moving to processed without further work");
                     // Delete the original blob
                     await originalBlobClient.DeleteIfExistsAsync();
                     return outputStream;
-                case DocumentClassificationType.WithHeldSectionCover:
-                    Console.WriteLine("Document classified as WithHeldSectionCover");
+                case DocumentClassificationType.NrcWithHeldSectionCover:
+                    Console.WriteLine("Document classified as NrcWithHeldSectionCover");
                     Console.WriteLine("We can't process this further - moving to processed without further work");
                     // Delete the original blob
                     await originalBlobClient.DeleteIfExistsAsync();
