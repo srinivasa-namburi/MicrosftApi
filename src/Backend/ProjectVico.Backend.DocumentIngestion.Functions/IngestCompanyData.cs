@@ -80,7 +80,7 @@ public class IngestCompanyData
         // If classification is disabled, we don't want to process it.
         if (!this._ingestionOptions.PerformClassification)
         {
-            Console.WriteLine("Classification is disabled - assuming we are dealing with an Environmental report with numbered chapters and sections");
+            Console.WriteLine("Classification is disabled - baseline processing grab");
             this._pdfPipeline = new BaselinePipeline(this._aiOptionsOptionsContainer, this._contentTreeProcessor, this._jsonTransformer);
             contentTree = await this._pdfPipeline.RunAsync(originalPdfStream, name);
         }
