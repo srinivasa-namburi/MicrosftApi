@@ -150,7 +150,7 @@ public class BaselinePipeline : IPdfPipeline
             };
 
             // Each Paragraph has a Role. We're only interested in Title, SectionHeading and Paragraph.
-            if (paragraph.Role == ParagraphRole.Title || paragraph.Role == ParagraphRole.SectionHeading)
+            if (paragraph.Role == ParagraphRole.Title)
             {
 
                 // If the previous paragraph was also a title, remove it from the content tree. We don't want titles after titles.
@@ -162,11 +162,47 @@ public class BaselinePipeline : IPdfPipeline
                     contentTree.Remove(previousContentNode);
                 }
 
-                Console.WriteLine($"Adding current paragraph as Title or Section Header: {paragraph.Content}");
+                Console.WriteLine($"Adding current paragraph as Title: {paragraph.Content}");
                 // If the paragraph is a Title or section heading, then we create a new ContentNode and add it to the content tree.
                 isRootNode = true;
                 contentNode.Type = ContentNodeType.Title;
             }
+
+            else if (paragraph.Role == ParagraphRole.SectionHeading)
+            {
+                var sectionNumber = contentNode.Text.Split(' ')[0];
+                if (sectionNumber.Contains("."))
+                {
+                    // If the SectionHeading has multiple numbers separated by periods, then we assume it's a SectionHeading.
+
+                    contentNode.Type = ContentNodeType.Heading;
+
+                    var sectionNumberParts = sectionNumber.Split('.');
+                    var sectionNumberToMatch = sectionNumberParts.Length > 1 ? sectionNumberParts[0] : sectionNumber;
+
+                    var parentContentNode = contentTree.FindLast(x =>
+                        x.Type == ContentNodeType.Title && x.Text.StartsWith(sectionNumberToMatch));
+
+                    if (parentContentNode != null)
+                    {
+                        isRootNode = false;
+                        parentContentNode.Children.Add(contentNode);
+                        contentNode.Parent = parentContentNode;
+                        Console.WriteLine($"Adding current paragraph as Heading: {paragraph.Content} under {parentContentNode.Text}");
+                    }
+
+                }
+                else
+                {
+                    // This SectionHeading is in fact a Title since it only has a single number with no periods following it.
+                    // We add this as a Title to the root of the content tree and continue the loop.
+
+                    Console.WriteLine($"Adding current paragraph as Title: {paragraph.Content}");
+                    contentNode.Type = ContentNodeType.Title;
+                    isRootNode = true;
+                }
+            }
+
             // If no ParagraphRole is specified, then we assume it's a Paragraph. We're not currently storing tables or images.
             else if (paragraph.Role == null)
             {
