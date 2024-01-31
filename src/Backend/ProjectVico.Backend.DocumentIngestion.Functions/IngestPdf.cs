@@ -5,6 +5,7 @@ using Azure.Storage;
 using Azure.Storage.Blobs;
 using Azure.Storage.Sas;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using ProjectVico.Backend.DocumentIngestion.Shared.Classification;
 using ProjectVico.Backend.DocumentIngestion.Shared.Classification.Models;
@@ -38,6 +39,7 @@ public class IngestPdf
         IContentTreeProcessor contentTreeProcessor,
         IContentTreeJsonTransformer jsonTransformer,
         IIndexingProcessor indexingProcessor,
+        [FromKeyedServices("nrc-classifier")]
         IDocumentClassifier documentClassifier)
     {
         this._indexingProcessor = indexingProcessor;
@@ -78,7 +80,7 @@ public class IngestPdf
         var originalBlobClient = containerClient.GetBlobClient($"input-pdf/{name}");
 
         // If classification is disabled, we don't want to process it.
-        if (!this._ingestionOptions.PerformClassification)
+        if (!this._ingestionOptions.PerformNrcClassification)
         {
             Console.WriteLine("Classification is disabled - assuming we are dealing with an Environmental report with numbered chapters and sections");
             this._pdfPipeline = new NuclearEnvironmentalReportPdfPipeline(this._aiOptionsOptionsContainer, this._contentTreeProcessor, this._jsonTransformer);
@@ -110,7 +112,7 @@ public class IngestPdf
             var sasUri = $"{originalBlobClient.Uri}?{sasToken}";
 
             // Classify the document
-            var documentClassification = await this._documentClassifier.ClassifyDocumentFromUri(sasUri, this._ingestionOptions.ClassificationModelName);
+            var documentClassification = await this._documentClassifier.ClassifyDocumentFromUri(sasUri, this._ingestionOptions.NrcClassificationModelName);
 
             // If the document is not classified, we don't want to process it.
             if (!documentClassification.SuccessfulClassification)

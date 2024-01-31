@@ -9,6 +9,8 @@ public sealed class IngestionOptions
     public string BlobStorageAccountKey { get; set; } = string.Empty;
     public string BlobStorageContainerName { get; set; } = string.Empty;
     public string BlobStorageConnectionString { get; set; } = string.Empty;
-    public bool PerformClassification { get; set; } = false;
-    public string ClassificationModelName { get; set; } = "nrc-classifier";
+    public bool PerformNrcClassification { get; set; } = false;
+    public bool PerformCustomDataClassification { get; set; } = false;
+    public string NrcClassificationModelName { get; set; } = "nrc-classifier";
+    public string CustomDataClassificationModelName { get; set; } = "custom-classifier";
 }

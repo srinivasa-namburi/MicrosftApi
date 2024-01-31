@@ -5,6 +5,7 @@ using Azure.Storage;
 using Azure.Storage.Blobs;
 using Azure.Storage.Sas;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using ProjectVico.Backend.DocumentIngestion.Shared.Classification;
 using ProjectVico.Backend.DocumentIngestion.Shared.Classification.Models;
@@ -38,6 +39,7 @@ public class IngestCompanyData
         IContentTreeProcessor contentTreeProcessor,
         IContentTreeJsonTransformer jsonTransformer,
         IIndexingProcessor indexingProcessor,
+        [FromKeyedServices("customdata-classifier")]
         IDocumentClassifier documentClassifier)
     {
         this._indexingProcessor = indexingProcessor;
@@ -78,7 +80,7 @@ public class IngestCompanyData
         var originalBlobClient = containerClient.GetBlobClient($"input-pdf/{name}");
 
         // If classification is disabled, we don't want to process it.
-        if (!this._ingestionOptions.PerformClassification)
+        if (!this._ingestionOptions.PerformCustomDataClassification)
         {
             Console.WriteLine("Classification is disabled - baseline processing grab");
             this._pdfPipeline = new BaselinePipeline(this._aiOptionsOptionsContainer, this._contentTreeProcessor, this._jsonTransformer);
@@ -110,7 +112,7 @@ public class IngestCompanyData
             var sasUri = $"{originalBlobClient.Uri}?{sasToken}";
 
             // Classify the document
-            var documentClassification = await this._documentClassifier.ClassifyDocumentFromUri(sasUri, this._ingestionOptions.ClassificationModelName);
+            var documentClassification = await this._documentClassifier.ClassifyDocumentFromUri(sasUri, this._ingestionOptions.NrcClassificationModelName);
 
             // If the document is not classified, we don't want to process it.
             if (!documentClassification.SuccessfulClassification)
