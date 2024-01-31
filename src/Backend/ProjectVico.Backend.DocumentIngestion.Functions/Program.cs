@@ -46,6 +46,7 @@ var hostBuilder = new HostBuilder()
         services.AddScoped<IContentTreeJsonTransformer, ContentTreeJsonTransformer>();
         services.AddScoped<IPdfPipeline, NuclearEnvironmentalReportPdfPipeline>();
         services.AddScoped<IIndexingProcessor, SearchIndexingProcessor>();
+
         services.AddKeyedScoped<IDocumentClassifier, NrcAdamsDocumentClassifier>("nrc-classifier");
         services.AddKeyedScoped<IDocumentClassifier, CustomDataDocumentClassifier>("customdata-classifier");
         SearchClient GetSearchClientWithIndex(IServiceProvider serviceProvider, object? key, string indexName)

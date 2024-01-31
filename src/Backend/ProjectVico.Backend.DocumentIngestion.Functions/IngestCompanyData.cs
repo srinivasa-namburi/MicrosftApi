@@ -112,7 +112,7 @@ public class IngestCompanyData
             var sasUri = $"{originalBlobClient.Uri}?{sasToken}";
 
             // Classify the document
-            var documentClassification = await this._documentClassifier.ClassifyDocumentFromUri(sasUri, this._ingestionOptions.NrcClassificationModelName);
+            var documentClassification = await this._documentClassifier.ClassifyDocumentFromUri(sasUri, this._ingestionOptions.CustomDataClassificationModelName);
 
             // If the document is not classified, we don't want to process it.
             if (!documentClassification.SuccessfulClassification)
