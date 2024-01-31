@@ -12,5 +12,5 @@ public sealed class IngestionOptions
     public bool PerformNrcClassification { get; set; } = false;
     public bool PerformCustomDataClassification { get; set; } = false;
     public string NrcClassificationModelName { get; set; } = "nrc-classifier";
-    public string CustomDataClassificationModelName { get; set; } = "custom-classifier";
+    public string CustomDataClassificationModelName { get; set; } = "customdata-classifier";
 }

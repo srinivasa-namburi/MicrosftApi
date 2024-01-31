@@ -1,19 +1,11 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
-using System.Collections.Generic;
-using System.Diagnostics.Metrics;
-using System;
-using System.Reflection.Metadata.Ecma335;
-using System.Text.RegularExpressions;
-using System.Xml.Linq;
 using Azure;
 using Azure.AI.FormRecognizer.DocumentAnalysis;
 using Microsoft.Extensions.Options;
 using ProjectVico.Backend.DocumentIngestion.Shared.Interfaces;
 using ProjectVico.Backend.DocumentIngestion.Shared.Models;
 using ProjectVico.Backend.DocumentIngestion.Shared.Options;
-using static System.Collections.Specialized.BitVector32;
-using static System.Net.Mime.MediaTypeNames;
 
 namespace ProjectVico.Backend.DocumentIngestion.Shared.Pipelines;
 
