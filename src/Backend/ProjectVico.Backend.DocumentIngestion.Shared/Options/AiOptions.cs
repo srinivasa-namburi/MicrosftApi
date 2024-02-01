@@ -26,6 +26,7 @@ public sealed class AiOptions
         public string Key { get; set; } = string.Empty;
         public string TitleIndex { get; set; } = string.Empty;
         public string SectionIndex { get; set; } = string.Empty;
+        public string CustomIndex { get; set; } = string.Empty;
         public string VectorSearchProfileName { get; set; } = string.Empty;
         public string VectorSearchHnswConfigName { get; set; } = string.Empty;
         public string SemanticSearchConfigName { get; set; } = string.Empty;

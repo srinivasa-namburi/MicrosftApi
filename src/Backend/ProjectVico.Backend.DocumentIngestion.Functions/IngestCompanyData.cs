@@ -152,7 +152,7 @@ public class IngestCompanyData
         // Store JSON in Cognitive Search while generating embeddings
         if (contentTree.Count > 0)
         {
-            await this._indexingProcessor.IndexAndStoreContentNodesAsync(contentTree, name, indexingStreamForHashing);
+            await this._indexingProcessor.IndexAndStoreCustomNodesAsync(contentTree, name, indexingStreamForHashing);
         }
 
         // Delete the original blob

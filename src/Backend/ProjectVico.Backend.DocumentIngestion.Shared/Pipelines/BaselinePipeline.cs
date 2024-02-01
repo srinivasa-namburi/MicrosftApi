@@ -162,36 +162,21 @@ public class BaselinePipeline : IPdfPipeline
 
             else if (paragraph.Role == ParagraphRole.SectionHeading)
             {
-                var sectionNumber = contentNode.Text.Split(' ')[0];
-                if (sectionNumber.Contains("."))
+                var parentContentNode = contentTree.FindLast(x => x.Type == ContentNodeType.Title);
+
+                if (parentContentNode != null)
                 {
-                    // If the SectionHeading has multiple numbers separated by periods, then we assume it's a SectionHeading.
-
+                    Console.WriteLine($"Adding current paragraph as Heading: {paragraph.Content} under {parentContentNode.Text}");
+                    isRootNode = false;
+                    parentContentNode.Children.Add(contentNode);
+                    contentNode.Parent = parentContentNode;
                     contentNode.Type = ContentNodeType.Heading;
-
-                    var sectionNumberParts = sectionNumber.Split('.');
-                    var sectionNumberToMatch = sectionNumberParts.Length > 1 ? sectionNumberParts[0] : sectionNumber;
-
-                    var parentContentNode = contentTree.FindLast(x =>
-                        x.Type == ContentNodeType.Title && x.Text.StartsWith(sectionNumberToMatch));
-
-                    if (parentContentNode != null)
-                    {
-                        isRootNode = false;
-                        parentContentNode.Children.Add(contentNode);
-                        contentNode.Parent = parentContentNode;
-                        Console.WriteLine($"Adding current paragraph as Heading: {paragraph.Content} under {parentContentNode.Text}");
-                    }
-
                 }
+
                 else
                 {
-                    // This SectionHeading is in fact a Title since it only has a single number with no periods following it.
-                    // We add this as a Title to the root of the content tree and continue the loop.
+                    // If no appropriate parent is found, the section header is considered an orphan and is ignored.
 
-                    Console.WriteLine($"Adding current paragraph as Title: {paragraph.Content}");
-                    contentNode.Type = ContentNodeType.Title;
-                    isRootNode = true;
                 }
             }
 

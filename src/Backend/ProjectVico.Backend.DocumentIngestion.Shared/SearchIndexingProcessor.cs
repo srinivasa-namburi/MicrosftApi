@@ -23,6 +23,7 @@ public class SearchIndexingProcessor : IIndexingProcessor
     private readonly AiOptions _aiOptions;
     private readonly SearchClient _titleSearchClient;
     private readonly SearchClient _sectionSearchClient;
+    private readonly SearchClient _customSearchClient;
     private readonly OpenAIClient _openAiClient;
 
     public SearchIndexingProcessor(
@@ -31,10 +32,13 @@ public class SearchIndexingProcessor : IIndexingProcessor
         SearchClient titleSearchClient,
         [FromKeyedServices("searchclient-section")]
         SearchClient sectionSearchClient,
+        [FromKeyedServices("searchclient-custom")]
+        SearchClient customSearchClient,
         OpenAIClient openAiClient)
     {
         this._titleSearchClient = titleSearchClient;
         this._sectionSearchClient = sectionSearchClient;
+        this._customSearchClient = customSearchClient;
         this._openAiClient = openAiClient;
         this._aiOptions = aiOptions.Value;
     }
@@ -204,6 +208,10 @@ public class SearchIndexingProcessor : IIndexingProcessor
         else if (reportDocument.Type == "Heading")
         {
             return await this.IndexJson(json, this._sectionSearchClient, generateEmbeddings);
+        }
+        else if (reportDocument.Type == "Custom")
+        {
+            return await this.IndexJson(json, this._customSearchClient, generateEmbeddings);
         }
         else
         {
@@ -477,6 +485,35 @@ public class SearchIndexingProcessor : IIndexingProcessor
         foreach (string sectionJson in sectionJsonList)
         {
             await this.IndexJson(sectionJson, this._sectionSearchClient, true);
+        }
+
+        Console.WriteLine($"Indexed and stored {i} files for '{baseFileName}'");
+
+
+    }
+
+    public async Task IndexAndStoreCustomNodesAsync(List<ContentNode> contentTree, string baseFileName, Stream streamForHashing)
+    {
+
+        // We create or update the custom indexes first
+        this.CreateIndex(this._aiOptions.CognitiveSearch.CustomIndex);
+
+        var i = 0;
+
+        List<string> customJsonList = new List<string>();
+
+        foreach (var contentNode in contentTree)
+        {
+            // First, generate json for the custom ContentNodes in the root of the content tree
+            var json = this.CreateJsonFromContentNode(contentNode, null, null, baseFileName, streamForHashing);
+            customJsonList.Add(json);
+            i++;
+        }
+
+        // Index the Custom json strings with Azure Cognitive Search
+        foreach (string customJson in customJsonList)
+        {
+            await this.IndexJson(customJson, this._customSearchClient, true);
         }
 
         Console.WriteLine($"Indexed and stored {i} files for '{baseFileName}'");

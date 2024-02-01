@@ -41,4 +41,6 @@ public interface IIndexingProcessor
 
     Task<List<ReportDocument>> SearchWithHybridSearch(string searchText, int top = 12, int k = 7);
     Task IndexAndStoreContentNodesAsync(List<ContentNode> contentTree, string baseFileName, Stream streamForHashing);
+    Task IndexAndStoreCustomNodesAsync(List<ContentNode> contentTree, string baseFileName, Stream streamForHashing);
+
 }
