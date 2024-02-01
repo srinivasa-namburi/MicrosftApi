@@ -41,6 +41,8 @@ var hostBuilder = new HostBuilder()
             (provider, o) => GetSearchClientWithIndex(provider, o, aiOptions.CognitiveSearch.SectionIndex));
         services.AddKeyedScoped<SearchClient>("searchclient-title",
             (provider, o) => GetSearchClientWithIndex(provider, o, aiOptions.CognitiveSearch.TitleIndex));
+        services.AddKeyedScoped<SearchClient>("searchclient-customdata",
+            (provider, o) => GetSearchClientWithIndex(provider, o, aiOptions.CognitiveSearch.CustomIndex));
 
         services.AddScoped<IContentTreeProcessor, ContentTreeProcessor>();
         services.AddScoped<IContentTreeJsonTransformer, ContentTreeJsonTransformer>();

@@ -32,7 +32,7 @@ public class SearchIndexingProcessor : IIndexingProcessor
         SearchClient titleSearchClient,
         [FromKeyedServices("searchclient-section")]
         SearchClient sectionSearchClient,
-        [FromKeyedServices("searchclient-custom")]
+        [FromKeyedServices("searchclient-customdata")]
         SearchClient customSearchClient,
         OpenAIClient openAiClient)
     {
@@ -505,6 +505,8 @@ public class SearchIndexingProcessor : IIndexingProcessor
         foreach (var contentNode in contentTree)
         {
             // First, generate json for the custom ContentNodes in the root of the content tree
+            // Currently, this generates for the titles of the content tree -
+            // we might want to index the smaller chunks instead (sectionheadings and below)
             var json = this.CreateJsonFromContentNode(contentNode, null, null, baseFileName, streamForHashing);
             customJsonList.Add(json);
             i++;
