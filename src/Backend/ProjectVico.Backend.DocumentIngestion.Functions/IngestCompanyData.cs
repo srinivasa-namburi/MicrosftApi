@@ -29,10 +29,6 @@ public class IngestCompanyData
     private readonly IIndexingProcessor _indexingProcessor;
     private readonly IDocumentClassifier _documentClassifier;
 
-    private const string BlobStorageConnectionStringKeyName = "Intg";
-
-
-
     public IngestCompanyData(
         IOptions<AiOptions> aiOptions,
         IOptions<IngestionOptions> ingestionOptions,
@@ -54,7 +50,7 @@ public class IngestCompanyData
 
     [Function(nameof(IngestCompanyData))]
     [BlobOutput("ingest-custom/processed-pdf/{name}", Connection = "ConnectionStrings:IngestionBlobConnectionString")]
-    public async Task<Stream> Run(
+    public async Task<Stream> RunAsync(
         [BlobTrigger("ingest-custom/input-pdf/{name}", Connection = "ConnectionStrings:IngestionBlobConnectionString")]
             string pdfItem, string name,
         [BlobInput("ingest-custom/input-pdf/{name}", Connection = "ConnectionStrings:IngestionBlobConnectionString")]
@@ -73,7 +69,7 @@ public class IngestCompanyData
         await pdfStream.CopyToAsync(indexingStreamForHashing);
         indexingStreamForHashing.Position = 0;
 
-        List<ContentNode> contentTree = new List<ContentNode>();
+        List<ContentNode> contentTree;
 
         var blobServiceClient = new BlobServiceClient(this._ingestionOptions.BlobStorageConnectionString);
         var containerClient = blobServiceClient.GetBlobContainerClient("ingest-custom");
