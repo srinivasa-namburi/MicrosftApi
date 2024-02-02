@@ -20,6 +20,7 @@ public class Program
     private static string? s_documentIntelligenceKey = "";
     private static string s_titleIndexName = "dummy-index-01-titles";
     private static string s_sectionIndexName = "dummy-index-01-sections";
+    private static string s_customIndexName = "dummy-index-01-custom";
 
     private static IContentTreeProcessor s_contentTreeProcessor;
     private static IIndexingProcessor s_indexingProcessor;
@@ -30,6 +31,7 @@ public class Program
     private static ContentTreeJsonTransformer s_contentTreeJsonTransformer;
     private static SearchClient s_titleDocssearchClient;
     private static SearchClient s_sectionDocssearchClient;
+    private static SearchClient s_customDocssearchClient;
 
     private const string LineSeparator = "--------------------------------------------------------------------";
 
@@ -89,12 +91,14 @@ public class Program
         // Instantiate the SearchClient classes
         s_titleDocssearchClient = new SearchClient(new Uri(s_aiOptions.CognitiveSearch.Endpoint), s_titleIndexName, new AzureKeyCredential(s_aiOptions.CognitiveSearch.Key));
         s_sectionDocssearchClient = new SearchClient(new Uri(s_aiOptions.CognitiveSearch.Endpoint), s_sectionIndexName, new AzureKeyCredential(s_aiOptions.CognitiveSearch.Key));
+        s_customDocssearchClient = new SearchClient(new Uri(s_aiOptions.CognitiveSearch.Endpoint), s_customIndexName, new AzureKeyCredential(s_aiOptions.CognitiveSearch.Key));
+
 
         // Instantiate the ContentTreeProcessor class and pass in the OpenAIClient class
         s_contentTreeProcessor = new ContentTreeProcessor(new OptionsWrapper<AiOptions>(s_aiOptions), s_openAiClient);
 
         // Instantiate the IndexingProcessor class and pass in the OpenAIClient class
-        s_indexingProcessor = new SearchIndexingProcessor(new OptionsWrapper<AiOptions>(s_aiOptions), s_titleDocssearchClient, s_sectionDocssearchClient, s_openAiClient);
+        s_indexingProcessor = new SearchIndexingProcessor(new OptionsWrapper<AiOptions>(s_aiOptions), s_titleDocssearchClient, s_sectionDocssearchClient, s_customDocssearchClient, s_openAiClient);
 
         // Instantiate the ContentTreeJsonTransformer class and pass in the OpenAIClient class
         s_contentTreeJsonTransformer = new ContentTreeJsonTransformer(new OptionsWrapper<AiOptions>(s_aiOptions), s_openAiClient);

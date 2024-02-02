@@ -16,7 +16,7 @@ using ProjectVico.Backend.DocumentIngestion.Shared.Pipelines;
 
 namespace ProjectVico.Backend.DocumentIngestion.API.Functions;
 
-public class IngestPdf
+public class IngestCompanyData
 {
     private readonly AiOptions _aiOptions;
     private readonly IOptions<AiOptions> _aiOptionsOptionsContainer;
@@ -29,17 +29,13 @@ public class IngestPdf
     private readonly IIndexingProcessor _indexingProcessor;
     private readonly IDocumentClassifier _documentClassifier;
 
-    private const string BlobStorageConnectionStringKeyName = "Intg";
-    
-
-
-    public IngestPdf(
+    public IngestCompanyData(
         IOptions<AiOptions> aiOptions,
         IOptions<IngestionOptions> ingestionOptions,
         IContentTreeProcessor contentTreeProcessor,
         IContentTreeJsonTransformer jsonTransformer,
         IIndexingProcessor indexingProcessor,
-        [FromKeyedServices("nrc-classifier")]
+        [FromKeyedServices("customdata-classifier")]
         IDocumentClassifier documentClassifier)
     {
         this._indexingProcessor = indexingProcessor;
@@ -52,12 +48,12 @@ public class IngestPdf
         this._jsonTransformer = jsonTransformer;
     }
 
-    [Function(nameof(IngestPdf))]
-    [BlobOutput("ingest/processed-pdf/{name}", Connection = "ConnectionStrings:IngestionBlobConnectionString")]
-    public async Task<Stream> Run(
-        [BlobTrigger("ingest/input-pdf/{name}", Connection = "ConnectionStrings:IngestionBlobConnectionString")]
+    [Function(nameof(IngestCompanyData))]
+    [BlobOutput("ingest-custom/processed-pdf/{name}", Connection = "ConnectionStrings:IngestionBlobConnectionString")]
+    public async Task<Stream> RunAsync(
+        [BlobTrigger("ingest-custom/input-pdf/{name}", Connection = "ConnectionStrings:IngestionBlobConnectionString")]
             string pdfItem, string name,
-        [BlobInput("ingest/input-pdf/{name}", Connection = "ConnectionStrings:IngestionBlobConnectionString")]
+        [BlobInput("ingest-custom/input-pdf/{name}", Connection = "ConnectionStrings:IngestionBlobConnectionString")]
             Stream pdfStream,
         FunctionContext executionContext)
     {
@@ -73,17 +69,17 @@ public class IngestPdf
         await pdfStream.CopyToAsync(indexingStreamForHashing);
         indexingStreamForHashing.Position = 0;
 
-        List<ContentNode> contentTree = new List<ContentNode>();
+        List<ContentNode> contentTree;
 
         var blobServiceClient = new BlobServiceClient(this._ingestionOptions.BlobStorageConnectionString);
-        var containerClient = blobServiceClient.GetBlobContainerClient("ingest");
+        var containerClient = blobServiceClient.GetBlobContainerClient("ingest-custom");
         var originalBlobClient = containerClient.GetBlobClient($"input-pdf/{name}");
 
         // If classification is disabled, we don't want to process it.
-        if (!this._ingestionOptions.PerformNrcClassification)
+        if (!this._ingestionOptions.PerformCustomDataClassification)
         {
-            Console.WriteLine("Classification is disabled - assuming we are dealing with an Environmental report with numbered chapters and sections");
-            this._pdfPipeline = new NuclearEnvironmentalReportPdfPipeline(this._aiOptionsOptionsContainer, this._contentTreeProcessor, this._jsonTransformer);
+            Console.WriteLine("Classification is disabled - baseline processing grab");
+            this._pdfPipeline = new BaselinePipeline(this._aiOptionsOptionsContainer, this._contentTreeProcessor, this._jsonTransformer);
             contentTree = await this._pdfPipeline.RunAsync(originalPdfStream, name);
         }
         else
@@ -91,7 +87,7 @@ public class IngestPdf
             // Generate a 15-minute SAS token for the blob
             var sasBuilder = new BlobSasBuilder
             {
-                BlobContainerName = "ingest",
+                BlobContainerName = "ingest-custom",
                 BlobName = $"input-pdf/{name}",
                 Resource = "b",
                 StartsOn = DateTimeOffset.UtcNow,
@@ -112,53 +108,39 @@ public class IngestPdf
             var sasUri = $"{originalBlobClient.Uri}?{sasToken}";
 
             // Classify the document
-            var documentClassification = await this._documentClassifier.ClassifyDocumentFromUri(sasUri, this._ingestionOptions.NrcClassificationModelName);
+            var documentClassification = await this._documentClassifier.ClassifyDocumentFromUri(sasUri, this._ingestionOptions.CustomDataClassificationModelName);
 
             // If the document is not classified, we don't want to process it.
             if (!documentClassification.SuccessfulClassification)
             {
-                Console.WriteLine("Document failed classification - aborting and moving to processed");
-                return outputStream;
+                // cannot identify the document as any of these pre - defined types with their own processing pipeline
+                Console.WriteLine("Document failed classification - baseline processing grab");
+                this._pdfPipeline = new BaselinePipeline(this._aiOptionsOptionsContainer,
+                    this._contentTreeProcessor, this._jsonTransformer);
+                contentTree = await this._pdfPipeline.RunAsync(originalPdfStream, name);
             }
-
-            switch (documentClassification.ClassificationType)
+            else
             {
-                case DocumentClassificationType.NrcEnvironmentalReportWithMixedTitles:
-                    Console.WriteLine("Document classified as NrcEnvironmentalReportWithMixedTitles");
-                    Console.WriteLine("We can't process this further - moving to processed without further work");
-                    // Delete the original blob
-                    await originalBlobClient.DeleteIfExistsAsync();
-                    return outputStream;
-                case DocumentClassificationType.NrcEnvironmentalReportWithNumberedChapters:
-                    Console.WriteLine("Document classified as NrcEnvironmentalReportWithNumberedChapters");
-                    this._pdfPipeline = new NuclearEnvironmentalReportPdfPipeline(this._aiOptionsOptionsContainer,
-                        this._contentTreeProcessor, this._jsonTransformer);
-                    contentTree = await this._pdfPipeline.RunAsync(originalPdfStream, name);
-                    break;
-                case DocumentClassificationType.NrcFiguresAndTablesOnly:
-                    Console.WriteLine("Document classified as NrcFiguresAndTablesOnly");
-                    Console.WriteLine("We can't process this further - moving to processed without further work");
-                    // Delete the original blob
-                    await originalBlobClient.DeleteIfExistsAsync();
-                    return outputStream;
-                case DocumentClassificationType.NrcHeadingsOnly:
-                    Console.WriteLine("Document classified as NrcHeadingsOnly");
-                    Console.WriteLine("We can't process this further - moving to processed without further work");
-                    // Delete the original blob
-                    await originalBlobClient.DeleteIfExistsAsync();
-                    return outputStream;
-                case DocumentClassificationType.NrcWithHeldSectionCover:
-                    Console.WriteLine("Document classified as NrcWithHeldSectionCover");
-                    Console.WriteLine("We can't process this further - moving to processed without further work");
-                    // Delete the original blob
-                    await originalBlobClient.DeleteIfExistsAsync();
-                    return outputStream;
-                default:
-                    Console.WriteLine("Document failed classification - aborting and moving to processed");
-                    Console.WriteLine("We can't process this further - moving to processed without further work");
-                    // Delete the original blob
-                    await originalBlobClient.DeleteIfExistsAsync();
-                    return outputStream;
+                switch (documentClassification.ClassificationType)
+                {
+
+                    case DocumentClassificationType.CustomDataProductSpecificInput:
+                        // file with a pre-set structure with details of this new project (e.g. The Reactor Type, Temperature, GPS Coords of the project, etc.)
+                        Console.WriteLine("Document classified as ProductSpecificInput");
+                        this._pdfPipeline = new ProductSpecificInputPipeline(this._aiOptionsOptionsContainer,
+                            this._contentTreeProcessor, this._jsonTransformer);
+                        contentTree = await this._pdfPipeline.RunAsync(originalPdfStream, name);
+                        break;
+
+                    default:
+                    case DocumentClassificationType.CustomDataBasicDocument:
+                        // Document is a Numbered Structured Document
+                        Console.WriteLine("Document classified as NumberedStructuredDocument");
+                        this._pdfPipeline = new BaselinePipeline(this._aiOptionsOptionsContainer,
+                            this._contentTreeProcessor, this._jsonTransformer);
+                        contentTree = await this._pdfPipeline.RunAsync(originalPdfStream, name);
+                        break;
+                }
             }
         }
 
@@ -166,7 +148,7 @@ public class IngestPdf
         // Store JSON in Cognitive Search while generating embeddings
         if (contentTree.Count > 0)
         {
-            await this._indexingProcessor.IndexAndStoreContentNodesAsync(contentTree, name, indexingStreamForHashing);
+            await this._indexingProcessor.IndexAndStoreCustomNodesAsync(contentTree, name, indexingStreamForHashing);
         }
 
         // Delete the original blob

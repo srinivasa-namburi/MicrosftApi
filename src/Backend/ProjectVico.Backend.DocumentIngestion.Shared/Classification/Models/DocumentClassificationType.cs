@@ -4,11 +4,12 @@ namespace ProjectVico.Backend.DocumentIngestion.Shared.Classification.Models;
 
 public enum DocumentClassificationType
 {
-    HeadingsOnly = 100,
-    WithHeldSectionCover = 200,
-    EnvironmentalReportWithNumberedChapters = 300,
-    EnvironmentalReportWithMixedTitles = 400,
+    NrcHeadingsOnly = 100,
+    NrcWithHeldSectionCover = 200,
+    NrcEnvironmentalReportWithNumberedChapters = 300,
+    NrcEnvironmentalReportWithMixedTitles = 400,
     Letter = 500,
-    FiguresAndTablesOnly = 600
-
+    NrcFiguresAndTablesOnly = 600,
+    CustomDataBasicDocument = 1100,
+    CustomDataProductSpecificInput = 1200
 }
