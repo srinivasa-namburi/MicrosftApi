@@ -1,0 +1,73 @@
+﻿@using ProjectVico.V2.Shared.Models
+@using ProjectVico.V2.Shared.Models.Enums
+
+@code {
+    [Parameter] public ContentNode? Node { get; set; }
+    [Parameter] public bool Recursive { get; set; } = false;
+
+    private string GetPanelClass(ContentNodeType nodeType)
+    {
+        return nodeType switch
+        {
+            ContentNodeType.Title => "mt-2",
+            ContentNodeType.Heading => "mt-2",
+            ContentNodeType.BodyText => "mt-2",
+            _ => "", // Default class, BodyText nodes might not need extra padding here.
+        };
+    }
+}
+
+@if (Node != null)
+{
+    if (Node.Type == ContentNodeType.Title || Node.Type == ContentNodeType.Heading)
+    {
+        <MudExpansionPanels>
+            @* <MudExpansionPanel Text="@Node.Text" Class="@GetPanelClass(Node.Type)"> *@
+            <MudExpansionPanel Class="@GetPanelClass(Node.Type)">
+                <TitleContent>
+                    <MudGrid>
+                        <MudItem xs="1">
+                            @if (Node.GenerationState == ContentNodeGenerationState.OutlineOnly)
+                            {
+                                <MudIcon Icon="@Icons.Material.Rounded.List" Color="Color.Info" Size="Size.Medium" />
+                            }
+                            else if (Node.GenerationState == ContentNodeGenerationState.InProgress)
+                            {
+                                @*  <MudIcon Icon="Icons.TwotoneError" Color="Color.Error" Size="Size.Medium"/> *@
+                                <MudProgressCircular Indeterminate="true" Size="Size.Small" Color="Color.Info" />
+                            }
+                            else if (Node.GenerationState == ContentNodeGenerationState.Completed)
+                            {
+                                <MudIcon Icon="@Icons.Material.Rounded.CheckCircle" Color="Color.Success" Size="Size.Medium" />
+                            }
+                        </MudItem>
+                        <MudItem xs="11">
+                            @*  <MudPaper Class="d-flex align-center justify-center mud-width-full py-8">xs=6</MudPaper> *@
+                            @Node.Text
+                        </MudItem>
+
+                    </MudGrid>
+                </TitleContent>
+
+                <ChildContent>
+                    @if (Node.Children != null && Node.Children.Any() && Recursive)
+                    {
+                        foreach (var childNode in Node.Children)
+                        {
+                            <ContentNodeDisplay Node="childNode" Recursive="true" />
+                        }
+                    }
+                </ChildContent>
+
+            </MudExpansionPanel>
+        </MudExpansionPanels>
+    }
+
+    else if (Node.Type == ContentNodeType.BodyText)
+    {
+        <MudText Class="@GetPanelClass(Node.Type)" Style="padding-left: 20px;">
+            @* @Node.Text *@
+            <RenderMultilineText Value="@Node.Text" />
+        </MudText>
+    }
+}

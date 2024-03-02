@@ -12,21 +12,6 @@ namespace ProjectVico.Backend.DocumentIngestion.Shared;
 
 public class ContentTreeJsonTransformer : IContentTreeJsonTransformer
 {
-    private readonly AiOptions _aiOptions;
-    private readonly string _openAiEndpoint;
-    private readonly string _openAiKey;
-    private readonly string _openAiCompletionModel;
-    private OpenAIClient _client;
-
-    public ContentTreeJsonTransformer(IOptions<AiOptions> aiOptions, OpenAIClient openAiClient)
-    {
-        this._aiOptions = aiOptions.Value;
-        this._openAiEndpoint = this._aiOptions.OpenAI.Endpoint;
-        this._openAiKey = this._aiOptions.OpenAI.Key;
-        this._openAiCompletionModel = this._aiOptions.OpenAI.CompletionModel;
-        this._client = openAiClient;
-    }
-
     public async Task<List<string>> TransformContentTreeByTitleToConcatenatedJson(List<ContentNode> contentTree)
     {
         List<string> jsonList = this.ProcessContentNodes(contentTree);

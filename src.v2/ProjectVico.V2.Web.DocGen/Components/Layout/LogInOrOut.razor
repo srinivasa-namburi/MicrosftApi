@@ -1,0 +1,50 @@
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Routing
+@using MudBlazor
+@using ProjectVico.V2.Web.DocGen.Auth
+
+@namespace ProjectVico.V2.Web.DocGen.Components.Layout
+@implements IDisposable
+
+@inject NavigationManager NavigationManager
+
+<AuthorizeView>
+    <Authorized>
+        <form method="post" action="authentication/logout">
+            <AntiforgeryToken />
+            <input type="hidden" name="ReturnUrl" value="@currentUrl"/>
+            <button type="submit" class="mud-button mud-ripple mud-ripple-icon" style="color:inherit; background-color:transparent; border:none;">
+                <MudIcon Icon="@Icons.Material.Filled.ExitToApp"/> Logout @context.User.Identity?.Name
+            </button>
+        </form>
+    </Authorized>
+    <NotAuthorized>
+        <MudNavLink Href="authentication/login" Icon="@Icons.Material.Filled.Login" Variant="Variant.Text">
+            Login
+        </MudNavLink>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private string? currentUrl;
+
+    protected override void OnInitialized()
+    {
+        currentUrl = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+        NavigationManager.LocationChanged += OnLocationChanged;
+    }
+
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        currentUrl = NavigationManager.ToBaseRelativePath(e.Location);
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+    }
+}

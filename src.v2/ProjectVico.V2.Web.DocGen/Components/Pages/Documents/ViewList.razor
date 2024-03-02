@@ -1,0 +1,46 @@
+﻿@attribute [Authorize]
+@page "/docs"
+
+@using ProjectVico.V2.Web.Shared.ServiceClients
+@using ProjectVico.V2.Shared.Contracts.DTO
+
+@inject IDocumentGenerationApiClient DocumentGenerationApiClient
+@inject NavigationManager Navigation
+
+<MudPaper Class="pa-4">
+    <MudText Typo="Typo.h4">Generated Documents List</MudText>
+    @if (documents is null)
+    {
+        <MudProgressCircular Indeterminate="true" />
+    }
+    else if (documents.Count == 0)
+    {
+        <MudText>No documents found.</MudText>
+    }
+    else
+    {
+        <MudList>
+            @foreach (var document in documents.OrderBy(x=>x.GeneratedDate))
+            {
+                <MudListItem OnClick="@(() => ViewDocument(document.Id))" Button="true">
+                    <MudText>@document.Title</MudText>
+                    <MudText Typo="Typo.subtitle2">@document.GeneratedDate.ToString("yyyy-MM-dd")</MudText>
+                </MudListItem>
+            }
+        </MudList>
+    }
+</MudPaper>
+
+@code {
+    private List<GeneratedDocumentListItem> documents;
+
+    protected override async Task OnInitializedAsync()
+    {
+        documents = await DocumentGenerationApiClient.GetGeneratedDocumentsAsync();
+    }
+
+    private void ViewDocument(Guid documentId)
+    {
+        Navigation.NavigateTo($"/docs/{documentId}");
+    }
+}

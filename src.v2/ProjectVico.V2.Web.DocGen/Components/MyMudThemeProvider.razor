@@ -1,0 +1,62 @@
+﻿<CascadingValue Value=false Name="UsePopoverProvider">
+    <MudThemeProvider @ref="@_mudThemeProvider" @bind-IsDarkMode="@IsDarkMode" Theme="MyTheme"></MudThemeProvider>
+</CascadingValue>
+
+@code {
+    public static MudTheme MyTheme => new()
+        {
+            Palette = new PaletteLight()
+            {
+                // Primary = "#594AE2",
+                // AppbarBackground = "#594AE2"
+            },
+            PaletteDark = new PaletteDark()
+            {
+                // Primary = "#594AE2",
+                // AppbarBackground = "#594AE2"
+            }
+        };
+
+    
+
+    bool _drawerOpen = true;
+    private bool _isDarkMode;
+
+    [Parameter]
+    public bool IsDarkMode
+    {
+        get => _isDarkMode;
+        set
+        {
+            if (_isDarkMode != value)
+            {
+                _isDarkMode = value;
+                IsDarkModeChanged.InvokeAsync(value);
+            }
+        }
+    }
+
+    [Parameter]
+    public EventCallback<bool> IsDarkModeChanged { get; set; }
+
+    private MudThemeProvider _mudThemeProvider;
+
+    private async Task<bool> GetDarkMode()
+    {
+        return await _mudThemeProvider.GetSystemPreference();
+    }
+
+    void DrawerToggle()
+    {
+        _drawerOpen = !_drawerOpen;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            IsDarkMode = await GetDarkMode();
+            StateHasChanged();
+        }
+    }
+}

@@ -190,7 +190,7 @@
     "b": null
   },
   "semantic": {
-    "defaultConfiguration": null,
+    "defaultConfiguration": "smr-semantic-search-config",
     "configurations": [
       {
         "name": "smr-semantic-search-config",

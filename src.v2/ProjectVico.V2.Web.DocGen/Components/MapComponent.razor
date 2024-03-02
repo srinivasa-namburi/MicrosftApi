@@ -1,0 +1,38 @@
+﻿@page "/map"
+
+@using System.Text;
+@using Microsoft.Extensions.Options
+@using ProjectVico.V2.Shared.Configuration
+@inject IJSRuntime JSRuntime
+@inject IOptions<ServiceConfigurationOptions> ServiceConfigurationOptionsSelector
+
+
+<div id="map" style="position:relative;width:100%;min-width:290px;height:600px;"></div>
+
+@code {
+
+    private ServiceConfigurationOptions ServiceConfigurationOptions;
+
+
+    string PngImage = string.Empty;
+    bool isLoading = false;
+
+    private string? SubscriptionKey;
+    // Location of Redmond
+    float Latitude = 47.6740F;
+    float Longitude = -122.1215F;
+
+    protected override async Task OnInitializedAsync()
+    { 
+        ServiceConfigurationOptions = ServiceConfigurationOptionsSelector.Value;
+        SubscriptionKey = ServiceConfigurationOptions.AzureMaps.Key;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JSRuntime.InvokeVoidAsync("initializeMap", SubscriptionKey, Latitude, Longitude);
+        }
+    }
+}

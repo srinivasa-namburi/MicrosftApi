@@ -1,0 +1,89 @@
+﻿namespace ProjectVico.V2.Shared.Configuration;
+
+public class ServiceConfigurationOptions
+{
+    public const string PropertyName = "ServiceConfiguration";
+
+    public AzureMapsOptions AzureMaps { get; set; } = new AzureMapsOptions();
+    public OpenAiOptions OpenAi { get; set; } = new OpenAiOptions();
+    public CognitiveSearchOptions CognitiveSearch { get; set; } = new CognitiveSearchOptions();
+    public DocumentIntelligenceOptions DocumentIntelligence { get; set; } = new DocumentIntelligenceOptions();
+    public ProjectVicoServicesOptions ProjectVicoServices { get; set; } = new ProjectVicoServicesOptions();
+    public SQLOptions SQL { get; set; } = new SQLOptions(); 
+    public RabbitMQOptions RabbitMQ { get; set; } = new RabbitMQOptions();
+
+
+    public class AzureMapsOptions
+    {
+        public string? Key { get; set; } = string.Empty;
+    }
+    
+    public class ProjectVicoServicesOptions
+    {
+        public DocumentGenerationOptions DocumentGeneration { get; set; } = new DocumentGenerationOptions();
+        public DocumentIngestionOptions DocumentIngestion { get; set; } = new DocumentIngestionOptions();
+
+        public class DocumentIngestionOptions
+        {
+            public ushort NumberOfIngestionWorkers { get; set; }
+            public string ContainerNRC { get; set; } = string.Empty;
+            public string ContainerCustomData { get; set; } = string.Empty;
+            public bool ProcessTables { get; set; }
+          
+            public ClassificationOptions Classification { get; set; } = new ClassificationOptions();
+
+            public class ClassificationOptions
+            {
+                public bool ClassifyNRCDocuments { get; set; }
+                public bool ClassifyCustomDataDocuments { get; set; }
+                public string NRCClassificationModelName { get; set; } = string.Empty;
+                public string CustomDataClassificationModelName { get; set; } = string.Empty;
+            }
+        }
+
+        public class DocumentGenerationOptions
+        {
+            public bool DurableDevelopmentServices { get; set; }
+            public bool CreateBodyTextNodes { get; set; }
+            public bool UseFullDocumentOutlineGeneration { get; set; }
+            public ushort NumberOfGenerationWorkers { get; set; }
+
+        }
+    }
+
+    public class SQLOptions
+    {
+        public string Password { get; set; } = string.Empty;
+    }
+
+    public class RabbitMQOptions
+    {
+        public string Password { get; set; } = string.Empty;
+    }
+
+    public class OpenAiOptions
+    {
+        public string PlannerModelDeploymentName { get; set; } = string.Empty;
+        public string DocGenModelDeploymentName { get; set; } = string.Empty;
+        public string EmbeddingModelDeploymentName { get; set; } = string.Empty;
+
+    }
+
+    public class CognitiveSearchOptions
+    {
+        public string Endpoint { get; set; } = string.Empty;
+        public string Key { get; set; } = string.Empty;
+        public string NuclearTitleIndex { get; set; } = string.Empty;
+        public string NuclearSectionIndex { get; set; } = string.Empty;
+        public string CustomIndex { get; set; } = string.Empty;
+        public string SemanticSearchConfigName { get; set; } = string.Empty;
+        public string VectorSearchProfileName { get; set; } = string.Empty;
+        public string VectorSearchHnswConfigName { get; set; } = string.Empty;
+    }
+
+    public class DocumentIntelligenceOptions
+    {
+        public string Endpoint { get; set; } = string.Empty;
+        public string Key { get; set; } = string.Empty;
+    }
+}

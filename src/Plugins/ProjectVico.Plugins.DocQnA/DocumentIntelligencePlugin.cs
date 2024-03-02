@@ -142,7 +142,7 @@ public class DocumentIntelligencePlugin
         return response;
     }
 
-    public async Task<List<string>> GenerateSectionDescriptionWithOpenAIAsync(List<ReportDocument> sections)
+    private async Task<List<string>> GenerateSectionDescriptionWithOpenAIAsync(List<ReportDocument> sections)
     {
                 // Generate example  // Build the examples for the prompt
         var sectionExample = new StringBuilder();

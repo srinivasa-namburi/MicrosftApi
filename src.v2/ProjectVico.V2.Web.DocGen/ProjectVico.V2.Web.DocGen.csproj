@@ -1,0 +1,59 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+	</PropertyGroup>
+
+
+	<ItemGroup>
+		<PackageReference Include="Aspire.Azure.Storage.Blobs" Version="8.0.0-preview.3.24105.21" />
+		<PackageReference Include="Azure.Storage.Blobs" Version="12.19.1" />
+		<PackageReference Include="MudBlazor" Version="6.*" />
+		<PackageReference Include="FluentValidation" Version="11.9.0" />
+		<PackageReference Include="MudExRichTextEditor" Version="1.0.*" />
+		<PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.2" />
+
+		<PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="8.0.2" />
+		<PackageReference Include="Microsoft.Extensions.ServiceDiscovery.Yarp" Version="8.0.0-preview.3.24105.21" />
+		<PackageReference Include="Microsoft.Identity.Web" Version="2.17.0" />
+
+	</ItemGroup>
+
+
+	<ItemGroup>
+		<ProjectReference Include="..\ProjectVico.V2.ServiceDefaults\ProjectVico.V2.ServiceDefaults.csproj" />
+		<ProjectReference Include="..\ProjectVico.V2.Shared\ProjectVico.V2.Shared.csproj" />
+		<ProjectReference Include="..\ProjectVico.V2.Web.Shared\ProjectVico.V2.Web.Shared.csproj" />
+	</ItemGroup>
+
+
+	<ItemGroup>
+		<UpToDateCheckInput Remove="Components\GeneratedDocumentDisplay.razor" />
+	</ItemGroup>
+
+
+	<ItemGroup>
+		<_ContentIncludedByDefault Remove="Components\GeneratedDocumentDisplay.razor" />
+		<_ContentIncludedByDefault Remove="Components\Pages\Documents\ViewList.razor" />
+		<_ContentIncludedByDefault Remove="Components\Pages\Ingest\IngestFiles.razor" />
+		<_ContentIncludedByDefault Remove="Components\RenderMultilineText.razor" />
+	</ItemGroup>
+
+
+	<ItemGroup>
+		<UpToDateCheckInput Remove="Components\Pages\Documents\ViewList.razor" />
+	</ItemGroup>
+
+
+	<ItemGroup>
+		<UpToDateCheckInput Remove="Components\RenderMultilineText.razor" />
+	</ItemGroup>
+
+
+	<ItemGroup>
+	  <UpToDateCheckInput Remove="Components\Pages\Ingest\IngestFiles.razor" />
+	</ItemGroup>
+
+</Project>

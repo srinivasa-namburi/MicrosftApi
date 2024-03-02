@@ -1,0 +1,6 @@
+@ProjectVico.V2.Plugins.GeographicalData_HostAddress = http://localhost:5092
+
+GET {{ProjectVico.V2.Plugins.GeographicalData_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

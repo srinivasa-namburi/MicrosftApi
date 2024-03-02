@@ -1,0 +1,11 @@
+﻿namespace ProjectVico.V2.Shared.Models;
+
+public class BoundingPolygon : EntityBase
+{
+    public bool IsEmpty { get; set; } = false;
+    public decimal X { get; set; }
+    public decimal Y { get; set; }
+
+    public Guid BoundingRegionId { get; set; }
+    public BoundingRegion BoundingRegion { get; set; }
+}

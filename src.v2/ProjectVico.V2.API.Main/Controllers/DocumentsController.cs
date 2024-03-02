@@ -1,0 +1,114 @@
+﻿using System.Security.Claims;
+using Azure.Storage.Blobs;
+using MassTransit;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Identity.Web;
+using ProjectVico.V2.Shared.Contracts.DTO;
+using ProjectVico.V2.Shared.Data.Sql;
+using ProjectVico.V2.Shared.Models;
+
+namespace ProjectVico.V2.API.Main.Controllers;
+
+[Route("/api/documents")]
+public class DocumentsController : BaseController
+{
+    
+    private readonly IPublishEndpoint _publishEndpoint;
+    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly DocGenerationDbContext _dbContext;
+
+    public DocumentsController(
+        IPublishEndpoint publishEndpoint,
+        IHttpContextAccessor httpContextAccessor,
+        DocGenerationDbContext dbContext)
+    {
+        _publishEndpoint = publishEndpoint;
+        _httpContextAccessor = httpContextAccessor;
+        _dbContext = dbContext;
+    }
+
+    [HttpPost("generate")]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [Consumes("application/json")]
+    public async Task<IActionResult> GenerateDocument([FromBody]DocumentGenerationRequest documentGenerationRequest)
+    {
+        var claimsPrincipal = _httpContextAccessor.HttpContext.User;
+        documentGenerationRequest.AuthorOid = claimsPrincipal.GetObjectId();
+        await _publishEndpoint.Publish<DocumentGenerationRequest>(documentGenerationRequest);
+        
+        return Accepted();
+    }
+
+    [HttpPost("ingest")]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [Consumes("application/json")]
+    public async Task<IActionResult> IngestDocument([FromBody] DocumentIngestionRequest documentIngestionRequest)
+    {
+        var claimsPrincipal = _httpContextAccessor.HttpContext.User;
+
+        if (documentIngestionRequest.Id == Guid.Empty)
+        {
+            documentIngestionRequest.Id = Guid.NewGuid();
+        }
+
+        documentIngestionRequest.UploadedByUserOid = claimsPrincipal.GetObjectId();
+        await _publishEndpoint.Publish<DocumentIngestionRequest>(documentIngestionRequest);
+        
+        return Accepted();
+    }
+
+    [HttpGet("{documentId}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [Produces("application/json")]
+    [Produces<GeneratedDocument>]
+    public async Task<ActionResult<GeneratedDocument>> GetDocument(string documentId)
+    {
+        var documentGuid = Guid.Parse(documentId);
+        var document = await _dbContext.GeneratedDocuments
+            .Include(w => w.ContentNodes)
+            .ThenInclude(r=>r.Children)
+                .ThenInclude(s=>s.Children)
+                    .ThenInclude(t=>t.Children)
+                        .ThenInclude(u=>u.Children)
+            .AsNoTracking()
+            .AsSplitQuery()
+            .FirstOrDefaultAsync(d => d.Id == documentGuid);
+        
+        if (document == null)
+        {
+            return NotFound();
+        }
+
+        return document;
+    }
+
+    [HttpGet]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [Produces("application/json")]
+    [Produces<List<GeneratedDocumentListItem>>]
+    public async Task<ActionResult<List<GeneratedDocumentListItem>>?> GetGeneratedDocuments()
+    {
+        var documents = await _dbContext.GeneratedDocuments
+            .AsNoTracking()
+            .Select(d => new GeneratedDocumentListItem
+            {
+                Id = d.Id,
+                Title = d.Title,
+                GeneratedDate = d.GeneratedDate,
+                RequestingAuthorOid = d.RequestingAuthorOid
+            })
+            .ToListAsync();
+
+        if (documents == null)
+        {
+            return NotFound();
+        }
+
+        return documents;
+    }
+}

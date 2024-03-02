@@ -1,0 +1,159 @@
+﻿@attribute [Authorize]
+@page "/ingest"
+@using ProjectVico.V2.Shared.Contracts.DTO
+@using ProjectVico.V2.Shared.Models.Enums
+@using ProjectVico.V2.Web.DocGen.ServiceClients
+@using ProjectVico.V2.Web.Shared.ServiceClients
+@using Nextended.Core.Extensions
+@using ProjectVico.V2.Shared.Configuration
+@using Microsoft.Extensions.Options
+@using ProjectVico.V2.Shared.Helpers
+
+@inject AzureFileHelper AzureFileHelper
+@inject IDocumentIngestionApiClient DocumentIngestionApiClient
+@inject IOptions<ServiceConfigurationOptions> ConfigurationOptions
+
+<PageTitle>Ingest Documents</PageTitle>
+<h1>Ingest Documents</h1>
+
+<MudFileUpload T="IReadOnlyList<IBrowserFile>" Accept=".pdf" FilesChanged="UploadNRCFiles" MaximumFileCount="100">
+    <ButtonTemplate>
+        <MudButton HtmlTag="label"
+                   Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.CloudUpload"
+                   for="@context.Id">
+            Upload NRC Documents (PDF only)
+        </MudButton>
+    </ButtonTemplate>
+</MudFileUpload>
+
+<MudFileUpload T="IReadOnlyList<IBrowserFile>" Accept=".pdf" FilesChanged="UploadCustomFiles" MaximumFileCount="100">
+    <ButtonTemplate>
+        <MudButton HtmlTag="label"
+                   Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.CloudUpload"
+                   for="@context.Id">
+            Upload Custom Documents (PDF only)
+        </MudButton>
+    </ButtonTemplate>
+</MudFileUpload>
+
+@if (nrcFiles.Count > 0)
+{
+    <MudText Class="mt-8">NRC Documents Uploaded</MudText>
+    <MudList>
+        @foreach (var file in nrcFiles)
+        {
+            <MudListItem Icon="@Icons.Material.Filled.AttachFile">
+                @file.Name <code>@file.Size bytes</code>
+            </MudListItem>
+        }
+    </MudList>
+    <MudButton OnClick="IngestNRCFiles" Variant="Variant.Filled" Color="Color.Primary" Class="mt-8">Ingest NRC Documents</MudButton>
+}
+
+@if (customFiles.Count > 0)
+{
+    <MudText Class="mt-8">Custom Documents Uploaded</MudText>
+    <MudList>
+        @foreach (var file in customFiles)
+        {
+            <MudListItem Icon="@Icons.Material.Filled.AttachFile">
+                @file.Name <code>@file.Size bytes</code>
+            </MudListItem>
+        }
+    </MudList>
+    <MudButton OnClick="IngestCustomFiles" Variant="Variant.Filled" Color="Color.Primary" Class="mt-8">Ingest Documents</MudButton>
+}
+
+
+@code {
+
+    IList<IBrowserFile> nrcFiles = new List<IBrowserFile>();
+    IList<IBrowserFile> customFiles = new List<IBrowserFile>();
+
+
+    private async Task UploadNRCFiles(IReadOnlyList<IBrowserFile> uploadedFiles)
+    {
+        foreach (var file in uploadedFiles)
+        {
+            nrcFiles.Add(file);
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task UploadCustomFiles(IReadOnlyList<IBrowserFile> uploadedFiles)
+    {
+        foreach (var file in uploadedFiles)
+        {
+            customFiles.Add(file);
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task IngestCustomFiles()
+    {
+        var files = customFiles;
+
+        foreach (var file in files)
+        {
+            var fileStream = file.OpenReadStream(maxAllowedSize: Int32.MaxValue);
+            var fileName = file.Name;
+            var ingestionRequest = new DocumentIngestionRequest()
+                {
+                    Id = Guid.NewGuid(),
+                    FileName = fileName,
+                    IngestionType = IngestionType.CustomData,
+                };
+
+            await SubmitDocumentIngestionJob(fileStream, fileName, ingestionRequest);
+        }
+        files.RemoveAll();
+    }
+
+    private async Task IngestNRCFiles()
+    {
+        var files = nrcFiles;
+
+        foreach (var file in files)
+        {
+            var fileStream = file.OpenReadStream(maxAllowedSize: Int32.MaxValue);
+            var fileName = file.Name;
+            var ingestionRequest = new DocumentIngestionRequest()
+            {
+                Id = Guid.NewGuid(),
+                FileName = fileName,
+                IngestionType = IngestionType.NRCDocument,
+            };
+
+            await SubmitDocumentIngestionJob(fileStream, fileName, ingestionRequest);
+        }
+        files.RemoveAll();
+    }
+
+    private async Task SubmitDocumentIngestionJob(Stream fileStream, string fileName, DocumentIngestionRequest documentIngestionRequest)
+    {
+        var customContainerName = "ingest-custom";
+        var nrcContainerName = "ingest-nrc";
+        var filePrefix = DateTime.Now.ToString("yyyy-MM-dd");
+        var fullFileName = $"ingest/{filePrefix}/{fileName}";
+        
+        string blobUrl;
+        if (documentIngestionRequest.IngestionType == IngestionType.NRCDocument)
+        {
+            blobUrl = await AzureFileHelper.UploadFileToBlobAsync(fileStream, fullFileName, nrcContainerName, true);
+        }
+        else
+        {
+            blobUrl = await AzureFileHelper.UploadFileToBlobAsync(fileStream, fullFileName, customContainerName, true);
+        }
+
+        documentIngestionRequest.OriginalDocumentUrl = blobUrl;
+        await DocumentIngestionApiClient.IngestDocumentAsync(documentIngestionRequest);
+    }
+
+}

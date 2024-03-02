@@ -1,0 +1,231 @@
+﻿@inject IDocumentGenerationApiClient DocumentGenerationApiClient
+@inject IContentNodeApiClient ContentNodeApiClient
+@inject IConfiguration Configuration
+@inject NavigationManager Navigation
+@using ProjectVico.V2.Shared.Models
+@using ProjectVico.V2.Shared.Models.Enums
+@using ProjectVico.V2.Web.Shared.ServiceClients
+@using Microsoft.AspNetCore.SignalR.Client
+@using ProjectVico.V2.Shared.Contracts.Messages.DocumentGeneration.Events
+@implements IAsyncDisposable
+
+@code {
+    [Parameter] public Guid DocumentId { get; set; }
+    [Parameter] public bool LiveUpdated { get; set; } = true;
+
+    [Parameter] public GeneratedDocument? Document { get; set; }
+
+    private bool receivedMessagesVisible = false;
+    private string? apiSignalRAddressBase;
+    private HubConnection? hubConnection;
+    private List<string> messages = new List<string>();
+}
+
+@if (Document != null)
+{
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h6">Generated Document</MudText>
+        <MudText Typo="Typo.h6">Document ID: @Document.Id</MudText>
+        <MudText Typo="Typo.h6">Document Name: @Document.Title</MudText>
+        <MudPaper Outlined="true" Class="border-dashed">
+            @if (Document.ContentNodes.Any())
+            {
+                @foreach (var contentNode in Document.ContentNodes)
+                {
+                    <ContentNodeDisplay Node="@contentNode" Recursive="true"/>
+                }
+            }
+        </MudPaper>
+    </MudPaper>
+}
+else
+{
+    <MudPaper>
+        <MudProgressCircular Indeterminate="true" Size="Size.Large" />
+    </MudPaper>
+}
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        var token = await DocumentGenerationApiClient.GetAccessTokenAsync();
+
+        Document = await GetDocumentAsync(DocumentId);
+
+        await StartHubConnections(token);
+    }
+
+    private async Task StartHubConnections(string token)
+    {
+        //TODO: This is a hack because SignalR can't use Service Discovery yet
+        apiSignalRAddressBase = Configuration.GetValue<string>("services:api-main:0")!;
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(Navigation.ToAbsoluteUri($"{apiSignalRAddressBase}/hubs/notification-hub"), options =>
+            {
+                options.AccessTokenProvider = () => Task.FromResult(token)!;
+            })
+            .WithStatefulReconnect()
+            .WithAutomaticReconnect()
+            .Build();
+
+        hubConnection.On<string>( // CorrelationId
+            "ReceiveDocumentOutlineNotification",
+            HubReceiveDocumentOutlineNotificationHandler);
+
+        hubConnection.On<ContentNodeGenerated>(
+            "ReceiveContentNodeNotification",
+            HubReceiveContentNodeNotificationHandler);
+
+        hubConnection.On<ContentNodeGenerationStateChanged>(
+            "ReceiveContentNodeGenerationStateChangedNotification",
+            HubReceiveContentNodeGenerationStateChangedNotificationHandler);
+
+
+        await hubConnection.StartAsync();
+    }
+
+    private async Task HubReceiveContentNodeGenerationStateChangedNotificationHandler(ContentNodeGenerationStateChanged message)
+    {
+        if (message.CorrelationId == DocumentId)
+        {
+            // This notification is for the document we are currently displaying - get the associated contentNode
+            var contentNode = await ContentNodeApiClient.GetContentNodeAsync(message.ContentNodeId.ToString());
+            if (contentNode is not null)
+            {
+                UpdateContentNodeState(Document?.ContentNodes, contentNode);
+            }
+        }
+    }
+
+
+    private async Task UpdateContentNodeState(List<ContentNode>? documentContentNodes, ContentNode updatedNodeFromEvent)
+    {
+        if (documentContentNodes is null || !documentContentNodes.Any()) return;
+
+        // Apply the updates.
+        documentContentNodes = UpdateNodes(documentContentNodes, updatedNodeFromEvent);
+
+        await InvokeAsync(StateHasChanged);
+        // Recursive method to search and update the node in the tree.
+        List<ContentNode> UpdateNodes(List<ContentNode> nodes, ContentNode updatedNode)
+        {
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                if (nodes[i].Id == updatedNode.Id)
+                {
+                    
+                    // Replace the node.
+                    nodes[i] = updatedNode;
+                    return nodes; // Return immediately since the node has been replaced.
+                }
+
+                // If the current node has children, attempt to update them.
+                if (nodes[i].Children != null && nodes[i].Children.Any())
+                {
+                    nodes[i].Children = UpdateNodes(nodes[i].Children, updatedNode);
+                }
+            }
+
+            return nodes; // Return the potentially modified list of nodes.
+        }
+
+
+    }
+
+
+    private async Task HubReceiveDocumentOutlineNotificationHandler(string correlationId)
+    {
+        string encodedMsg;
+        if (correlationId == DocumentId.ToString())
+        {
+            receivedMessagesVisible = true;
+            encodedMsg = $"Received ReceiveDocumentOutlineNotification for GeneratedDocument with ID : {correlationId}";
+            // Get the document using /api/documents/documentId and render it
+            try
+            {
+                var document = await DocumentGenerationApiClient.GetDocumentAsync(correlationId);
+                if (document is not null)
+                {
+                    this.Document = document;
+
+                    // Sort the ContentNodes by their Text property in ascending order
+                    this.Document.ContentNodes = this.Document.ContentNodes.OrderBy(x => x.Text).ToList();
+                }
+            }
+            catch
+            {
+                encodedMsg = "Failed to retrieve document after receiving ReceiveDocumentOutlineNotification";
+            }
+        }
+        else return;
+
+        messages.Add(encodedMsg);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HubReceiveContentNodeNotificationHandler(ContentNodeGenerated contentNodeGeneratedEvent)
+    {
+        string encodedMsg;
+        if (contentNodeGeneratedEvent.CorrelationId == DocumentId)
+        {
+            var correlationIdString = contentNodeGeneratedEvent.CorrelationId.ToString();
+            receivedMessagesVisible = true;
+            encodedMsg = $"Received ReceiveContentNodeNotification for ContentNode with ID : {contentNodeGeneratedEvent.ContentNodeId}";
+            try
+            {
+                if (this.Document == null)
+                {
+                    await HubReceiveDocumentOutlineNotificationHandler(correlationIdString);
+                }
+
+                var contentNode = await ContentNodeApiClient.GetContentNodeAsync(contentNodeGeneratedEvent.ContentNodeId.ToString());
+                if (contentNode is not null)
+                {
+                    if (contentNode.ParentId is not null)
+                    {
+                        var parentNode = this.Document?.ContentNodes.FirstOrDefault(x => x.Id == contentNode.ParentId);
+                        parentNode?.Children.Add(contentNode);
+                    }
+                    else
+                    {
+                        if (contentNode.Type == ContentNodeType.Heading || contentNode.Type == ContentNodeType.Title)
+                        {
+                            this.Document?.ContentNodes.Add(contentNode);
+                        }
+                        else
+                        {
+                            this.Document?.ContentNodes.Insert(0, contentNode);
+                        }
+
+                    }
+                }
+                else
+                {
+                    encodedMsg = "Failed to retrieve ContentNode after receiving ReceiveContentNodeNotification - ignoring";
+                }
+            }
+            catch
+            {
+                encodedMsg = "Failed to retrieve ContentNode after receiving ReceiveContentNodeNotification - ignoring";
+            }
+            messages.Add(encodedMsg);
+        }
+        else return;
+
+        messages.Add(encodedMsg);
+        await InvokeAsync(StateHasChanged);
+
+    }
+
+    private async Task<GeneratedDocument?>
+    GetDocumentAsync(Guid? documentId)
+    {
+        if (documentId == null) return null;
+        return await DocumentGenerationApiClient.GetDocumentAsync(documentId.ToString());
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection != null) await hubConnection.DisposeAsync();
+    }
+}
