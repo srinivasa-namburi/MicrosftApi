@@ -14,7 +14,9 @@ public class TableProfile : Profile
 
         CreateMap<DocumentTable, Table>();
         CreateMap<DocumentTableCell, TableCell>()
-            .ForMember(x=>x.Text, y=>y.MapFrom(source=>source.Content));
+            .ForMember(x => x.Text, y => y.MapFrom(source => source.Content))
+            .ForMember(x => x.RowSpan, y => y.MapFrom(source => source.RowSpan))
+            .ForMember(x => x.ColumnSpan, y => y.MapFrom(source => source.ColumnSpan));
 
         CreateMap<BoundingRegion, Models.BoundingRegion>()
             .ForMember(x=>x.Page, y=>y.MapFrom(source=>source.PageNumber))

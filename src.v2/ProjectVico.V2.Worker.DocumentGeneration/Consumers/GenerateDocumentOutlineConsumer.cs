@@ -33,7 +33,7 @@ public class GenerateDocumentOutlineConsumer : IConsumer<GenerateDocumentOutline
 
     public async Task Consume(ConsumeContext<GenerateDocumentOutline> context)
     {
-        var generateDocumentOutlineCommand = context.Message;
+         var generateDocumentOutlineCommand = context.Message;
         _logger.LogInformation("Received GenerateDocumentOutline event: {DocumentID}", generateDocumentOutlineCommand.CorrelationId);
 
         // if the generated document already exists, we should delete it and all its content nodes
@@ -47,9 +47,9 @@ public class GenerateDocumentOutlineConsumer : IConsumer<GenerateDocumentOutline
         var generatedDocument = new GeneratedDocument()
         {
             Id = context.Message.CorrelationId,
-            Title = $"Environmental Report: + {generateDocumentOutlineCommand.DocumentTitle}",
+            Title = generateDocumentOutlineCommand.DocumentTitle,
             GeneratedDate = DateTime.Now,
-            RequestingAuthorOid = new Guid(generateDocumentOutlineCommand.AuthorOid),
+            RequestingAuthorOid = new Guid(generateDocumentOutlineCommand.AuthorOid!),
             ContentNodes = new List<ContentNode>()
         };
 
@@ -227,7 +227,6 @@ public class GenerateDocumentOutlineConsumer : IConsumer<GenerateDocumentOutline
         await _dbContext.SaveChangesAsync();
 
         var jsonOutputGeneratedDocument = JsonSerializer.Serialize(generatedDocument);
-
         // Print the generated document to log output
         _logger.LogInformation("Generated Document: {GeneratedDocument}", jsonOutputGeneratedDocument);
 

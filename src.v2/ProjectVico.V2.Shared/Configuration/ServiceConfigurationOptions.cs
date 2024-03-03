@@ -28,6 +28,9 @@ public class ServiceConfigurationOptions
             public ushort NumberOfIngestionWorkers { get; set; }
             public string ContainerNRC { get; set; } = string.Empty;
             public string ContainerCustomData { get; set; } = string.Empty;
+            public string FolderAutoImportNRC { get; set; } = string.Empty;
+            public string FolderAutoImportCustomData { get; set; } = string.Empty;
+
             public bool ProcessTables { get; set; }
           
             public ClassificationOptions Classification { get; set; } = new ClassificationOptions();

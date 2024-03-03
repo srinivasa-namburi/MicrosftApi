@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Identity.Web;
 using ProjectVico.V2.Shared.Contracts.DTO;
+using ProjectVico.V2.Shared.Contracts.Messages.DocumentIngestion.Commands;
 using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Models;
 
@@ -57,6 +58,15 @@ public class DocumentsController : BaseController
         documentIngestionRequest.UploadedByUserOid = claimsPrincipal.GetObjectId();
         await _publishEndpoint.Publish<DocumentIngestionRequest>(documentIngestionRequest);
         
+        return Accepted();
+    }
+
+    [HttpPost("reindex-all")]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ReindexAllCompletedDocuments()
+    {
+        await _publishEndpoint.Publish<ReindexAllCompletedDocuments>(new ReindexAllCompletedDocuments(Guid.NewGuid()));
         return Accepted();
     }
 

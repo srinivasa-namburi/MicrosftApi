@@ -124,13 +124,19 @@ var workerDocumentGeneration = builder
     .WithConfigSection(envConnectionStringsConfigurationSection)
     .WithReference(apiMain);
 
-
 var workerDocumentIngestion = builder
     .AddProject<Projects.ProjectVico_V2_Worker_DocumentIngestion>("worker-documentingestion")
     .WithReplicas(Convert.ToUInt16(
         builder.Configuration["ServiceConfiguration:ProjectVicoServices:DocumentIngestion:NumberOfIngestionWorkers"]))
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithReference(docIngBlobs)
+    .WithReference(apiMain);
+
+var workerScheduler = builder
+    .AddProject<Projects.ProjectVico_V2_Worker_Scheduler>("worker-scheduler")
+    .WithReplicas(1)
+    .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithReference(docIngBlobs)
     .WithReference(apiMain);
 
@@ -149,6 +155,10 @@ if (!azdDeploy)
         .WithReference(docGenSqlLocal!)
         .WithReference(docGenRabbitMq!);
 
+    workerScheduler
+        .WithReference(docGenSqlLocal!)
+        .WithReference(docGenRabbitMq!);
+
     setupManager
         .WithReference(docGenSqlLocal!);
 
@@ -160,6 +170,10 @@ else
         .WithReference(serviceBus!);
 
     workerDocumentIngestion
+        .WithReference(docGenSqlAzure!)
+        .WithReference(serviceBus!);
+
+    workerScheduler
         .WithReference(docGenSqlAzure!)
         .WithReference(serviceBus!);
 
@@ -175,7 +189,5 @@ var docGenFrontend = builder
     .WithReference(apiMain)
     .WithReference(docIngBlobs)
     ;
-
-    
 
 builder.Build().Run();

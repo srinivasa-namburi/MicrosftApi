@@ -243,7 +243,13 @@ namespace ProjectVico.V2.Shared.Migrations
                     b.Property<int>("ColumnIndex")
                         .HasColumnType("int");
 
+                    b.Property<int?>("ColumnSpan")
+                        .HasColumnType("int");
+
                     b.Property<int>("RowIndex")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("RowSpan")
                         .HasColumnType("int");
 
                     b.Property<byte[]>("RowVersion")

@@ -1,4 +1,5 @@
-﻿namespace ProjectVico.V2.Shared.Models;
+﻿using System.Text.Json.Serialization;
+namespace ProjectVico.V2.Shared.Models;
 
 public class BoundingPolygon : EntityBase
 {
@@ -7,5 +8,6 @@ public class BoundingPolygon : EntityBase
     public decimal Y { get; set; }
 
     public Guid BoundingRegionId { get; set; }
+    [JsonIgnore]
     public BoundingRegion BoundingRegion { get; set; }
 }

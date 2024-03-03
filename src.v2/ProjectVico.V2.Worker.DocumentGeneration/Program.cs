@@ -1,34 +1,39 @@
+using Azure;
+using Azure.Search.Documents;
 using MassTransit;
 using MassTransit.EntityFrameworkCoreIntegration;
+using ProjectVico.V2.Plugins.Earthquake.Connectors;
+using ProjectVico.V2.Plugins.GeographicalData.Connectors;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Data.Sql;
+using ProjectVico.V2.Shared.Helpers;
+using ProjectVico.V2.Shared.Interfaces;
 using ProjectVico.V2.Shared.SagaState;
+using ProjectVico.V2.Shared.Search;
 using ProjectVico.V2.Worker.DocumentGeneration.AI;
 using ProjectVico.V2.Worker.DocumentGeneration.Sagas;
 using ProjectVico.V2.Worker.DocumentGeneration.Services;
 
 
 var builder = Host.CreateApplicationBuilder(args);
-
 builder.AddServiceDefaults();
 
 builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configuration.GetSection("ServiceConfiguration"));
+
 var serviceConfigurationOptions = builder.Configuration.GetSection("ServiceConfiguration").Get<ServiceConfigurationOptions>()!;
 
 if (serviceConfigurationOptions.ProjectVicoServices.DocumentGeneration.CreateBodyTextNodes)
 {
-    builder.Services.AddSingleton<IBodyTextGenerator, SemanticKernelBodyTextGenerator>();
+    builder.Services.AddScoped<IBodyTextGenerator, SemanticKernelBodyTextGenerator>();
 }
 else
 {
-    builder.Services.AddSingleton<IBodyTextGenerator, LoremIpsumBodyTextGenerator>();
+    builder.Services.AddScoped<IBodyTextGenerator, LoremIpsumBodyTextGenerator>();
 }
 
 builder.AddAzureServiceBus("sbus");
 builder.AddRabbitMQ("rabbitmq-docgen");
-
 builder.AddKeyedAzureOpenAI("openai-planner");
-
 builder.AddAzureBlobService("docGenBlobs");
 
 builder.AddSqlServerDbContext<DocGenerationDbContext>("sql-docgen", settings =>
@@ -40,6 +45,17 @@ builder.AddSqlServerDbContext<DocGenerationDbContext>("sql-docgen", settings =>
     settings.Metrics = true;
 });
 
+builder.Services.AddScoped<IIndexingProcessor, SearchIndexingProcessor>();
+builder.Services.AddScoped<IEarthquakeConnector, USGSEarthquakeConnector>();
+builder.Services.AddScoped<IMappingConnector, AzureMapsConnector>();
+builder.Services.AddScoped<TableHelper>();
+
+builder.Services.AddKeyedScoped<SearchClient>("searchclient-section",
+    (provider, o) => GetSearchClientWithIndex(provider, o, serviceConfigurationOptions.CognitiveSearch.NuclearSectionIndex));
+builder.Services.AddKeyedScoped<SearchClient>("searchclient-title",
+    (provider, o) => GetSearchClientWithIndex(provider, o, serviceConfigurationOptions.CognitiveSearch.NuclearTitleIndex));
+builder.Services.AddKeyedScoped<SearchClient>("searchclient-customdata",
+    (provider, o) => GetSearchClientWithIndex(provider, o, serviceConfigurationOptions.CognitiveSearch.CustomIndex));
 
 builder.AddSemanticKernelService();
 
@@ -85,7 +101,6 @@ else
                     new SqlLockStatementProvider("dbo", new SqlServerLockStatementFormatter(true));
             });
 
-        // This is to ensure RabbitMQ has enough time to start up before MassTransit tries to connect to it
         x.UsingRabbitMq((context, cfg) =>
         {
             cfg.PrefetchCount = 1;
@@ -96,11 +111,16 @@ else
     });
 }
 
-//builder.Services.AddHostedService<DemoWorker>();
+
 
 var host = builder.Build();
-
-// Run the DbContext EnsureCreated and EnsureDeleted methods
-var services = host.Services;
-
 host.Run();
+
+SearchClient GetSearchClientWithIndex(IServiceProvider serviceProvider, object? key, string indexName)
+{
+    var searchClient = new SearchClient(
+        new Uri(serviceConfigurationOptions.CognitiveSearch.Endpoint),
+        indexName,
+        new AzureKeyCredential(serviceConfigurationOptions.CognitiveSearch.Key));
+    return searchClient;
+}

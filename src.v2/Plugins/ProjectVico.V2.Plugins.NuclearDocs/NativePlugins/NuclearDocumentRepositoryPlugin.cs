@@ -2,14 +2,13 @@
 using System.ComponentModel;
 using System.Text;
 using Azure.AI.OpenAI;
-using Microsoft.AspNetCore.Builder.Extensions;
 using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
 using ProjectVico.V2.Shared.Configuration;
+using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Shared.Interfaces;
 using ProjectVico.V2.Shared.Models;
 using ProjectVico.V2.Shared.Models.Enums;
-using static System.Collections.Specialized.BitVector32;
 
 namespace ProjectVico.V2.Plugins.NuclearDocs.NativePlugins;
 
@@ -18,15 +17,20 @@ public class NuclearDocumentRepositoryPlugin
     private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
     private readonly IIndexingProcessor _indexingProcessor;
     private readonly OpenAIClient _openAIClient;
+    private readonly TableHelper _tableHelper;
 
     public NuclearDocumentRepositoryPlugin(
         IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
         IIndexingProcessor indexingProcessor,
-        [FromKeyedServices("openai-planner")] OpenAIClient openAIClient)
+        [FromKeyedServices("openai-planner")] OpenAIClient openAIClient,
+        TableHelper tableHelper
+        )
     {
         _serviceConfigurationOptions = serviceConfigurationOptions.Value;
         _indexingProcessor = indexingProcessor;
         _openAIClient = openAIClient;
+        
+        _tableHelper = tableHelper;
     }
 
     [KernelFunction("GetFullChaptersForQuery")]
@@ -119,8 +123,14 @@ public class NuclearDocumentRepositoryPlugin
         // Generate example  // Build the examples for the prompt
         var sectionExample = new StringBuilder();
 
-        // Get the 6 first documents
-        var firstDocuments = documents.Take(6).ToList();
+        // Get the 3 first documents
+        var firstDocuments = documents.Take(3).ToList();
+
+        //For each document, replace any TABLE_REFERENCE tags with a HTML rendering of the Table in question
+        foreach (var document in firstDocuments)
+        {
+            document.Content = _tableHelper.ReplaceTableReferencesWithHtml(document.Content);
+        }
 
         foreach (var document in firstDocuments)
         {
@@ -172,7 +182,8 @@ public class NuclearDocumentRepositoryPlugin
              Using this information, write a similar section(sub-section) or chapter(section),
              depending on which is most appropriate to the query. 
              
-             Be as verbose as necessary to include all required information.
+             Be as verbose as necessary to include all required information. Try to be very complete in your response, considering all source data. We
+             are looking for full sections or chapters - not short summaries.
              
              If you encounter sub sections ("{sectionOrTitleNumber}.1", "{sectionOrTitleNumber}.1.1", etc),
              DISREGARD THEM AND ALL THEIR CONTENT. ONLY write the body text that belongs to
@@ -186,8 +197,12 @@ public class NuclearDocumentRepositoryPlugin
              
              Format the text with Markdown syntax. For example, use #, ##, ### for headings, * and - for bullet points, etc.
              
+             The exception to this is if you encounter tables (they start and  end with <table> and </table> tags) - they should be rendered 
+             as HTML tables in the output if they contain colspan or rowspan attributes in any of their cells, but can be rendered as MarkDown tables if they are simple tables 
+             without col- or row spans. As a rule, they ar HTML tables in the source examples.
+             
              If you are missing details to write specific portions, please indicate that with [DETAIL: <dataType>] -
-             and put the type of data needed in the dataType parameter.
+             and put the type of data needed in the dataType parameter. Make sure to look at all the source content before you decide you lack details!
              \n\n
              {exampleString}
              \n\n
@@ -206,9 +221,9 @@ public class NuclearDocumentRepositoryPlugin
                 new ChatRequestUserMessage(sectionPrompt)
             },
             DeploymentName = this._serviceConfigurationOptions.OpenAi.DocGenModelDeploymentName,
-            MaxTokens = 16384,
-            Temperature = 0.2f,
-            FrequencyPenalty = 0.5f
+            MaxTokens = 15000,
+            Temperature = 0.3f,
+            FrequencyPenalty = 0.6f
         };
 
         StringBuilder chatStringBuilder = new StringBuilder();

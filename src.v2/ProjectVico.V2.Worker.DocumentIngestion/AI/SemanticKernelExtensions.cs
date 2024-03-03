@@ -4,6 +4,7 @@ using Azure.Search.Documents;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Plugins.OpenApi;
 using ProjectVico.V2.Shared.Configuration;
+using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Shared.Interfaces;
 using ProjectVico.V2.Shared.Search;
 
@@ -36,6 +37,7 @@ public static class SemanticKernelExtensions
             var serviceConfigurationOptions = configuration.GetSection("ServiceConfiguration").Get<ServiceConfigurationOptions>();
 
             kernelBuilder.Services.AddScoped<IIndexingProcessor, SearchIndexingProcessor>();
+            kernelBuilder.Services.AddScoped<TableHelper>();
 
             //Add the openAi Clients from builder.Services to kernelBuilder.Services
             kernelBuilder.Services.AddKeyedScoped<OpenAIClient>("openai-docgen1",(sp, o) => openAiDocGen1);

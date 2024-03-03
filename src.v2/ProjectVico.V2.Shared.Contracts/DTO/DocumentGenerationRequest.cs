@@ -1,21 +1,10 @@
-﻿using System.Reflection.Metadata;
-
-namespace ProjectVico.V2.Shared.Contracts.DTO;
+﻿namespace ProjectVico.V2.Shared.Contracts.DTO;
 
 public class DocumentGenerationRequest
 {
     public DocumentGenerationRequest()
     {
-        
-    }
 
-    public DocumentGenerationRequest(string DocumentTitle, string? ReactorModel, LocationInformation Location, DateOnly? ProjectedProjectStartDate = null, DateOnly? ProjectedProjectEndDate = null, string? AuthorOid = null)
-    {
-        this.DocumentTitle = DocumentTitle;
-        this.ReactorModel = ReactorModel;
-        this.Location = Location;
-        this.ProjectedProjectStartDate = ProjectedProjectStartDate;
-        this.ProjectedProjectEndDate = ProjectedProjectEndDate;
     }
 
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -31,7 +20,7 @@ public class DocumentGenerationRequest
 
     // Plant Details
     public string? PlantName { get; set; }
-    public IEnumerable<string> PlantDesign { get; set; } = new HashSet<string>(); // set to a specific type later
+    public IEnumerable<string> PlantDesign { get; set; } = new List<string>(); // set to a specific type later
     public string? OperatingHistory { get; set; }
     public string? AddressLine1 { get; set; } // there are also probably specific address types adaptable to country, etc.
     public string? AddressLine2 { get; set; }
@@ -43,13 +32,13 @@ public class DocumentGenerationRequest
     // Proposed Changes
     public string? ModificationDescription { get; set; }
     public string? SafetyAnalysisReport { get; set; } // make a file later, likewise others would be other types
-    public string? EnvironmentalImpact {  get; set; }
+    public string? EnvironmentalImpact { get; set; }
 
     // Licensee Information
     public string? Name { get; set; }
     public string? Email { get; set; }
     public string? PhoneNumber { get; set; }
     public string? OrganizationalStructure { get; set; }
-    public IEnumerable<string> FinancialAssurance { get; set; } = new HashSet<string>();
+    public IEnumerable<string> FinancialAssurance { get; set; } = new List<string>();
     public string? ExperienceAndQualifications { get; set; }
 };

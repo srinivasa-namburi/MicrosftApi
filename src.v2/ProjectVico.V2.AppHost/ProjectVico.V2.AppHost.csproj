@@ -26,5 +26,6 @@
 		<ProjectReference Include="..\ProjectVico.V2.Worker.DocumentGeneration\ProjectVico.V2.Worker.DocumentGeneration.csproj" />
 		<ProjectReference Include="..\ProjectVico.V2.Worker.DocumentIngestion\ProjectVico.V2.Worker.DocumentIngestion.csproj" />
 		<ProjectReference Include="..\ProjectVico.V2.Shared\ProjectVico.V2.Shared.csproj" IsAspireProjectResource="false" />
+		<ProjectReference Include="..\ProjectVico.V2.Worker.Scheduler\ProjectVico.V2.Worker.Scheduler.csproj" />
 	</ItemGroup>
 </Project>

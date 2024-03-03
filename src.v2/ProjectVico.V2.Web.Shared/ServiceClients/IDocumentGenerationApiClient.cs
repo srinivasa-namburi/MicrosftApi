@@ -5,7 +5,7 @@ namespace ProjectVico.V2.Web.Shared.ServiceClients;
 
 public interface IDocumentGenerationApiClient : IServiceClient
 {
-    Task<string?> GenerateDocumentAsync(DocumentGenerationRequest documentGenerationRequest);
+    Task<string?> GenerateDocumentAsync(DocumentGenerationRequest? documentGenerationRequest);
     Task<GeneratedDocument?> GetDocumentAsync(string documentId);
     Task<List<GeneratedDocumentListItem>> GetGeneratedDocumentsAsync();
 }

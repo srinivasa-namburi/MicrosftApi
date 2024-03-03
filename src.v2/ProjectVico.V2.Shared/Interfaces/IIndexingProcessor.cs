@@ -43,4 +43,5 @@ public interface IIndexingProcessor
     Task<IEnumerable<ReportDocument>> GetAllUniqueTitlesAsync(int numberOfUniqueFiles);
     Task<List<ReportDocument>> SearchWithTitleSearch(string searchText, int top = 12, int k = 7);
     Task<List<ReportDocument>> SearchWithCustomSearch(string searchText, int top = 12, int k = 7);
+    bool DeleteAllIndexedDocuments(string indexName);
 }

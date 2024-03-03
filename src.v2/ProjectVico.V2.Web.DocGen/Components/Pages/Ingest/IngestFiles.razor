@@ -12,34 +12,40 @@
 @inject AzureFileHelper AzureFileHelper
 @inject IDocumentIngestionApiClient DocumentIngestionApiClient
 @inject IOptions<ServiceConfigurationOptions> ConfigurationOptions
+@inject ISnackbar SnackBar
 
 <PageTitle>Ingest Documents</PageTitle>
 <h1>Ingest Documents</h1>
+<MudStack Row="true">
+    <MudStack>
+        <MudFileUpload T="IReadOnlyList<IBrowserFile>" Accept=".pdf" FilesChanged="UploadNRCFiles" MaximumFileCount="100">
+            <ButtonTemplate>
+                <MudButton HtmlTag="label"
+                           Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.CloudUpload"
+                           for="@context.Id">
+                    Upload NRC Documents (PDF only)
+                </MudButton>
+            </ButtonTemplate>
+        </MudFileUpload>
 
-<MudFileUpload T="IReadOnlyList<IBrowserFile>" Accept=".pdf" FilesChanged="UploadNRCFiles" MaximumFileCount="100">
-    <ButtonTemplate>
-        <MudButton HtmlTag="label"
-                   Variant="Variant.Filled"
-                   Color="Color.Primary"
-                   StartIcon="@Icons.Material.Filled.CloudUpload"
-                   for="@context.Id">
-            Upload NRC Documents (PDF only)
-        </MudButton>
-    </ButtonTemplate>
-</MudFileUpload>
-
-<MudFileUpload T="IReadOnlyList<IBrowserFile>" Accept=".pdf" FilesChanged="UploadCustomFiles" MaximumFileCount="100">
-    <ButtonTemplate>
-        <MudButton HtmlTag="label"
-                   Variant="Variant.Filled"
-                   Color="Color.Primary"
-                   StartIcon="@Icons.Material.Filled.CloudUpload"
-                   for="@context.Id">
-            Upload Custom Documents (PDF only)
-        </MudButton>
-    </ButtonTemplate>
-</MudFileUpload>
-
+        <MudFileUpload T="IReadOnlyList<IBrowserFile>" Accept=".pdf" FilesChanged="UploadCustomFiles" MaximumFileCount="100">
+            <ButtonTemplate>
+                <MudButton HtmlTag="label"
+                           Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.CloudUpload"
+                           for="@context.Id">
+                    Upload Custom Documents (PDF only)
+                </MudButton>
+            </ButtonTemplate>
+        </MudFileUpload>
+    </MudStack>
+    <MudStack>
+        <MudButton OnClick="ReIndexAllDocumentsClick" Color="Color.Info">Reindex All Documents</MudButton>
+    </MudStack>
+</MudStack>
 @if (nrcFiles.Count > 0)
 {
     <MudText Class="mt-8">NRC Documents Uploaded</MudText>
@@ -124,24 +130,24 @@
             var fileStream = file.OpenReadStream(maxAllowedSize: Int32.MaxValue);
             var fileName = file.Name;
             var ingestionRequest = new DocumentIngestionRequest()
-            {
-                Id = Guid.NewGuid(),
-                FileName = fileName,
-                IngestionType = IngestionType.NRCDocument,
-            };
+                {
+                    Id = Guid.NewGuid(),
+                    FileName = fileName,
+                    IngestionType = IngestionType.NRCDocument,
+                };
 
             await SubmitDocumentIngestionJob(fileStream, fileName, ingestionRequest);
         }
         files.RemoveAll();
     }
 
-    private async Task SubmitDocumentIngestionJob(Stream fileStream, string fileName, DocumentIngestionRequest documentIngestionRequest)
+    private async Task SubmitDocumentIngestionJob(Stream fileStream, string fileName, DocumentIngestionRequest? documentIngestionRequest)
     {
         var customContainerName = "ingest-custom";
         var nrcContainerName = "ingest-nrc";
         var filePrefix = DateTime.Now.ToString("yyyy-MM-dd");
         var fullFileName = $"ingest/{filePrefix}/{fileName}";
-        
+
         string blobUrl;
         if (documentIngestionRequest.IngestionType == IngestionType.NRCDocument)
         {
@@ -154,6 +160,13 @@
 
         documentIngestionRequest.OriginalDocumentUrl = blobUrl;
         await DocumentIngestionApiClient.IngestDocumentAsync(documentIngestionRequest);
+    }
+
+    private async Task ReIndexAllDocumentsClick()
+    {
+        await DocumentIngestionApiClient.ReindexAllDocuments();
+        SnackBar.Add("Re-Indexing of all documents submitted");
+        await InvokeAsync(StateHasChanged);
     }
 
 }

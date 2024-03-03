@@ -11,12 +11,20 @@ internal sealed class DocumentIngestionApiClient : BaseServiceClient<DocumentIng
     {
     }
 
-    public async Task<string?> IngestDocumentAsync(DocumentIngestionRequest documentIngestionRequest)
+    public async Task<string?> IngestDocumentAsync(DocumentIngestionRequest? documentIngestionRequest)
     {
         var response = await SendPostRequestMessage($"/api/documents/ingest", documentIngestionRequest);
         response?.EnsureSuccessStatusCode();
 
         return response?.StatusCode.ToString();
+    }
+
+    public async Task<string?> ReindexAllDocuments()
+    {
+        var response = await SendPostRequestMessage($"/api/documents/reindex-all", null);
+        response?.EnsureSuccessStatusCode();
+        return response?.StatusCode.ToString();
+
     }
 
 }

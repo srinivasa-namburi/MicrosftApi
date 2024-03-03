@@ -11,7 +11,7 @@ internal sealed class DocumentGenerationApiClient : BaseServiceClient<DocumentGe
     {
     }
 
-    public async Task<string?> GenerateDocumentAsync(DocumentGenerationRequest documentGenerationRequest)
+    public async Task<string?> GenerateDocumentAsync(DocumentGenerationRequest? documentGenerationRequest)
     {
         var response = await SendPostRequestMessage($"/api/documents/generate", documentGenerationRequest);
         response?.EnsureSuccessStatusCode();

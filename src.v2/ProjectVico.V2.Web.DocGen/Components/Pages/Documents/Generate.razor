@@ -14,7 +14,7 @@
 
 
 @code {
-    private readonly DocumentGenerationRequest documentGenerationRequest = new DocumentGenerationRequest();
+    private readonly DocumentGenerationRequest? documentGenerationRequest = new DocumentGenerationRequest();
     private bool showGeneratedDocument = false;
     private ServiceConfigurationOptions ServiceConfigurationOptions => ServiceConfigurationOptionsSelector.Value;
 

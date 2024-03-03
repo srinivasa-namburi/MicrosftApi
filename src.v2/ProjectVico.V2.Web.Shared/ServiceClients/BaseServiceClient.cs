@@ -15,11 +15,12 @@ public interface IServiceClient
 
 public abstract class BaseServiceClient<T> where T : IServiceClient
 {
-    protected readonly ILogger<T> Logger;
-    protected readonly HttpClient HttpClient;
-    protected readonly IHttpContextAccessor HttpContextAccessor;
-    protected HttpContext HttpContext => HttpContextAccessor.HttpContext ??
-                                      throw new InvalidOperationException("No HttpContext available from the IHttpContextAccessor!");
+    private readonly ILogger<T> Logger;
+    private readonly HttpClient HttpClient;
+    private readonly IHttpContextAccessor HttpContextAccessor;
+
+    private HttpContext HttpContext => HttpContextAccessor.HttpContext ??
+                                       throw new InvalidOperationException("No HttpContext available from the IHttpContextAccessor!");
 
     protected string AccessToken => GetAccessTokenAsync().GetAwaiter().GetResult();
     protected BaseServiceClient(HttpClient httpClient, IHttpContextAccessor httpContextAccessor, ILogger<T> logger)
@@ -41,10 +42,15 @@ public abstract class BaseServiceClient<T> where T : IServiceClient
         return response;
     }
 
-    protected async Task<HttpResponseMessage?> SendPostRequestMessage(string requestUri, object pocoPayload)
+    protected async Task<HttpResponseMessage?> SendPostRequestMessage(string requestUri, object? pocoPayload)
     {
         using var requestMessage = new HttpRequestMessage(HttpMethod.Post, requestUri);
         requestMessage.Headers.Authorization = new("Bearer", this.AccessToken);
+        if (pocoPayload == null)
+        {
+            Logger.LogWarning("Sending POST request to {RequestUri} with empty payload", requestUri);
+
+        }
         requestMessage.Content = new StringContent(JsonSerializer.Serialize(pocoPayload), Encoding.UTF8, "application/json");
 
         Logger.LogInformation("Sending POST request to {RequestUri}", requestUri);

@@ -42,6 +42,25 @@ public class SearchIndexingProcessor : IIndexingProcessor
         _serviceConfigurationOptions = serviceConfigurationOptions.Value;
     }
 
+    public bool DeleteAllIndexedDocuments(string indexName)
+    {
+        Uri serviceEndpoint = new Uri(_serviceConfigurationOptions.CognitiveSearch.Endpoint);
+        var searchIndexClient = new SearchIndexClient(serviceEndpoint, new AzureKeyCredential(_serviceConfigurationOptions.CognitiveSearch.Key));
+
+        try
+        {
+            searchIndexClient.DeleteIndex(indexName);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to delete index. Exception: {ex.Message}");
+            return false;
+        }
+
+        return true;
+
+    }
+
     public bool CreateIndex(string indexName)
     {
         var vectorSearchProfileName = _serviceConfigurationOptions.CognitiveSearch.VectorSearchProfileName;

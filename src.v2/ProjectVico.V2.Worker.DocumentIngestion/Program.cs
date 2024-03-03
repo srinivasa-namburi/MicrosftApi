@@ -36,6 +36,7 @@ builder.Services.AddAutoMapper(typeof(TableProfile));
 
 // Ingestion specific custom dependencies
 builder.Services.AddScoped<AzureFileHelper>();
+builder.Services.AddScoped<TableHelper>();
 
 builder.Services.AddKeyedScoped<SearchClient>("searchclient-section",
     (provider, o) => GetSearchClientWithIndex(provider, o, serviceConfigurationOptions.CognitiveSearch.NuclearSectionIndex));
@@ -89,6 +90,16 @@ if (!builder.Environment.IsDevelopment() && !string.IsNullOrWhiteSpace(serviceBu
             cfg.ConfigureEndpoints(context);
             cfg.ConcurrentMessageLimit = 1;
             cfg.PrefetchCount = 3;
+            cfg.UseMessageRetry(r => r.Intervals(new TimeSpan[]
+            {
+                // Set first retry to a random number between 3 and 9 seconds
+                TimeSpan.FromSeconds(new Random().Next(3, 9)),
+                // Set second retry to a random number between 10 and 30 seconds
+                TimeSpan.FromSeconds(new Random().Next(10, 30)),
+                // Set third and final retry to a random number between 30 and 60 seconds
+                TimeSpan.FromSeconds(new Random().Next(30, 60))
+                
+            }));
         });
     });
 }
@@ -111,13 +122,23 @@ else
         {
             cfg.PrefetchCount = 1;
             cfg.ConcurrentMessageLimit = 1;
+            cfg.UseMessageRetry(r => r.Intervals(new TimeSpan[]
+            {
+                // Set first retry to a random number between 3 and 9 seconds
+                TimeSpan.FromSeconds(new Random().Next(3, 9)),
+                // Set second retry to a random number between 10 and 30 seconds
+                TimeSpan.FromSeconds(new Random().Next(10, 30)),
+                // Set third and final retry to a random number between 45 and 120 seconds
+                TimeSpan.FromSeconds(new Random().Next(45, 120))
+                
+            }));
             cfg.Host(rabbitMqConnectionString);
             cfg.ConfigureEndpoints(context);
         });
     });
 }
 
-//builder.Services.AddHostedService<Worker>();
+
 
 var host = builder.Build();
 host.Run();
