@@ -42,7 +42,7 @@ if (!azdDeploy) // For local development
     {
         docGenSqlLocal = builder
             .AddSqlServerContainer("sql-docgen", password: sqlPassword, 9001)
-            .WithVolumeMount("sql-docgen-vol", "/var/opt/mssql", VolumeMountType.Named)
+            .WithVolumeMount("pvico-sql-docgen-vol", "/var/opt/mssql", VolumeMountType.Named)
             .AddDatabase("ProjectVICOdb");
 
 
@@ -50,7 +50,7 @@ if (!azdDeploy) // For local development
             .AddRabbitMQContainer("rabbitmq-docgen", 9002, password: rabbitMqPassword)
             .WithAnnotation(new ContainerImageAnnotation() { Image = "rabbitmq", Tag = "3-management" })
             .WithEnvironment("NODENAME", "rabbit@localhost")
-            .WithVolumeMount("rabbitmq-docgen-vol", "/var/lib/rabbitmq", VolumeMountType.Named);
+            .WithVolumeMount("pvico-rabbitmq-docgen-vol", "/var/lib/rabbitmq", VolumeMountType.Named);
     }
     else // Don't persist data and queue content - it will be deleted on restart!
     {
