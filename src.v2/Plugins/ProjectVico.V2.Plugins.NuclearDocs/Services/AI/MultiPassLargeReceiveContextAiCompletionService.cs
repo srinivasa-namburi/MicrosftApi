@@ -1,6 +1,13 @@
 ﻿using System.Text;
+using System.Text.Json;
 using Azure.AI.OpenAI;
 using Microsoft.Extensions.Options;
+using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.ChatCompletion;
+using Microsoft.SemanticKernel.Connectors.OpenAI;
+using ProjectVico.V2.Plugins.Earthquake.NativePlugins;
+using ProjectVico.V2.Plugins.GeographicalData.NativePlugins;
+using ProjectVico.V2.Plugins.NuclearDocs.NativePlugins;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Shared.Models;
@@ -13,21 +20,36 @@ public class MultiPassLargeReceiveContextAiCompletionService : IAiCompletionServ
     private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
     private readonly OpenAIClient _openAIClient;
     private readonly TableHelper _tableHelper;
+    private Kernel _sk;
+    private readonly IServiceProvider _sp;
     private int _numberOfPasses = 8;
 
     public MultiPassLargeReceiveContextAiCompletionService(
         IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
         [FromKeyedServices("openai-planner")] OpenAIClient openAIClient,
-        TableHelper tableHelper
-    )
+        TableHelper tableHelper,
+        IChatCompletionService chatCompletionService,
+        IServiceProvider sp)
     {
         _serviceConfigurationOptions = serviceConfigurationOptions.Value;
         _openAIClient = openAIClient;
         _tableHelper = tableHelper;
+        _sp = sp;
+
+
     }
 
     public async Task<List<ContentNode>> GetBodyContentNodes(List<ReportDocument> documents, string sectionOrTitleNumber, string sectionOrTitleText, ContentNodeType contentNodeType, string tableOfContentsString)
     {
+        using var scope = _sp.CreateScope();
+        var plugins = new KernelPluginCollection();
+
+        plugins.AddFromObject(scope.ServiceProvider.GetRequiredService<EarthquakePlugin>(), "native_" + nameof(EarthquakePlugin));
+        plugins.AddFromObject(scope.ServiceProvider.GetRequiredService<FacilitiesPlugin>(), "native_" + nameof(FacilitiesPlugin));
+
+
+        _sk = new Kernel(_sp, plugins);
+
         var sectionExample = new StringBuilder();
         var firstDocuments = documents.Take(3).ToList();
 
@@ -49,9 +71,30 @@ public class MultiPassLargeReceiveContextAiCompletionService : IAiCompletionServ
         var systemPrompt =
             "[SYSTEM]: This is a chat between an intelligent AI bot specializing in assisting with producing environmental reports for Small Modular nuclear Reactors ('SMR') and one or more participants. The AI has been trained on GPT-4 LLM data through to April 2023 and has access to additional data on more recent SMR environmental report samples. Provide responses that can be copied directly into an environmental report.";
 
+        var lastPassResponse = new List<string>();
+
         for (int i = 0; i < _numberOfPasses; i++)
         {
-            
+
+            //Create a dynamic object with the custom data for the current project
+            //Include the latitude and longitude of the reactor (in Tacoma, WA, the reactor type, the reactor size, the location of the reactor, and any other relevant data
+
+            //var dummyCustomData =
+            //    new
+            //    {
+            //        Latitude = 47.2529,
+            //        Longitude = -122.4443,
+            //        ReactorType = "SMR",
+            //        ReactorSize = "Small",
+            //        ReactorLocation = "Tacoma, WA"
+            //    };
+
+            //// serialize the custom data to a string/json
+            //var customDataString = JsonSerializer.Serialize(dummyCustomData);
+            string customDataString = "No custom data";
+
+
+
             string prompt;
             if (i == 0)
             {
@@ -68,6 +111,15 @@ public class MultiPassLargeReceiveContextAiCompletionService : IAiCompletionServ
 
                          Using this information, write a similar section(sub-section) or chapter(section),
                          depending on which is most appropriate to the query.
+                         
+                         For customizing the output so that it pertains to this project, please use tool calling/functions as supplied to you
+                         in the list of available functions. If you need additional data, please request it using the [DETAIL: <dataType>] tag.
+                         
+                         Custom data for this project follows in JSON format between the [CUSTOMDATA] and [/CUSTOMDATA] tags.
+                         
+                         [CUSTOMDATA]
+                         {customDataString}
+                         [/CUSTOMDATA]
                          
                          You are writing the section {sectionOrTitleNumber} - {sectionOrTitleText}. The section examples may contain input from 
                          additional sub-sections in addition to the specific section you are writing.
@@ -123,8 +175,11 @@ public class MultiPassLargeReceiveContextAiCompletionService : IAiCompletionServ
                             A summary of the output up to now is here :
                             {summary}
                             
+                            As a reminder, this was the output of the last pass - DO NOT REPEAT THIS INFORMATION IN THIS PASS:
+                            {String.Join("\n\n", lastPassResponse)}
+                            
                             For the next step, you should continue the conversation. Here's the prompt you should use - but
-                            take care not to repeat the same information you've already provided. Also ignore the first two paragraphs of the prompt detailing
+                            take care not to repeat the same information you've already provided (as detailed in the summary). Also ignore the first two paragraphs of the prompt detailing
                             how to respond to the first pass query. This is pass number {i + 1} of {_numberOfPasses} - take that into account when you respond.
                             
                             Please start your response with content only - no ASSISTANT texts explaining your logic, tasks or reasoning.
@@ -143,7 +198,9 @@ public class MultiPassLargeReceiveContextAiCompletionService : IAiCompletionServ
                            """;
             }
 
-            chatResponses.AddRange(await ReturnCompletionsForPrompt(systemPrompt, prompt));
+            lastPassResponse = await ReturnCompletionsForPromptWithSemanticKernelFunctionCalling(systemPrompt, prompt);
+            chatResponses.AddRange(lastPassResponse);
+
 
             if (chatResponses.Last().Contains("[*TO BE CONTINUED*]", StringComparison.InvariantCultureIgnoreCase))
             {
@@ -155,7 +212,7 @@ public class MultiPassLargeReceiveContextAiCompletionService : IAiCompletionServ
             {
                 // Remove the [*COMPLETE*] tag from the response
                 chatResponses[chatResponses.Count - 1] = chatResponses.Last().Replace("[*COMPLETE*]", "");
-               
+
                 break;
             }
         }
@@ -180,40 +237,31 @@ public class MultiPassLargeReceiveContextAiCompletionService : IAiCompletionServ
         return [combinedBodyTextNode];
     }
 
-    private async Task<List<string>> ReturnCompletionsForPrompt(string systemPrompt, string userPrompt)
+    private async Task<List<string>> ReturnCompletionsForPromptWithSemanticKernelFunctionCalling(string systemPrompt,
+         string userPrompt)
     {
-        var chatCompletionOptions = new ChatCompletionsOptions
+        var openAiExecutionSettings = new OpenAIPromptExecutionSettings
         {
-            Messages =
-            {
-                new ChatRequestSystemMessage(systemPrompt),
-                new ChatRequestUserMessage(userPrompt)
-            },
-            DeploymentName = _serviceConfigurationOptions.OpenAi.PlannerModelDeploymentName,
+            ChatSystemPrompt = systemPrompt,
+            ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions,
             MaxTokens = 4000,
-            Temperature = 0.2f,
+            Temperature = 0.4f,
             FrequencyPenalty = 0.5f
         };
 
         var chatResponses = new List<string>();
-        StringBuilder chatStringBuilder = new StringBuilder();
+        var chatStringBuilder = new StringBuilder();
 
-        await foreach (StreamingChatCompletionsUpdate chatUpdate in
-                       await _openAIClient.GetChatCompletionsStreamingAsync(chatCompletionOptions))
+        await foreach (var update in _sk.InvokePromptStreamingAsync(userPrompt, new KernelArguments(openAiExecutionSettings)))
         {
-            if (chatUpdate.Role.HasValue)
-            {
-                Console.Write($"{chatUpdate.Role.Value.ToString().ToUpperInvariant()}: ");
-            }
-
-            if (string.IsNullOrEmpty(chatUpdate.ContentUpdate)) continue;
-
-            Console.Write(chatUpdate.ContentUpdate);
-            chatStringBuilder.Append(chatUpdate.ContentUpdate);
+            Console.Write(update);
+            chatStringBuilder.Append(update);
         }
 
         chatResponses.Add(chatStringBuilder.ToString());
         return chatResponses;
+
+
     }
 
     private async Task<string> SummarizeOutput(string originalContent)
