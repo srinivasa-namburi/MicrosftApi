@@ -42,9 +42,10 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
             AuthorOid = message.AuthorOid
         };
 
+        var tableOfContentsString = GeneratePlainTextTableOfContentsFromOutlineJson(message.DocumentOutlineJson);
+
         try
         {
-
             var trackedDocument =
                 await _dbContext.GeneratedDocuments
                 .FirstOrDefaultAsync(x => x.Id == message.CorrelationId);
@@ -90,7 +91,7 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
                 var sectionNumber = contentNode.Text.Split(' ')[0];
                 var sectionTitle = contentNode.Text.Substring(sectionNumber.Length).Trim();
 
-                var bodyContentNodes = await GenerateBodyText(contentNodeType, sectionNumber, sectionTitle);
+                var bodyContentNodes = await GenerateBodyText(contentNodeType, sectionNumber, sectionTitle, tableOfContentsString);
 
                 // Set the Parent of all bodyContentNodes to be the existingContentNode
                 foreach (var bodyContentNode in bodyContentNodes)
@@ -131,9 +132,36 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
         }
     }
 
-    private async Task<List<ContentNode>> GenerateBodyText(string contentNodeType, string sectionNumber, string sectionTitle)
+    private async Task<List<ContentNode>> GenerateBodyText(string contentNodeType, string sectionNumber,
+        string sectionTitle, string tableOfContentsString)
     {
-        var result = await _bodyTextGenerator.GenerateBodyText(contentNodeType, sectionNumber, sectionTitle);
+        var result = await _bodyTextGenerator.GenerateBodyText(contentNodeType, sectionNumber, sectionTitle, tableOfContentsString);
         return result;
+    }
+
+    private string GeneratePlainTextTableOfContentsFromOutlineJson(string outlineJson)
+    {
+        var contentNodes = JsonSerializer.Deserialize<List<ContentNode>>(outlineJson);
+        return GenerateTableOfContents(contentNodes);
+    }
+
+    private string GenerateTableOfContents(IEnumerable<ContentNode> contentNodes)
+    {
+        var sb = new StringBuilder();
+        foreach (var contentNode in contentNodes)
+        {
+            AppendContentNode(sb, contentNode, 0);
+        }
+        return sb.ToString();
+    }
+
+    private void AppendContentNode(StringBuilder sb, ContentNode contentNode, int depth)
+    {
+        // Indent based on the depth in the hierarchy
+        sb.AppendLine(new string(' ', depth * 2) + contentNode.Text);
+        foreach (var child in contentNode.Children)
+        {
+            AppendContentNode(sb, child, depth + 1);
+        }
     }
 }

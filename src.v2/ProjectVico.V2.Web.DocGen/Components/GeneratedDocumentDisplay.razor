@@ -7,6 +7,7 @@
 @using ProjectVico.V2.Web.Shared.ServiceClients
 @using Microsoft.AspNetCore.SignalR.Client
 @using ProjectVico.V2.Shared.Contracts.Messages.DocumentGeneration.Events
+@using ProjectVico.V2.Shared.Helpers
 @implements IAsyncDisposable
 
 @code {
@@ -49,9 +50,9 @@ else
     protected override async Task OnInitializedAsync()
     {
         var token = await DocumentGenerationApiClient.GetAccessTokenAsync();
-
         Document = await GetDocumentAsync(DocumentId);
-
+        ContentNodeSorter.SortContentNodes(Document.ContentNodes);
+        
         await StartHubConnections(token);
     }
 
@@ -104,7 +105,7 @@ else
 
         // Apply the updates.
         documentContentNodes = UpdateNodes(documentContentNodes, updatedNodeFromEvent);
-
+        ContentNodeSorter.SortContentNodes(documentContentNodes);
         await InvokeAsync(StateHasChanged);
         // Recursive method to search and update the node in the tree.
         List<ContentNode> UpdateNodes(List<ContentNode> nodes, ContentNode updatedNode)
@@ -146,10 +147,9 @@ else
                 var document = await DocumentGenerationApiClient.GetDocumentAsync(correlationId);
                 if (document is not null)
                 {
-                    this.Document = document;
-
+                    Document = document;
                     // Sort the ContentNodes by their Text property in ascending order
-                    this.Document.ContentNodes = this.Document.ContentNodes.OrderBy(x => x.Text).ToList();
+                    ContentNodeSorter.SortContentNodes(document.ContentNodes);
                 }
             }
             catch
@@ -198,6 +198,8 @@ else
                         }
 
                     }
+
+                    if (Document?.ContentNodes != null) ContentNodeSorter.SortContentNodes(Document!.ContentNodes);
                 }
                 else
                 {

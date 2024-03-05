@@ -14,7 +14,7 @@ using ProjectVico.V2.Shared.Interfaces;
 using ProjectVico.V2.Shared.Models;
 using ProjectVico.V2.Shared.Models.Enums;
 
-namespace ProjectVico.V2.Shared.Search;
+namespace ProjectVico.V2.Shared.Services.Search;
 
 public class SearchIndexingProcessor : IIndexingProcessor
 {
@@ -248,7 +248,7 @@ public class SearchIndexingProcessor : IIndexingProcessor
     }
 
     private async Task<List<ReportDocument>> GetReportDocumentsFromSpecifiedSearchClient(string searchText, int top, int k, SearchClient searchClient)
-        
+
     {
         var searchResults = new List<ReportDocument>();
 
@@ -299,10 +299,10 @@ public class SearchIndexingProcessor : IIndexingProcessor
 
         var embeddingResult = await _openAiClient.GetEmbeddingsAsync(
             embeddingsOptions: new EmbeddingsOptions(
-                _serviceConfigurationOptions.OpenAi.EmbeddingModelDeploymentName, new List<string> {text})
-        { 
-            User = "user"
-        });
+                _serviceConfigurationOptions.OpenAi.EmbeddingModelDeploymentName, new List<string> { text })
+            {
+                User = "user"
+            });
 
         Console.WriteLine("Done with embeddings generation");
 

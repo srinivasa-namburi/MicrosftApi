@@ -21,28 +21,8 @@ public class SemanticKernelBodyTextGenerator : IBodyTextGenerator
     }
 
     public async Task<List<ContentNode>> GenerateBodyText(string contentNodeType, string sectionNumber,
-        string sectionTitle)
+        string sectionTitle, string tableOfContentsString)
     {
-        // var planRequest = $"""
-        //                    Generate the boxy text nodes ONLY for this {contentNodeType} using the "GetBodyTextNodesOnly" plugin function
-        //                    in the NuclearDocumentRepositoryPlugin,
-        //                    using these settings for parameters:
-
-        //                    sectionOrTitleNumber = "{sectionNumber}"
-        //                    sectionOrTitleText = "{sectionTitle}",
-        //                    contentNodeTypeString = "{contentNodeType}"
-        //                    """;
-
-        //var plan =
-        //    await new HandlebarsPlanner(new HandlebarsPlannerOptions(allowLoops: false)).CreatePlanAsync(
-        //        _semanticKernel,
-        //        planRequest);
-
-        //var bodyContentNodesJson = await plan.InvokeAsync(_semanticKernel);
-        //using var memoryStream = new MemoryStream(Encoding.UTF8.GetBytes(bodyContentNodesJson));
-        //var bodyContentNodes = await JsonSerializer.DeserializeAsync<List<ContentNode>>(memoryStream);
-        //return bodyContentNodes;
-
         _semanticKernel.Plugins.TryGetFunction(pluginName: ("native_" + nameof(NuclearDocumentRepositoryPlugin)),
             functionName: "GetBodyTextNodesOnly", out KernelFunction? function);
 
@@ -50,7 +30,8 @@ public class SemanticKernelBodyTextGenerator : IBodyTextGenerator
         {
             { "sectionOrTitleNumber", sectionNumber },
             { "sectionOrTitleText", sectionTitle },
-            { "contentNodeTypeString", contentNodeType }
+            { "contentNodeTypeString", contentNodeType },
+            { "tableOfContentsString", tableOfContentsString }
         };
         
         var result = await _semanticKernel.InvokeAsync<List<ContentNode>>(

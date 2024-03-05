@@ -1,17 +1,7 @@
-using Azure.AI.FormRecognizer.DocumentAnalysis;
-using Azure.Search.Documents;
-using Azure;
 using MassTransit;
-using MassTransit.EntityFrameworkCoreIntegration;
-using ProjectVico.V2.Shared.Classification.Classifiers;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Helpers;
-using ProjectVico.V2.Shared.Interfaces;
-using ProjectVico.V2.Shared.Mappings;
-using ProjectVico.V2.Shared.Pipelines;
-using ProjectVico.V2.Shared.SagaState;
-using ProjectVico.V2.Shared.Search;
 using ProjectVico.V2.Worker.Scheduler;
 
 var builder = Host.CreateApplicationBuilder(args);

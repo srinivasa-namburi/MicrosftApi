@@ -8,7 +8,7 @@
   </PropertyGroup>
 
 	<PropertyGroup>
-		<NoWarn>SKEXP0060;SKEXP0061;SKEXP0042;SKEXP0011</NoWarn>
+		<NoWarn>SKEXP0060;SKEXP0061;SKEXP0042;SKEXP0011;SKEXP0001</NoWarn>
 	</PropertyGroup>
 
 	<ItemGroup>

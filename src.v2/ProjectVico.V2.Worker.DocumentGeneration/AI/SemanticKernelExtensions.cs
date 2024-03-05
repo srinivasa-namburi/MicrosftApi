@@ -1,5 +1,9 @@
 ﻿using Azure.AI.OpenAI;
 using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.ChatCompletion;
+using Microsoft.SemanticKernel.Connectors.OpenAI;
+using Microsoft.SemanticKernel.Embeddings;
+using Microsoft.SemanticKernel.TextGeneration;
 using ProjectVico.V2.Plugins.Earthquake.NativePlugins;
 using ProjectVico.V2.Plugins.GeographicalData.NativePlugins;
 using ProjectVico.V2.Plugins.NuclearDocs.NativePlugins;
@@ -22,14 +26,36 @@ public static class SemanticKernelExtensions
         return builder;
     }
 
+    private static IHostApplicationBuilder AddCompletionServices(this IHostApplicationBuilder builder)
+    {
+        var sp = builder.Services.BuildServiceProvider();
+        var openAiPlanner = sp.GetKeyedService<OpenAIClient>("openai-planner");
+        var serviceConfigurationOptions = builder.Configuration.GetSection("ServiceConfiguration").Get<ServiceConfigurationOptions>()!;
+        
+        builder.Services.AddScoped<IChatCompletionService>(service => 
+            new AzureOpenAIChatCompletionService(serviceConfigurationOptions.OpenAi.PlannerModelDeploymentName,
+                openAiPlanner, "openai-chatcompletion")
+        );
+
+        builder.Services.AddScoped<ITextEmbeddingGenerationService>(service => 
+            new AzureOpenAITextEmbeddingGenerationService("text-embedding-ada002", 
+                openAiPlanner, "openai-embeddinggeneration")
+        );
+
+        builder.Services.AddScoped<ITextGenerationService>(service => 
+            new AzureOpenAITextGenerationService(serviceConfigurationOptions.OpenAi.DocGenModelDeploymentName,
+                openAiPlanner, "openai-textgeneration")
+        );
+        return builder;
+    }
+
     public static IHostApplicationBuilder AddSemanticKernelService(this IHostApplicationBuilder builder)
     {
+        builder.AddCompletionServices();
         builder.AddSemanticKernelPlugins();
+
         var sp = builder.Services.BuildServiceProvider();
-        
-        var serviceConfigurationOptions = builder.Configuration.GetSection("ServiceConfiguration").Get<ServiceConfigurationOptions>()!;
-        var openAiPlanner = sp.GetKeyedService<OpenAIClient>("openai-planner");
-        
+
         builder.Services.AddScoped<Kernel>(serviceProvider =>
         {
             KernelPluginCollection plugins = new KernelPluginCollection();
@@ -43,10 +69,6 @@ public static class SemanticKernelExtensions
             var kernel = new Kernel(serviceProvider, plugins);
             return kernel;
         });
-
-        builder.Services.AddAzureOpenAIChatCompletion(serviceConfigurationOptions.OpenAi.PlannerModelDeploymentName, openAiPlanner, "openai-chatcompletion");
-        builder.Services.AddAzureOpenAITextGeneration(serviceConfigurationOptions.OpenAi.DocGenModelDeploymentName, openAiPlanner, "openai-textgeneration");
-        builder.Services.AddAzureOpenAITextEmbeddingGeneration("text-embedding-ada002", openAiPlanner, "openai-embeddinggeneration");
 
         return builder;
     }

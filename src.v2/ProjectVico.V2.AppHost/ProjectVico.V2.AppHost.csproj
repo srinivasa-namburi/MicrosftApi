@@ -28,4 +28,6 @@
 		<ProjectReference Include="..\ProjectVico.V2.Shared\ProjectVico.V2.Shared.csproj" IsAspireProjectResource="false" />
 		<ProjectReference Include="..\ProjectVico.V2.Worker.Scheduler\ProjectVico.V2.Worker.Scheduler.csproj" />
 	</ItemGroup>
+
+	<ProjectExtensions><VisualStudio><UserProperties appsettings_1json__JsonSchema="" /></VisualStudio></ProjectExtensions>
 </Project>

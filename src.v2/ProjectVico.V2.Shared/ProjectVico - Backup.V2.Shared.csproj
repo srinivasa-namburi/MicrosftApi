@@ -44,7 +44,8 @@
 
 	<ItemGroup>
 	  <Folder Include="Migrations\" />
-	  <Folder Include="Services\Search\" />
+	  <Folder Include="NewFolder\" />
+	  <Folder Include="Search\" />
 	</ItemGroup>
 
 </Project>

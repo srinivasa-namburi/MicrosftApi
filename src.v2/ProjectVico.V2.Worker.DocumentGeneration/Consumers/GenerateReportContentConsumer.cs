@@ -33,11 +33,12 @@ public class GenerateReportContentConsumer : IConsumer<GenerateReportContent>
         var reportContent = await JsonSerializer.DeserializeAsync<GeneratedDocument>(memoryStream);
         
         _titleCount = 0;
+        var documentContentNodesJson = JsonSerializer.Serialize(reportContent.ContentNodes);
 
         // Process each top-level content node recursively
         foreach (var title in reportContent.ContentNodes)
         {
-            await ProcessContentNodeRecursive(title, context);
+            await ProcessContentNodeRecursive(title, documentContentNodesJson, context);
         }
 
         await context.Publish(new ReportContentGenerationSubmitted(context.Message.CorrelationId)
@@ -48,7 +49,7 @@ public class GenerateReportContentConsumer : IConsumer<GenerateReportContent>
         });
     }
 
-    private async Task ProcessContentNodeRecursive(ContentNode node, ConsumeContext<GenerateReportContent> context)
+    private async Task ProcessContentNodeRecursive(ContentNode node, string documentOutlineJson, ConsumeContext<GenerateReportContent> context)
     {
         _titleCount++; // Increment count for each node processed
 
@@ -57,13 +58,14 @@ public class GenerateReportContentConsumer : IConsumer<GenerateReportContent>
         await context.Publish(new GenerateReportTitleSection(context.Message.CorrelationId)
         {
             ContentNodeJson = contentNodeJson,
-            AuthorOid = context.Message.AuthorOid!
+            AuthorOid = context.Message.AuthorOid!,
+            DocumentOutlineJson = documentOutlineJson
         });
 
         // Recursively process each child node
         foreach (var child in node.Children)
         {
-            await ProcessContentNodeRecursive(child, context);
+            await ProcessContentNodeRecursive(child, documentOutlineJson, context);
         }
     }
 }

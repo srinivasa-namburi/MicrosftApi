@@ -11,7 +11,7 @@ using ProjectVico.V2.Shared.Interfaces;
 using ProjectVico.V2.Shared.Mappings;
 using ProjectVico.V2.Shared.Pipelines;
 using ProjectVico.V2.Shared.SagaState;
-using ProjectVico.V2.Shared.Search;
+using ProjectVico.V2.Shared.Services.Search;
 using ProjectVico.V2.Worker.DocumentIngestion.AI;
 using ProjectVico.V2.Worker.DocumentIngestion.Sagas;
 
