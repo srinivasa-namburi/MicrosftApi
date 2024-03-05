@@ -2,9 +2,7 @@ using Azure;
 using Azure.Search.Documents;
 using MassTransit;
 using MassTransit.EntityFrameworkCoreIntegration;
-using ProjectVico.V2.Plugins.Earthquake.Connectors;
-using ProjectVico.V2.Plugins.GeographicalData.Connectors;
-using ProjectVico.V2.Plugins.NuclearDocs.Services.AI;
+using ProjectVico.V2.Plugins.Shared;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Helpers;
@@ -47,11 +45,9 @@ builder.AddSqlServerDbContext<DocGenerationDbContext>("sql-docgen", settings =>
 });
 
 builder.Services.AddScoped<IIndexingProcessor, SearchIndexingProcessor>();
-builder.Services.AddScoped<IEarthquakeConnector, USGSEarthquakeConnector>();
-builder.Services.AddScoped<IMappingConnector, AzureMapsConnector>();
-builder.Services.AddKeyedScoped<IAiCompletionService, SinglePassOpenAiCompletionService>("aicompletion-singlepass");
-builder.Services.AddKeyedScoped<IAiCompletionService, MultiPassLargeReceiveContextAiCompletionService>("aicompletion-multipass");
 builder.Services.AddScoped<TableHelper>();
+
+builder.DynamicallyRegisterPlugins();
 
 builder.Services.AddKeyedScoped<SearchClient>("searchclient-section",
     (provider, o) => GetSearchClientWithIndex(provider, o, serviceConfigurationOptions.CognitiveSearch.NuclearSectionIndex));

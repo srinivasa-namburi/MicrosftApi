@@ -1,9 +1,0 @@
-﻿using ProjectVico.V2.Shared.Models;
-using ProjectVico.V2.Shared.Models.Enums;
-
-namespace ProjectVico.V2.Plugins.NuclearDocs.Services.AI;
-
-public interface IAiCompletionService
-{
-    Task<List<ContentNode>> GetBodyContentNodes(List<ReportDocument> documents, string sectionOrTitleNumber, string sectionOrTitleText, ContentNodeType contentNodeType, string tableOfContentsString);
-}

@@ -2,14 +2,12 @@
 using Azure.AI.OpenAI;
 using Azure.Search.Documents;
 using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.Plugins.OpenApi;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Shared.Interfaces;
 using ProjectVico.V2.Shared.Services.Search;
 
 namespace ProjectVico.V2.Worker.DocumentIngestion.AI;
-
 
 public static class SemanticKernelExtensions
 {

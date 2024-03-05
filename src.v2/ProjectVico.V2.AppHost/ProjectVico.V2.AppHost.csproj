@@ -17,9 +17,6 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\Plugins\ProjectVico.V2.Plugins.Earthquake\ProjectVico.V2.Plugins.Earthquake.csproj" />
-		<ProjectReference Include="..\Plugins\ProjectVico.V2.Plugins.GeographicalData\ProjectVico.V2.Plugins.GeographicalData.csproj" />
-		<ProjectReference Include="..\Plugins\ProjectVico.V2.Plugins.NuclearDocs\ProjectVico.V2.Plugins.NuclearDocs.csproj" />
 		<ProjectReference Include="..\ProjectVico.V2.API.Main\ProjectVico.V2.API.Main.csproj" />
 		<ProjectReference Include="..\ProjectVico.V2.SetupManager\ProjectVico.V2.SetupManager.csproj" />
 		<ProjectReference Include="..\ProjectVico.V2.Web.DocGen\ProjectVico.V2.Web.DocGen.csproj" />

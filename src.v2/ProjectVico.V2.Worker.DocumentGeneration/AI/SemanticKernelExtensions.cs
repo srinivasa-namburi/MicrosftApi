@@ -4,11 +4,13 @@ using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 using Microsoft.SemanticKernel.Embeddings;
 using Microsoft.SemanticKernel.TextGeneration;
-using ProjectVico.V2.Plugins.Earthquake.NativePlugins;
-using ProjectVico.V2.Plugins.GeographicalData.NativePlugins;
-using ProjectVico.V2.Plugins.NuclearDocs.NativePlugins;
+using ProjectVico.V2.Plugins.Default.EarthQuake;
+using ProjectVico.V2.Plugins.Default.GeographicalData;
+using ProjectVico.V2.Plugins.Default.NuclearDocs;
+using ProjectVico.V2.Plugins.Default.Utility;
+using ProjectVico.V2.Plugins.Shared;
 using ProjectVico.V2.Shared.Configuration;
-using ProjectVico.V2.Worker.DocumentGeneration.NativePlugins;
+
 
 namespace ProjectVico.V2.Worker.DocumentGeneration.AI;
 
@@ -31,18 +33,21 @@ public static class SemanticKernelExtensions
         var sp = builder.Services.BuildServiceProvider();
         var openAiPlanner = sp.GetKeyedService<OpenAIClient>("openai-planner");
         var serviceConfigurationOptions = builder.Configuration.GetSection("ServiceConfiguration").Get<ServiceConfigurationOptions>()!;
-        
-        builder.Services.AddScoped<IChatCompletionService>(service => 
+
+        builder.Services.AddScoped<IChatCompletionService>(service =>
             new AzureOpenAIChatCompletionService(serviceConfigurationOptions.OpenAi.PlannerModelDeploymentName,
                 openAiPlanner, "openai-chatcompletion")
         );
 
-        builder.Services.AddScoped<ITextEmbeddingGenerationService>(service => 
-            new AzureOpenAITextEmbeddingGenerationService("text-embedding-ada002", 
+#pragma warning disable SKEXP0011;SKEXP0001
+        builder.Services.AddScoped<ITextEmbeddingGenerationService>(service =>
+
+            new AzureOpenAITextEmbeddingGenerationService("text-embedding-ada002",
                 openAiPlanner, "openai-embeddinggeneration")
         );
+#pragma warning restore SKEXP0011;SKEXP0001
 
-        builder.Services.AddScoped<ITextGenerationService>(service => 
+        builder.Services.AddScoped<ITextGenerationService>(service =>
             new AzureOpenAITextGenerationService(serviceConfigurationOptions.OpenAi.DocGenModelDeploymentName,
                 openAiPlanner, "openai-textgeneration")
         );
@@ -60,11 +65,7 @@ public static class SemanticKernelExtensions
         {
             KernelPluginCollection plugins = new KernelPluginCollection();
 
-            plugins.AddFromObject(sp.GetRequiredService<NuclearDocumentRepositoryPlugin>(), "native_" + nameof(NuclearDocumentRepositoryPlugin));
-            plugins.AddFromObject(sp.GetRequiredService<EarthquakePlugin>(), "native_" + nameof(EarthquakePlugin));
-            plugins.AddFromObject(sp.GetRequiredService<FacilitiesPlugin>(), "native_" + nameof(FacilitiesPlugin));
-            plugins.AddFromObject(sp.GetRequiredService<DatePlugin>(), "native_" + nameof(DatePlugin));
-            plugins.AddFromObject(sp.GetRequiredService<ConversionPlugin>(), "native_" + nameof(ConversionPlugin));
+            plugins.AddRegisteredPluginsToKernelPluginCollection(serviceProvider);
 
             var kernel = new Kernel(serviceProvider, plugins);
             return kernel;

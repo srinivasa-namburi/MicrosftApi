@@ -4,8 +4,8 @@ using ProjectVico.V2.Shared.Models;
 using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
-using ProjectVico.V2.Plugins.NuclearDocs.NativePlugins;
 using System.Numerics;
+using ProjectVico.V2.Plugins.Default.NuclearDocs;
 
 namespace ProjectVico.V2.Worker.DocumentGeneration.Services;
 

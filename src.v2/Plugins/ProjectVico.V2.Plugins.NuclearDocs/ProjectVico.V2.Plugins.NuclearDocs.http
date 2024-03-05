@@ -1,6 +1,0 @@
-@ProjectVico.V2.Plugins.NuclearDocs_HostAddress = http://localhost:5070
-
-GET {{ProjectVico.V2.Plugins.NuclearDocs_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###

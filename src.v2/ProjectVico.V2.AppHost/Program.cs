@@ -73,35 +73,13 @@ else // For production/Azure deployment
         .AddAzureServiceBus("sbus");
 }
 
-var pluginGeographicalData = builder
-    .AddProject<Projects.ProjectVico_V2_Plugins_GeographicalData>("plugin-geographicaldata")
-    .WithHttpsEndpoint(7001)
-    .WithConfigSection(envAzureAdConfigurationSection)
-    .WithConfigSection(envServiceConfigurationConfigurationSection)
-    ;
-
-var pluginEarthquake = builder
-    .AddProject<Projects.ProjectVico_V2_Plugins_Earthquake>("plugin-earthquake")
-    .WithHttpsEndpoint(7002)
-    .WithConfigSection(envAzureAdConfigurationSection)
-    ;
-
-var pluginNuclearDocs = builder
-    .AddProject<Projects.ProjectVico_V2_Plugins_NuclearDocs>("plugin-nucleardocs")
-    .WithHttpsEndpoint(7003)
-    .WithConfigSection(envAzureAdConfigurationSection)
-    .WithConfigSection(envServiceConfigurationConfigurationSection)
-    .WithConfigSection(envConnectionStringsConfigurationSection)
-    ;
 
 var apiMain = builder
     .AddProject<Projects.ProjectVico_V2_API_Main>("api-main")
     .WithHttpsEndpoint(6001)
     .WithConfigSection(envAzureAdConfigurationSection)
     .WithConfigSection(envServiceConfigurationConfigurationSection)
-    .WithReference(docIngBlobs)
-    .WithReference(pluginGeographicalData)
-    .WithReference(pluginEarthquake);
+    .WithReference(docIngBlobs);
 
 if (!azdDeploy)
 {

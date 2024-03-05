@@ -31,27 +31,17 @@
     <PackageReference Include="MassTransit.Quartz" Version="8.1.3" />
     <PackageReference Include="MassTransit.RabbitMQ" Version="8.1.3" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
-    <PackageReference Include="Microsoft.SemanticKernel" Version="1.3.1" />
-    <PackageReference Include="Microsoft.SemanticKernel.Abstractions" Version="1.3.1" />
-    <PackageReference Include="Microsoft.SemanticKernel.Connectors.OpenAI" Version="1.3.1" />
-    <PackageReference Include="Microsoft.SemanticKernel.Core" Version="1.3.1" />
-    <PackageReference Include="Microsoft.SemanticKernel.Planners.Handlebars" Version="1.3.1-preview" />
-    <PackageReference Include="Microsoft.SemanticKernel.Planners.OpenAI" Version="1.3.1-preview" />
-    <PackageReference Include="Microsoft.SemanticKernel.Plugins.OpenApi" Version="1.3.1-alpha" />
-    <PackageReference Include="Microsoft.SemanticKernel.PromptTemplates.Handlebars" Version="1.3.1" />
     <PackageReference Include="NLipsum" Version="1.1.0" />
     
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Plugins\ProjectVico.V2.Plugins.Earthquake\ProjectVico.V2.Plugins.Earthquake.csproj" />
-    <ProjectReference Include="..\Plugins\ProjectVico.V2.Plugins.GeographicalData\ProjectVico.V2.Plugins.GeographicalData.csproj" />
-    <ProjectReference Include="..\Plugins\ProjectVico.V2.Plugins.NuclearDocs\ProjectVico.V2.Plugins.NuclearDocs.csproj" />
+    <ProjectReference Include="..\Plugins\ProjectVico.V2.Plugins.Default\ProjectVico.V2.Plugins.Default.csproj" />
+    <ProjectReference Include="..\Plugins\ProjectVico.V2.Plugins.Shared\ProjectVico.V2.Plugins.Shared.csproj" />
     <ProjectReference Include="..\ProjectVico.V2.ServiceDefaults\ProjectVico.V2.ServiceDefaults.csproj" />
     <ProjectReference Include="..\ProjectVico.V2.Shared.Contracts\ProjectVico.V2.Shared.Contracts.csproj" />
+    <ProjectReference Include="..\ProjectVico.V2.Shared\ProjectVico.V2.Shared.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="Sagas\" />
-  </ItemGroup>
+
 </Project>
