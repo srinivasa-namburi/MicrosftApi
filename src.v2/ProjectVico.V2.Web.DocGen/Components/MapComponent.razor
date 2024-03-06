@@ -1,38 +1,172 @@
-﻿@page "/map"
-
-@using System.Text;
+﻿@using System.Text;
 @using Microsoft.Extensions.Options
 @using ProjectVico.V2.Shared.Configuration
+@using ProjectVico.V2.Shared.Contracts.DTO
+@using ProjectVico.V2.Web.Shared.ServiceClients
+@using MassTransit.Configuration
+@using FluentValidation
+@using Azure 
+@using Azure.Core.GeoJson
+@using Azure.Maps.Search
+@using Azure.Maps.Search.Models
+@inject IDocumentGenerationApiClient DocumentGenerationApiClient
 @inject IJSRuntime JSRuntime
 @inject IOptions<ServiceConfigurationOptions> ServiceConfigurationOptionsSelector
 
-
-<div id="map" style="position:relative;width:100%;min-width:290px;height:600px;"></div>
+@using System.Threading
+@using System.Net.Http.Json
 
 @code {
+    [Parameter, EditorRequired] public LocationInformation? DocumentGenerationRequestLocation { get; set; }
+    [Parameter] public EventCallback<LocationInformation> DocumentGenerationRequestLocationChanged { get; set; }
 
+    private class CustomAddressResultItem
+    {
+        public string? Id { get; set; }
+        public string? DisplayAddress { get; set; }
+        public LocationInformation? Location { get; set; }
+    }
+
+    private CustomAddressResultItem? CurrentItem { get; set; }
+
+    private async Task CurrentItemChanged(CustomAddressResultItem NewCurrentItem)
+    {
+        if (NewCurrentItem?.Location is not null)
+        {
+            CurrentItem = NewCurrentItem;
+            
+            await JSRuntime.InvokeVoidAsync("initializeMap", SubscriptionKey, (float)NewCurrentItem.Location.Latitude, (float)NewCurrentItem.Location.Longitude);
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+}
+
+<MudStack Row="false">
+    <MudAutocomplete 
+        T="CustomAddressResultItem"
+        Label="Search map"
+        Value="@CurrentItem"
+        ValueChanged="CurrentItemChanged"
+        SearchFuncWithCancel="@Search"
+        ToStringFunc="@(item => item is null ? null : $"{item.DisplayAddress}")"
+        Variant="Variant.Outlined"
+        CoerceValue="true"
+        DisableUnderLine="true"
+        ShowProgressIndicator="true"
+        Margin="Margin.Normal"
+        AdornmentIcon="@Icons.Material.Filled.Search"
+        AdornmentColor="Color.Primary"
+        HelperText="Move the pin to the approximate location of your plant." />
+
+    <div id="map" style="position:relative;width:100%;min-width:290px;height:600px;"></div>
+
+    <MudStack id="coordinateBox" @onchange="HandleMarkerDragChange" Row="true">
+        <MudField Label="Latitude"
+                      DisableUnderLine="true"
+                      Variant="Variant.Filled"
+                      Margin="Margin.Normal"
+                      FullWidth="true" >
+            <p id="latitude">
+                @DocumentGenerationRequestLocation.Latitude
+            </p>
+        </MudField>
+        <MudField Label="Longitude"
+                  DisableUnderLine="true"
+                  Variant="Variant.Filled"
+                  Margin="Margin.Normal"
+                  FullWidth="true">
+            <p id="longitude">
+                @DocumentGenerationRequestLocation.Longitude
+            </p>
+        </MudField>
+    </MudStack>
+</MudStack>
+
+@code {
+    // Map authentication and initialization
     private ServiceConfigurationOptions ServiceConfigurationOptions;
+    private string? SubscriptionKey;
+    private AzureKeyCredential? credential;
+    private MapsSearchClient? client;
 
-
-    string PngImage = string.Empty;
+    // not currently used
     bool isLoading = false;
 
-    private string? SubscriptionKey;
-    // Location of Redmond
-    float Latitude = 47.6740F;
-    float Longitude = -122.1215F;
-
     protected override async Task OnInitializedAsync()
-    { 
+    {
         ServiceConfigurationOptions = ServiceConfigurationOptionsSelector.Value;
         SubscriptionKey = ServiceConfigurationOptions.AzureMaps.Key;
+        credential = new AzureKeyCredential(SubscriptionKey);
+        client = new MapsSearchClient(credential);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
-            await JSRuntime.InvokeVoidAsync("initializeMap", SubscriptionKey, Latitude, Longitude);
+            await JSRuntime.InvokeVoidAsync("initializeMap", SubscriptionKey, (float)DocumentGenerationRequestLocation.Latitude, (float)DocumentGenerationRequestLocation.Longitude);
         }
     }
+
+
+    private async Task<IEnumerable<CustomAddressResultItem?>> Search(string searchText, CancellationToken cancellationToken)
+    {
+
+        if (string.IsNullOrEmpty(searchText))
+        {
+            return await Task.FromResult(Enumerable.Empty<CustomAddressResultItem>());
+        }
+
+        try
+        {
+            SearchAddressOptions searchAddressOptions = new SearchAddressOptions
+            {
+                Coordinates = new GeoPosition(DocumentGenerationRequestLocation.Longitude, DocumentGenerationRequestLocation.Latitude),
+                IsTypeAhead = true,
+                Top = 5,
+            };
+            Response<SearchAddressResult> searchResult = await client.SearchAddressAsync(searchText, searchAddressOptions, cancellationToken);
+            IEnumerable<SearchAddressResultItem> searchAddressResultItems = searchResult.Value.Results;
+            IEnumerable<CustomAddressResultItem> searchAddressResultItemsToCustomAddressResultItems = searchAddressResultItems.Select(searchAddressResultItem => 
+                new CustomAddressResultItem 
+                {
+                    Id = searchAddressResultItem.Id,
+                    DisplayAddress = searchAddressResultItem.Address.FreeformAddress,
+                    Location = new LocationInformation
+                    {
+                        Latitude = searchAddressResultItem.Position.Latitude,
+                        Longitude = searchAddressResultItem.Position.Longitude,
+                    },
+                });
+
+            return searchAddressResultItemsToCustomAddressResultItems;
+
+        }
+        catch (Exception ex)
+        {
+            // Handle exceptions (e.g., network issues).
+            // Log or display an error message.
+        }
+
+        return await Task.FromResult(Enumerable.Empty<CustomAddressResultItem>());
+    }
+
+    private async Task HandleMarkerDragChange()
+    {
+        var latitudeString = await JSRuntime.InvokeAsync<string>("getInnerText", "latitude");
+        var longitudeString = await JSRuntime.InvokeAsync<string>("getInnerText", "longitude");
+        try
+        {
+            DocumentGenerationRequestLocation.Latitude = Double.Parse(latitudeString);
+            DocumentGenerationRequestLocation.Longitude = Double.Parse(longitudeString);
+        }
+        catch
+        {
+            DocumentGenerationRequestLocation.Latitude = 0;
+            DocumentGenerationRequestLocation.Longitude = 0;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
 }
+

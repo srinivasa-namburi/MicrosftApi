@@ -14,7 +14,14 @@
 
 
 @code {
-    private readonly DocumentGenerationRequest? documentGenerationRequest = new DocumentGenerationRequest();
+    private readonly DocumentGenerationRequest documentGenerationRequest = new DocumentGenerationRequest
+    {
+        Location = new LocationInformation
+        {
+            Latitude = 47.6740,
+            Longitude = -122.1215,
+        },
+    };
     private bool showGeneratedDocument = false;
     private ServiceConfigurationOptions ServiceConfigurationOptions => ServiceConfigurationOptionsSelector.Value;
 
@@ -70,7 +77,9 @@ else
                               Margin="Margin.Normal"
                               HelperText="Enter the full name of your plant (e.g., ABC Power Plant)." />
 
-                <MapComponent />
+                <MapComponent 
+                    @bind-DocumentGenerationRequestLocation="documentGenerationRequest.Location" />
+
                 <MudSelect T="string" 
                     Label="Plant design" 
                     Variant="Variant.Filled" 
@@ -218,11 +227,6 @@ else
 
 }
 
-@* @if (showGeneratedDocument)
-{
-    <GeneratedDocumentDisplay DocumentId="@documentGenerationRequest.Id" LiveUpdated="true" />
-} *@
-
 @code {
 
     private string[] financialAssuranceTypes =
@@ -234,7 +238,6 @@ else
     {
         "Light-water reactor", "Pressurized water reactor", "Boiling water reactor"
     };
-
 
     // ---------------------- BUTTON CLICKS ------------------------------------------------------------------------
 
@@ -257,8 +260,9 @@ else
 
         await DocumentGenerationApiClient.GenerateDocumentAsync(documentGenerationRequest);
         await InvokeAsync(StateHasChanged);
-    }
 
+        Navigation.NavigateTo($"/docs/{documentGenerationRequest.Id}");
+    }
 
 
 
