@@ -8,25 +8,25 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Aspire.Azure.Messaging.ServiceBus" Version="8.0.0-preview.3.24105.21" />
-    <PackageReference Include="Aspire.Azure.Storage.Blobs" Version="8.0.0-preview.3.24105.21" />
-    <PackageReference Include="Aspire.RabbitMQ.Client" Version="8.0.0-preview.3.24105.21" />
+    <PackageReference Include="Aspire.Azure.Messaging.ServiceBus" Version="8.0.0-preview.5.24161.4" />
+    <PackageReference Include="Aspire.Azure.Storage.Blobs" Version="8.0.0-preview.5.24161.4" />
+    <PackageReference Include="Aspire.RabbitMQ.Client" Version="8.0.0-preview.5.24161.4" />
     <PackageReference Include="MassTransit.Azure.ServiceBus.Core" Version="8.1.3" />
     <PackageReference Include="MassTransit.RabbitMQ" Version="8.1.3" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Protocols.Json" Version="8.0.2" />
-    <PackageReference Include="Microsoft.Extensions.ServiceDiscovery.Yarp" Version="8.0.0-preview.3.24105.21" />
-    <PackageReference Include="Microsoft.Identity.Web" Version="2.17.0" />
+    <PackageReference Include="Microsoft.Extensions.ServiceDiscovery.Yarp" Version="8.0.0-preview.5.24161.4" />
+    <PackageReference Include="Microsoft.Identity.Web" Version="2.17.1" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\ProjectVico.V2.ServiceDefaults\ProjectVico.V2.ServiceDefaults.csproj" />
-    <ProjectReference Include="..\ProjectVico.V2.Shared.Contracts\ProjectVico.V2.Shared.Contracts.csproj" />
     <ProjectReference Include="..\ProjectVico.V2.Shared\ProjectVico.V2.Shared.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Folder Include="Hubs\" />
+    <Folder Include="manifests\" />
   </ItemGroup>
 
 </Project>

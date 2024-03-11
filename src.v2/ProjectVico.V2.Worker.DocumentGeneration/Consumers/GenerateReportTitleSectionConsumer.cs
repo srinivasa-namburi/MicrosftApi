@@ -3,6 +3,7 @@ using System.Text.Json;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.SemanticKernel;
+using ProjectVico.V2.DocumentProcess.Shared.Generation;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentGeneration.Commands;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentGeneration.Events;
 using ProjectVico.V2.Shared.Data.Sql;

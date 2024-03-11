@@ -23,29 +23,40 @@ public class DocumentGenerationSaga : MassTransitStateMachine<DocumentGeneration
                 {
                     context.Saga.DocumentTitle = context.Message.DocumentTitle;
                     context.Saga.AuthorOid = context.Message.AuthorOid;
-                    context.Saga.ReactorModel = context.Message.ReactorModel;
+                    context.Saga.DocumentGenerationRequest.ReactorModel = context.Message.ReactorModel;
 
                     if (context.Message.Location != null)
                     {
-                        context.Saga.LocationLatitude = context.Message.Location.Latitude;
-                        context.Saga.LocationLongitude = context.Message.Location.Longitude;
+                        context.Saga.DocumentGenerationRequest.Location = new LocationInformation
+                        {
+                            Latitude = context.Message.Location.Latitude,
+                            Longitude = context.Message.Location.Longitude
+                        };
                     }
 
-                    context.Saga.ProjectedProjectStartDate = context.Message.ProjectedProjectStartDate;
-                    context.Saga.ProjectedProjectEndDate = context.Message.ProjectedProjectEndDate;
+                    context.Saga.DocumentGenerationRequest.ProjectedProjectStartDate = context.Message.ProjectedProjectStartDate;
+                    context.Saga.DocumentGenerationRequest.ProjectedProjectEndDate = context.Message.ProjectedProjectEndDate;
+                    context.Saga.DocumentProcessName = context.Message.DocumentProcessName;
                     context.Saga.CorrelationId = context.Message.Id;
                 })
                 .Publish(context => new GenerateDocumentOutline(context.Saga.CorrelationId)
                 {
                     // Map properties from DocumentGenerationRequest to GenerateDocumentOutline
                     DocumentTitle = context.Message.DocumentTitle,
-                    AuthorOid = context.Saga.AuthorOid
-
+                    AuthorOid = context.Saga.AuthorOid,
+                    DocumentProcess = context.Saga.DocumentProcessName
                 })
                 .TransitionTo(Processing));
 
         During(Processing,
-            When(DocumentOutlineGenerated)
+        When(DocumentOutlineGenerationFailed)
+                .Finalize()
+        );
+            
+            ;
+
+        During(Processing,
+        When(DocumentOutlineGenerated)
                 .Then(context =>
                 {
                     // Handle the completion of document outline generation
@@ -55,13 +66,13 @@ public class DocumentGenerationSaga : MassTransitStateMachine<DocumentGeneration
                 .Publish(context => new GenerateReportContent(context.Saga.CorrelationId)
                 {
                     AuthorOid = context.Saga.AuthorOid,
-                    GeneratedDocumentJson = context.Message.GeneratedDocumentJson
-
+                    GeneratedDocumentJson = context.Message.GeneratedDocumentJson,
+                    DocumentProcess = context.Saga.DocumentProcessName
                 })
                 .TransitionTo(ContentGeneration));
 
         During(ContentGeneration,
-            When(ReportContentGenerationSubmitted)
+        When(ReportContentGenerationSubmitted)
                 .Then(context =>
                 {
                     context.Saga.NumberOfContentNodesToGenerate = context.Message.NumberOfContentNodesToGenerate;
@@ -71,7 +82,7 @@ public class DocumentGenerationSaga : MassTransitStateMachine<DocumentGeneration
         // For each content node generated, we will receive a ContentNodeGenerated event
         // We will transition to ContentFinalized when all content nodes have been generated
         During(ContentGeneration,
-When(ContentNodeGenerated)
+        When(ContentNodeGenerated)
               .Then(context =>
               {
                   if (context.Message.IsSuccessful)
@@ -79,9 +90,9 @@ When(ContentNodeGenerated)
                       context.Saga.NumberOfContentNodesGenerated++;
                   }
               })
-              .If(context =>
-                       context.Saga.NumberOfContentNodesGenerated == context.Saga.NumberOfContentNodesToGenerate,
-            x => x.TransitionTo(ContentFinalized)));
+              .If(context =>  context.Saga.NumberOfContentNodesGenerated == context.Saga.NumberOfContentNodesToGenerate,
+                    x => x.TransitionTo(ContentFinalized)));
+
     }
 
     public State Processing { get; set; } = null!;
@@ -89,6 +100,7 @@ When(ContentNodeGenerated)
     public State ContentFinalized { get; set; } = null!;
     public Event<DocumentGenerationRequest> DocumentGenerationRequested { get; private set; }
     public Event<DocumentOutlineGenerated> DocumentOutlineGenerated { get; private set; }
+    public Event<DocumentOutlineGenerationFailed> DocumentOutlineGenerationFailed { get; private set; }
     public Event<ReportContentGenerationSubmitted> ReportContentGenerationSubmitted { get; private set; }
     public Event<ContentNodeGenerated> ContentNodeGenerated { get; private set; }
 

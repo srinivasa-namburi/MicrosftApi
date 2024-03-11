@@ -1,15 +1,15 @@
 using Azure;
 using Azure.AI.FormRecognizer.DocumentAnalysis;
+using Azure.Identity;
 using Azure.Search.Documents;
 using MassTransit;
 using MassTransit.EntityFrameworkCoreIntegration;
-using ProjectVico.V2.Shared.Classification.Classifiers;
+using ProjectVico.V2.DocumentProcess.Shared;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Shared.Interfaces;
 using ProjectVico.V2.Shared.Mappings;
-using ProjectVico.V2.Shared.Pipelines;
 using ProjectVico.V2.Shared.SagaState;
 using ProjectVico.V2.Shared.Services.Search;
 using ProjectVico.V2.Worker.DocumentIngestion.AI;
@@ -19,24 +19,14 @@ var builder = Host.CreateApplicationBuilder(args);
 
 builder.AddServiceDefaults();
 
-builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configuration.GetSection("ServiceConfiguration"));
-var serviceConfigurationOptions = builder.Configuration.GetSection("ServiceConfiguration").Get<ServiceConfigurationOptions>()!;
+builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
+var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
 
 // Common services and dependencies
-builder.AddAzureServiceBus("sbus");
-builder.AddRabbitMQ("rabbitmq-docgen");
-builder.AddKeyedAzureOpenAI("openai-planner");
-builder.AddAzureBlobService("blob-docing");
-builder.Services.AddScoped<DocumentAnalysisClient>((serviceProvider) => new DocumentAnalysisClient(
-    new Uri(serviceConfigurationOptions.DocumentIntelligence.Endpoint),
-    new AzureKeyCredential(serviceConfigurationOptions.DocumentIntelligence.Key)));
-
-// Object Mapping with AutoMapper
-builder.Services.AddAutoMapper(typeof(TableProfile));
-
-// Ingestion specific custom dependencies
-builder.Services.AddScoped<AzureFileHelper>();
-builder.Services.AddScoped<TableHelper>();
+builder.AddAzureServiceBusClient("sbus");
+builder.AddRabbitMQClient("rabbitmqdocgen");
+builder.AddKeyedAzureOpenAIClient("openai-planner");
+builder.AddAzureBlobClient("blob-docing");
 
 builder.Services.AddKeyedScoped<SearchClient>("searchclient-section",
     (provider, o) => GetSearchClientWithIndex(provider, o, serviceConfigurationOptions.CognitiveSearch.NuclearSectionIndex));
@@ -45,20 +35,11 @@ builder.Services.AddKeyedScoped<SearchClient>("searchclient-title",
 builder.Services.AddKeyedScoped<SearchClient>("searchclient-customdata",
     (provider, o) => GetSearchClientWithIndex(provider, o, serviceConfigurationOptions.CognitiveSearch.CustomIndex));
 
-builder.Services.AddKeyedScoped<IDocumentClassifier, NrcAdamsDocumentClassifier>("nrc-classifier");
-builder.Services.AddKeyedScoped<IDocumentClassifier, CustomDataDocumentClassifier>("customdata-classifier");
+builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
 
-builder.Services.AddScoped<IContentTreeProcessor, ContentTreeProcessor>();
-builder.Services.AddScoped<IIndexingProcessor, SearchIndexingProcessor>();
-
-builder.Services.AddKeyedScoped<IPdfPipeline, BaselinePipeline>("baseline-pipeline");
-builder.Services.AddKeyedScoped<IPdfPipeline, NuclearEnvironmentalReportPdfPipeline>("nuclear-er-pipeline");
-
-
-builder.AddSqlServerDbContext<DocGenerationDbContext>("sql-docgen", settings =>
+builder.AddSqlServerDbContext<DocGenerationDbContext>("sqldocgen", settings =>
 {
-    settings.ConnectionString = builder.Configuration.GetConnectionString("ProjectVICOdb");
-    settings.DbContextPooling = true;
+    settings.ConnectionString = builder.Configuration.GetConnectionString(serviceConfigurationOptions.SQL.DatabaseName);
     settings.HealthChecks = true;
     settings.Tracing = true;
     settings.Metrics = true;
@@ -67,9 +48,10 @@ builder.AddSqlServerDbContext<DocGenerationDbContext>("sql-docgen", settings =>
 builder.AddSemanticKernelService();
 
 var serviceBusConnectionString = builder.Configuration.GetConnectionString("sbus");
-var rabbitMqConnectionString = builder.Configuration.GetConnectionString("rabbitmq-docgen");
+serviceBusConnectionString = serviceBusConnectionString?.Replace("https://", "sb://").Replace(":443/", "/");
+var rabbitMqConnectionString = builder.Configuration.GetConnectionString("rabbitmqdocgen");
 
-if (!builder.Environment.IsDevelopment() && !string.IsNullOrWhiteSpace(serviceBusConnectionString))
+if (!string.IsNullOrWhiteSpace(serviceBusConnectionString))
 {
     builder.Services.AddMassTransit(x =>
     {
@@ -86,10 +68,15 @@ if (!builder.Environment.IsDevelopment() && !string.IsNullOrWhiteSpace(serviceBu
 
         x.UsingAzureServiceBus((context, cfg) =>
         {
-            cfg.Host(serviceBusConnectionString);
+            cfg.Host(serviceBusConnectionString, configure: config =>
+            {
+                config.TokenCredential = new DefaultAzureCredential();
+            });
+            cfg.LockDuration = TimeSpan.FromMinutes(5);
+            cfg.MaxAutoRenewDuration = TimeSpan.FromMinutes(20);
             cfg.ConfigureEndpoints(context);
             cfg.ConcurrentMessageLimit = 1;
-            cfg.PrefetchCount = 3;
+            cfg.PrefetchCount = 1;
             cfg.UseMessageRetry(r => r.Intervals(new TimeSpan[]
             {
                 // Set first retry to a random number between 3 and 9 seconds
@@ -137,8 +124,6 @@ else
         });
     });
 }
-
-
 
 var host = builder.Build();
 host.Run();

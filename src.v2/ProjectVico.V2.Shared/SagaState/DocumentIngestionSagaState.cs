@@ -1,5 +1,5 @@
 ﻿using MassTransit;
-using ProjectVico.V2.Shared.Classification.Models;
+using ProjectVico.V2.Shared.Models.Classification;
 using ProjectVico.V2.Shared.Models.Enums;
 
 namespace ProjectVico.V2.Shared.SagaState;
@@ -20,4 +20,5 @@ public class DocumentIngestionSagaState : SagaStateMachineInstance
 
     public IngestionState IngestionState { get; set; } = IngestionState.Uploaded;
     public IngestionType IngestionType { get; set; }
+    public string? DocumentProcessName { get; set; } = "US.NuclearLicensing";
 }

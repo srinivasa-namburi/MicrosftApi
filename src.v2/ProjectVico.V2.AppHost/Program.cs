@@ -1,10 +1,17 @@
-using System.Net.Sockets;
+using Aspire.Hosting.Azure;
+using Azure.Search.Documents;
+using Microsoft.Extensions.Azure;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Hosting;
 using ProjectVico.V2.AppHost;
 
 
 var builder = DistributedApplication.CreateBuilder(args);
+AppHostConfigurationSetup(builder);
+
+//TODO: Add Azure Provisioning
+//Reads needed details from Configuration provider.
+//See sample : https://github.com/dotnet/aspire/blob/main/playground/AzureSearchEndToEnd/AzureSearch.AppHost/appsettings.json
+//builder.AddAzureProvisioning();
 
 var envServiceConfigurationConfigurationSection = builder.Configuration.GetSection("ServiceConfiguration");
 var envAzureAdConfigurationSection = builder.Configuration.GetSection("AzureAd");
@@ -12,8 +19,6 @@ var envConnectionStringsConfigurationSection = builder.Configuration.GetSection(
 
 // This is true if the AppHost is being invoked as a publisher (creating deployment manifest)
 // Used to determine service configuration.
-bool azdDeploy = args.Contains("--publisher");
-
 var durableDevelopment = Convert.ToBoolean(builder.Configuration["ServiceConfiguration:ProjectVicoServices:DocumentGeneration:DurableDevelopmentServices"]);
 
 // The default password for SQL server is in appsettings.json. You can override it in appsettings.Development.json.
@@ -21,78 +26,71 @@ var durableDevelopment = Convert.ToBoolean(builder.Configuration["ServiceConfigu
 // The password should be in ServiceConfiguration:SQL:Password (see appsettings.json)
 // To connect in SQL Server Management Studio to the local instance, use 127.0.0.1,9001 as the server name (NOT localhost - doesn't work!)
 var sqlPassword = builder.Configuration["ServiceConfiguration:SQL:Password"];
+var sqlDatabaseName = builder.Configuration["ServiceConfiguration:SQL:DatabaseName"];
+
 
 // The default password for the RabbitMQ container is in appsettings.json. You can override it in appsettings.Development.json.
 var rabbitMqPassword = builder.Configuration["ServiceConfiguration:RabbitMQ:Password"];
 
-IResourceBuilder<SqlServerDatabaseResource> docGenSqlLocal = null;
-IResourceBuilder<RabbitMQContainerResource> docGenRabbitMq = null;
-
-IResourceBuilder<AzureSqlDatabaseResource> docGenSqlAzure = null;
-IResourceBuilder<AzureServiceBusResource> serviceBus=null;
+IResourceBuilder<SqlServerDatabaseResource> docGenSql;
+IResourceBuilder<RabbitMQServerResource> docGenRabbitMq;
+IResourceBuilder<AzureServiceBusResource>? sbus;
+IResourceBuilder<IResourceWithConnectionString> queueService;
 
 var docIngBlobs = builder
-    .AddAzureStorage("storage-docing")
-    //.UseEmulator()
+    .AddAzureStorage("docing")
+    //.ExcludeFromManifest()
     .AddBlobs("blob-docing");
 
-if (!azdDeploy) // For local development
+if (builder.ExecutionContext.IsRunMode) // For local development
 {
     if (durableDevelopment)
     {
-        docGenSqlLocal = builder
-            .AddSqlServerContainer("sql-docgen", password: sqlPassword, 9001)
-            .WithVolumeMount("pvico-sql-docgen-vol", "/var/opt/mssql", VolumeMountType.Named)
-            .AddDatabase("ProjectVICOdb");
+        docGenSql = builder
+            .AddSqlServer("sqldocgen", password: sqlPassword, port: 9001)
+            .WithVolume("pvico-sql-docgen-vol", "/var/opt/mssql")
+            .AddDatabase(sqlDatabaseName);
 
-
-        docGenRabbitMq = builder
-            .AddRabbitMQContainer("rabbitmq-docgen", 9002, password: rabbitMqPassword)
-            .WithAnnotation(new ContainerImageAnnotation() { Image = "rabbitmq", Tag = "3-management" })
-            .WithEnvironment("NODENAME", "rabbit@localhost")
-            .WithVolumeMount("pvico-rabbitmq-docgen-vol", "/var/lib/rabbitmq", VolumeMountType.Named);
+        //docGenRabbitMq = builder
+        //    .AddRabbitMQ("rabbitmqdocgen", port: 9002)
+        //    .WithAnnotation(new ContainerImageAnnotation() { Image = "rabbitmq", Tag = "3-management" })
+        //    .WithEnvironment("NODENAME", "rabbit@localhost")
+        //    .WithVolume("pvico-rabbitmq-docgen-vol", "/var/lib/rabbitmq");
     }
     else // Don't persist data and queue content - it will be deleted on restart!
     {
-        docGenSqlLocal = builder
-            .AddSqlServerContainer("sql-docgen", password: sqlPassword, 9001)
-            .AddDatabase("ProjectVICOdb");
-
-        docGenRabbitMq = builder
-            .AddRabbitMQContainer("rabbitmq-docgen", 9002, password: rabbitMqPassword);
-
+        docGenSql = builder
+            .AddSqlServer("sqldocgen", password: sqlPassword, 9001)
+            .AddDatabase(sqlDatabaseName);
     }
+
+    docGenRabbitMq = builder
+           .AddRabbitMQ("rabbitmqdocgen", 9002)
+           .WithAnnotation(new ContainerImageAnnotation() { Image = "rabbitmq", Tag = "3-management" })
+           .WithEnvironment("NODENAME", "rabbit@localhost");
+
+    queueService = docGenRabbitMq;
 }
 else // For production/Azure deployment
 {
-    docGenSqlAzure = builder
-        .AddAzureSqlServer("sql-docgen-server")
-        .AddDatabase("ProjectVICOdb");
+    docGenSql = builder
+        .AddSqlServer("sqldocgen", password: sqlPassword, port: 9001)
+        .PublishAsAzureSqlDatabase()
+        .AddDatabase(sqlDatabaseName);
 
-    serviceBus = builder
-        .AddAzureServiceBus("sbus");
+    sbus = builder.AddAzureServiceBus("sbus");
+    queueService = sbus;
 }
-
 
 var apiMain = builder
     .AddProject<Projects.ProjectVico_V2_API_Main>("api-main")
     .WithHttpsEndpoint(6001)
     .WithConfigSection(envAzureAdConfigurationSection)
     .WithConfigSection(envServiceConfigurationConfigurationSection)
-    .WithReference(docIngBlobs);
+    .WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithReference(docGenSql)
+    .WithReference(queueService);
 
-if (!azdDeploy)
-{
-    apiMain
-        .WithReference(docGenSqlLocal)
-        .WithReference(docGenRabbitMq);
-}
-else
-{
-    apiMain
-        .WithReference(docGenSqlAzure)
-        .WithReference(serviceBus);
-}
 
 var workerDocumentGeneration = builder
     .AddProject<Projects.ProjectVico_V2_Worker_DocumentGeneration>("worker-documentgeneration")
@@ -100,6 +98,8 @@ var workerDocumentGeneration = builder
         builder.Configuration["ServiceConfiguration:ProjectVicoServices:DocumentGeneration:NumberOfGenerationWorkers"]))
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithReference(docGenSql)
+    .WithReference(queueService)
     .WithReference(apiMain);
 
 var workerDocumentIngestion = builder
@@ -108,64 +108,48 @@ var workerDocumentIngestion = builder
         builder.Configuration["ServiceConfiguration:ProjectVicoServices:DocumentIngestion:NumberOfIngestionWorkers"]))
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
-    .WithReference(docIngBlobs)
+    .WithReference(docGenSql)
+    .WithReference(queueService)
     .WithReference(apiMain);
 
 var workerScheduler = builder
     .AddProject<Projects.ProjectVico_V2_Worker_Scheduler>("worker-scheduler")
     .WithReplicas(1)
     .WithConfigSection(envServiceConfigurationConfigurationSection)
-    .WithReference(docIngBlobs)
+    .WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithReference(docGenSql)
+    .WithReference(queueService)
     .WithReference(apiMain);
 
 var setupManager = builder
     .AddProject<Projects.ProjectVico_V2_SetupManager>("worker-setupmanager")
+    .WithReference(docGenSql)
     .WithConfigSection(envServiceConfigurationConfigurationSection);
-
-
-if (!azdDeploy)
-{
-    workerDocumentGeneration
-        .WithReference(docGenSqlLocal!)
-        .WithReference(docGenRabbitMq!);
-
-    workerDocumentIngestion
-        .WithReference(docGenSqlLocal!)
-        .WithReference(docGenRabbitMq!);
-
-    workerScheduler
-        .WithReference(docGenSqlLocal!)
-        .WithReference(docGenRabbitMq!);
-
-    setupManager
-        .WithReference(docGenSqlLocal!);
-
-}
-else
-{
-    workerDocumentGeneration
-        .WithReference(docGenSqlAzure!)
-        .WithReference(serviceBus!);
-
-    workerDocumentIngestion
-        .WithReference(docGenSqlAzure!)
-        .WithReference(serviceBus!);
-
-    workerScheduler
-        .WithReference(docGenSqlAzure!)
-        .WithReference(serviceBus!);
-
-    setupManager
-        .WithReference(docGenSqlAzure!);
-}
 
 var docGenFrontend = builder
     .AddProject<Projects.ProjectVico_V2_Web_DocGen>("web-docgen")
     .WithHttpsEndpoint(5001, "httpsEndpoint")
     .WithConfigSection(envAzureAdConfigurationSection)
     .WithConfigSection(envServiceConfigurationConfigurationSection)
-    .WithReference(apiMain)
-    .WithReference(docIngBlobs)
-    ;
+    .WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithReference(apiMain);
 
 builder.Build().Run();
+
+void AppHostConfigurationSetup(IDistributedApplicationBuilder distributedApplicationBuilder)
+{
+
+    distributedApplicationBuilder.Configuration.AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
+
+    if (distributedApplicationBuilder.ExecutionContext.IsRunMode)
+    {
+        distributedApplicationBuilder.Configuration.AddJsonFile("appsettings.Development.json", optional: true, reloadOnChange: true);
+        distributedApplicationBuilder.Configuration.AddUserSecrets<Program>();
+    }
+    else
+    {
+        distributedApplicationBuilder.Configuration.AddJsonFile("appsettings.Production.json", optional: true, reloadOnChange: true);
+    }
+
+    distributedApplicationBuilder.Configuration.AddEnvironmentVariables();
+}

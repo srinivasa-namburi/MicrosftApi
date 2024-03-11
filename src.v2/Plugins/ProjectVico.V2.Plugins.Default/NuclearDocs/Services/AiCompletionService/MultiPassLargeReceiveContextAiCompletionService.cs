@@ -5,8 +5,6 @@ using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
-using ProjectVico.V2.Plugins.Default.EarthQuake;
-using ProjectVico.V2.Plugins.Default.GeographicalData;
 using ProjectVico.V2.Plugins.Shared;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Helpers;

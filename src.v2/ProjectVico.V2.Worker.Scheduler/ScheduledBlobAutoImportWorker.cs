@@ -34,8 +34,9 @@ public class ScheduledBlobAutoImportWorker : BackgroundService
         var scope = _sp.CreateScope();
         var publishEndpoint = scope.ServiceProvider.GetRequiredService<IPublishEndpoint>();
 
-        var taskDelayDefaultMilliseconds = 30000;
-        var taskDelayAfterImportMilliseconds = 120000;
+        var taskDelayDefaultMilliseconds = Convert.ToInt32(TimeSpan.FromSeconds(30).TotalMilliseconds);
+        var taskDelayAfterImportMilliseconds = Convert.ToInt32(TimeSpan.FromMinutes(2).TotalMilliseconds);
+        var taskDelayAfterNullDocumentProcessFound = Convert.ToInt32(TimeSpan.FromMinutes(5).TotalMilliseconds);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -45,38 +46,39 @@ public class ScheduledBlobAutoImportWorker : BackgroundService
                 _logger.LogInformation("ScheduledBlobAutoImportWorker ping: {time}", DateTimeOffset.Now);
             }
 
-            var nrcContainer = _options.ProjectVicoServices.DocumentIngestion.ContainerNRC;
-            var customDataContainer = _options.ProjectVicoServices.DocumentIngestion.ContainerCustomData;
-            var nrcFolder = _options.ProjectVicoServices.DocumentIngestion.FolderAutoImportNRC;
-            var customDataFolder = _options.ProjectVicoServices.DocumentIngestion.FolderAutoImportCustomData;
-
-            if (NewFilesInContainerPath(nrcContainer, nrcFolder))
+            foreach (var documentProcess in _options.ProjectVicoServices.DocumentProcesses)
             {
-                taskDelay = taskDelayAfterImportMilliseconds;
-                _logger.LogWarning("ScheduleBlobAutoImportWorker: New NRC files found. Delaying next run for {taskDelay}ms after submission", taskDelay);
-                await publishEndpoint.Publish(new IngestDocumentsFromAutoImportPath(Guid.NewGuid())
+                if (documentProcess == null)
                 {
-                    ContainerName = nrcContainer,
-                    FolderPath = nrcFolder,
-                    IngestionType = IngestionType.NRCDocument
-                }, stoppingToken);
-            }
+                    _logger.LogWarning("ScheduledBlobAutoImportWorker: No Document Processes exist - delaying execution for 5 minutes");
+                    taskDelay = taskDelayAfterNullDocumentProcessFound;
+                    break;  
+                }
 
-            if (NewFilesInContainerPath(customDataContainer, customDataFolder))
-            {
-                taskDelay = taskDelayAfterImportMilliseconds;
-                _logger.LogWarning("ScheduleBlobAutoImportWorker: New Custom Data files found. Delaying next run for {taskDelay}ms after submission", taskDelay);
-                await publishEndpoint.Publish(new IngestDocumentsFromAutoImportPath(Guid.NewGuid())
+                var container = documentProcess.BlobStorageContainerName;
+                var folder = documentProcess.BlobStorageAutoImportFolderName;
+
+                if (folder == null || container == null)
                 {
-                    ContainerName = customDataContainer,
-                    FolderPath = customDataFolder,
-                    IngestionType = IngestionType.CustomData
-                }, stoppingToken);
+                    _logger.LogWarning("ScheduledBlobAutoImportWorker: Skipping document process {documentProcessName} as it has no auto-import folder or container configured", documentProcess.Name);
+                    continue;
+                }
+
+                if (NewFilesInContainerPath(container, folder))
+                {
+                    taskDelay = taskDelayAfterImportMilliseconds;
+                    _logger.LogWarning("ScheduleBlobAutoImportWorker: New files found for document process {documentProcessName}. Delaying next run for {taskDelay}ms after submission", documentProcess.Name, taskDelay);
+            
+                    await publishEndpoint.Publish(new IngestDocumentsFromAutoImportPath(Guid.NewGuid())
+                    {
+                        ContainerName = container,
+                        FolderPath = folder,
+                        DocumentProcess = documentProcess.Name,
+
+                    }, stoppingToken);
+                }
             }
-
-            // Wait for the specified delay before checking again
-            // We wait for longer after an import to give the system time to process the new files (spefically moving them to the ingest folder)
-
+            
             await Task.Delay(taskDelay, stoppingToken);
         }
     }
@@ -84,10 +86,6 @@ public class ScheduledBlobAutoImportWorker : BackgroundService
     private bool NewFilesInContainerPath(string containerName, string folderPath)
     {
         var containerClient = _blobServiceClient.GetBlobContainerClient(containerName);
-        
-        // Find the number of items matching the folder path pattern (begins with the folderPath inside the container)
-        // Returned as a pageable result - but we only need to look at the first one
-        var blobItems = containerClient.GetBlobs(prefix: folderPath);
-        return blobItems.Any();
+        return containerClient.GetBlobs(prefix: folderPath).Any();
     }
 }

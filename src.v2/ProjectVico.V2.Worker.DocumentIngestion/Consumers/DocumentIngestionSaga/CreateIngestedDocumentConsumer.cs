@@ -34,8 +34,8 @@ public class CreateIngestedDocumentConsumer : IConsumer<CreateIngestedDocument>
             Id = context.Message.CorrelationId,
             FileName = context.Message.FileName,
             OriginalDocumentUrl = context.Message.OriginalDocumentUrl,
+            DocumentProcess = context.Message.DocumentProcessName,
             UploadedByUserOid = context.Message.UploadedByUserOid,
-            IngestionType = context.Message.IngestionType,
             IngestionState = IngestionState.Uploaded,
             IngestedDate = DateTime.UtcNow
         };
@@ -64,9 +64,6 @@ public class CreateIngestedDocumentConsumer : IConsumer<CreateIngestedDocument>
             _logger.LogInformation(
                 "CreateIngestedDocumentConsumer: CorrelationId: {CorrelationId} Found earlier, incomplete ingestions for file {FileName} with the same file hash. Overwriting them.", context.Message.CorrelationId, document.FileName);
 
-
-            //await using var transaction = await _dbContext.Database.BeginTransactionAsync();
-
             foreach (var existingDocument in documentsToDelete)
             {
                 var tables = await _dbContext.Tables.Where(t => t.IngestedDocumentId == existingDocument.Id).ToListAsync();
@@ -76,17 +73,13 @@ public class CreateIngestedDocumentConsumer : IConsumer<CreateIngestedDocument>
                     _dbContext.BoundingRegions.RemoveRange(boundingRegions);
                     await _dbContext.SaveChangesAsync();
                     _dbContext.Tables.Remove(table);
-
                 }
 
                 var contentNodes = await _dbContext.ContentNodes.Where(c => c.IngestedDocumentId == existingDocument.Id).ToListAsync();
                 await RecursivelyRemoveContentNodesFromDatabase(contentNodes);
             }
-
-
+            
             _dbContext.IngestedDocuments.RemoveRange(existingDocuments);
-
-            //await _dbContext.Database.CommitTransactionAsync();
             await _dbContext.SaveChangesAsync();
         }
 
@@ -102,7 +95,6 @@ public class CreateIngestedDocumentConsumer : IConsumer<CreateIngestedDocument>
 
         _dbContext.IngestedDocuments.Add(document);
         await _dbContext.SaveChangesAsync();
-
 
         _logger.LogInformation("CreateIngestedDocumentConsumer: Ingested document created: {DocumentId}", document.Id);
 

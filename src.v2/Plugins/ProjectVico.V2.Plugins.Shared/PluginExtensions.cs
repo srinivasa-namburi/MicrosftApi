@@ -1,5 +1,4 @@
 ﻿using System.Reflection;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.SemanticKernel;
 
@@ -21,7 +20,6 @@ namespace ProjectVico.V2.Plugins.Shared
             {
                 try
                 {
-                    // Load the assembly
                     var assembly = Assembly.LoadFrom(path);
 
                     // Check and register plugins from the assembly

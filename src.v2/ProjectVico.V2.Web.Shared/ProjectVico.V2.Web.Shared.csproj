@@ -20,7 +20,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\ProjectVico.V2.Shared.Contracts\ProjectVico.V2.Shared.Contracts.csproj" />
     <ProjectReference Include="..\ProjectVico.V2.Shared\ProjectVico.V2.Shared.csproj" />
   </ItemGroup>
 

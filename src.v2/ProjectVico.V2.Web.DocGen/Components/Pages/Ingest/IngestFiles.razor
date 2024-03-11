@@ -79,6 +79,12 @@
 
     IList<IBrowserFile> nrcFiles = new List<IBrowserFile>();
     IList<IBrowserFile> customFiles = new List<IBrowserFile>();
+    ServiceConfigurationOptions options;
+
+    protected override async Task OnInitializedAsync()
+    {
+        options = ConfigurationOptions.Value;
+    }
 
 
     private async Task UploadNRCFiles(IReadOnlyList<IBrowserFile> uploadedFiles)
@@ -113,7 +119,7 @@
                 {
                     Id = Guid.NewGuid(),
                     FileName = fileName,
-                    IngestionType = IngestionType.CustomData,
+                    DocumentProcessName = "CustomData"
                 };
 
             await SubmitDocumentIngestionJob(fileStream, fileName, ingestionRequest);
@@ -133,7 +139,7 @@
                 {
                     Id = Guid.NewGuid(),
                     FileName = fileName,
-                    IngestionType = IngestionType.NRCDocument,
+                    DocumentProcessName = "US.NuclearLicensing"
                 };
 
             await SubmitDocumentIngestionJob(fileStream, fileName, ingestionRequest);
@@ -143,21 +149,31 @@
 
     private async Task SubmitDocumentIngestionJob(Stream fileStream, string fileName, DocumentIngestionRequest? documentIngestionRequest)
     {
-        var customContainerName = "ingest-custom";
-        var nrcContainerName = "ingest-nrc";
+        if (documentIngestionRequest == null)
+        {
+            SnackBar.Add("Document Ingestion Request is null", Severity.Error);
+            return;
+        }
+
         var filePrefix = DateTime.Now.ToString("yyyy-MM-dd");
         var fullFileName = $"ingest/{filePrefix}/{fileName}";
 
-        string blobUrl;
-        if (documentIngestionRequest.IngestionType == IngestionType.NRCDocument)
+        var documentProcess = options.ProjectVicoServices.DocumentProcesses.SingleOrDefault(x => x.Name == documentIngestionRequest?.DocumentProcessName);
+
+        if (documentProcess == null)
         {
-            blobUrl = await AzureFileHelper.UploadFileToBlobAsync(fileStream, fullFileName, nrcContainerName, true);
+            SnackBar.Add($"Document Process {documentIngestionRequest?.DocumentProcessName} not found", Severity.Error);
+            return;
         }
-        else
+        
+        if (documentProcess.BlobStorageContainerName.IsNullOrEmpty())
         {
-            blobUrl = await AzureFileHelper.UploadFileToBlobAsync(fileStream, fullFileName, customContainerName, true);
+            SnackBar.Add($"Blob Storage Container Name for Document Process {documentIngestionRequest?.DocumentProcessName} not found", Severity.Error);
+            return;
         }
 
+        var blobUrl = await AzureFileHelper.UploadFileToBlobAsync(fileStream, fullFileName, documentProcess.BlobStorageContainerName!, true);
+        
         documentIngestionRequest.OriginalDocumentUrl = blobUrl;
         await DocumentIngestionApiClient.IngestDocumentAsync(documentIngestionRequest);
     }

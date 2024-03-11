@@ -1,4 +1,4 @@
-﻿using ProjectVico.V2.Shared.Classification.Models;
+﻿using ProjectVico.V2.Shared.Models.Classification;
 using ProjectVico.V2.Shared.Models.Enums;
 
 namespace ProjectVico.V2.Shared.Models;
@@ -9,7 +9,7 @@ public class IngestedDocument : EntityBase
     public string? FileHash { get; set; }
     public string OriginalDocumentUrl { get; set; }
     public string? UploadedByUserOid { get; set; }
-    public IngestionType IngestionType { get; set; }
+    public string? DocumentProcess { get; set; }
     public IngestionState IngestionState { get; set; } = IngestionState.Uploaded;
     
     public string? ClassificationShortCode { get; set; }

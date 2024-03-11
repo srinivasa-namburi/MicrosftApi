@@ -131,14 +131,46 @@ namespace ProjectVico.V2.Shared.Migrations
                     b.ToTable("ContentNodes");
                 });
 
+            modelBuilder.Entity("ProjectVico.V2.Shared.Models.DocumentMetadata", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("GeneratedDocumentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("MetadataJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GeneratedDocumentId")
+                        .IsUnique();
+
+                    b.ToTable("DocumentMetadata");
+                });
+
             modelBuilder.Entity("ProjectVico.V2.Shared.Models.GeneratedDocument", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("DocumentProcess")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime>("GeneratedDate")
                         .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("MetadataId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("RequestingAuthorOid")
                         .HasColumnType("uniqueidentifier");
@@ -170,6 +202,9 @@ namespace ProjectVico.V2.Shared.Migrations
                     b.Property<int?>("ClassificationType")
                         .HasColumnType("int");
 
+                    b.Property<string>("DocumentProcess")
+                        .HasColumnType("nvarchar(450)");
+
                     b.Property<string>("FileHash")
                         .HasColumnType("nvarchar(450)");
 
@@ -181,9 +216,6 @@ namespace ProjectVico.V2.Shared.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<int>("IngestionState")
-                        .HasColumnType("int");
-
-                    b.Property<int>("IngestionType")
                         .HasColumnType("int");
 
                     b.Property<string>("OriginalDocumentUrl")
@@ -200,6 +232,8 @@ namespace ProjectVico.V2.Shared.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("DocumentProcess");
 
                     b.HasIndex("FileHash");
 
@@ -285,30 +319,22 @@ namespace ProjectVico.V2.Shared.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<string>("DocumentTitle")
+                    b.Property<string>("DocumentGenerationRequest")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<double?>("LocationLatitude")
-                        .HasColumnType("float");
+                    b.Property<string>("DocumentProcessName")
+                        .HasColumnType("nvarchar(max)");
 
-                    b.Property<double?>("LocationLongitude")
-                        .HasColumnType("float");
+                    b.Property<string>("DocumentTitle")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("NumberOfContentNodesGenerated")
                         .HasColumnType("int");
 
                     b.Property<int>("NumberOfContentNodesToGenerate")
                         .HasColumnType("int");
-
-                    b.Property<DateOnly?>("ProjectedProjectEndDate")
-                        .HasColumnType("date");
-
-                    b.Property<DateOnly?>("ProjectedProjectStartDate")
-                        .HasColumnType("date");
-
-                    b.Property<string>("ReactorModel")
-                        .HasColumnType("nvarchar(max)");
 
                     b.HasKey("CorrelationId");
 
@@ -332,6 +358,9 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.Property<string>("CurrentState")
                         .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("DocumentProcessName")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("FileHash")
@@ -411,6 +440,17 @@ namespace ProjectVico.V2.Shared.Migrations
                     b.Navigation("Parent");
                 });
 
+            modelBuilder.Entity("ProjectVico.V2.Shared.Models.DocumentMetadata", b =>
+                {
+                    b.HasOne("ProjectVico.V2.Shared.Models.GeneratedDocument", "GeneratedDocument")
+                        .WithOne("Metadata")
+                        .HasForeignKey("ProjectVico.V2.Shared.Models.DocumentMetadata", "GeneratedDocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("GeneratedDocument");
+                });
+
             modelBuilder.Entity("ProjectVico.V2.Shared.Models.Table", b =>
                 {
                     b.HasOne("ProjectVico.V2.Shared.Models.IngestedDocument", "IngestedDocument")
@@ -447,6 +487,8 @@ namespace ProjectVico.V2.Shared.Migrations
             modelBuilder.Entity("ProjectVico.V2.Shared.Models.GeneratedDocument", b =>
                 {
                     b.Navigation("ContentNodes");
+
+                    b.Navigation("Metadata");
                 });
 
             modelBuilder.Entity("ProjectVico.V2.Shared.Models.IngestedDocument", b =>

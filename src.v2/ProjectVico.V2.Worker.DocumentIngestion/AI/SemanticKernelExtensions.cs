@@ -1,4 +1,5 @@
-﻿using Azure;
+﻿using System.Diagnostics.CodeAnalysis;
+using Azure;
 using Azure.AI.OpenAI;
 using Azure.Search.Documents;
 using Microsoft.SemanticKernel;
@@ -11,6 +12,7 @@ namespace ProjectVico.V2.Worker.DocumentIngestion.AI;
 
 public static class SemanticKernelExtensions
 {
+    [Experimental("SKEXP0011")]
     public static IHostApplicationBuilder AddSemanticKernelService(this IHostApplicationBuilder builder)
     {
 

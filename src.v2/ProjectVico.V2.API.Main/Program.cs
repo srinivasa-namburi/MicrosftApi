@@ -1,8 +1,10 @@
+using Azure.Identity;
 using MassTransit;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Identity.Web;
 using ProjectVico.V2.API.Main.Hubs;
+using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Data.Sql;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -14,21 +16,21 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.AddServiceDefaults();
 
+var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
+
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-builder.AddAzureServiceBus("sbus");
-builder.AddRabbitMQ("rabbitmq-docgen");
+builder.AddAzureServiceBusClient("sbus");
+builder.AddRabbitMQClient("rabbitmqdocgen");
+builder.AddAzureBlobClient("docGenBlobs");
 
-
-builder.AddAzureBlobService("docGenBlobs");
-builder.AddSqlServerDbContext<DocGenerationDbContext>("sql-docgen", settings =>
+builder.AddSqlServerDbContext<DocGenerationDbContext>("sqldocgen", settings =>
 {
-    settings.ConnectionString = builder.Configuration.GetConnectionString("ProjectVICOdb");
-    settings.DbContextPooling = true;
+    settings.ConnectionString = builder.Configuration.GetConnectionString(serviceConfigurationOptions.SQL.DatabaseName);
     settings.HealthChecks = true;
     settings.Tracing = true;
     settings.Metrics = true;
@@ -45,9 +47,10 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 });
 
 var serviceBusConnectionString = builder.Configuration.GetConnectionString("sbus");
-var rabbitMqConnectionString = builder.Configuration.GetConnectionString("rabbitmq-docgen");
+serviceBusConnectionString = serviceBusConnectionString?.Replace("https://", "sb://").Replace(":443/", "/");
+var rabbitMqConnectionString = builder.Configuration.GetConnectionString("rabbitmqdocgen");
 
-if (!builder.Environment.IsDevelopment() && !string.IsNullOrEmpty(serviceBusConnectionString)) // Use Azure Service Bus for production
+if (!string.IsNullOrWhiteSpace(serviceBusConnectionString)) // Use Azure Service Bus for production
 {
     builder.Services.AddMassTransit(x =>
     {
@@ -55,7 +58,10 @@ if (!builder.Environment.IsDevelopment() && !string.IsNullOrEmpty(serviceBusConn
         x.AddConsumers(typeof(Program).Assembly);
         x.UsingAzureServiceBus((context, cfg) =>
         {
-            cfg.Host(serviceBusConnectionString);
+            cfg.Host(serviceBusConnectionString, configure: config =>
+            {
+                config.TokenCredential = new DefaultAzureCredential();
+            });
             cfg.ConfigureEndpoints(context);
 
         });

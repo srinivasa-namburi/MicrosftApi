@@ -8,12 +8,16 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Aspire.Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.0-preview.3.24105.21" />
+    <PackageReference Include="Aspire.Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.0-preview.5.24161.4" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\ProjectVico.V2.ServiceDefaults\ProjectVico.V2.ServiceDefaults.csproj" />
     <ProjectReference Include="..\ProjectVico.V2.Shared\ProjectVico.V2.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="manifests\" />
   </ItemGroup>
 </Project>

@@ -28,23 +28,15 @@ public class IngestDocumentsFromAutoImportPathConsumer : IConsumer<IngestDocumen
     public async Task Consume(ConsumeContext<IngestDocumentsFromAutoImportPath> context)
     {
         var ingestPath = "ingest";
-
         var message = context.Message;
 
-        BlobContainerClient targetContainerClient;
-        if (message.IngestionType == IngestionType.NRCDocument)
+        var documentProcess = _options.ProjectVicoServices.DocumentProcesses.FirstOrDefault(x => x.Name == message.DocumentProcess);
+        if (documentProcess == null)
         {
-            targetContainerClient = _blobServiceClient.GetBlobContainerClient(_options.ProjectVicoServices.DocumentIngestion.ContainerNRC);
-        }
-        else if (message.IngestionType == IngestionType.CustomData)
-        {
-            targetContainerClient = _blobServiceClient.GetBlobContainerClient(_options.ProjectVicoServices.DocumentIngestion.ContainerCustomData);
-        }
-        else
-        {
-            _logger.LogError("IngestDocumentsFromAutoImportPathConsumer: Encountered auto-import message with unknown document type - aborting import");
+            _logger.LogError("IngestDocumentsFromAutoImportPathConsumer: Encountered auto-import message with unknown document process - aborting import");
             return;
         }
+        var targetContainerClient = _blobServiceClient.GetBlobContainerClient(documentProcess.BlobStorageContainerName);
 
         var blobsPageable = _blobServiceClient.GetBlobContainerClient(context.Message.ContainerName).GetBlobsAsync(prefix: context.Message.FolderPath);
 
@@ -77,16 +69,17 @@ public class IngestDocumentsFromAutoImportPathConsumer : IConsumer<IngestDocumen
                 {
                     await sourceBlobClient.DeleteIfExistsAsync();
                 }
-                
-                _logger.LogInformation("IngestDocumentsFromAutoImportPathConsumer: Copied blob {blobName} from {sourceContainer} to {targetContainer}", blob.Name, context.Message.ContainerName, targetContainerClient.Name);
+
+                _logger.LogInformation("IngestDocumentsFromAutoImportPathConsumer: Document Process {documentProcess} : Copied blob {blobName} from {sourceContainer} to {targetContainer}", message.DocumentProcess, blob.Name, message.ContainerName, targetContainerClient.Name);
 
                 var request = new DocumentIngestionRequest()
                 {
                     Id = Guid.NewGuid(),
                     OriginalDocumentUrl = targetBlobClient.Uri.ToString(),
-                    IngestionType = message.IngestionType,
+                    DocumentProcessName = message.DocumentProcess,
                     FileName = targetBlobClient.Uri.Segments.Last(),
                 };
+
                 await context.Publish(request);
             });
         }

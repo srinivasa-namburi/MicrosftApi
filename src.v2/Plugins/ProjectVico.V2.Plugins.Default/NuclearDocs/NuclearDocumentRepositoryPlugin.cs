@@ -165,10 +165,10 @@ public class NuclearDocumentRepositoryPlugin : IPluginImplementation
             sectionStrings.Add(chatResponseMessage);
         }));
 
+        var systemPrompt =
+            "Follow the instructions below accurately. Do not generate any introductory text or additional numbering, bullets, etc. Just the list of sections.";
+
         var prompt = $"""
-                      [SYSTEM]: Follow the instructions below accurately. Do not generate any introductory text or additional numbering, 
-                      bullets, etc. Just the list of sections. \n\n
-                      [USER]:
                       This is a list of sections and subsections gathered from many different environmental reports.
                       Please deduplicate the list of sections and subsections, and generate a complete outline for the document.
                       To deduplicate, please remove any sections or subsections that seem very similar. The content is drawn from many reports, so there will be some overlap.
@@ -188,6 +188,7 @@ public class NuclearDocumentRepositoryPlugin : IPluginImplementation
             DeploymentName = _serviceConfigurationOptions.OpenAi.DocGenModelDeploymentName,
             Messages =
                 {
+                    new ChatRequestSystemMessage(systemPrompt),
                     new ChatRequestUserMessage(prompt)
                 },
             MaxTokens = 800,

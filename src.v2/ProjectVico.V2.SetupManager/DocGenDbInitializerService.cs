@@ -13,7 +13,10 @@ public class DocGenDbInitializerService : BackgroundService
     public const string ActivitySourceName = "Migrations";
     private readonly ActivitySource _activitySource = new(ActivitySourceName);
 
-    public DocGenDbInitializerService(IServiceProvider sp, ILogger<DocGenDbInitializerService> logger, IHostApplicationLifetime lifetime)
+    public DocGenDbInitializerService(
+        IServiceProvider sp, 
+        ILogger<DocGenDbInitializerService> logger, 
+        IHostApplicationLifetime lifetime)
     {
         _sp = sp;
         _logger = logger;
@@ -23,8 +26,9 @@ public class DocGenDbInitializerService : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken cancellationToken)
     {
         using var scope = _sp.CreateScope();
-        var dbContext = scope.ServiceProvider.GetRequiredService<DocGenerationDbContext>();
+        var dbContext = scope.ServiceProvider.GetService<DocGenerationDbContext>();
 
+        
         await InitializeDatabaseAsync(dbContext, cancellationToken);
         _lifetime.StopApplication();
     }

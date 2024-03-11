@@ -22,26 +22,12 @@ public class ServiceConfigurationOptions
     {
         public DocumentGenerationOptions DocumentGeneration { get; set; } = new DocumentGenerationOptions();
         public DocumentIngestionOptions DocumentIngestion { get; set; } = new DocumentIngestionOptions();
-
+        public List<DocumentProcessOptions?> DocumentProcesses { get; set; } = new List<DocumentProcessOptions?>();
+       
         public class DocumentIngestionOptions
         {
             public ushort NumberOfIngestionWorkers { get; set; }
-            public string ContainerNRC { get; set; } = string.Empty;
-            public string ContainerCustomData { get; set; } = string.Empty;
-            public string FolderAutoImportNRC { get; set; } = string.Empty;
-            public string FolderAutoImportCustomData { get; set; } = string.Empty;
-
             public bool ProcessTables { get; set; }
-          
-            public ClassificationOptions Classification { get; set; } = new ClassificationOptions();
-
-            public class ClassificationOptions
-            {
-                public bool ClassifyNRCDocuments { get; set; }
-                public bool ClassifyCustomDataDocuments { get; set; }
-                public string NRCClassificationModelName { get; set; } = string.Empty;
-                public string CustomDataClassificationModelName { get; set; } = string.Empty;
-            }
         }
 
         public class DocumentGenerationOptions
@@ -57,6 +43,7 @@ public class ServiceConfigurationOptions
     public class SQLOptions
     {
         public string Password { get; set; } = string.Empty;
+        public string DatabaseName { get; set; } = string.Empty;
     }
 
     public class RabbitMQOptions

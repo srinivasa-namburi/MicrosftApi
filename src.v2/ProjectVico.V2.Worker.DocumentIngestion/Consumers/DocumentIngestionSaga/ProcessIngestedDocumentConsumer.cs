@@ -1,12 +1,11 @@
 ﻿using MassTransit;
 using Microsoft.Extensions.Options;
-using ProjectVico.V2.Shared.Classification.Models;
+using ProjectVico.V2.DocumentProcess.Shared.Ingestion.Pipelines;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentIngestion.Commands;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentIngestion.Events;
 using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Extensions;
-using ProjectVico.V2.Shared.Interfaces;
 using ProjectVico.V2.Shared.Models;
 using ProjectVico.V2.Shared.Models.Enums;
 using ProjectVico.V2.Shared.Responses;
@@ -16,34 +15,46 @@ namespace ProjectVico.V2.Worker.DocumentIngestion.Consumers.DocumentIngestionSag
 public class ProcessIngestedDocumentConsumer : IConsumer<ProcessIngestedDocument>
 {
     private readonly DocGenerationDbContext _dbContext;
-    private readonly IPdfPipeline _nuclearEnvironmentalReportPdfPipeline;
-    private readonly IPdfPipeline _baselinePipeline;
+    private IPdfPipeline _pipeline;
     private readonly ILogger<ProcessIngestedDocumentConsumer> _logger;
     private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
+    private readonly IServiceProvider _serviceProvider;
+    private DocumentProcessOptions? _documentProcessOptions;
 
 
     public ProcessIngestedDocumentConsumer(
         DocGenerationDbContext dbContext,
-        [FromKeyedServices("nuclear-er-pipeline")]
-        IPdfPipeline nuclearEnvironmentalReportPdfPipeline,
-        [FromKeyedServices("baseline-pipeline")]
-        IPdfPipeline baselinePipeline,
         IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
-        ILogger<ProcessIngestedDocumentConsumer> logger)
+        ILogger<ProcessIngestedDocumentConsumer> logger,
+        IServiceProvider serviceProvider)
 
     {
         _dbContext = dbContext;
-        _nuclearEnvironmentalReportPdfPipeline = nuclearEnvironmentalReportPdfPipeline;
-        _baselinePipeline = baselinePipeline;
         _logger = logger;
         _serviceConfigurationOptions = serviceConfigurationOptions.Value;
+        _serviceProvider = serviceProvider;
     }
 
     public async Task Consume(ConsumeContext<ProcessIngestedDocument> context)
     {
+        var message = context.Message;
+        var scope = _serviceProvider.CreateScope();
+        
+        _documentProcessOptions = _serviceConfigurationOptions.ProjectVicoServices.DocumentProcesses.SingleOrDefault(x => x?.Name == message.DocumentProcessName);
+
+        if (_documentProcessOptions == null)
+        {
+            _logger.LogWarning("ProcessIngestedDocumentConsumer: Document process options not found for {ProcessName}", message.DocumentProcessName);
+            await context.Publish(new IngestedDocumentProcessingFailed(message.CorrelationId));
+            return;
+        }
+
+        _pipeline = scope.ServiceProvider.GetRequiredKeyedService<IPdfPipeline>(message.DocumentProcessName +"-IPdfPipeline");
+
         var ingestedDocument = await _dbContext.IngestedDocuments.FindAsync(context.Message.CorrelationId);
         if (ingestedDocument == null)
         {
+            _logger.LogWarning("ProcessIngestedDocumentConsumer: Ingested document not found {CorrelationId}, aborting process", context.Message.CorrelationId);
             await context.Publish(new IngestedDocumentProcessingFailed(context.Message.CorrelationId));
             return;
         }
@@ -51,25 +62,13 @@ public class ProcessIngestedDocumentConsumer : IConsumer<ProcessIngestedDocument
         ingestedDocument.IngestionState = IngestionState.Processing;
         await _dbContext.SaveChangesAsync();
 
-        var message = context.Message;
+        await ProcessDocument(message, ingestedDocument);
 
-        if (message.IngestionType == IngestionType.NRCDocument)
+        if (ingestedDocument.IngestionState == IngestionState.ClassificationUnsupported)
         {
-            if (message.ClassificationType != DocumentClassificationType.NrcEnvironmentalReportWithNumberedChapters &&
-                _serviceConfigurationOptions.ProjectVicoServices.DocumentIngestion.Classification.ClassifyNRCDocuments)
-            {
-                _logger.LogWarning("ProcessIngestedDocumentConsumer: Processing stopped because of unsupported classification");
-                ingestedDocument.IngestionState = IngestionState.ClassificationUnsupported;
-                await _dbContext.SaveChangesAsync();
-                await context.Publish(new IngestedDocumentProcessingStoppedByUnsupportedClassification(context.Message.CorrelationId));
-                return;
-            }
-            await ProcessNrcDocument(message, ingestedDocument);
-        }
-        else
-        {
-
-            await ProcessCustomDocument(message, ingestedDocument);
+            _logger.LogWarning("ProcessIngestedDocumentConsumer: Processing stopped because of unsupported classification");
+            await context.Publish(new IngestedDocumentProcessingStoppedByUnsupportedClassification(context.Message.CorrelationId));
+            return;
         }
 
         _logger.LogInformation("ProcessIngestedDocumentConsumer: Document processed {CorrelationId}", context.Message.CorrelationId);
@@ -77,23 +76,19 @@ public class ProcessIngestedDocumentConsumer : IConsumer<ProcessIngestedDocument
         await context.Publish(new IngestedDocumentProcessed(context.Message.CorrelationId));
     }
 
-    private async Task ProcessCustomDocument(ProcessIngestedDocument message, IngestedDocument ingestedDocument)
+    private async Task ProcessDocument(ProcessIngestedDocument message, IngestedDocument ingestedDocument)
     {
-        _logger.LogInformation("ProcessIngestedDocumentConsumer: Processing custom document {CorrelationId}: {FileName}", message.CorrelationId, ingestedDocument.FileName);
-        var blobUrl = message.OriginalDocumentUrl;
-        var name = message.FileName;
+        _logger.LogInformation("ProcessIngestedDocumentConsumer: Processing {documentProcessName} document {CorrelationId}: {FileName}", _documentProcessOptions!.Name, message.CorrelationId, ingestedDocument.FileName);
+        
+        var pipelineResponse = await _pipeline.RunAsync(ingestedDocument, _documentProcessOptions);
 
-        var pipelineResponse = await _baselinePipeline.RunAsync(blobUrl, name);
-        await CommonProcessing(pipelineResponse, ingestedDocument);
-    }
+        if ( pipelineResponse.UnsupportedClassification)
+        {
+            ingestedDocument.IngestionState = IngestionState.ClassificationUnsupported;
+            _dbContext.Update(ingestedDocument);
+            await _dbContext.SaveChangesAsync();
+        }
 
-    private async Task ProcessNrcDocument(ProcessIngestedDocument message, IngestedDocument ingestedDocument)
-    {
-        _logger.LogInformation("ProcessIngestedDocumentConsumer: Processing NRC document {CorrelationId}: {FileName}", message.CorrelationId, ingestedDocument.FileName);
-        var blobUrl = message.OriginalDocumentUrl;
-        var name = message.FileName;
-
-        var pipelineResponse = await _nuclearEnvironmentalReportPdfPipeline.RunAsync(blobUrl, name);
         await CommonProcessing(pipelineResponse, ingestedDocument);
 
     }

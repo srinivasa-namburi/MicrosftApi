@@ -1,5 +1,5 @@
 ﻿using MassTransit;
-
+using ProjectVico.V2.Shared.Contracts.DTO;
 
 namespace ProjectVico.V2.Shared.SagaState;
 
@@ -10,13 +10,12 @@ public class DocumentGenerationSagaState : SagaStateMachineInstance
 
     public string DocumentTitle { get; set; }
     public string? AuthorOid { get; set; }
-    public string? ReactorModel { get; set; }
-    public double? LocationLatitude { get; set; }
-    public double? LocationLongitude { get; set; }
-    public DateOnly? ProjectedProjectStartDate { get; set; }
-    public DateOnly? ProjectedProjectEndDate { get; set; }
+    
+    public DocumentGenerationRequest DocumentGenerationRequest { get; set; } = new DocumentGenerationRequest();
+
     public int NumberOfContentNodesToGenerate { get; set; } = 0;
     public int NumberOfContentNodesGenerated { get; set; } = 0;
+    public string? DocumentProcessName { get; set; } = "US.NuclearLicensing";
 
 
 

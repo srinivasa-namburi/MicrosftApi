@@ -1,7 +1,12 @@
+using Aspire.Azure.Search.Documents;
 using Azure;
+using Azure.Identity;
 using Azure.Search.Documents;
 using MassTransit;
 using MassTransit.EntityFrameworkCoreIntegration;
+using ProjectVico.V2.DocumentProcess.Shared;
+using ProjectVico.V2.DocumentProcess.Shared.Generation;
+using ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Generation;
 using ProjectVico.V2.Plugins.Shared;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Data.Sql;
@@ -17,37 +22,30 @@ using ProjectVico.V2.Worker.DocumentGeneration.Services;
 var builder = Host.CreateApplicationBuilder(args);
 builder.AddServiceDefaults();
 
-builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configuration.GetSection("ServiceConfiguration"));
+builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
 
-var serviceConfigurationOptions = builder.Configuration.GetSection("ServiceConfiguration").Get<ServiceConfigurationOptions>()!;
+var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
 
-if (serviceConfigurationOptions.ProjectVicoServices.DocumentGeneration.CreateBodyTextNodes)
+builder.AddAzureServiceBusClient("sbus");
+builder.AddRabbitMQClient("rabbitmqdocgen");
+builder.AddKeyedAzureOpenAIClient("openai-planner");
+builder.AddAzureBlobClient("docGenBlobs");
+
+builder.AddSqlServerDbContext<DocGenerationDbContext>("sqldocgen", settings =>
 {
-    builder.Services.AddScoped<IBodyTextGenerator, SemanticKernelBodyTextGenerator>();
-}
-else
-{
-    builder.Services.AddScoped<IBodyTextGenerator, LoremIpsumBodyTextGenerator>();
-}
-
-builder.AddAzureServiceBus("sbus");
-builder.AddRabbitMQ("rabbitmq-docgen");
-builder.AddKeyedAzureOpenAI("openai-planner");
-builder.AddAzureBlobService("docGenBlobs");
-
-builder.AddSqlServerDbContext<DocGenerationDbContext>("sql-docgen", settings =>
-{
-    settings.ConnectionString = builder.Configuration.GetConnectionString("ProjectVICOdb");
-    settings.DbContextPooling = true;
+    settings.ConnectionString = builder.Configuration.GetConnectionString(serviceConfigurationOptions.SQL.DatabaseName);
     settings.HealthChecks = true;
     settings.Tracing = true;
     settings.Metrics = true;
 });
 
-builder.Services.AddScoped<IIndexingProcessor, SearchIndexingProcessor>();
-builder.Services.AddScoped<TableHelper>();
+if (!serviceConfigurationOptions.ProjectVicoServices.DocumentGeneration.CreateBodyTextNodes)
+{
+    builder.Services.AddScoped<IBodyTextGenerator, LoremIpsumBodyTextGenerator>();
+}
 
-builder.DynamicallyRegisterPlugins();
+//builder.Services.AddScoped<IIndexingProcessor, SearchIndexingProcessor>();
+//builder.Services.AddScoped<TableHelper>();
 
 builder.Services.AddKeyedScoped<SearchClient>("searchclient-section",
     (provider, o) => GetSearchClientWithIndex(provider, o, serviceConfigurationOptions.CognitiveSearch.NuclearSectionIndex));
@@ -56,12 +54,17 @@ builder.Services.AddKeyedScoped<SearchClient>("searchclient-title",
 builder.Services.AddKeyedScoped<SearchClient>("searchclient-customdata",
     (provider, o) => GetSearchClientWithIndex(provider, o, serviceConfigurationOptions.CognitiveSearch.CustomIndex));
 
+
+builder.DynamicallyRegisterPlugins();
+builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
+
 builder.AddSemanticKernelService();
 
 var serviceBusConnectionString = builder.Configuration.GetConnectionString("sbus");
-var rabbitMqConnectionString = builder.Configuration.GetConnectionString("rabbitmq-docgen");
+serviceBusConnectionString = serviceBusConnectionString?.Replace("https://", "sb://").Replace(":443/", "/");
+var rabbitMqConnectionString = builder.Configuration.GetConnectionString("rabbitmqdocgen");
 
-if (!builder.Environment.IsDevelopment() && !string.IsNullOrWhiteSpace(serviceBusConnectionString))
+if (!string.IsNullOrWhiteSpace(serviceBusConnectionString))
 {
     builder.Services.AddMassTransit(x =>
      {
@@ -78,10 +81,25 @@ if (!builder.Environment.IsDevelopment() && !string.IsNullOrWhiteSpace(serviceBu
 
          x.UsingAzureServiceBus((context, cfg) =>
          {
-             cfg.Host(serviceBusConnectionString);
+             cfg.Host(serviceBusConnectionString, configure: config =>
+             {
+                 config.TokenCredential = new DefaultAzureCredential();
+             });
+             cfg.LockDuration = TimeSpan.FromMinutes(5);
+             cfg.MaxAutoRenewDuration = TimeSpan.FromMinutes(60);
              cfg.ConfigureEndpoints(context);
              cfg.ConcurrentMessageLimit = 1;
-             cfg.PrefetchCount = 3;
+             cfg.PrefetchCount = 1;
+             cfg.UseMessageRetry(r => r.Intervals(new TimeSpan[]
+             {
+                 // Set first retry to a random number between 3 and 9 seconds
+                 TimeSpan.FromSeconds(new Random().Next(3, 9)),
+                 // Set second retry to a random number between 10 and 30 seconds
+                 TimeSpan.FromSeconds(new Random().Next(10, 30)),
+                 // Set third and final retry to a random number between 30 and 60 seconds
+                 TimeSpan.FromSeconds(new Random().Next(30, 60))
+                
+             }));
          });
      });
 }

@@ -1,0 +1,11 @@
+﻿namespace ProjectVico.V2.Shared.Configuration;
+
+public class DocumentProcessOptions
+{
+    public string Name { get; set; } = string.Empty;
+    public string? BlobStorageContainerName { get; set; } = string.Empty;
+    public string? BlobStorageAutoImportFolderName { get; set; } = string.Empty;
+    public bool ClassifyDocuments { get; set; }
+    public string? ClassificationModelName { get; set; }
+
+}

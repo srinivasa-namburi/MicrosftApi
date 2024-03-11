@@ -1,9 +1,7 @@
 ﻿using MassTransit;
-using ProjectVico.V2.Shared.Classification.Models;
 using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentIngestion.Commands;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentIngestion.Events;
-using ProjectVico.V2.Shared.Models.Enums;
 using ProjectVico.V2.Shared.SagaState;
 
 namespace ProjectVico.V2.Worker.DocumentIngestion.Sagas;
@@ -26,14 +24,14 @@ public class DocumentIngestionSaga : MassTransitStateMachine<DocumentIngestionSa
                 context.Saga.FileName = context.Message.FileName;
                 context.Saga.OriginalDocumentUrl = context.Message.OriginalDocumentUrl;
                 context.Saga.UploadedByUserOid = context.Message.UploadedByUserOid;
-                context.Saga.IngestionType = context.Message.IngestionType;
+                context.Saga.DocumentProcessName = context.Message.DocumentProcessName;
             })
             .Publish(context => new CreateIngestedDocument(context.Saga.CorrelationId)
             {
+                DocumentProcessName = context.Saga.DocumentProcessName,
                 FileName = context.Saga.FileName,
                 OriginalDocumentUrl = context.Saga.OriginalDocumentUrl,
-                UploadedByUserOid = context.Saga.UploadedByUserOid,
-                IngestionType = context.Saga.IngestionType
+                UploadedByUserOid = context.Saga.UploadedByUserOid
             })
             .TransitionTo(Creating)
             );
@@ -46,10 +44,11 @@ public class DocumentIngestionSaga : MassTransitStateMachine<DocumentIngestionSa
             })
             .Publish(context => new ClassifyIngestedDocument(context.Saga.CorrelationId)
             {
+                DocumentProcessName = context.Saga.DocumentProcessName,
                 OriginalDocumentUrl = context.Saga.OriginalDocumentUrl,
                 FileName = context.Saga.FileName,
-                UploadedByUserOid = context.Saga.UploadedByUserOid,
-                IngestionType = context.Saga.IngestionType
+                UploadedByUserOid = context.Saga.UploadedByUserOid
+               
             })
             .TransitionTo(Classifying)
         );
@@ -64,18 +63,14 @@ public class DocumentIngestionSaga : MassTransitStateMachine<DocumentIngestionSa
             .Then(context =>
             {
                 context.Saga.ClassificationShortCode = context.Message.ClassificationShortCode;
-                context.Saga.ClassificationType = context.Message.ClassificationType;
 
             })
             .Publish(context => new ProcessIngestedDocument(context.Message.CorrelationId)
             {
+                DocumentProcessName = context.Saga.DocumentProcessName,
                 OriginalDocumentUrl = context.Saga.OriginalDocumentUrl,
                 FileName = context.Saga.FileName,
                 UploadedByUserOid = context.Saga.UploadedByUserOid,
-                IngestionType = context.Saga.IngestionType,
-                ClassificationType =
-                        (DocumentClassificationType)context.Saga
-                            .ClassificationType! // can't be null here or we would not have reached this state
             })
             .TransitionTo(Processing)
         );

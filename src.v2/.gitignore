@@ -1,4 +1,5 @@
 .azure
+azure.yaml
 dotnet/.config
 
 ## Ignore Visual Studio temporary files, build results, and

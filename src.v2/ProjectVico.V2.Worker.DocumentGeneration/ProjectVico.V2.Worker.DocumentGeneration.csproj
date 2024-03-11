@@ -22,10 +22,11 @@
 	</ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Aspire.Azure.AI.OpenAI" Version="8.0.0-preview.3.24105.21" />
-    <PackageReference Include="Aspire.Azure.Messaging.ServiceBus" Version="8.0.0-preview.3.24105.21" />
-    <PackageReference Include="Aspire.Azure.Storage.Blobs" Version="8.0.0-preview.3.24105.21" />
-    <PackageReference Include="Aspire.RabbitMQ.Client" Version="8.0.0-preview.3.24105.21" />
+    <PackageReference Include="Aspire.Azure.AI.OpenAI" Version="8.0.0-preview.5.24161.4" />
+    <PackageReference Include="Aspire.Azure.Messaging.ServiceBus" Version="8.0.0-preview.5.24161.4" />
+    <PackageReference Include="Aspire.Azure.Search.Documents" Version="8.0.0-preview.5.24161.4" />
+    <PackageReference Include="Aspire.Azure.Storage.Blobs" Version="8.0.0-preview.5.24161.4" />
+    <PackageReference Include="Aspire.RabbitMQ.Client" Version="8.0.0-preview.5.24161.4" />
     <PackageReference Include="MassTransit.Azure.ServiceBus.Core" Version="8.1.3" />
     <PackageReference Include="MassTransit.EntityFrameworkCore" Version="8.1.3" />
     <PackageReference Include="MassTransit.Quartz" Version="8.1.3" />
@@ -38,9 +39,14 @@
   <ItemGroup>
     <ProjectReference Include="..\Plugins\ProjectVico.V2.Plugins.Default\ProjectVico.V2.Plugins.Default.csproj" />
     <ProjectReference Include="..\Plugins\ProjectVico.V2.Plugins.Shared\ProjectVico.V2.Plugins.Shared.csproj" />
+    <ProjectReference Include="..\ProjectVico.V2.DocumentProcess.Shared\ProjectVico.V2.DocumentProcess.Shared.csproj" />
+    <ProjectReference Include="..\ProjectVico.V2.DocumentProcess.US.NuclearLicensing\ProjectVico.V2.DocumentProcess.US.NuclearLicensing.csproj" />
     <ProjectReference Include="..\ProjectVico.V2.ServiceDefaults\ProjectVico.V2.ServiceDefaults.csproj" />
-    <ProjectReference Include="..\ProjectVico.V2.Shared.Contracts\ProjectVico.V2.Shared.Contracts.csproj" />
     <ProjectReference Include="..\ProjectVico.V2.Shared\ProjectVico.V2.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="manifests\" />
   </ItemGroup>
 
 
