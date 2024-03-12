@@ -26,10 +26,10 @@ builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configur
 
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
 
-builder.AddAzureServiceBusClient("sbus");
-builder.AddRabbitMQClient("rabbitmqdocgen");
-builder.AddKeyedAzureOpenAIClient("openai-planner");
-builder.AddAzureBlobClient("docGenBlobs");
+builder.AddAzureServiceBus("sbus");
+builder.AddRabbitMQ("rabbitmqdocgen");
+builder.AddKeyedAzureOpenAI("openai-planner");
+builder.AddAzureBlobService("docGenBlobs");
 
 builder.AddSqlServerDbContext<DocGenerationDbContext>("sqldocgen", settings =>
 {

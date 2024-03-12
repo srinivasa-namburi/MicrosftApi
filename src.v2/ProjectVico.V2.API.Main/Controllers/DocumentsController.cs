@@ -1,14 +1,10 @@
-﻿using System.Security.Claims;
-using System.Text.Json;
-using Azure.Storage.Blobs;
-using MassTransit;
+﻿using MassTransit;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Identity.Web;
 using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentIngestion.Commands;
 using ProjectVico.V2.Shared.Data.Sql;
-using ProjectVico.V2.Shared.Interfaces;
 using ProjectVico.V2.Shared.Models;
 
 namespace ProjectVico.V2.API.Main.Controllers;

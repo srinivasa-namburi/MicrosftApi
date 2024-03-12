@@ -24,9 +24,9 @@ builder.Services.AddProblemDetails();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-builder.AddAzureServiceBusClient("sbus");
-builder.AddRabbitMQClient("rabbitmqdocgen");
-builder.AddAzureBlobClient("docGenBlobs");
+builder.AddAzureServiceBus("sbus");
+builder.AddRabbitMQ("rabbitmqdocgen");
+builder.AddAzureBlobService("docGenBlobs");
 
 builder.AddSqlServerDbContext<DocGenerationDbContext>("sqldocgen", settings =>
 {

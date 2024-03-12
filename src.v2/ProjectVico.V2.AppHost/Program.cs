@@ -48,7 +48,7 @@ if (builder.ExecutionContext.IsRunMode) // For local development
     {
         docGenSql = builder
             .AddSqlServer("sqldocgen", password: sqlPassword, port: 9001)
-            .WithVolume("pvico-sql-docgen-vol", "/var/opt/mssql")
+            .WithVolumeMount("pvico-sql-docgen-vol", "/var/opt/mssql")
             .AddDatabase(sqlDatabaseName);
 
         //docGenRabbitMq = builder
