@@ -59,7 +59,8 @@ public class GenerateReportContentConsumer : IConsumer<GenerateReportContent>
         {
             ContentNodeJson = contentNodeJson,
             AuthorOid = context.Message.AuthorOid!,
-            DocumentOutlineJson = documentOutlineJson
+            DocumentOutlineJson = documentOutlineJson,
+            MetadataId = context.Message.MetadataId
         });
 
         // Recursively process each child node

@@ -1,4 +1,5 @@
 ﻿using System.Security.Claims;
+using System.Text.Json;
 using Azure.Storage.Blobs;
 using MassTransit;
 using Microsoft.AspNetCore.Mvc;
@@ -7,6 +8,7 @@ using Microsoft.Identity.Web;
 using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentIngestion.Commands;
 using ProjectVico.V2.Shared.Data.Sql;
+using ProjectVico.V2.Shared.Interfaces;
 using ProjectVico.V2.Shared.Models;
 
 namespace ProjectVico.V2.API.Main.Controllers;
@@ -33,11 +35,12 @@ public class DocumentsController : BaseController
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [Consumes("application/json")]
-    public async Task<IActionResult> GenerateDocument([FromBody]DocumentGenerationRequest documentGenerationRequest)
+    public async Task<IActionResult> GenerateDocument([FromBody]GenerateDocumentDTO generateDocumentDto)
     {
         var claimsPrincipal = _httpContextAccessor.HttpContext.User;
-        documentGenerationRequest.AuthorOid = claimsPrincipal.GetObjectId();
-        await _publishEndpoint.Publish<DocumentGenerationRequest>(documentGenerationRequest);
+        generateDocumentDto.AuthorOid = claimsPrincipal.GetObjectId();
+        
+        await _publishEndpoint.Publish<GenerateDocumentDTO>(generateDocumentDto);
         
         return Accepted();
     }

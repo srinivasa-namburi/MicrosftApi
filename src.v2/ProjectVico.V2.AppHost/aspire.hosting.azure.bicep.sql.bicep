@@ -46,7 +46,7 @@ resource sqlFirewall 'firewallRules@2022-05-01-preview' = {
   name: name
   location: location
   sku: {
-    name: 'S0'
+    name: 'HS_Gen5_6'
   }
   tags: tags
   }]

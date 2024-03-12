@@ -188,14 +188,7 @@ public class DocGenerationDbContext : DbContext
         // Mass Transit SAGA for Document Generation
         modelBuilder.Entity<DocumentGenerationSagaState>()
             .HasKey(x => x.CorrelationId);
-        // JSON property to hold metadata, for now just the DocumentGenerationRequest, but this will be generalized later
-        modelBuilder.Entity<DocumentGenerationSagaState>()
-            .Property<DocumentGenerationRequest>(x => x.DocumentGenerationRequest)
-            .HasConversion(
-                v => JsonSerializer.Serialize(v, JsonSerializerOptions.Default),
-                v => JsonSerializer.Deserialize<DocumentGenerationRequest>(v, JsonSerializerOptions.Default)!
-            );
-
+        
         // Mass Transit SAGA for Document Ingestion
         modelBuilder.Entity<DocumentIngestionSagaState>()
             .HasKey(x => x.CorrelationId);
@@ -204,6 +197,7 @@ public class DocGenerationDbContext : DbContext
     public DbSet<DocumentGenerationSagaState> DocumentGenerationSagaStates { get; set; } = null!;
     public DbSet<DocumentIngestionSagaState> DocumentIngestionSagaStates { get; set; } = null!;
     public DbSet<GeneratedDocument> GeneratedDocuments { get; set; }
+    public DbSet<DocumentMetadata> DocumentMetadata { get; set; }
     public DbSet<IngestedDocument> IngestedDocuments { get; set; }
 
     public DbSet<ContentNode> ContentNodes { get; set; }

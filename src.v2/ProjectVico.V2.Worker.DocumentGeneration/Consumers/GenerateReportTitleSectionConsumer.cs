@@ -9,7 +9,6 @@ using ProjectVico.V2.Shared.Contracts.Messages.DocumentGeneration.Events;
 using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Models;
 using ProjectVico.V2.Shared.Models.Enums;
-using ProjectVico.V2.Worker.DocumentGeneration.Services;
 
 namespace ProjectVico.V2.Worker.DocumentGeneration.Consumers;
 
@@ -92,7 +91,7 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
                 var sectionNumber = contentNode.Text.Split(' ')[0];
                 var sectionTitle = contentNode.Text.Substring(sectionNumber.Length).Trim();
 
-                var bodyContentNodes = await GenerateBodyText(contentNodeType, sectionNumber, sectionTitle, tableOfContentsString);
+                var bodyContentNodes = await GenerateBodyText(contentNodeType, sectionNumber, sectionTitle, tableOfContentsString, message.MetadataId);
 
                 // Set the Parent of all bodyContentNodes to be the existingContentNode
                 foreach (var bodyContentNode in bodyContentNodes)
@@ -134,9 +133,9 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
     }
 
     private async Task<List<ContentNode>> GenerateBodyText(string contentNodeType, string sectionNumber,
-        string sectionTitle, string tableOfContentsString)
+        string sectionTitle, string tableOfContentsString, Guid? metadataId = null)
     {
-        var result = await _bodyTextGenerator.GenerateBodyText(contentNodeType, sectionNumber, sectionTitle, tableOfContentsString);
+        var result = await _bodyTextGenerator.GenerateBodyText(contentNodeType, sectionNumber, sectionTitle, tableOfContentsString, metadataId);
         return result;
     }
 

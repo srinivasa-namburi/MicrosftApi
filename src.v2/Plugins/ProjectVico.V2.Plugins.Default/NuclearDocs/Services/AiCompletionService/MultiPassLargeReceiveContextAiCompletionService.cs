@@ -7,6 +7,7 @@ using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 using ProjectVico.V2.Plugins.Shared;
 using ProjectVico.V2.Shared.Configuration;
+using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Shared.Models;
 using ProjectVico.V2.Shared.Models.Enums;
@@ -18,26 +19,28 @@ public class MultiPassLargeReceiveContextAiCompletionService : IAiCompletionServ
     private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
     private readonly OpenAIClient _openAIClient;
     private readonly TableHelper _tableHelper;
+    private readonly DocGenerationDbContext _dbContext;
     private Kernel _sk;
     private readonly IServiceProvider _sp;
-    private int _numberOfPasses = 8;
+    private int _numberOfPasses = 6;
 
     public MultiPassLargeReceiveContextAiCompletionService(
         IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
         [FromKeyedServices("openai-planner")] OpenAIClient openAIClient,
         TableHelper tableHelper,
-        IChatCompletionService chatCompletionService,
+        DocGenerationDbContext dbContext,
         IServiceProvider sp)
     {
         _serviceConfigurationOptions = serviceConfigurationOptions.Value;
         _openAIClient = openAIClient;
         _tableHelper = tableHelper;
+        _dbContext = dbContext;
         _sp = sp;
-
-
     }
 
-    public async Task<List<ContentNode>> GetBodyContentNodes(List<ReportDocument> documents, string sectionOrTitleNumber, string sectionOrTitleText, ContentNodeType contentNodeType, string tableOfContentsString)
+    public async Task<List<ContentNode>> GetBodyContentNodes(List<ReportDocument> documents,
+        string sectionOrTitleNumber, string sectionOrTitleText, ContentNodeType contentNodeType,
+        string tableOfContentsString, Guid? metadataId)
     {
         using var scope = _sp.CreateScope();
         var plugins = new KernelPluginCollection();
@@ -67,28 +70,19 @@ public class MultiPassLargeReceiveContextAiCompletionService : IAiCompletionServ
             "[SYSTEM]: This is a chat between an intelligent AI bot specializing in assisting with producing environmental reports for Small Modular nuclear Reactors ('SMR') and one or more participants. The AI has been trained on GPT-4 LLM data through to April 2023 and has access to additional data on more recent SMR environmental report samples. Provide responses that can be copied directly into an environmental report.";
 
         var lastPassResponse = new List<string>();
+        
+        var documentMetaData = await _dbContext.DocumentMetadata.FindAsync(metadataId);
 
+        string customDataString = "No custom data available for this query";
+
+        if (documentMetaData != null && !string.IsNullOrEmpty(documentMetaData.MetadataJson))
+        {
+            customDataString = documentMetaData.MetadataJson;
+        }
+        
         for (int i = 0; i < _numberOfPasses; i++)
         {
-
-            //Create a dynamic object with the custom data for the current project
-            //Include the latitude and longitude of the reactor (in Tacoma, WA, the reactor type, the reactor size, the location of the reactor, and any other relevant data
-
-            //var dummyCustomData =
-            //    new
-            //    {
-            //        Latitude = 47.2529,
-            //        Longitude = -122.4443,
-            //        ReactorType = "SMR",
-            //        ReactorSize = "Small",
-            //        ReactorLocation = "Tacoma, WA"
-            //    };
-
-            //// serialize the custom data to a string/json
-            //var customDataString = JsonSerializer.Serialize(dummyCustomData);
-            string customDataString = "No custom data";
-
-
+      
 
             string prompt;
             if (i == 0)
@@ -110,7 +104,8 @@ public class MultiPassLargeReceiveContextAiCompletionService : IAiCompletionServ
                          For customizing the output so that it pertains to this project, please use tool calling/functions as supplied to you
                          in the list of available functions. If you need additional data, please request it using the [DETAIL: <dataType>] tag.
                          
-                         Custom data for this project follows in JSON format between the [CUSTOMDATA] and [/CUSTOMDATA] tags.
+                         Custom data for this project follows in JSON format between the [CUSTOMDATA] and [/CUSTOMDATA] tags. IGNORE the following fields:
+                         DocumentProcessName, MetadataModelName, DocumentGenerationRequestFullTypeName, ID, AuthorOid.
                          
                          [CUSTOMDATA]
                          {customDataString}

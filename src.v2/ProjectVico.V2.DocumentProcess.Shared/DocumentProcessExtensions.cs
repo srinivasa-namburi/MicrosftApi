@@ -4,10 +4,13 @@ using Azure.AI.FormRecognizer.DocumentAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using ProjectVico.V2.DocumentProcess.Shared.Generation;
+using ProjectVico.V2.DocumentProcess.Shared.Mapping;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Shared.Interfaces;
 using ProjectVico.V2.Shared.Mappings;
+using ProjectVico.V2.Shared.Models;
 using ProjectVico.V2.Shared.Services.Search;
 
 namespace ProjectVico.V2.DocumentProcess.Shared;
@@ -45,7 +48,7 @@ public static class DocumentProcessExtensions
             new AzureKeyCredential(options.DocumentIntelligence.Key)));
         
         // Object Mapping with AutoMapper
-        builder.Services.AddAutoMapper(typeof(TableProfile));
+        builder.Services.AddAutoMapper(typeof(TableProfile), typeof(MetadataProfile));
 
         // Ingestion specific custom dependencies
         builder.Services.AddScoped<TableHelper>();
@@ -55,6 +58,10 @@ public static class DocumentProcessExtensions
         // TODO: This needs to be broken apart into several services, with actual indexing being
         // part of each specific document process and the common functionality being in a separate service
         builder.Services.AddScoped<IIndexingProcessor, SearchIndexingProcessor>();
+
+        //Basic metadata service
+        builder.Services
+            .AddScoped<IMetadataService, MetadataService>();
 
         return builder;
     }

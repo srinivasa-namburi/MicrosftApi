@@ -5,5 +5,6 @@ namespace ProjectVico.V2.Plugins.Default.NuclearDocs.Services.AiCompletionServic
 
 public interface IAiCompletionService
 {
-    Task<List<ContentNode>> GetBodyContentNodes(List<ReportDocument> documents, string sectionOrTitleNumber, string sectionOrTitleText, ContentNodeType contentNodeType, string tableOfContentsString);
+    Task<List<ContentNode>> GetBodyContentNodes(List<ReportDocument> documents, string sectionOrTitleNumber,
+        string sectionOrTitleText, ContentNodeType contentNodeType, string tableOfContentsString, Guid? metadataId);
 }

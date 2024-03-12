@@ -1,4 +1,5 @@
-﻿using ProjectVico.V2.Shared.Contracts.DTO;
+﻿using System.Text.Json;
+using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Shared.Models;
 using ProjectVico.V2.Web.Shared.ServiceClients;
 
@@ -13,7 +14,22 @@ internal sealed class DocumentGenerationApiClient : BaseServiceClient<DocumentGe
 
     public async Task<string?> GenerateDocumentAsync(DocumentGenerationRequest? documentGenerationRequest)
     {
-        var response = await SendPostRequestMessage($"/api/documents/generate", documentGenerationRequest);
+
+        if (documentGenerationRequest == null)
+        {
+            throw new ArgumentNullException(nameof(documentGenerationRequest));
+        }
+
+        var generateDocumentDto = new GenerateDocumentDTO
+        {
+            DocumentProcessName = documentGenerationRequest.DocumentProcessName,
+            DocumentTitle = documentGenerationRequest.DocumentTitle,
+            AuthorOid = documentGenerationRequest.AuthorOid,
+            Id = documentGenerationRequest.Id,
+            RequestAsJson = JsonSerializer.Serialize(documentGenerationRequest)
+        };
+
+        var response = await SendPostRequestMessage($"/api/documents/generate", generateDocumentDto);
         response?.EnsureSuccessStatusCode();
 
         return response?.StatusCode.ToString();

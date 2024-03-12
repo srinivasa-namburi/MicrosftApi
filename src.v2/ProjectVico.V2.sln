@@ -6,11 +6,25 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.ServiceDefau
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "0. Aspire Infrastructure", "0. Aspire Infrastructure", "{D4460E03-6678-477D-B13C-7870EDD82671}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "00. Misc", "00. Misc", "{0CED2165-8D86-45D8-8D0D-359FB0D0AC32}"
+	ProjectSection(SolutionItems) = preProject
+		.gitignore = .gitignore
+		NuGet.config = NuGet.config
+	EndProjectSection
+EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "1. Frontends", "1. Frontends", "{F7F3832D-1C01-4B76-A055-072964D03A2B}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "2. Backends", "2. Backends", "{FF5008BD-2970-41F9-8F1E-61F2DEC9AED5}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "3. Plugins", "3. Plugins", "{7EABCC9F-BAB5-4394-8B76-433A33055F59}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "5. Document Processes", "5. Document Processes", "{24DA4DEF-D3AD-4D2B-8526-513082EBB3DF}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.DocumentProcess.Shared", "ProjectVico.V2.DocumentProcess.Shared\ProjectVico.V2.DocumentProcess.Shared.csproj", "{7985819A-B9E5-4324-9F21-C8E45DD1245C}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.DocumentProcess.US.NuclearLicensing", "ProjectVico.V2.DocumentProcess.US.NuclearLicensing\ProjectVico.V2.DocumentProcess.US.NuclearLicensing.csproj", "{571E26E7-47FA-44CA-980F-483E1C4B316A}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.DocumentProcess.CustomData", "ProjectVico.V2.DocumentProcess.CustomData\ProjectVico.V2.DocumentProcess.CustomData.csproj", "{987A9190-B29C-4C60-B9F5-57CA489C2335}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "8. Shared", "8. Shared", "{D7FBA9F4-51F7-4DEA-B08C-1CB6E379010B}"
 EndProject
@@ -26,12 +40,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.Web.Shared",
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.Web.DocGen", "ProjectVico.V2.Web.DocGen\ProjectVico.V2.Web.DocGen.csproj", "{5FB3C7FE-6B5B-4A1F-969D-237390F06B38}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "00. Misc", "00. Misc", "{0CED2165-8D86-45D8-8D0D-359FB0D0AC32}"
-	ProjectSection(SolutionItems) = preProject
-		.gitignore = .gitignore
-		NuGet.config = NuGet.config
-	EndProjectSection
-EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.Worker.DocumentIngestion", "ProjectVico.V2.Worker.DocumentIngestion\ProjectVico.V2.Worker.DocumentIngestion.csproj", "{AAB9E058-6E73-44BF-8FFC-B09696BADF2A}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.SetupManager", "ProjectVico.V2.SetupManager\ProjectVico.V2.SetupManager.csproj", "{8A2FC390-59E2-47B5-9BD3-9BE03EB5C60F}"
@@ -42,14 +50,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.Plugins.Shar
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.Plugins.Default", "Plugins\ProjectVico.V2.Plugins.Default\ProjectVico.V2.Plugins.Default.csproj", "{FBBD830F-295A-431A-A767-3E5C0CAAC96A}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "4. Document Processes", "4. Document Processes", "{24DA4DEF-D3AD-4D2B-8526-513082EBB3DF}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.DocumentProcess.Shared", "ProjectVico.V2.DocumentProcess.Shared\ProjectVico.V2.DocumentProcess.Shared.csproj", "{7985819A-B9E5-4324-9F21-C8E45DD1245C}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.DocumentProcess.US.NuclearLicensing", "ProjectVico.V2.DocumentProcess.US.NuclearLicensing\ProjectVico.V2.DocumentProcess.US.NuclearLicensing.csproj", "{571E26E7-47FA-44CA-980F-483E1C4B316A}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.DocumentProcess.CustomData", "ProjectVico.V2.DocumentProcess.CustomData\ProjectVico.V2.DocumentProcess.CustomData.csproj", "{987A9190-B29C-4C60-B9F5-57CA489C2335}"
-EndProject
+
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.AppHost", "ProjectVico.V2.AppHost\ProjectVico.V2.AppHost.csproj", "{1D9ED487-BC1C-4E99-BB68-D11D0154501F}"
 EndProject
 Global

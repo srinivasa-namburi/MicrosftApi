@@ -13,4 +13,8 @@
 	  <ProjectReference Include="..\Plugins\ProjectVico.V2.Plugins.Default\ProjectVico.V2.Plugins.Default.csproj" />
 	  <ProjectReference Include="..\ProjectVico.V2.DocumentProcess.Shared\ProjectVico.V2.DocumentProcess.Shared.csproj" />
 	</ItemGroup>
+
+	<ItemGroup>
+	  <Folder Include="Mapping\" />
+	</ItemGroup>
 </Project>

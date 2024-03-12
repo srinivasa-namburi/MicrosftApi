@@ -1,5 +1,4 @@
 using Azure;
-using Azure.AI.FormRecognizer.DocumentAnalysis;
 using Azure.Identity;
 using Azure.Search.Documents;
 using MassTransit;
@@ -7,11 +6,7 @@ using MassTransit.EntityFrameworkCoreIntegration;
 using ProjectVico.V2.DocumentProcess.Shared;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Data.Sql;
-using ProjectVico.V2.Shared.Helpers;
-using ProjectVico.V2.Shared.Interfaces;
-using ProjectVico.V2.Shared.Mappings;
 using ProjectVico.V2.Shared.SagaState;
-using ProjectVico.V2.Shared.Services.Search;
 using ProjectVico.V2.Worker.DocumentIngestion.AI;
 using ProjectVico.V2.Worker.DocumentIngestion.Sagas;
 

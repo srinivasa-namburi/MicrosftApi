@@ -8,7 +8,6 @@ using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentGeneration.Commands;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentGeneration.Events;
 using ProjectVico.V2.Shared.Data.Sql;
-using ProjectVico.V2.Shared.Models;
 
 namespace ProjectVico.V2.Worker.DocumentGeneration.Consumers;
 
@@ -56,27 +55,9 @@ public class GenerateDocumentOutlineConsumer : IConsumer<GenerateDocumentOutline
         _documentOutlineService =
             scope.ServiceProvider.GetKeyedService<IDocumentOutlineService>(_documentProcessOptions.Name + "-IDocumentOutlineService");
 
-        // if the generated document already exists, we should delete it and all its content nodes
-        var existingDocument = await _dbContext.GeneratedDocuments.FindAsync(message.CorrelationId);
-        if (existingDocument != null)
-        {
-            _dbContext.GeneratedDocuments.Remove(existingDocument);
-            await _dbContext.SaveChangesAsync();
-        }
-
-        var generatedDocument = new GeneratedDocument()
-        {
-            Id = context.Message.CorrelationId,
-            Title = message.DocumentTitle,
-            GeneratedDate = DateTime.Now,
-            RequestingAuthorOid = new Guid(message.AuthorOid!),
-            DocumentProcess = message.DocumentProcess,
-            ContentNodes = new List<ContentNode>()
-        };
-
-        await _dbContext.GeneratedDocuments.AddAsync(generatedDocument);
-        await _dbContext.SaveChangesAsync();
-
+        // Find the document in the database
+        var generatedDocument = await _dbContext.GeneratedDocuments.FindAsync(message.CorrelationId);
+        
         await _documentOutlineService.GenerateDocumentOutlineForDocument(generatedDocument);
 
         var jsonOutputGeneratedDocument = JsonSerializer.Serialize(generatedDocument);

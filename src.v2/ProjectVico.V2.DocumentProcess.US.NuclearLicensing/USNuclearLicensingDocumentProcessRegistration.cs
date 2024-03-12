@@ -9,7 +9,10 @@ using ProjectVico.V2.DocumentProcess.Shared.Ingestion.Pipelines;
 using ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Generation;
 using ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Ingestion.Classification.Classifiers;
 using ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Ingestion.Pipelines;
+using ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Mapping;
+using ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Models;
 using ProjectVico.V2.Shared.Configuration;
+using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Shared.Interfaces;
 using ProjectVico.V2.Shared.Mappings;
@@ -40,6 +43,9 @@ public class USNuclearLicensingDocumentProcessRegistration : IDocumentProcessReg
         {
             builder.Services.AddScoped<IBodyTextGenerator, USNuclearLicensingSemanticKernelBodyTextGenerator>();
         }
+
+        builder.Services.AddAutoMapper(typeof(USNuclearLicensingMetadataProfile));
+
         builder.Services
             .AddKeyedScoped<IDocumentOutlineService, NuclearDocumentOutlineService>(ProcessName + "-IDocumentOutlineService");
         // END Generation services

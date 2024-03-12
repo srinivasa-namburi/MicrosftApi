@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ProjectVico.V2.Shared.Data.Sql;
 
@@ -11,9 +12,11 @@ using ProjectVico.V2.Shared.Data.Sql;
 namespace ProjectVico.V2.Shared.Migrations
 {
     [DbContext(typeof(DocGenerationDbContext))]
-    partial class DocGenerationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20240311223655_DocumentGenerationMetaDataChanges_01")]
+    partial class DocumentGenerationMetaDataChanges_01
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -326,10 +329,7 @@ namespace ProjectVico.V2.Shared.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<Guid?>("MetadataId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("MetadataJson")
+                    b.Property<string>("MetadataDefinition")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("NumberOfContentNodesGenerated")

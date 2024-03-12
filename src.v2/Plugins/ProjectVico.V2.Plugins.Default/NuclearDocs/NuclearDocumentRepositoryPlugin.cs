@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
 using System.Text;
 using Azure.AI.OpenAI;
 using Microsoft.Extensions.DependencyInjection;
@@ -89,7 +90,9 @@ public class NuclearDocumentRepositoryPlugin : IPluginImplementation
         [Description("The Content Node Type we are dealing with - either Heading or Title")]
         string contentNodeTypeString,
         [Description("A long string with an indented table of contents for the whole document to provide context")]
-        string tableOfContentsString
+        string tableOfContentsString,
+        [Description("The ID of a metadata record for inclusion into generation. Optional.")]
+        Guid? metadataId = null
     )
     {
         var contentNodeType = ContentNodeType.Heading;
@@ -119,7 +122,7 @@ public class NuclearDocumentRepositoryPlugin : IPluginImplementation
 
         List<ContentNode> bodyContentNodes =
             await GenerateBodyContentNodesForTitleOrSection(sectionOrTitleNumber, sectionOrTitleText, contentNodeType,
-                documents, tableOfContentsString);
+                documents, tableOfContentsString, metadataId);
 
         return bodyContentNodes;
 
@@ -128,9 +131,9 @@ public class NuclearDocumentRepositoryPlugin : IPluginImplementation
 
     private async Task<List<ContentNode>> GenerateBodyContentNodesForTitleOrSection(string sectionOrTitleNumber,
         string sectionOrTitleText, ContentNodeType contentNodeType, List<ReportDocument> documents,
-        string tableOfContentsString)
+        string tableOfContentsString, Guid? metadataId = null)
     {
-        var bodyContentNodes = await _aiCompletionService.GetBodyContentNodes(documents, sectionOrTitleNumber, sectionOrTitleText, contentNodeType, tableOfContentsString);
+        var bodyContentNodes = await _aiCompletionService.GetBodyContentNodes(documents, sectionOrTitleNumber, sectionOrTitleText, contentNodeType, tableOfContentsString, metadataId);
         return bodyContentNodes;
     }
 

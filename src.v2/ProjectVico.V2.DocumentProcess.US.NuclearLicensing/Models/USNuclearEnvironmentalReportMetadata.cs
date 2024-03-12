@@ -1,24 +1,16 @@
-﻿using ProjectVico.V2.Shared.Interfaces;
+﻿using ProjectVico.V2.Shared.Contracts.DTO;
+using ProjectVico.V2.Shared.Models;
 
-namespace ProjectVico.V2.Shared.Contracts.DTO;
+namespace ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Models;
 
-public class DocumentGenerationRequest : IDocumentGenerationRequest
+public class USNuclearEnvironmentalReportMetadata : MetadataDefinition
 {
-    public string DocumentProcessName {get;set; } = "US.NuclearLicensing";
-    public string? MetadataModelName => "USNuclearEnvironmentalReportMetadata";
-    public string? DocumentGenerationRequestFullTypeName => typeof(DocumentGenerationRequest).FullName;
-    
-    public Guid Id { get; set; } = Guid.NewGuid();
-    public string DocumentTitle { get; set; }
-    public string? AuthorOid { get; set; }
+    protected override string MetadataType => "USNuclearEnvironmentalReportMetadata";
     public string? ReactorModel { get; set; }
 
     public LocationInformation? Location { get; set; } = new LocationInformation();
     public DateOnly? ProjectedProjectStartDate { get; set; }
     public DateOnly? ProjectedProjectEndDate { get; set; }
-
-
-    // If we wanted to make this model more robust, each category would probably be broken down, etc.
 
     // Plant Details
     public string? PlantName { get; set; }
@@ -43,5 +35,5 @@ public class DocumentGenerationRequest : IDocumentGenerationRequest
     public string? OrganizationalStructure { get; set; }
     public IEnumerable<string> FinancialAssurance { get; set; } = new List<string>();
     public string? ExperienceAndQualifications { get; set; }
-};
-
+ 
+}

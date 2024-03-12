@@ -5,7 +5,8 @@
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>true</ImplicitUsings>
 		<UserSecretsId>dotnet-ProjectVico.V2.Worker.DocumentIngestion-932692d6-6396-4f71-a544-a8ad4a38f52d</UserSecretsId>
-		<NoWarn>SKEXP0060;SKEXP0061;SKEXP0042;SKEXP0011</NoWarn>
+		<NoWarn>SKEXP0060;SKEXP0061;SKEXP0042</NoWarn>
+		<NoWarn>SKEXP0011</NoWarn>
 	</PropertyGroup>
 
 	<ItemGroup>

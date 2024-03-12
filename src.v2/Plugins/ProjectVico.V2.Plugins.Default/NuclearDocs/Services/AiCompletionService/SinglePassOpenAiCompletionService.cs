@@ -25,7 +25,9 @@ public class SinglePassOpenAiCompletionService : IAiCompletionService
         _openAIClient = openAIClient;
         _tableHelper = tableHelper;
     }
-    public async Task<List<ContentNode>> GetBodyContentNodes(List<ReportDocument> documents, string sectionOrTitleNumber, string sectionOrTitleText, ContentNodeType contentNodeType, string tableOfContentsString)
+    public async Task<List<ContentNode>> GetBodyContentNodes(List<ReportDocument> documents,
+        string sectionOrTitleNumber, string sectionOrTitleText, ContentNodeType contentNodeType,
+        string tableOfContentsString, Guid? metadataId)
     {
         // Generate example  // Build the examples for the prompt
         var sectionExample = new StringBuilder();

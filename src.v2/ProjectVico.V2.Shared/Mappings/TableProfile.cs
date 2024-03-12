@@ -21,8 +21,5 @@ public class TableProfile : Profile
         CreateMap<BoundingRegion, Models.BoundingRegion>()
             .ForMember(x=>x.Page, y=>y.MapFrom(source=>source.PageNumber))
             .ForMember(x => x.BoundingPolygons, y => y.MapFrom(source => source.BoundingPolygon));
-
     }
-
-
 }

@@ -2,6 +2,7 @@
 using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentGeneration.Commands;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentGeneration.Events;
+using ProjectVico.V2.Shared.Interfaces;
 using ProjectVico.V2.Shared.SagaState;
 // ReSharper disable MemberCanBePrivate.Global
 // State variables must be public for MassTransit to work
@@ -18,66 +19,65 @@ public class DocumentGenerationSaga : MassTransitStateMachine<DocumentGeneration
             x => x.CorrelateById(m => m.Message.Id));
 
         Initially(
-            When(DocumentGenerationRequested)
-                .Then(context =>
-                {
-                    context.Saga.DocumentTitle = context.Message.DocumentTitle;
-                    context.Saga.AuthorOid = context.Message.AuthorOid;
-                    context.Saga.DocumentGenerationRequest.ReactorModel = context.Message.ReactorModel;
-
-                    if (context.Message.Location != null)
-                    {
-                        context.Saga.DocumentGenerationRequest.Location = new LocationInformation
-                        {
-                            Latitude = context.Message.Location.Latitude,
-                            Longitude = context.Message.Location.Longitude
-                        };
-                    }
-
-                    context.Saga.DocumentGenerationRequest.ProjectedProjectStartDate = context.Message.ProjectedProjectStartDate;
-                    context.Saga.DocumentGenerationRequest.ProjectedProjectEndDate = context.Message.ProjectedProjectEndDate;
-                    context.Saga.DocumentProcessName = context.Message.DocumentProcessName;
-                    context.Saga.CorrelationId = context.Message.Id;
-                })
-                .Publish(context => new GenerateDocumentOutline(context.Saga.CorrelationId)
-                {
-                    // Map properties from DocumentGenerationRequest to GenerateDocumentOutline
-                    DocumentTitle = context.Message.DocumentTitle,
-                    AuthorOid = context.Saga.AuthorOid,
-                    DocumentProcess = context.Saga.DocumentProcessName
-                })
-                .TransitionTo(Processing));
+        When(DocumentGenerationRequested)
+            .Then(context =>
+            {
+                context.Saga.DocumentTitle = context.Message.DocumentTitle;
+                context.Saga.AuthorOid = context.Message.AuthorOid;
+       
+                context.Saga.DocumentProcessName = context.Message.DocumentProcessName;
+                context.Saga.CorrelationId = context.Message.Id;
+                context.Saga.MetadataJson = context.Message.RequestAsJson;
+            })
+            .Publish(context=> new CreateGeneratedDocument(context.Saga.CorrelationId)
+            {
+                OriginalDTO = context.Message
+            })
+            .TransitionTo(Creating));
+    
+        During(Creating,
+        When(GeneratedDocumentCreated)
+            .Then(context =>
+            {
+                context.Saga.MetadataId = context.Message.MetaDataId;
+            })
+            .Publish(context => new GenerateDocumentOutline(context.Saga.CorrelationId)
+            {
+                DocumentTitle = context.Saga.DocumentTitle,
+                AuthorOid = context.Saga.AuthorOid,
+                DocumentProcess = context.Saga.DocumentProcessName
+            })
+            .TransitionTo(Processing));
 
         During(Processing,
         When(DocumentOutlineGenerationFailed)
-                .Finalize()
+            .Finalize()
         );
-            
-            ;
 
         During(Processing,
         When(DocumentOutlineGenerated)
-                .Then(context =>
-                {
-                    // Handle the completion of document outline generation
-                    // Maybe update the saga state with details from GeneratedDocument
-                })
-                //.TransitionTo(ContentFinalized));
-                .Publish(context => new GenerateReportContent(context.Saga.CorrelationId)
-                {
-                    AuthorOid = context.Saga.AuthorOid,
-                    GeneratedDocumentJson = context.Message.GeneratedDocumentJson,
-                    DocumentProcess = context.Saga.DocumentProcessName
-                })
-                .TransitionTo(ContentGeneration));
+            .Then(context =>
+            {
+                // Handle the completion of document outline generation
+                // Maybe update the saga state with details from GeneratedDocument
+            })
+            //.TransitionTo(ContentFinalized));
+            .Publish(context => new GenerateReportContent(context.Saga.CorrelationId)
+            {
+                AuthorOid = context.Saga.AuthorOid,
+                GeneratedDocumentJson = context.Message.GeneratedDocumentJson,
+                DocumentProcess = context.Saga.DocumentProcessName,
+                MetadataId = context.Saga.MetadataId
+            })
+            .TransitionTo(ContentGeneration));
 
         During(ContentGeneration,
         When(ReportContentGenerationSubmitted)
-                .Then(context =>
-                {
-                    context.Saga.NumberOfContentNodesToGenerate = context.Message.NumberOfContentNodesToGenerate;
-                    context.Saga.NumberOfContentNodesGenerated = 0;
-                }));
+            .Then(context =>
+            {
+                context.Saga.NumberOfContentNodesToGenerate = context.Message.NumberOfContentNodesToGenerate;
+                context.Saga.NumberOfContentNodesGenerated = 0;
+            }));
 
         // For each content node generated, we will receive a ContentNodeGenerated event
         // We will transition to ContentFinalized when all content nodes have been generated
@@ -96,9 +96,11 @@ public class DocumentGenerationSaga : MassTransitStateMachine<DocumentGeneration
     }
 
     public State Processing { get; set; } = null!;
+    public State Creating { get; set; } = null!;
     public State ContentGeneration { get; set; } = null!;
     public State ContentFinalized { get; set; } = null!;
-    public Event<DocumentGenerationRequest> DocumentGenerationRequested { get; private set; }
+    public Event<GenerateDocumentDTO> DocumentGenerationRequested { get; private set; }
+    public Event<GeneratedDocumentCreated> GeneratedDocumentCreated { get; private set; }
     public Event<DocumentOutlineGenerated> DocumentOutlineGenerated { get; private set; }
     public Event<DocumentOutlineGenerationFailed> DocumentOutlineGenerationFailed { get; private set; }
     public Event<ReportContentGenerationSubmitted> ReportContentGenerationSubmitted { get; private set; }
