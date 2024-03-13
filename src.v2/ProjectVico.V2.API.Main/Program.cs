@@ -78,6 +78,7 @@ else // Use RabbitMQ for local development
 
         x.UsingRabbitMq((context, cfg) =>
         {
+            Thread.Sleep(7000);
             cfg.Host(rabbitMqConnectionString);
             cfg.ConfigureEndpoints(context);
         });

@@ -7,19 +7,17 @@
 <MudLayout>
     <MudAppBar Elevation="3">
 		<MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
-        @* <MudSpacer /> *@
-        <MudSwitch @bind-Checked="@_isDarkMode" Color="Color.Primary" Class="ma-1" T="bool" ThumbIcon="@Icons.Material.Filled.WbSunny" />
-        @* <MudIconButton Icon="@Icons.Custom.Brands.MudBlazor" Color="Color.Inherit" Link="https://mudblazor.com/" Target="_blank" />
-        <MudIconButton Icon="@Icons.Custom.Brands.GitHub" Color="Color.Inherit" Link="https://github.com/MudBlazor/MudBlazor/" Target="_blank" /> *@
+        <MudSpacer />
+        <MudSwitch @bind-Value="@_isDarkMode" Color="Color.Primary" Class="ma-1" T="bool" ThumbIcon="@Icons.Material.Filled.WbSunny" />
     </MudAppBar>
     <MudDrawer @bind-Open="_drawerOpen" Elevation="3">
         <MudDrawerHeader>
-            <MudText Typo="Typo.h6">Project Vico v2</MudText>
+            <MudText Typo="Typo.h6">GenAI for Nuclear Licensing</MudText>
         </MudDrawerHeader>
         <NavMenu />
     </MudDrawer>
     <MudMainContent>
-        <MudContainer MaxWidth="MaxWidth.Large" Class="my-16 pt-16">
+        <MudContainer MaxWidth="MaxWidth.Large" Class="my-4 pt-4">
             @Body
         </MudContainer>
     </MudMainContent>

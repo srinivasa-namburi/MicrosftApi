@@ -62,6 +62,7 @@ else
 
         x.UsingRabbitMq((context, cfg) =>
         {
+            Thread.Sleep(7000);
             cfg.PrefetchCount = 1;
             cfg.ConcurrentMessageLimit = 1;
             cfg.Host(rabbitMqConnectionString);

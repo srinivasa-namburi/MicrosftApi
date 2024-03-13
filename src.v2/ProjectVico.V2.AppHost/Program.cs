@@ -1,6 +1,4 @@
 using Aspire.Hosting.Azure;
-using Azure.Search.Documents;
-using Microsoft.Extensions.Azure;
 using Microsoft.Extensions.Configuration;
 using ProjectVico.V2.AppHost;
 
@@ -39,7 +37,6 @@ IResourceBuilder<IResourceWithConnectionString> queueService;
 
 var docIngBlobs = builder
     .AddAzureStorage("docing")
-    //.ExcludeFromManifest()
     .AddBlobs("blob-docing");
 
 if (builder.ExecutionContext.IsRunMode) // For local development
@@ -51,11 +48,6 @@ if (builder.ExecutionContext.IsRunMode) // For local development
             .WithVolumeMount("pvico-sql-docgen-vol", "/var/opt/mssql")
             .AddDatabase(sqlDatabaseName);
 
-        //docGenRabbitMq = builder
-        //    .AddRabbitMQ("rabbitmqdocgen", port: 9002)
-        //    .WithAnnotation(new ContainerImageAnnotation() { Image = "rabbitmq", Tag = "3-management" })
-        //    .WithEnvironment("NODENAME", "rabbit@localhost")
-        //    .WithVolume("pvico-rabbitmq-docgen-vol", "/var/lib/rabbitmq");
     }
     else // Don't persist data and queue content - it will be deleted on restart!
     {
@@ -114,7 +106,7 @@ var workerDocumentIngestion = builder
 
 var workerScheduler = builder
     .AddProject<Projects.ProjectVico_V2_Worker_Scheduler>("worker-scheduler")
-    .WithReplicas(1)
+    .WithReplicas(1) // There can only be one Scheduler
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
     .WithReference(docGenSql)
@@ -123,6 +115,7 @@ var workerScheduler = builder
 
 var setupManager = builder
     .AddProject<Projects.ProjectVico_V2_SetupManager>("worker-setupmanager")
+    .WithReplicas(1) // There can only be one Setup Manager
     .WithReference(docGenSql)
     .WithConfigSection(envServiceConfigurationConfigurationSection);
 
