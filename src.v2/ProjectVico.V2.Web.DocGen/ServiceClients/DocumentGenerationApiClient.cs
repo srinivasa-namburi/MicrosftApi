@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+﻿using System.Net;
+using System.Text.Json;
 using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Shared.Models;
 using ProjectVico.V2.Web.Shared.ServiceClients;
@@ -42,6 +43,14 @@ internal sealed class DocumentGenerationApiClient : BaseServiceClient<DocumentGe
 
         return await response?.Content.ReadFromJsonAsync<GeneratedDocument>()! ??
                throw new IOException("No document!");
+    }
+
+    public async Task<bool> DeleteGeneratedDocumentAsync(string documentId)
+    {
+        var response = await SendDeleteRequestMessage($"/api/documents/{documentId}");
+        response?.EnsureSuccessStatusCode();
+
+        return response?.StatusCode == HttpStatusCode.NoContent;
     }
 
     public async Task<List<GeneratedDocumentListItem>> GetGeneratedDocumentsAsync()

@@ -1,6 +1,5 @@
-﻿using System.Text.Json;
+﻿using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
-using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Shared.Models;
 using ProjectVico.V2.Shared.SagaState;
 
@@ -23,8 +22,11 @@ public class DocGenerationDbContext : DbContext
                 optionsBuilder.UseSqlServer("ProjectVicoDB");
         }
 
+        // Don't enable this here - it's enabled in the AddDocGenDbContext extension method. Can't be applied here
+        // when DbPooling is enabled (which it is by default). Left here for visibility to see that this is a thing
+        //optionsBuilder.AddInterceptors(new SoftDeleteInterceptor());
     }
-
+    
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -37,6 +39,14 @@ public class DocGenerationDbContext : DbContext
             {
                 modelBuilder.Entity(entityType.ClrType).HasKey(nameof(EntityBase.Id));
                 modelBuilder.Entity(entityType.ClrType).Property(typeof(byte[]), nameof(EntityBase.RowVersion)).IsRowVersion();
+                modelBuilder.Entity(entityType.ClrType).Property(typeof(bool), nameof(EntityBase.IsActive)).HasDefaultValue(true);
+
+                // Apply global query filter for IsActive
+                var entityParam = Expression.Parameter(entityType.ClrType, "x");
+                var isActiveProperty = Expression.Property(entityParam, nameof(EntityBase.IsActive));
+                var lambda = Expression.Lambda(isActiveProperty, entityParam);
+
+                modelBuilder.Entity(entityType.ClrType).HasQueryFilter(lambda);
             }
         }
 

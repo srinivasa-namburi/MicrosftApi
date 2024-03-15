@@ -1,6 +1,7 @@
 using Azure.Identity;
 using MassTransit;
 using ProjectVico.V2.Shared.Configuration;
+using ProjectVico.V2.Shared.Data;
 using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Worker.Scheduler;
@@ -8,6 +9,11 @@ using ProjectVico.V2.Worker.Scheduler;
 var builder = Host.CreateApplicationBuilder(args);
 
 builder.AddServiceDefaults();
+
+// This is to grant SetupManager time to perform migrations
+Console.WriteLine("Waiting for SetupManager to perform migrations...");
+await Task.Delay(TimeSpan.FromSeconds(15));
+
 
 builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
@@ -20,13 +26,7 @@ builder.AddAzureBlobService("blob-docing");
 // Ingestion specific custom dependencies
 builder.Services.AddScoped<AzureFileHelper>();
 
-builder.AddSqlServerDbContext<DocGenerationDbContext>("sqldocgen", settings =>
-{
-    settings.ConnectionString = builder.Configuration.GetConnectionString(serviceConfigurationOptions.SQL.DatabaseName);
-    settings.HealthChecks = true;
-    settings.Tracing = true;
-    settings.Metrics = true;
-});
+builder.AddDocGenDbContext(serviceConfigurationOptions);
 
 // Add Service Bus Connection string. Replace https:// with sb:// and replace :443/ with / at the end of the connection string
 var serviceBusConnectionString = builder.Configuration.GetConnectionString("sbus");

@@ -6,6 +6,7 @@
 
 @inject IDocumentGenerationApiClient DocumentGenerationApiClient
 @inject NavigationManager Navigation
+@inject IDialogService DialogService
 
 <PageTitle>Generated Documents List</PageTitle>
 
@@ -31,37 +32,15 @@ else
             <PropertyColumn Property="x => x.Title" />
             <TemplateColumn CellClass="d-flex justify-end">
                 <CellTemplate>
-                    <MudStack Row="true">
+                    <MudStack Row="true" Spacing="3">
                         <MudButton OnClick="@(() => ViewDocument(context.Item))" Size="@Size.Small" Variant="@Variant.Filled" Color="@Color.Primary">View</MudButton>
+                        <MudButton OnClick="@(async () => await DeleteDocument(context.Item))" Size="@Size.Small" Variant="@Variant.Filled" Color="@Color.Error">Recycle</MudButton>
                     </MudStack>
                 </CellTemplate>
             </TemplateColumn>
         </Columns>
     </MudDataGrid>
 }
-
-@* <MudPaper Class="pa-4">
-    @if (documents is null)
-    {
-        <MudProgressCircular Indeterminate="true" />
-    }
-    else if (documents.Count == 0)
-    {
-        <MudText>No documents found.</MudText>
-    }
-    else
-    {
-        <MudList>
-            @foreach (var document in documents.OrderBy(x=>x.GeneratedDate))
-            {
-                <MudListItem OnClick="@(() => ViewDocument(document))" Button="true">
-                    <MudText>@document.Title</MudText>
-                    <MudText Typo="Typo.subtitle2">@document.GeneratedDate.ToString("yyyy-MM-dd")</MudText>
-                </MudListItem>
-            }
-        </MudList>
-    }
-</MudPaper> *@
 
 @code {
     private List<GeneratedDocumentListItem> documents;
@@ -74,6 +53,30 @@ else
     private void ViewDocument(GeneratedDocumentListItem document)
     {
         Navigation.NavigateTo($"/docs/{document.Id}");
+    }
+
+    private async Task DeleteDocument(GeneratedDocumentListItem document)
+    {
+        var parameters = new DialogParameters
+        {
+            { "ContentText", $"Are you sure you want to recycle the document '{document.Title}'?" },
+            { "ButtonText", "Recycle" },
+            { "DialogColor", Color.Error }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<ConfirmationDialog>("Delete Document", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            await DocumentGenerationApiClient.DeleteGeneratedDocumentAsync(document.Id.ToString());
+            
+            // Refresh the list
+            documents.Remove(document);
+            await InvokeAsync(StateHasChanged);
+
+        }
     }
 
 }

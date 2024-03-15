@@ -8,5 +8,6 @@ public interface IDocumentGenerationApiClient : IServiceClient
     Task<string?> GenerateDocumentAsync(DocumentGenerationRequest? documentGenerationRequest);
     Task<GeneratedDocument?> GetDocumentAsync(string documentId);
     Task<List<GeneratedDocumentListItem>> GetGeneratedDocumentsAsync();
+    Task<bool> DeleteGeneratedDocumentAsync(string documentId);
 }
 
