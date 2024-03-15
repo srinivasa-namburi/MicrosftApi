@@ -47,11 +47,12 @@ public class CreateGeneratedDocumentConsumer : IConsumer<CreateGeneratedDocument
             MetadataJson = message.OriginalDTO.RequestAsJson
         };
 
-        generatedDocument.Metadata = metaData;
+        generatedDocument.MetadataId = metaData.Id;
 
         try
         {
             await _dbContext.GeneratedDocuments.AddAsync(generatedDocument);
+            await _dbContext.DocumentMetadata.AddAsync(metaData);
             await _dbContext.SaveChangesAsync();
         }
         catch (Exception e)

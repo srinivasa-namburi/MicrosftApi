@@ -94,6 +94,7 @@ public class DocGenerationDbContext : DbContext
         modelBuilder.Entity<GeneratedDocument>()
             .HasOne(x => x.Metadata)
             .WithOne(x => x.GeneratedDocument)
+            .IsRequired(false)
             .HasForeignKey<DocumentMetadata>(x => x.GeneratedDocumentId)
             .OnDelete(DeleteBehavior.Cascade);
 
