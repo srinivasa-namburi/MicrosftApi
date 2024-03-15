@@ -2,7 +2,6 @@
 @page "/generate"
 @using ProjectVico.V2.Shared.Contracts.DTO
 @using ProjectVico.V2.Web.Shared.ServiceClients
-@using MassTransit.Configuration
 @using Microsoft.Extensions.Options
 @using ProjectVico.V2.Shared.Configuration
 @using FluentValidation
@@ -27,33 +26,12 @@
 
     private MudForm documentGenerationRequestForm;
     private DocumentGenerationRequestFluentValidator documentGenerationRequestValidator = new DocumentGenerationRequestFluentValidator();
-    // This value will switch back to the simple, short form -- but none of the fields in the new form are required as of yet.
-    private bool useSimpleForm = false;
 }
 
-<PageTitle>Generate Environmental Report</PageTitle>
+<PageTitle>Generate New Environmental Report</PageTitle>
 
-<h1>Generate Environmental Report</h1>
-
-<p>To start the document generation process, please fill in as much detail as you can about your project in the following form:</p>
-
-@if (useSimpleForm)
-{
-    <MudPaper Class="pa-4">
-        <MudText Typo="Typo.h6">
-            Project Details
-        </MudText>
-        <MudTextField Label="Project Name" @bind-Value="documentGenerationRequest.DocumentTitle"
-                      FullWidth></MudTextField>
-        <MudTextField Label="Reactor Model" @bind-Value="documentGenerationRequest.ReactorModel"
-                      FullWidth></MudTextField>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                   OnClick="ReportSubmitClick">Generate Report</MudButton>
-    </MudPaper>
-}
-else
-{
-
+<MudText Typo="Typo.h4" GutterBottom="true">Generate New Environmental Report</MudText>
+<MudText Typo="Typo.body1" Class="mb-4" GutterBottom="true">To start the document generation process, please fill in as much detail as you can about your project in the following form.</MudText>
     <MudForm Model="@documentGenerationRequest" @ref="@documentGenerationRequestForm" Validation="@(documentGenerationRequestValidator.ValidateValue)" ValidationDelay="0">
         <MudCard>
             <MudCardContent>
@@ -207,25 +185,12 @@ else
                               Variant="Variant.Filled"
                               Margin="Margin.Normal"
                               HelperText="Describe the relevant expertise and qualifications of key personnel involved in nuclear operations." />
-                @* <MudField Label="Your Label">
-            <MudRadioGroup Label="Financial assurance" @bind-Value="@documentGenerationRequest.FinancialAssurance">
-            <MudRadio Color="Color.Primary" Value="@("Self-assurance")">Self-assurance</MudRadio>
-            <MudRadio Color="Color.Primary" Value="@("Third-party assurance")">Third-party assurance</MudRadio>
-            </MudRadioGroup>
-            </MudField>
-            <MudRadioGroup Label="Financial assurance" @bind-Value="@documentGenerationRequest.FinancialAssurance">
-            <MudRadio Color="Color.Primary" Value="@("Self-assurance")">Self-assurance</MudRadio>
-            <MudRadio Color="Color.Primary" Value="@("Third-party assurance")">Third-party assurance</MudRadio>
-            </MudRadioGroup> *@
             </MudCardContent>
             <MudCardActions>
                 <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="ml-auto" OnClick=ReportSubmitClick>Generate Report</MudButton>
             </MudCardActions>
         </MudCard>
     </MudForm>
-
-
-}
 
 @code {
 

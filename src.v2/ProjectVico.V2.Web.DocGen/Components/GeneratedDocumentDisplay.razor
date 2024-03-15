@@ -25,9 +25,8 @@
 @if (Document != null)
 {
     <MudPaper Class="pa-4">
-        <MudText Typo="Typo.h6">Generated Document</MudText>
-        <MudText Typo="Typo.h6">Document ID: @Document.Id</MudText>
-        <MudText Typo="Typo.h6">Document Name: @Document.Title</MudText>
+        <MudText Typo="Typo.h4" GutterBottom="true">@Document.Title</MudText>
+        <MudText Typo="Typo.body1" GutterBottom="true">Document ID: @Document.Id</MudText>
         <MudPaper Outlined="true" Class="border-dashed">
             @if (Document.ContentNodes.Any())
             {
@@ -41,8 +40,9 @@
 }
 else
 {
-    <MudPaper>
-        <MudProgressCircular Indeterminate="true" Size="Size.Large" />
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h4" GutterBottom="true">Loading document...</MudText>
+        <MudSkeleton />
     </MudPaper>
 }
 
@@ -52,7 +52,7 @@ else
         var token = await DocumentGenerationApiClient.GetAccessTokenAsync();
         Document = await GetDocumentAsync(DocumentId);
         ContentNodeSorter.SortContentNodes(Document.ContentNodes);
-        
+
         await StartHubConnections(token);
     }
 

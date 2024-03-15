@@ -7,8 +7,40 @@
 @inject IDocumentGenerationApiClient DocumentGenerationApiClient
 @inject NavigationManager Navigation
 
-<MudPaper Class="pa-4">
-    <MudText Typo="Typo.h4">Generated Documents List</MudText>
+<PageTitle>Generated Documents List</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Generated Documents List</MudText>
+
+@if (documents is null)
+{
+    <MudPaper Class="pa-4">
+        <MudSkeleton />
+    </MudPaper>
+}
+else if (documents.Count == 0)
+{
+    <MudPaper Class="pa-4">
+        <MudText>No documents found.</MudText>
+    </MudPaper>
+}
+else
+{
+    <MudDataGrid Items="@documents.OrderByDescending(x => x.GeneratedDate)" Filterable="false" SortMode="@SortMode.None" Groupable="false">
+        <Columns>
+            <PropertyColumn Property="x => x.GeneratedDate.ToShortDateString()" Title="Date Generated" />
+            <PropertyColumn Property="x => x.Title" />
+            <TemplateColumn CellClass="d-flex justify-end">
+                <CellTemplate>
+                    <MudStack Row="true">
+                        <MudButton OnClick="@(() => ViewDocument(context.Item))" Size="@Size.Small" Variant="@Variant.Filled" Color="@Color.Primary">View</MudButton>
+                    </MudStack>
+                </CellTemplate>
+            </TemplateColumn>
+        </Columns>
+    </MudDataGrid>
+}
+
+@* <MudPaper Class="pa-4">
     @if (documents is null)
     {
         <MudProgressCircular Indeterminate="true" />
@@ -22,14 +54,14 @@
         <MudList>
             @foreach (var document in documents.OrderBy(x=>x.GeneratedDate))
             {
-                <MudListItem OnClick="@(() => ViewDocument(document.Id))" Button="true">
+                <MudListItem OnClick="@(() => ViewDocument(document))" Button="true">
                     <MudText>@document.Title</MudText>
                     <MudText Typo="Typo.subtitle2">@document.GeneratedDate.ToString("yyyy-MM-dd")</MudText>
                 </MudListItem>
             }
         </MudList>
     }
-</MudPaper>
+</MudPaper> *@
 
 @code {
     private List<GeneratedDocumentListItem> documents;
@@ -39,8 +71,9 @@
         documents = await DocumentGenerationApiClient.GetGeneratedDocumentsAsync();
     }
 
-    private void ViewDocument(Guid documentId)
+    private void ViewDocument(GeneratedDocumentListItem document)
     {
-        Navigation.NavigateTo($"/docs/{documentId}");
+        Navigation.NavigateTo($"/docs/{document.Id}");
     }
+
 }
