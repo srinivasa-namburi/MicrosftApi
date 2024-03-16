@@ -1,15 +1,15 @@
 ﻿@attribute [Authorize]
 @page "/docs"
-
 @using ProjectVico.V2.Web.Shared.ServiceClients
 @using ProjectVico.V2.Shared.Contracts.DTO
 
 @inject IDocumentGenerationApiClient DocumentGenerationApiClient
 @inject NavigationManager Navigation
+@inject IDialogService DialogService
 
 <PageTitle>Generated Documents List</PageTitle>
 
-<MudText Typo="Typo.h4" GutterBottom="true">Generated Documents List</MudText>
+@* <MudText Typo="Typo.h4" GutterBottom="true">Generated Documents List</MudText> *@
 
 @if (documents is null)
 {
@@ -25,50 +25,49 @@ else if (documents.Count == 0)
 }
 else
 {
-    <MudDataGrid Items="@documents.OrderByDescending(x => x.GeneratedDate)" Filterable="false" SortMode="@SortMode.None" Groupable="false">
+    <MudDataGrid Items="@documents"
+                 T="GeneratedDocumentListItem"
+                 Filterable="false"
+                 SortMode="@SortMode.Single"
+                 Groupable="false"
+                 MultiSelection="true"
+                 RowClick="@RowClicked"
+                 SelectOnRowClick="false"
+                 @bind-SelectedItems="selectedDocuments">
+        <ToolBarContent>
+            <MudText Typo="Typo.h4">Generated Documents List</MudText>
+            <MudSpacer />
+            @if (selectedDocuments.Count > 0)
+            {
+                <MudButton OnClick="@DeleteSelectedDocuments" Variant="Variant.Filled" Color="Color.Error" Class="float-right">Delete Selected</MudButton>
+            }
+        </ToolBarContent>
         <Columns>
+            <SelectColumn T="GeneratedDocumentListItem" ShowInFooter="false" ShowInHeader="true" />
             <PropertyColumn Property="x => x.GeneratedDate.ToShortDateString()" Title="Date Generated" />
             <PropertyColumn Property="x => x.Title" />
             <TemplateColumn CellClass="d-flex justify-end">
                 <CellTemplate>
-                    <MudStack Row="true">
+                    <MudStack Row="true" Spacing="3">
                         <MudButton OnClick="@(() => ViewDocument(context.Item))" Size="@Size.Small" Variant="@Variant.Filled" Color="@Color.Primary">View</MudButton>
+                        <MudButton OnClick="@(async () => await DeleteDocument(context.Item))" Size="@Size.Small" Variant="@Variant.Filled" Color="@Color.Error">Delete</MudButton>
                     </MudStack>
                 </CellTemplate>
             </TemplateColumn>
         </Columns>
     </MudDataGrid>
-}
 
-@* <MudPaper Class="pa-4">
-    @if (documents is null)
-    {
-        <MudProgressCircular Indeterminate="true" />
-    }
-    else if (documents.Count == 0)
-    {
-        <MudText>No documents found.</MudText>
-    }
-    else
-    {
-        <MudList>
-            @foreach (var document in documents.OrderBy(x=>x.GeneratedDate))
-            {
-                <MudListItem OnClick="@(() => ViewDocument(document))" Button="true">
-                    <MudText>@document.Title</MudText>
-                    <MudText Typo="Typo.subtitle2">@document.GeneratedDate.ToString("yyyy-MM-dd")</MudText>
-                </MudListItem>
-            }
-        </MudList>
-    }
-</MudPaper> *@
+
+}
 
 @code {
     private List<GeneratedDocumentListItem> documents;
+    private HashSet<GeneratedDocumentListItem> selectedDocuments = new HashSet<GeneratedDocumentListItem>();
 
     protected override async Task OnInitializedAsync()
     {
         documents = await DocumentGenerationApiClient.GetGeneratedDocumentsAsync();
+        
     }
 
     private void ViewDocument(GeneratedDocumentListItem document)
@@ -76,4 +75,58 @@ else
         Navigation.NavigateTo($"/docs/{document.Id}");
     }
 
+    private void RowClicked(DataGridRowClickEventArgs<GeneratedDocumentListItem> obj)
+    {
+        var document = obj.Item;
+        ViewDocument(document);
+    }
+
+    private async Task DeleteDocument(GeneratedDocumentListItem document)
+    {
+        var parameters = new DialogParameters
+        {
+            { "ContentText", $"Are you sure you want to delete the document '{document.Title}'?" },
+            { "ButtonText", "Delete" },
+            { "DialogColor", Color.Error }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<ConfirmationDialog>("Delete Document", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            await DocumentGenerationApiClient.DeleteGeneratedDocumentAsync(document.Id.ToString());
+
+            documents.Remove(document);
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task DeleteSelectedDocuments()
+    {
+        var parameters = new DialogParameters
+        {
+            { "ContentText", $"Are you sure you want to delete {selectedDocuments.Count} documents?" },
+            { "ButtonText", "Delete" },
+            { "DialogColor", Color.Error }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<ConfirmationDialog>("Delete Document", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            foreach (var document in selectedDocuments)
+            {
+                await DocumentGenerationApiClient.DeleteGeneratedDocumentAsync(document.Id.ToString());
+                documents.Remove(document);
+            }
+
+            selectedDocuments.Clear();
+            await InvokeAsync(StateHasChanged);
+        }
+
+    }
 }

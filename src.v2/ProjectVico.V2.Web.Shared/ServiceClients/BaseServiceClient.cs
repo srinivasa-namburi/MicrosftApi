@@ -42,6 +42,17 @@ public abstract class BaseServiceClient<T> where T : IServiceClient
         return response;
     }
 
+    protected async Task<HttpResponseMessage> SendDeleteRequestMessage(string requestUri)
+    {
+        using var requestMessage = new HttpRequestMessage(HttpMethod.Delete, requestUri);
+        requestMessage.Headers.Authorization = new ("Bearer", this.AccessToken);
+
+        Logger.LogInformation("Sending DELETE request to {RequestUri}", requestUri);
+        var response = await HttpClient.SendAsync(requestMessage);
+        return response;
+    }
+    
+
     protected async Task<HttpResponseMessage?> SendPostRequestMessage(string requestUri, object? pocoPayload)
     {
         using var requestMessage = new HttpRequestMessage(HttpMethod.Post, requestUri);
@@ -64,5 +75,7 @@ public abstract class BaseServiceClient<T> where T : IServiceClient
         var accessToken = await HttpContext.GetTokenAsync("access_token");
         return accessToken ?? throw new InvalidOperationException("No access_token was saved");
     }
+
+
 }
 

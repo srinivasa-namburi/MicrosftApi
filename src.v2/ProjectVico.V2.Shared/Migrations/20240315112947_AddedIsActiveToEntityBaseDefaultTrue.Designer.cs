@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ProjectVico.V2.Shared.Data.Sql;
 
@@ -11,9 +12,11 @@ using ProjectVico.V2.Shared.Data.Sql;
 namespace ProjectVico.V2.Shared.Migrations
 {
     [DbContext(typeof(DocGenerationDbContext))]
-    partial class DocGenerationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20240315112947_AddedIsActiveToEntityBaseDefaultTrue")]
+    partial class AddedIsActiveToEntityBaseDefaultTrue
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -30,9 +33,6 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.Property<Guid>("BoundingRegionId")
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("datetimeoffset");
 
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
@@ -60,10 +60,6 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.HasIndex("BoundingRegionId");
 
-                    b.HasIndex("IsActive");
-
-                    b.HasIndex("DeletedAt", "IsActive");
-
                     b.HasIndex("X", "Y");
 
                     b.ToTable("BoundingPolygons");
@@ -77,9 +73,6 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.Property<Guid?>("ContentNodeId")
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("datetimeoffset");
 
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
@@ -102,13 +95,9 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.HasIndex("ContentNodeId");
 
-                    b.HasIndex("IsActive");
-
                     b.HasIndex("Page");
 
                     b.HasIndex("TableId");
-
-                    b.HasIndex("DeletedAt", "IsActive");
 
                     b.ToTable("BoundingRegions");
                 });
@@ -118,9 +107,6 @@ namespace ProjectVico.V2.Shared.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("datetimeoffset");
 
                     b.Property<Guid?>("GeneratedDocumentId")
                         .HasColumnType("uniqueidentifier");
@@ -158,11 +144,7 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.HasIndex("IngestedDocumentId");
 
-                    b.HasIndex("IsActive");
-
                     b.HasIndex("ParentId");
-
-                    b.HasIndex("DeletedAt", "IsActive");
 
                     b.ToTable("ContentNodes");
                 });
@@ -172,9 +154,6 @@ namespace ProjectVico.V2.Shared.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("datetimeoffset");
 
                     b.Property<Guid>("GeneratedDocumentId")
                         .HasColumnType("uniqueidentifier");
@@ -198,10 +177,6 @@ namespace ProjectVico.V2.Shared.Migrations
                     b.HasIndex("GeneratedDocumentId")
                         .IsUnique();
 
-                    b.HasIndex("IsActive");
-
-                    b.HasIndex("DeletedAt", "IsActive");
-
                     b.ToTable("DocumentMetadata");
                 });
 
@@ -210,9 +185,6 @@ namespace ProjectVico.V2.Shared.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("datetimeoffset");
 
                     b.Property<string>("DocumentProcess")
                         .HasColumnType("nvarchar(max)");
@@ -243,10 +215,6 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("IsActive");
-
-                    b.HasIndex("DeletedAt", "IsActive");
-
                     b.ToTable("GeneratedDocuments");
                 });
 
@@ -261,9 +229,6 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.Property<int?>("ClassificationType")
                         .HasColumnType("int");
-
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("datetimeoffset");
 
                     b.Property<string>("DocumentProcess")
                         .HasColumnType("nvarchar(450)");
@@ -305,10 +270,6 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.HasIndex("FileHash");
 
-                    b.HasIndex("IsActive");
-
-                    b.HasIndex("DeletedAt", "IsActive");
-
                     b.ToTable("IngestedDocuments");
                 });
 
@@ -320,9 +281,6 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.Property<int>("ColumnCount")
                         .HasColumnType("int");
-
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("datetimeoffset");
 
                     b.Property<Guid?>("IngestedDocumentId")
                         .HasColumnType("uniqueidentifier");
@@ -345,10 +303,6 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.HasIndex("IngestedDocumentId");
 
-                    b.HasIndex("IsActive");
-
-                    b.HasIndex("DeletedAt", "IsActive");
-
                     b.ToTable("Tables");
                 });
 
@@ -363,9 +317,6 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.Property<int?>("ColumnSpan")
                         .HasColumnType("int");
-
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("datetimeoffset");
 
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
@@ -393,11 +344,7 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("IsActive");
-
                     b.HasIndex("TableId");
-
-                    b.HasIndex("DeletedAt", "IsActive");
 
                     b.ToTable("TableCells");
                 });

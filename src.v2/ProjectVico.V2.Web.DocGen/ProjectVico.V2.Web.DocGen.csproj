@@ -36,6 +36,7 @@
 
 
 	<ItemGroup>
+		<_ContentIncludedByDefault Remove="Components\ConfirmationDialog.razor" />
 		<_ContentIncludedByDefault Remove="Components\GeneratedDocumentDisplay.razor" />
 		<_ContentIncludedByDefault Remove="Components\Pages\Documents\ViewList.razor" />
 		<_ContentIncludedByDefault Remove="Components\Pages\Ingest\IngestFiles.razor" />
@@ -60,6 +61,11 @@
 
 	<ItemGroup>
 	  <Folder Include="manifests\" />
+	</ItemGroup>
+
+
+	<ItemGroup>
+	  <UpToDateCheckInput Remove="Components\ConfirmationDialog.razor" />
 	</ItemGroup>
 
 </Project>

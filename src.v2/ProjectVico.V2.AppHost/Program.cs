@@ -26,6 +26,7 @@ var durableDevelopment = Convert.ToBoolean(builder.Configuration["ServiceConfigu
 var sqlPassword = builder.Configuration["ServiceConfiguration:SQL:Password"];
 var sqlDatabaseName = builder.Configuration["ServiceConfiguration:SQL:DatabaseName"];
 
+//builder.AddAzureProvisioning();
 
 // The default password for the RabbitMQ container is in appsettings.json. You can override it in appsettings.Development.json.
 var rabbitMqPassword = builder.Configuration["ServiceConfiguration:RabbitMQ:Password"];
@@ -58,7 +59,7 @@ if (builder.ExecutionContext.IsRunMode) // For local development
 
     docGenRabbitMq = builder
            .AddRabbitMQ("rabbitmqdocgen", 9002)
-           .WithAnnotation(new ContainerImageAnnotation() { Image = "rabbitmq", Tag = "3-management" })
+           //.WithAnnotation(new ContainerImageAnnotation() { Image = "rabbitmq", Tag = "3-management" })
            .WithEnvironment("NODENAME", "rabbit@localhost");
 
     queueService = docGenRabbitMq;
