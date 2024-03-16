@@ -1,5 +1,4 @@
 ﻿using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using ProjectVico.V2.Shared.Configuration;
@@ -12,25 +11,30 @@ public static class DbContextExtensions
 {
     public static IHostApplicationBuilder AddDocGenDbContext(this IHostApplicationBuilder builder, ServiceConfigurationOptions serviceConfigurationOptions)
     {
+        builder.Services.AddSingleton<SoftDeleteInterceptor>();
 
-        builder.Services.AddScoped<ISaveChangesInterceptor, SoftDeleteInterceptor>();
+        var sp = builder.Services.BuildServiceProvider();
 
-        builder.AddSqlServerDbContext<DocGenerationDbContext>("sqldocgen", settings =>
-            {
-                settings.ConnectionString = builder.Configuration.GetConnectionString(serviceConfigurationOptions.SQL.DatabaseName);
-                settings.HealthChecks = true;
-                settings.Tracing = true;
-                settings.Metrics = true;
-            }, 
-            optionsBuilder =>
-            {
-                //optionsBuilder.AddInterceptors(new SoftDeleteInterceptor());
-                optionsBuilder.UseSqlServer(sqlServerBuilder =>
+        builder.Services.AddDbContext<DocGenerationDbContext>(options =>
+        {
+            options.UseSqlServer(
+                builder.Configuration.GetConnectionString(serviceConfigurationOptions.SQL.DatabaseName),
+                sqlServerBuilder =>
                 {
                     sqlServerBuilder.MigrationsAssembly(typeof(DocGenerationDbContext).Assembly.FullName);
                 });
-            });
-
+            
+            options.AddInterceptors(sp.GetRequiredService<SoftDeleteInterceptor>());
+        });
+        
+        builder.EnrichSqlServerDbContext<DocGenerationDbContext>(settings =>
+        {
+            settings.ConnectionString = builder.Configuration.GetConnectionString(serviceConfigurationOptions.SQL.DatabaseName);
+            settings.HealthChecks = true;
+            settings.Tracing = true;
+            settings.Metrics = true;
+        });
+        
         return builder;
     }
 }

@@ -109,9 +109,7 @@ public class DocumentsController : BaseController
             return NotFound();
         }
 
-        // Interceptor isn't working, so we have to manually set these properties
-        document.IsActive = false;
-        document.DeletedAt = DateTimeOffset.UtcNow;
+        _dbContext.GeneratedDocuments.Remove(document);
 
         await _dbContext.SaveChangesAsync();
         

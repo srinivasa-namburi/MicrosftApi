@@ -1,5 +1,6 @@
 ﻿using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using ProjectVico.V2.Shared.Models;
 using ProjectVico.V2.Shared.SagaState;
 
@@ -9,7 +10,9 @@ public class DocGenerationDbContext : DbContext
 {
     private readonly DbContextOptions<DocGenerationDbContext> _dbContextOptions;
 
-    public DocGenerationDbContext(DbContextOptions<DocGenerationDbContext> dbContextOptions)
+    public DocGenerationDbContext(
+        DbContextOptions<DocGenerationDbContext> dbContextOptions
+        )
         : base(dbContextOptions)
     {
         _dbContextOptions = dbContextOptions;
@@ -22,9 +25,6 @@ public class DocGenerationDbContext : DbContext
                 optionsBuilder.UseSqlServer("ProjectVicoDB");
         }
 
-        // Don't enable this here - it's enabled in the AddDocGenDbContext extension method. Can't be applied here
-        // when DbPooling is enabled (which it is by default). Left here for visibility to see that this is a thing
-        //optionsBuilder.AddInterceptors(new SoftDeleteInterceptor());
     }
     
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -40,7 +40,8 @@ public class DocGenerationDbContext : DbContext
                 modelBuilder.Entity(entityType.ClrType).HasKey(nameof(EntityBase.Id));
                 modelBuilder.Entity(entityType.ClrType).Property(typeof(byte[]), nameof(EntityBase.RowVersion)).IsRowVersion();
                 modelBuilder.Entity(entityType.ClrType).Property(typeof(bool), nameof(EntityBase.IsActive)).HasDefaultValue(true);
-
+                modelBuilder.Entity(entityType.ClrType).HasIndex(nameof(EntityBase.IsActive));
+                modelBuilder.Entity(entityType.ClrType).HasIndex(new string[]{nameof(EntityBase.DeletedAt), nameof(EntityBase.IsActive)});
                 // Apply global query filter for IsActive
                 var entityParam = Expression.Parameter(entityType.ClrType, "x");
                 var isActiveProperty = Expression.Property(entityParam, nameof(EntityBase.IsActive));

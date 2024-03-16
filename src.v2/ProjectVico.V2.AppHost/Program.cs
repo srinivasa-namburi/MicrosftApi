@@ -26,6 +26,7 @@ var durableDevelopment = Convert.ToBoolean(builder.Configuration["ServiceConfigu
 var sqlPassword = builder.Configuration["ServiceConfiguration:SQL:Password"];
 var sqlDatabaseName = builder.Configuration["ServiceConfiguration:SQL:DatabaseName"];
 
+//builder.AddAzureProvisioning();
 
 // The default password for the RabbitMQ container is in appsettings.json. You can override it in appsettings.Development.json.
 var rabbitMqPassword = builder.Configuration["ServiceConfiguration:RabbitMQ:Password"];
