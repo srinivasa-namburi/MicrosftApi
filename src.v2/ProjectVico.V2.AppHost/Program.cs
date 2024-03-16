@@ -9,7 +9,7 @@ AppHostConfigurationSetup(builder);
 //TODO: Add Azure Provisioning
 //Reads needed details from Configuration provider.
 //See sample : https://github.com/dotnet/aspire/blob/main/playground/AzureSearchEndToEnd/AzureSearch.AppHost/appsettings.json
-//builder.AddAzureProvisioning();
+builder.AddAzureProvisioning();
 
 var envServiceConfigurationConfigurationSection = builder.Configuration.GetSection("ServiceConfiguration");
 var envAzureAdConfigurationSection = builder.Configuration.GetSection("AzureAd");
