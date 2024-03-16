@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Identity.Web;
 using ProjectVico.V2.API.Main.Hubs;
 using ProjectVico.V2.Shared.Configuration;
-using ProjectVico.V2.Shared.Data.Sql;
+using ProjectVico.V2.Shared.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,6 +15,11 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .EnableTokenAcquisitionToCallDownstreamApi().AddInMemoryTokenCaches();
 
 builder.AddServiceDefaults();
+
+// This is to grant SetupManager time to perform migrations
+Console.WriteLine("Waiting for SetupManager to perform migrations...");
+await Task.Delay(TimeSpan.FromSeconds(15));
+
 
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
 
@@ -28,13 +33,7 @@ builder.AddAzureServiceBus("sbus");
 builder.AddRabbitMQ("rabbitmqdocgen");
 builder.AddAzureBlobService("docGenBlobs");
 
-builder.AddSqlServerDbContext<DocGenerationDbContext>("sqldocgen", settings =>
-{
-    settings.ConnectionString = builder.Configuration.GetConnectionString(serviceConfigurationOptions.SQL.DatabaseName);
-    settings.HealthChecks = true;
-    settings.Tracing = true;
-    settings.Metrics = true;
-});
+builder.AddDocGenDbContext(serviceConfigurationOptions);
 
 builder.Services.AddHttpContextAccessor();
 

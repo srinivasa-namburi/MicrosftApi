@@ -5,6 +5,7 @@ using MassTransit;
 using MassTransit.EntityFrameworkCoreIntegration;
 using ProjectVico.V2.DocumentProcess.Shared;
 using ProjectVico.V2.Shared.Configuration;
+using ProjectVico.V2.Shared.Data;
 using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.SagaState;
 using ProjectVico.V2.Worker.DocumentIngestion.AI;
@@ -13,6 +14,11 @@ using ProjectVico.V2.Worker.DocumentIngestion.Sagas;
 var builder = Host.CreateApplicationBuilder(args);
 
 builder.AddServiceDefaults();
+
+// This is to grant SetupManager time to perform migrations
+Console.WriteLine("Waiting for SetupManager to perform migrations...");
+await Task.Delay(TimeSpan.FromSeconds(15));
+
 
 builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
@@ -32,13 +38,7 @@ builder.Services.AddKeyedScoped<SearchClient>("searchclient-customdata",
 
 builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
 
-builder.AddSqlServerDbContext<DocGenerationDbContext>("sqldocgen", settings =>
-{
-    settings.ConnectionString = builder.Configuration.GetConnectionString(serviceConfigurationOptions.SQL.DatabaseName);
-    settings.HealthChecks = true;
-    settings.Tracing = true;
-    settings.Metrics = true;
-});
+builder.AddDocGenDbContext(serviceConfigurationOptions);
 
 builder.AddSemanticKernelService();
 

@@ -1,4 +1,3 @@
-using Aspire.Azure.Search.Documents;
 using Azure;
 using Azure.Identity;
 using Azure.Search.Documents;
@@ -6,14 +5,11 @@ using MassTransit;
 using MassTransit.EntityFrameworkCoreIntegration;
 using ProjectVico.V2.DocumentProcess.Shared;
 using ProjectVico.V2.DocumentProcess.Shared.Generation;
-using ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Generation;
 using ProjectVico.V2.Plugins.Shared;
 using ProjectVico.V2.Shared.Configuration;
+using ProjectVico.V2.Shared.Data;
 using ProjectVico.V2.Shared.Data.Sql;
-using ProjectVico.V2.Shared.Helpers;
-using ProjectVico.V2.Shared.Interfaces;
 using ProjectVico.V2.Shared.SagaState;
-using ProjectVico.V2.Shared.Services.Search;
 using ProjectVico.V2.Worker.DocumentGeneration.AI;
 using ProjectVico.V2.Worker.DocumentGeneration.Sagas;
 using ProjectVico.V2.Worker.DocumentGeneration.Services;
@@ -21,6 +17,9 @@ using ProjectVico.V2.Worker.DocumentGeneration.Services;
 
 var builder = Host.CreateApplicationBuilder(args);
 builder.AddServiceDefaults();
+
+// This is to grant SetupManager time to perform migrations
+await Task.Delay(TimeSpan.FromSeconds(15));
 
 builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
 
@@ -31,13 +30,7 @@ builder.AddRabbitMQ("rabbitmqdocgen");
 builder.AddKeyedAzureOpenAI("openai-planner");
 builder.AddAzureBlobService("docGenBlobs");
 
-builder.AddSqlServerDbContext<DocGenerationDbContext>("sqldocgen", settings =>
-{
-    settings.ConnectionString = builder.Configuration.GetConnectionString(serviceConfigurationOptions.SQL.DatabaseName);
-    settings.HealthChecks = true;
-    settings.Tracing = true;
-    settings.Metrics = true;
-});
+builder.AddDocGenDbContext(serviceConfigurationOptions);
 
 if (!serviceConfigurationOptions.ProjectVicoServices.DocumentGeneration.CreateBodyTextNodes)
 {

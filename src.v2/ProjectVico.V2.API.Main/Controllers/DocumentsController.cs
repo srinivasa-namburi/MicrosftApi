@@ -95,6 +95,27 @@ public class DocumentsController : BaseController
         return document;
     }
 
+    [HttpDelete("{documentId}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DeleteDocument(string documentId)
+    {
+        var documentGuid = Guid.Parse(documentId);
+        var document = await _dbContext.GeneratedDocuments
+            .FirstOrDefaultAsync(d => d.Id == documentGuid);
+        
+        if (document == null)
+        {
+            return NotFound();
+        }
+
+        _dbContext.GeneratedDocuments.Remove(document);
+
+        await _dbContext.SaveChangesAsync();
+        
+        return NoContent();
+    }
+
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

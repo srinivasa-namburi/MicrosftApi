@@ -1,5 +1,8 @@
 using System.Diagnostics;
+using HandlebarsDotNet;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Data.Sql;
 
 namespace ProjectVico.V2.SetupManager;
@@ -8,6 +11,8 @@ public class DocGenDbInitializerService : BackgroundService
 {
     private readonly IServiceProvider _sp;
     private readonly ILogger<DocGenDbInitializerService> _logger;
+    private readonly IConfiguration _configuration;
+    private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
     private readonly IHostApplicationLifetime _lifetime;
 
     public const string ActivitySourceName = "Migrations";
@@ -16,18 +21,32 @@ public class DocGenDbInitializerService : BackgroundService
     public DocGenDbInitializerService(
         IServiceProvider sp, 
         ILogger<DocGenDbInitializerService> logger, 
+        IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
+        IConfiguration configuration,
         IHostApplicationLifetime lifetime)
     {
         _sp = sp;
         _logger = logger;
+        _configuration = configuration;
+        _serviceConfigurationOptions = serviceConfigurationOptions.Value;
         _lifetime = lifetime;
     }
 
     protected override async Task ExecuteAsync(CancellationToken cancellationToken)
     {
         using var scope = _sp.CreateScope();
-        var dbContext = scope.ServiceProvider.GetService<DocGenerationDbContext>();
+        
+        
+        var dbContextOptions = new DbContextOptionsBuilder<DocGenerationDbContext>()
+            .UseSqlServer(_configuration.GetConnectionString(_serviceConfigurationOptions.SQL.DatabaseName), 
+                sqlServerBuilder =>
+                {
+                   sqlServerBuilder.MigrationsAssembly(typeof(DocGenerationDbContext).Assembly.FullName);
+                })
+            .Options;
 
+        var dbContext =
+            new DocGenerationDbContext(dbContextOptions);
         
         await InitializeDatabaseAsync(dbContext, cancellationToken);
         _lifetime.StopApplication();
