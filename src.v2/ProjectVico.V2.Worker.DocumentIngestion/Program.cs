@@ -16,6 +16,11 @@ var builder = Host.CreateApplicationBuilder(args);
 
 builder.AddServiceDefaults();
 
+// This is to grant SetupManager time to perform migrations
+Console.WriteLine("Waiting for SetupManager to perform migrations...");
+await Task.Delay(TimeSpan.FromSeconds(15));
+
+
 builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
 

@@ -23,18 +23,19 @@ public static class DbContextExtensions
                 {
                     sqlServerBuilder.MigrationsAssembly(typeof(DocGenerationDbContext).Assembly.FullName);
                 });
-            
+
             options.AddInterceptors(sp.GetRequiredService<SoftDeleteInterceptor>());
         });
-        
+
         builder.EnrichSqlServerDbContext<DocGenerationDbContext>(settings =>
         {
+            settings.Retry = true;
             settings.ConnectionString = builder.Configuration.GetConnectionString(serviceConfigurationOptions.SQL.DatabaseName);
             settings.HealthChecks = true;
             settings.Tracing = true;
             settings.Metrics = true;
         });
-        
+
         return builder;
     }
 }

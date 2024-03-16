@@ -36,18 +36,8 @@ public class DocGenDbInitializerService : BackgroundService
     {
         using var scope = _sp.CreateScope();
         
-        
-        var dbContextOptions = new DbContextOptionsBuilder<DocGenerationDbContext>()
-            .UseSqlServer(_configuration.GetConnectionString(_serviceConfigurationOptions.SQL.DatabaseName), 
-                sqlServerBuilder =>
-                {
-                   sqlServerBuilder.MigrationsAssembly(typeof(DocGenerationDbContext).Assembly.FullName);
-                })
-            .Options;
+        var dbContext = scope.ServiceProvider.GetRequiredService<DocGenerationDbContext>();
 
-        var dbContext =
-            new DocGenerationDbContext(dbContextOptions);
-        
         await InitializeDatabaseAsync(dbContext, cancellationToken);
         _lifetime.StopApplication();
     }

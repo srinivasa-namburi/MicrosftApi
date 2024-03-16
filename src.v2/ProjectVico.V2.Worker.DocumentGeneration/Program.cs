@@ -19,6 +19,9 @@ using ProjectVico.V2.Worker.DocumentGeneration.Services;
 var builder = Host.CreateApplicationBuilder(args);
 builder.AddServiceDefaults();
 
+// This is to grant SetupManager time to perform migrations
+await Task.Delay(TimeSpan.FromSeconds(15));
+
 builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
 

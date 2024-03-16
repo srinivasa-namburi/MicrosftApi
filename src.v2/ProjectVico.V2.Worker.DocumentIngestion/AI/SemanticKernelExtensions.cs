@@ -12,7 +12,7 @@ namespace ProjectVico.V2.Worker.DocumentIngestion.AI;
 
 public static class SemanticKernelExtensions
 {
-    [Experimental("SKEXP0011")]
+
     public static IHostApplicationBuilder AddSemanticKernelService(this IHostApplicationBuilder builder)
     {
 
