@@ -11,6 +11,8 @@ AppHostConfigurationSetup(builder);
 //See sample : https://github.com/dotnet/aspire/blob/main/playground/AzureSearchEndToEnd/AzureSearch.AppHost/appsettings.json
 builder.AddAzureProvisioning();
 
+var serviceBus = builder.AddAzureServiceBus("sbus");
+
 var envServiceConfigurationConfigurationSection = builder.Configuration.GetSection("ServiceConfiguration");
 var envAzureAdConfigurationSection = builder.Configuration.GetSection("AzureAd");
 var envConnectionStringsConfigurationSection = builder.Configuration.GetSection("ConnectionStrings");
@@ -26,19 +28,8 @@ var durableDevelopment = Convert.ToBoolean(builder.Configuration["ServiceConfigu
 var sqlPassword = builder.Configuration["ServiceConfiguration:SQL:Password"];
 var sqlDatabaseName = builder.Configuration["ServiceConfiguration:SQL:DatabaseName"];
 
-//builder.AddAzureProvisioning();
-
-// The default password for the RabbitMQ container is in appsettings.json. You can override it in appsettings.Development.json.
-var rabbitMqPassword = builder.Configuration["ServiceConfiguration:RabbitMQ:Password"];
-
 IResourceBuilder<SqlServerDatabaseResource> docGenSql;
-IResourceBuilder<RabbitMQServerResource> docGenRabbitMq;
-IResourceBuilder<AzureServiceBusResource>? sbus;
 IResourceBuilder<IResourceWithConnectionString> queueService;
-
-var docIngBlobs = builder
-    .AddAzureStorage("docing")
-    .AddBlobs("blob-docing");
 
 if (builder.ExecutionContext.IsRunMode) // For local development
 {
@@ -56,13 +47,7 @@ if (builder.ExecutionContext.IsRunMode) // For local development
             .AddSqlServer("sqldocgen", password: sqlPassword, 9001)
             .AddDatabase(sqlDatabaseName);
     }
-
-    docGenRabbitMq = builder
-           .AddRabbitMQ("rabbitmqdocgen", 9002)
-           //.WithAnnotation(new ContainerImageAnnotation() { Image = "rabbitmq", Tag = "3-management" })
-           .WithEnvironment("NODENAME", "rabbit@localhost");
-
-    queueService = docGenRabbitMq;
+    
 }
 else // For production/Azure deployment
 {
@@ -71,9 +56,9 @@ else // For production/Azure deployment
         .PublishAsAzureSqlDatabase()
         .AddDatabase(sqlDatabaseName);
 
-    sbus = builder.AddAzureServiceBus("sbus");
-    queueService = sbus;
 }
+
+queueService = serviceBus;
 
 var apiMain = builder
     .AddProject<Projects.ProjectVico_V2_API_Main>("api-main")
@@ -83,7 +68,6 @@ var apiMain = builder
     .WithConfigSection(envConnectionStringsConfigurationSection)
     .WithReference(docGenSql)
     .WithReference(queueService);
-
 
 var workerDocumentGeneration = builder
     .AddProject<Projects.ProjectVico_V2_Worker_DocumentGeneration>("worker-documentgeneration")
@@ -117,6 +101,7 @@ var workerScheduler = builder
 var setupManager = builder
     .AddProject<Projects.ProjectVico_V2_SetupManager>("worker-setupmanager")
     .WithReplicas(1) // There can only be one Setup Manager
+    .WithReference(queueService)
     .WithReference(docGenSql)
     .WithConfigSection(envServiceConfigurationConfigurationSection);
 

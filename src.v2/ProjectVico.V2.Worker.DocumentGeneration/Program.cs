@@ -6,6 +6,7 @@ using MassTransit.EntityFrameworkCoreIntegration;
 using ProjectVico.V2.DocumentProcess.Shared;
 using ProjectVico.V2.DocumentProcess.Shared.Generation;
 using ProjectVico.V2.Plugins.Shared;
+using ProjectVico.V2.Shared;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Data;
 using ProjectVico.V2.Shared.Data.Sql;
@@ -18,12 +19,10 @@ using ProjectVico.V2.Worker.DocumentGeneration.Services;
 var builder = Host.CreateApplicationBuilder(args);
 builder.AddServiceDefaults();
 
-// This is to grant SetupManager time to perform migrations
-await Task.Delay(TimeSpan.FromSeconds(15));
-
 builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
-
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
+
+await builder.DelayStartup(serviceConfigurationOptions.ProjectVicoServices.DocumentGeneration.DurableDevelopmentServices);
 
 builder.AddAzureServiceBus("sbus");
 builder.AddRabbitMQ("rabbitmqdocgen");
@@ -36,9 +35,6 @@ if (!serviceConfigurationOptions.ProjectVicoServices.DocumentGeneration.CreateBo
 {
     builder.Services.AddScoped<IBodyTextGenerator, LoremIpsumBodyTextGenerator>();
 }
-
-//builder.Services.AddScoped<IIndexingProcessor, SearchIndexingProcessor>();
-//builder.Services.AddScoped<TableHelper>();
 
 builder.Services.AddKeyedScoped<SearchClient>("searchclient-section",
     (provider, o) => GetSearchClientWithIndex(provider, o, serviceConfigurationOptions.CognitiveSearch.NuclearSectionIndex));
@@ -78,6 +74,7 @@ if (!string.IsNullOrWhiteSpace(serviceBusConnectionString))
              {
                  config.TokenCredential = new DefaultAzureCredential();
              });
+             
              cfg.LockDuration = TimeSpan.FromMinutes(5);
              cfg.MaxAutoRenewDuration = TimeSpan.FromMinutes(60);
              cfg.ConfigureEndpoints(context);
