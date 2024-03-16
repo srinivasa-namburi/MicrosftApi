@@ -25,8 +25,9 @@ else if (documents.Count == 0)
 }
 else
 {
-    <MudDataGrid Items="@documents"
+    <MudDataGrid Items="@documents.OrderByDescending(x => x.GeneratedDate)"
                  T="GeneratedDocumentListItem"
+                 Hover="true"
                  Filterable="false"
                  SortMode="@SortMode.Single"
                  Groupable="false"
@@ -44,13 +45,19 @@ else
         </ToolBarContent>
         <Columns>
             <SelectColumn T="GeneratedDocumentListItem" ShowInFooter="false" ShowInHeader="true" />
-            <PropertyColumn Property="x => x.GeneratedDate.ToShortDateString()" Title="Date Generated" />
+            <PropertyColumn Property="x => x.GeneratedDate.ToShortDateString()" Title="Date Generated"  />
             <PropertyColumn Property="x => x.Title" />
             <TemplateColumn CellClass="d-flex justify-end">
                 <CellTemplate>
                     <MudStack Row="true" Spacing="3">
-                        <MudButton OnClick="@(() => ViewDocument(context.Item))" Size="@Size.Small" Variant="@Variant.Filled" Color="@Color.Primary">View</MudButton>
-                        <MudButton OnClick="@(async () => await DeleteDocument(context.Item))" Size="@Size.Small" Variant="@Variant.Filled" Color="@Color.Error">Delete</MudButton>
+                        <MudTooltip Delay="400" Text="View Document">
+                            <MudIconButton OnClick="@(() => ViewDocument(context.Item))" Size="@Size.Small" Icon="@Icons.Material.Filled.StickyNote2"></MudIconButton>
+                        </MudTooltip>
+                        <MudTooltip Delay="400" Text="Delete (you will be asked to confirm)">
+                            <MudIconButton OnClick="@(async () => await DeleteDocument(context.Item))" Size="@Size.Small" Icon="@Icons.Material.Filled.Delete"></MudIconButton>
+                        </MudTooltip>
+                       @*  <MudButton OnClick="@(() => ViewDocument(context.Item))" Size="@Size.Small" Variant="@Variant.Filled" Color="@Color.Primary">View</MudButton>
+                        <MudButton OnClick="@(async () => await DeleteDocument(context.Item))" Size="@Size.Small" Variant="@Variant.Filled" Color="@Color.Error">Delete</MudButton> *@
                     </MudStack>
                 </CellTemplate>
             </TemplateColumn>
