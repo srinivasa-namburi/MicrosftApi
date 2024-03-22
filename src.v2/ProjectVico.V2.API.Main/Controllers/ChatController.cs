@@ -2,7 +2,6 @@
 using MassTransit;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.SemanticKernel;
 using ProjectVico.V2.Shared.Contracts.Chat;
 using ProjectVico.V2.Shared.Contracts.Messages.Chat.Commands;
 using ProjectVico.V2.Shared.Data.Sql;

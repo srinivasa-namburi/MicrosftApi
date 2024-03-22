@@ -1,6 +1,7 @@
 ﻿@using System.Web
 @using System.Text.RegularExpressions;
 @using Markdig
+@using Markdig.Extensions.AutoLinks
 @using Microsoft.AspNetCore.Components;
 
 @code {
@@ -11,7 +12,17 @@
 @{
     var encodedValue = HttpUtility.HtmlEncode(Value ?? string.Empty);
     //var replacedValue = Regex.Replace(encodedValue, "\r?\n|\r", "<br />");
-    var markdownPipeline = new MarkdownPipelineBuilder().UseAdvancedExtensions().UseEmojiAndSmiley().UseSmartyPants().UseSoftlineBreakAsHardlineBreak().Build();
+    var markdownPipeline = new MarkdownPipelineBuilder()
+                                    .UseAdvancedExtensions()
+                                    .UseEmojiAndSmiley()
+                                    .UseSmartyPants()
+                                    .UseSoftlineBreakAsHardlineBreak()
+                                    .UseAutoLinks(options:new AutoLinkOptions()
+                                    {
+                                        OpenInNewWindow = true,
+                                        UseHttpsForWWWLinks = true
+                                    })
+                                    .Build();
     var markdownContent = Markdown.ToHtml(encodedValue, markdownPipeline);
     var markupValue = new MarkupString(markdownContent);
 
