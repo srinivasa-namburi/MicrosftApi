@@ -117,6 +117,10 @@ builder.Services.AddHttpClient<IContentNodeApiClient, ContentNodeApiClient>(http
 {
     httpClient.BaseAddress = new("https://api-main");
 });
+builder.Services.AddHttpClient<IChatApiClient, ChatApiClient>(httpClient =>
+{
+    httpClient.BaseAddress = new("https://api-main");
+});
 
 
 // Add services to the container.

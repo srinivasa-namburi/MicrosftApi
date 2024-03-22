@@ -45,7 +45,7 @@ public class MultiPassLargeReceiveContextAiCompletionService : IAiCompletionServ
         using var scope = _sp.CreateScope();
         var plugins = new KernelPluginCollection();
 
-        plugins.AddRegisteredPluginsToKernelPluginCollection(_sp, excludePluginType: typeof(NuclearDocumentRepositoryPlugin));
+        plugins.AddRegisteredPluginsToKernelPluginCollection(_sp, excludePluginType: typeof(NRCDocumentsPlugin));
         _sk = new Kernel(_sp, plugins);
 
         var sectionExample = new StringBuilder();

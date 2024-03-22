@@ -52,6 +52,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.Plugins.Defa
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.AppHost", "ProjectVico.V2.AppHost\ProjectVico.V2.AppHost.csproj", "{1D9ED487-BC1C-4E99-BB68-D11D0154501F}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.Worker.Chat", "ProjectVico.V2.Worker.Chat\ProjectVico.V2.Worker.Chat.csproj", "{D92C05E8-F943-4A4A-BEC9-C8707C203904}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -149,6 +151,12 @@ Global
 		{1D9ED487-BC1C-4E99-BB68-D11D0154501F}.Publish|Any CPU.Build.0 = Debug|Any CPU
 		{1D9ED487-BC1C-4E99-BB68-D11D0154501F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{1D9ED487-BC1C-4E99-BB68-D11D0154501F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D92C05E8-F943-4A4A-BEC9-C8707C203904}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D92C05E8-F943-4A4A-BEC9-C8707C203904}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D92C05E8-F943-4A4A-BEC9-C8707C203904}.Publish|Any CPU.ActiveCfg = Debug|Any CPU
+		{D92C05E8-F943-4A4A-BEC9-C8707C203904}.Publish|Any CPU.Build.0 = Debug|Any CPU
+		{D92C05E8-F943-4A4A-BEC9-C8707C203904}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D92C05E8-F943-4A4A-BEC9-C8707C203904}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -169,6 +177,7 @@ Global
 		{61E3E737-6738-4A06-A122-67844CBCD94D} = {7EABCC9F-BAB5-4394-8B76-433A33055F59}
 		{FBBD830F-295A-431A-A767-3E5C0CAAC96A} = {7EABCC9F-BAB5-4394-8B76-433A33055F59}
 		{1D9ED487-BC1C-4E99-BB68-D11D0154501F} = {D4460E03-6678-477D-B13C-7870EDD82671}
+		{D92C05E8-F943-4A4A-BEC9-C8707C203904} = {FF5008BD-2970-41F9-8F1E-61F2DEC9AED5}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {8B68A6F2-AE7F-4585-941D-282839D6E440}

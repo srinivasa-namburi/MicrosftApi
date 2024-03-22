@@ -1,6 +1,6 @@
 using ProjectVico.V2.SetupManager;
 using ProjectVico.V2.Shared.Configuration;
-using ProjectVico.V2.Shared.Data;
+using ProjectVico.V2.Shared.Extensions;
 
 var builder = Host.CreateApplicationBuilder(args);
 

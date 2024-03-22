@@ -21,6 +21,7 @@
 
 		<ProjectReference Include="..\ProjectVico.V2.SetupManager\ProjectVico.V2.SetupManager.csproj" />
 		<ProjectReference Include="..\ProjectVico.V2.Web.DocGen\ProjectVico.V2.Web.DocGen.csproj" />
+		<ProjectReference Include="..\ProjectVico.V2.Worker.Chat\ProjectVico.V2.Worker.Chat.csproj" />
 		<ProjectReference Include="..\ProjectVico.V2.Worker.DocumentGeneration\ProjectVico.V2.Worker.DocumentGeneration.csproj" />
 		<ProjectReference Include="..\ProjectVico.V2.Worker.DocumentIngestion\ProjectVico.V2.Worker.DocumentIngestion.csproj" />
 		<ProjectReference Include="..\ProjectVico.V2.Worker.Scheduler\ProjectVico.V2.Worker.Scheduler.csproj" />

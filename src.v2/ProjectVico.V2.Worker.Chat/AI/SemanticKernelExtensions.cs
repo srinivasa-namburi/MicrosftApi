@@ -11,8 +11,7 @@ using ProjectVico.V2.Plugins.Default.Utility;
 using ProjectVico.V2.Plugins.Shared;
 using ProjectVico.V2.Shared.Configuration;
 
-
-namespace ProjectVico.V2.Worker.DocumentGeneration.AI;
+namespace ProjectVico.V2.Worker.Chat.AI;
 
 
 public static class SemanticKernelExtensions

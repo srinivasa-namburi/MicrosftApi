@@ -1,6 +1,5 @@
 ﻿using System.Collections.Concurrent;
 using System.ComponentModel;
-using System.ComponentModel.DataAnnotations;
 using System.Text;
 using Azure.AI.OpenAI;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,7 +15,7 @@ using ProjectVico.V2.Shared.Models.Enums;
 
 namespace ProjectVico.V2.Plugins.Default.NuclearDocs;
 
-public class NuclearDocumentRepositoryPlugin : IPluginImplementation
+public class NRCDocumentsPlugin : IPluginImplementation
 {
     private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
     private readonly IIndexingProcessor _indexingProcessor;
@@ -24,7 +23,7 @@ public class NuclearDocumentRepositoryPlugin : IPluginImplementation
     private readonly TableHelper _tableHelper;
     private readonly IAiCompletionService _aiCompletionService;
 
-    public NuclearDocumentRepositoryPlugin(
+    public NRCDocumentsPlugin(
         IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
         IIndexingProcessor indexingProcessor,
         [FromKeyedServices("openai-planner")] OpenAIClient openAIClient,

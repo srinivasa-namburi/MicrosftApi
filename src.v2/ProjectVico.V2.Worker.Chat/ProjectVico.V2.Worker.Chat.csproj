@@ -3,50 +3,48 @@
 	<PropertyGroup>
 		<TargetFramework>net8.0</TargetFramework>
 		<Nullable>enable</Nullable>
-		<ImplicitUsings>true</ImplicitUsings>
-		<UserSecretsId>dotnet-ProjectVico.V2.Worker.DocumentIngestion-932692d6-6396-4f71-a544-a8ad4a38f52d</UserSecretsId>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<UserSecretsId>dotnet-ProjectVico.V2.Worker.Chat-7610fbf8-7a25-4e23-8f86-75615e965ba8</UserSecretsId>
 	</PropertyGroup>
-
 	<PropertyGroup>
 		<NoWarn>SKEXP0060;SKEXP0061;SKEXP0042;SKEXP0011;SKEXP0001</NoWarn>
 	</PropertyGroup>
 
 	<ItemGroup>
-	  <Compile Remove="s\**" />
-	  <Content Remove="s\**" />
-	  <EmbeddedResource Remove="s\**" />
-	  <None Remove="s\**" />
-	</ItemGroup>
-
-	<ItemGroup>
 		<PackageReference Include="Aspire.Azure.AI.OpenAI" Version="8.0.0-preview.4.24156.9" />
 		<PackageReference Include="Aspire.Azure.Messaging.ServiceBus" Version="8.0.0-preview.4.24156.9" />
+		<PackageReference Include="Aspire.Azure.Search.Documents" Version="8.0.0-preview.4.24156.9" />
 		<PackageReference Include="Aspire.Azure.Storage.Blobs" Version="8.0.0-preview.4.24156.9" />
 		<PackageReference Include="Aspire.RabbitMQ.Client" Version="8.0.0-preview.4.24156.9" />
 		<PackageReference Include="MassTransit.Azure.ServiceBus.Core" Version="8.1.3" />
 		<PackageReference Include="MassTransit.EntityFrameworkCore" Version="8.1.3" />
 		<PackageReference Include="MassTransit.Quartz" Version="8.1.3" />
 		<PackageReference Include="MassTransit.RabbitMQ" Version="8.1.3" />
-		<PackageReference Include="Microsoft.SemanticKernel" Version="1.3.1" />
-		<PackageReference Include="Microsoft.SemanticKernel.Abstractions" Version="1.3.1" />
-		<PackageReference Include="Microsoft.SemanticKernel.Connectors.OpenAI" Version="1.3.1" />
-		<PackageReference Include="Microsoft.SemanticKernel.Core" Version="1.3.1" />
-		<PackageReference Include="Microsoft.SemanticKernel.Planners.Handlebars" Version="1.3.1-preview" />
-		<PackageReference Include="Microsoft.SemanticKernel.Planners.OpenAI" Version="1.3.1-preview" />
-		<PackageReference Include="Microsoft.SemanticKernel.Plugins.OpenApi" Version="1.3.1-alpha" />
-		<PackageReference Include="Microsoft.SemanticKernel.PromptTemplates.Handlebars" Version="1.3.1" />
 		<PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+		<PackageReference Include="NLipsum" Version="1.1.0" />
+
 	</ItemGroup>
 
+
 	<ItemGroup>
+		<ProjectReference Include="..\Plugins\ProjectVico.V2.Plugins.Default\ProjectVico.V2.Plugins.Default.csproj" />
 		<ProjectReference Include="..\ProjectVico.V2.DocumentProcess.Shared\ProjectVico.V2.DocumentProcess.Shared.csproj" />
 		<ProjectReference Include="..\ProjectVico.V2.DocumentProcess.US.NuclearLicensing\ProjectVico.V2.DocumentProcess.US.NuclearLicensing.csproj" />
 		<ProjectReference Include="..\ProjectVico.V2.ServiceDefaults\ProjectVico.V2.ServiceDefaults.csproj" />
 		<ProjectReference Include="..\ProjectVico.V2.Shared\ProjectVico.V2.Shared.csproj" />
 	</ItemGroup>
 
+
 	<ItemGroup>
-	  <Folder Include="manifests\" />
-	  <Folder Include="Sagas\" />
+	  <Content Update="appsettings.Development.json">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	    <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+	    <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+	  </Content>
+	  <Content Update="appsettings.json">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	    <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+	    <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+	  </Content>
 	</ItemGroup>
 </Project>

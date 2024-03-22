@@ -3,22 +3,22 @@
 @using Markdig
 @using Microsoft.AspNetCore.Components;
 
+@code {
+    [Parameter]
+    public string Value { get; set; } = default!;
+}
+
 @{
     var encodedValue = HttpUtility.HtmlEncode(Value ?? string.Empty);
     //var replacedValue = Regex.Replace(encodedValue, "\r?\n|\r", "<br />");
-    var markdownPipeline = new MarkdownPipelineBuilder().UseAdvancedExtensions().Build();
+    var markdownPipeline = new MarkdownPipelineBuilder().UseAdvancedExtensions().UseEmojiAndSmiley().UseSmartyPants().UseSoftlineBreakAsHardlineBreak().Build();
     var markdownContent = Markdown.ToHtml(encodedValue, markdownPipeline);
     var markupValue = new MarkupString(markdownContent);
 
     // Add an extra line break to the end of each paragraph to make it easier to read
     markupValue = new MarkupString(Regex.Replace(markupValue.Value, @"</p>", "</p><br />"));
 
-
-}
-
-@markupValue
-
-@code {
-    [Parameter]
-    public string Value { get; set; } = default!;
+    if (!string.IsNullOrEmpty(markupValue.Value)){
+        @markupValue
+    }
 }

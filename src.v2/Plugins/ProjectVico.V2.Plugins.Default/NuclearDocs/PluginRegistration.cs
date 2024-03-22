@@ -12,7 +12,7 @@ public class PluginRegistration : IPluginRegistration
         builder.Services.AddKeyedScoped<IAiCompletionService, SinglePassOpenAiCompletionService>("aicompletion-singlepass");
         builder.Services.AddKeyedScoped<IAiCompletionService, MultiPassLargeReceiveContextAiCompletionService>("aicompletion-multipass");
 
-        builder.Services.AddScoped<NuclearDocumentRepositoryPlugin>();
+        builder.Services.AddScoped<NRCDocumentsPlugin>();
         return builder;
     }
 }

@@ -4,8 +4,9 @@ using Microsoft.Extensions.Hosting;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Data.Sql;
 using Microsoft.Extensions.DependencyInjection;
+using ProjectVico.V2.Shared.Data;
 
-namespace ProjectVico.V2.Shared.Data;
+namespace ProjectVico.V2.Shared.Extensions;
 
 public static class DbContextExtensions
 {

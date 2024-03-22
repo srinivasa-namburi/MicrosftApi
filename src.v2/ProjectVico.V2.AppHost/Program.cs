@@ -26,8 +26,6 @@ var durableDevelopment = Convert.ToBoolean(builder.Configuration["ServiceConfigu
 var sqlPassword = builder.Configuration["ServiceConfiguration:SQL:Password"];
 var sqlDatabaseName = builder.Configuration["ServiceConfiguration:SQL:DatabaseName"];
 
-//builder.AddAzureProvisioning();
-
 // The default password for the RabbitMQ container is in appsettings.json. You can override it in appsettings.Development.json.
 var rabbitMqPassword = builder.Configuration["ServiceConfiguration:RabbitMQ:Password"];
 
@@ -89,6 +87,13 @@ var workerDocumentGeneration = builder
     .AddProject<Projects.ProjectVico_V2_Worker_DocumentGeneration>("worker-documentgeneration")
     .WithReplicas(Convert.ToUInt16(
         builder.Configuration["ServiceConfiguration:ProjectVicoServices:DocumentGeneration:NumberOfGenerationWorkers"]))
+    .WithConfigSection(envServiceConfigurationConfigurationSection)
+    .WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithReference(docGenSql)
+    .WithReference(queueService)
+    .WithReference(apiMain);
+
+var workerChat = builder.AddProject<Projects.ProjectVico_V2_Worker_Chat>("worker-chat")
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
     .WithReference(docGenSql)

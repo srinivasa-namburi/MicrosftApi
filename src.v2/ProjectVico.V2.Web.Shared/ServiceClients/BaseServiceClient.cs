@@ -15,9 +15,9 @@ public interface IServiceClient
 
 public abstract class BaseServiceClient<T> where T : IServiceClient
 {
-    private readonly ILogger<T> Logger;
-    private readonly HttpClient HttpClient;
-    private readonly IHttpContextAccessor HttpContextAccessor;
+    protected readonly ILogger<T> Logger;
+    protected readonly HttpClient HttpClient;
+    protected readonly IHttpContextAccessor HttpContextAccessor;
 
     private HttpContext HttpContext => HttpContextAccessor.HttpContext ??
                                        throw new InvalidOperationException("No HttpContext available from the IHttpContextAccessor!");

@@ -5,7 +5,8 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Identity.Web;
 using ProjectVico.V2.API.Main.Hubs;
 using ProjectVico.V2.Shared.Configuration;
-using ProjectVico.V2.Shared.Data;
+using ProjectVico.V2.Shared.Extensions;
+using ProjectVico.V2.Shared.Mappings;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -34,6 +35,8 @@ builder.AddRabbitMQ("rabbitmqdocgen");
 builder.AddAzureBlobService("docGenBlobs");
 
 builder.AddDocGenDbContext(serviceConfigurationOptions);
+
+builder.Services.AddAutoMapper(typeof(ChatMessageProfile));
 
 builder.Services.AddHttpContextAccessor();
 

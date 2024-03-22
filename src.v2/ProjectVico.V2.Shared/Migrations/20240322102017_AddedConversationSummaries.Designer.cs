@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ProjectVico.V2.Shared.Data.Sql;
 
@@ -11,9 +12,11 @@ using ProjectVico.V2.Shared.Data.Sql;
 namespace ProjectVico.V2.Shared.Migrations
 {
     [DbContext(typeof(DocGenerationDbContext))]
-    partial class DocGenerationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20240322102017_AddedConversationSummaries")]
+    partial class AddedConversationSummaries
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -152,9 +155,6 @@ namespace ProjectVico.V2.Shared.Migrations
                     b.Property<int>("Source")
                         .HasColumnType("int");
 
-                    b.Property<Guid?>("SummarizedByConversationSummaryId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<string>("UserId")
                         .HasColumnType("nvarchar(max)");
 
@@ -162,13 +162,9 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.HasIndex("ConversationId");
 
-                    b.HasIndex("CreatedAt");
-
                     b.HasIndex("IsActive");
 
                     b.HasIndex("ReplyToChatMessageId");
-
-                    b.HasIndex("SummarizedByConversationSummaryId");
 
                     b.HasIndex("DeletedAt", "IsActive");
 
@@ -255,12 +251,14 @@ namespace ProjectVico.V2.Shared.Migrations
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
 
-                    b.Property<string>("SummaryText")
+                    b.Property<string>("SummaryOfMessagesFromPriorSummary")
+                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ConversationId");
+                    b.HasIndex("ConversationId")
+                        .IsUnique();
 
                     b.HasIndex("CreatedAt");
 
@@ -625,14 +623,7 @@ namespace ProjectVico.V2.Shared.Migrations
                         .HasForeignKey("ProjectVico.V2.Shared.Models.ChatMessage", "ReplyToChatMessageId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("ProjectVico.V2.Shared.Models.ConversationSummary", "SummarizedByConversationSummary")
-                        .WithMany("SummarizedChatMessages")
-                        .HasForeignKey("SummarizedByConversationSummaryId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.Navigation("ReplyToChatMessage");
-
-                    b.Navigation("SummarizedByConversationSummary");
                 });
 
             modelBuilder.Entity("ProjectVico.V2.Shared.Models.ContentNode", b =>
@@ -700,11 +691,6 @@ namespace ProjectVico.V2.Shared.Migrations
                     b.Navigation("BoundingRegions");
 
                     b.Navigation("Children");
-                });
-
-            modelBuilder.Entity("ProjectVico.V2.Shared.Models.ConversationSummary", b =>
-                {
-                    b.Navigation("SummarizedChatMessages");
                 });
 
             modelBuilder.Entity("ProjectVico.V2.Shared.Models.GeneratedDocument", b =>

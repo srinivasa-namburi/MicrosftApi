@@ -20,7 +20,7 @@ public class USNuclearLicensingSemanticKernelBodyTextGenerator : IBodyTextGenera
     public async Task<List<ContentNode>> GenerateBodyText(string contentNodeType, string sectionNumber,
         string sectionTitle, string tableOfContentsString, Guid? metadataId)
     {
-        _semanticKernel.Plugins.TryGetFunction(pluginName: ("native_" + nameof(NuclearDocumentRepositoryPlugin)),
+        _semanticKernel.Plugins.TryGetFunction(pluginName: ("native_" + nameof(NRCDocumentsPlugin)),
             functionName: "GetBodyTextNodesOnly", out KernelFunction? function);
 
         var functionParameters = new Dictionary<string, object>
@@ -37,7 +37,7 @@ public class USNuclearLicensingSemanticKernelBodyTextGenerator : IBodyTextGenera
         }
         
         var result = await _semanticKernel.InvokeAsync<List<ContentNode>>(
-            "native_"+nameof(NuclearDocumentRepositoryPlugin),
+            "native_"+nameof(NRCDocumentsPlugin),
             "GetBodyTextNodesOnly", // "GetBodyTextNodesOnly" is the name of the function in the "NuclearDocumentRepositoryPlugin"
             new KernelArguments(functionParameters!)
             );

@@ -1,8 +1,8 @@
 using Azure.Identity;
 using MassTransit;
 using ProjectVico.V2.Shared.Configuration;
-using ProjectVico.V2.Shared.Data;
 using ProjectVico.V2.Shared.Data.Sql;
+using ProjectVico.V2.Shared.Extensions;
 using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Worker.Scheduler;
 

@@ -1,6 +1,5 @@
 ﻿using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
 using ProjectVico.V2.Shared.Models;
 using ProjectVico.V2.Shared.SagaState;
 
@@ -51,6 +50,47 @@ public class DocGenerationDbContext : DbContext
             }
         }
 
+        modelBuilder.Entity<ConversationSummary>()
+            .HasIndex(nameof(ConversationSummary.CreatedAt))
+            .IsUnique(false);
+        
+        modelBuilder.Entity<ConversationSummary>()
+            .HasIndex(nameof(ConversationSummary.ConversationId))
+            .IsUnique(false);
+
+        modelBuilder.Entity<ConversationSummary>()
+            .HasMany(x => x.SummarizedChatMessages)
+            .WithOne(x => x.SummarizedByConversationSummary)
+            .HasForeignKey(x => x.SummarizedByConversationSummaryId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<ChatMessage>()
+            .HasOne(x=>x.SummarizedByConversationSummary)
+            .WithMany(x=>x.SummarizedChatMessages)
+            .HasForeignKey(x=>x.SummarizedByConversationSummaryId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<ChatMessage>()
+            .HasIndex(nameof(ChatMessage.CreatedAt))
+            .IsUnique(false);
+        
+        modelBuilder.Entity<ChatMessage>()
+            .HasIndex(nameof(ChatMessage.ConversationId))
+            .IsUnique(false);
+
+        modelBuilder.Entity<ChatMessage>()
+            .HasIndex(nameof(ChatMessage.ReplyToChatMessageId))
+            .IsUnique(false);
+
+        // Self-Referencing relationship for ChatMessages - a message may be a reply to another message
+        modelBuilder.Entity<ChatMessage>()
+            .HasOne(x=>x.ReplyToChatMessage)
+            .WithOne()
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Restrict);
+        
         modelBuilder.Entity<IngestedDocument>()
             .HasIndex(d => d.FileHash)
             .IsUnique(false);
@@ -218,5 +258,7 @@ public class DocGenerationDbContext : DbContext
     public DbSet<TableCell> TableCells { get; set; }
     public DbSet<BoundingRegion> BoundingRegions { get; set; }
     public DbSet<BoundingPolygon> BoundingPolygons { get; set; }
-
+    
+    public DbSet<ChatMessage> ChatMessages { get; set; }
+    public DbSet<ConversationSummary> ConversationSummaries { get; set; }
 }
