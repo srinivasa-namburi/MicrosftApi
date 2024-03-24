@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ProjectVico.V2.Shared.Data.Sql;
 
@@ -11,9 +12,11 @@ using ProjectVico.V2.Shared.Data.Sql;
 namespace ProjectVico.V2.Shared.Migrations
 {
     [DbContext(typeof(DocGenerationDbContext))]
-    partial class DocGenerationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20240323083610_AddedUserInformation")]
+    partial class AddedUserInformation
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -113,53 +116,10 @@ namespace ProjectVico.V2.Shared.Migrations
                     b.ToTable("BoundingRegions");
                 });
 
-            modelBuilder.Entity("ProjectVico.V2.Shared.Models.ChatConversation", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("DocumentProcessName")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
-
-                    b.Property<byte[]>("RowVersion")
-                        .IsConcurrencyToken()
-                        .IsRequired()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("rowversion");
-
-                    b.Property<string>("SystemPrompt")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("IsActive");
-
-                    b.HasIndex("DeletedAt", "IsActive");
-
-                    b.ToTable("ChatConversations", (string)null);
-                });
-
             modelBuilder.Entity("ProjectVico.V2.Shared.Models.ChatMessage", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid?>("AuthorUserInformationId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("ContentText")
@@ -198,9 +158,10 @@ namespace ProjectVico.V2.Shared.Migrations
                     b.Property<Guid?>("SummarizedByConversationSummaryId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.HasKey("Id");
+                    b.Property<string>("UserId")
+                        .HasColumnType("nvarchar(max)");
 
-                    b.HasIndex("AuthorUserInformationId");
+                    b.HasKey("Id");
 
                     b.HasIndex("ConversationId");
 
@@ -557,9 +518,6 @@ namespace ProjectVico.V2.Shared.Migrations
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("datetimeoffset");
 
-                    b.Property<string>("Email")
-                        .HasColumnType("nvarchar(450)");
-
                     b.Property<string>("FullName")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -569,13 +527,6 @@ namespace ProjectVico.V2.Shared.Migrations
                         .HasColumnType("bit")
                         .HasDefaultValue(true);
 
-                    b.Property<int>("Provider")
-                        .HasColumnType("int");
-
-                    b.Property<string>("ProviderSubjectId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(450)");
-
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -584,16 +535,11 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Email");
-
                     b.HasIndex("IsActive");
-
-                    b.HasIndex("ProviderSubjectId")
-                        .IsUnique();
 
                     b.HasIndex("DeletedAt", "IsActive");
 
-                    b.ToTable("UserInformations");
+                    b.ToTable("UserInformation");
                 });
 
             modelBuilder.Entity("ProjectVico.V2.Shared.SagaState.DocumentGenerationSagaState", b =>
@@ -710,15 +656,6 @@ namespace ProjectVico.V2.Shared.Migrations
 
             modelBuilder.Entity("ProjectVico.V2.Shared.Models.ChatMessage", b =>
                 {
-                    b.HasOne("ProjectVico.V2.Shared.Models.UserInformation", "AuthorUserInformation")
-                        .WithMany()
-                        .HasForeignKey("AuthorUserInformationId");
-
-                    b.HasOne("ProjectVico.V2.Shared.Models.ChatConversation", "Conversation")
-                        .WithMany("ChatMessages")
-                        .HasForeignKey("ConversationId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("ProjectVico.V2.Shared.Models.ChatMessage", "ReplyToChatMessage")
                         .WithOne()
                         .HasForeignKey("ProjectVico.V2.Shared.Models.ChatMessage", "ReplyToChatMessageId")
@@ -728,10 +665,6 @@ namespace ProjectVico.V2.Shared.Migrations
                         .WithMany("SummarizedChatMessages")
                         .HasForeignKey("SummarizedByConversationSummaryId")
                         .OnDelete(DeleteBehavior.Restrict);
-
-                    b.Navigation("AuthorUserInformation");
-
-                    b.Navigation("Conversation");
 
                     b.Navigation("ReplyToChatMessage");
 
@@ -796,11 +729,6 @@ namespace ProjectVico.V2.Shared.Migrations
             modelBuilder.Entity("ProjectVico.V2.Shared.Models.BoundingRegion", b =>
                 {
                     b.Navigation("BoundingPolygons");
-                });
-
-            modelBuilder.Entity("ProjectVico.V2.Shared.Models.ChatConversation", b =>
-                {
-                    b.Navigation("ChatMessages");
                 });
 
             modelBuilder.Entity("ProjectVico.V2.Shared.Models.ContentNode", b =>

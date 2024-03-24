@@ -8,15 +8,18 @@ public sealed class UserInfo
 {
     public required string UserId { get; init; }
     public required string Name { get; init; }
+    public required string Email { get; set; }
 
     public const string UserIdClaimType = "sub";
     public const string NameClaimType = "name";
+    public const string EmailClaimType = "preferred_username";
 
     public static UserInfo FromClaimsPrincipal(ClaimsPrincipal principal) =>
         new()
         {
             UserId = GetRequiredClaim(principal, UserIdClaimType),
             Name = GetRequiredClaim(principal, NameClaimType),
+            Email = GetRequiredClaim(principal, EmailClaimType)
         };
 
     public ClaimsPrincipal ToClaimsPrincipal() =>

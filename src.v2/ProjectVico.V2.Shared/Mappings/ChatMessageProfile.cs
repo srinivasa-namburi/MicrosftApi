@@ -13,5 +13,6 @@ public class ChatMessageProfile : Profile
 
         CreateMap<ChatMessage, ChatMessageDTO>()
             .ForMember(x => x.ReplyToId, y => y.MapFrom(source => source.ReplyToChatMessageId));
+
     }
 }

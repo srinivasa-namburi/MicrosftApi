@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ProjectVico.V2.Shared.Data.Sql;
 
@@ -11,9 +12,11 @@ using ProjectVico.V2.Shared.Data.Sql;
 namespace ProjectVico.V2.Shared.Migrations
 {
     [DbContext(typeof(DocGenerationDbContext))]
-    partial class DocGenerationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20240323095417_UpdatedChatMessageModelWithAuthorInformation")]
+    partial class UpdatedChatMessageModelWithAuthorInformation
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -111,46 +114,6 @@ namespace ProjectVico.V2.Shared.Migrations
                     b.HasIndex("DeletedAt", "IsActive");
 
                     b.ToTable("BoundingRegions");
-                });
-
-            modelBuilder.Entity("ProjectVico.V2.Shared.Models.ChatConversation", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("DocumentProcessName")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
-
-                    b.Property<byte[]>("RowVersion")
-                        .IsConcurrencyToken()
-                        .IsRequired()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("rowversion");
-
-                    b.Property<string>("SystemPrompt")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("IsActive");
-
-                    b.HasIndex("DeletedAt", "IsActive");
-
-                    b.ToTable("ChatConversations", (string)null);
                 });
 
             modelBuilder.Entity("ProjectVico.V2.Shared.Models.ChatMessage", b =>
@@ -714,11 +677,6 @@ namespace ProjectVico.V2.Shared.Migrations
                         .WithMany()
                         .HasForeignKey("AuthorUserInformationId");
 
-                    b.HasOne("ProjectVico.V2.Shared.Models.ChatConversation", "Conversation")
-                        .WithMany("ChatMessages")
-                        .HasForeignKey("ConversationId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("ProjectVico.V2.Shared.Models.ChatMessage", "ReplyToChatMessage")
                         .WithOne()
                         .HasForeignKey("ProjectVico.V2.Shared.Models.ChatMessage", "ReplyToChatMessageId")
@@ -730,8 +688,6 @@ namespace ProjectVico.V2.Shared.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("AuthorUserInformation");
-
-                    b.Navigation("Conversation");
 
                     b.Navigation("ReplyToChatMessage");
 
@@ -796,11 +752,6 @@ namespace ProjectVico.V2.Shared.Migrations
             modelBuilder.Entity("ProjectVico.V2.Shared.Models.BoundingRegion", b =>
                 {
                     b.Navigation("BoundingPolygons");
-                });
-
-            modelBuilder.Entity("ProjectVico.V2.Shared.Models.ChatConversation", b =>
-                {
-                    b.Navigation("ChatMessages");
                 });
 
             modelBuilder.Entity("ProjectVico.V2.Shared.Models.ContentNode", b =>

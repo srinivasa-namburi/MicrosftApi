@@ -50,6 +50,30 @@ public class DocGenerationDbContext : DbContext
             }
         }
 
+        modelBuilder.Entity<ChatConversation>()
+            .ToTable("ChatConversations");
+
+        modelBuilder.Entity<ChatConversation>()
+            .HasMany(x => x.ChatMessages)
+            .WithOne(x => x.Conversation)
+            .HasForeignKey(x => x.ConversationId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<ChatMessage>()
+            .HasOne(x => x.Conversation)
+            .WithMany(x => x.ChatMessages)
+            .HasForeignKey(x => x.ConversationId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<UserInformation>()
+            .HasIndex(nameof(UserInformation.ProviderSubjectId))
+            .IsUnique();
+        modelBuilder.Entity<UserInformation>()
+            .HasIndex(nameof(UserInformation.Email))
+            .IsUnique(false);
+        
         modelBuilder.Entity<ConversationSummary>()
             .HasIndex(nameof(ConversationSummary.CreatedAt))
             .IsUnique(false);
@@ -259,6 +283,9 @@ public class DocGenerationDbContext : DbContext
     public DbSet<BoundingRegion> BoundingRegions { get; set; }
     public DbSet<BoundingPolygon> BoundingPolygons { get; set; }
     
+    public DbSet<ChatConversation> ChatConversations { get; set; }
     public DbSet<ChatMessage> ChatMessages { get; set; }
     public DbSet<ConversationSummary> ConversationSummaries { get; set; }
+
+    public DbSet<UserInformation> UserInformations { get; set; }
 }

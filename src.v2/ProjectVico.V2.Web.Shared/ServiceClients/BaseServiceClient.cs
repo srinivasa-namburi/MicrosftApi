@@ -53,10 +53,14 @@ public abstract class BaseServiceClient<T> where T : IServiceClient
     }
     
 
-    protected async Task<HttpResponseMessage?> SendPostRequestMessage(string requestUri, object? pocoPayload)
+    protected async Task<HttpResponseMessage?> SendPostRequestMessage(string requestUri, object? pocoPayload, bool authorize = true)
     {
         using var requestMessage = new HttpRequestMessage(HttpMethod.Post, requestUri);
-        requestMessage.Headers.Authorization = new("Bearer", this.AccessToken);
+        if (authorize)
+        {
+            requestMessage.Headers.Authorization = new("Bearer", this.AccessToken);
+        }
+
         if (pocoPayload == null)
         {
             Logger.LogWarning("Sending POST request to {RequestUri} with empty payload", requestUri);

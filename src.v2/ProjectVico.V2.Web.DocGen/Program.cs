@@ -10,7 +10,9 @@ using Microsoft.AspNetCore.Components.Authorization;
 using ProjectVico.V2.Web.DocGen.ServiceClients;
 using ProjectVico.V2.Web.Shared.ServiceClients;
 using Microsoft.AspNetCore.SignalR;
+using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Shared.Helpers;
+using ProjectVico.V2.Web.Shared.Auth;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -24,6 +26,31 @@ var azureAdSettings = azureAdSection.Get<AzureAdOptions>();
 
 var serviceConfigurationSection = builder.Configuration.GetSection("ServiceConfiguration");
 builder.Services.Configure<ServiceConfigurationOptions>(serviceConfigurationSection);
+
+builder.Services.AddHttpClient<IWeatherForecaster, ServerWeatherForecaster>(httpClient =>
+{
+    httpClient.BaseAddress = new("https://api-main");
+});
+builder.Services.AddHttpClient<IDocumentGenerationApiClient, DocumentGenerationApiClient>(httpClient =>
+{
+    httpClient.BaseAddress = new("https://api-main");
+});
+builder.Services.AddHttpClient<IDocumentIngestionApiClient, DocumentIngestionApiClient>(httpClient =>
+{
+    httpClient.BaseAddress = new("https://api-main");
+});
+builder.Services.AddHttpClient<IContentNodeApiClient, ContentNodeApiClient>(httpClient =>
+{
+    httpClient.BaseAddress = new("https://api-main");
+});
+builder.Services.AddHttpClient<IChatApiClient, ChatApiClient>(httpClient =>
+{
+    httpClient.BaseAddress = new("https://api-main");
+});
+builder.Services.AddHttpClient<IAuthorizationApiClient, AuthorizationApiClient>(httpClient =>
+{
+    httpClient.BaseAddress = new("https://api-main");
+});
 
 // Add services to the container.
 builder.Services.AddAuthentication("MicrosoftOidc")
@@ -84,6 +111,18 @@ builder.Services.AddAuthentication("MicrosoftOidc")
                     context.ProtocolMessage.RedirectUri = urlBuilder.Uri.ToString();
                 }
                 return Task.FromResult(0);
+            },
+            OnTokenValidated = async context =>
+            {
+                var authorizationClient = context.HttpContext.RequestServices.GetRequiredService<IAuthorizationApiClient>();
+                var userInfo = UserInfo.FromClaimsPrincipal(context.Principal);
+                
+                var user = new UserInfoDTO(userInfo.UserId, userInfo.Name)
+                {
+                    Email = userInfo.Email
+                };
+
+                await authorizationClient.StoreOrUpdateUserDetails(user);
             }
         };
     })
@@ -101,34 +140,16 @@ builder.Services.AddHttpContextAccessor();
 builder.AddAzureBlobService("blob-docing");
 builder.Services.AddScoped<AzureFileHelper>();
 
-builder.Services.AddHttpClient<IWeatherForecaster, ServerWeatherForecaster>(httpClient =>
-{
-    httpClient.BaseAddress = new("https://api-main");
-});
-builder.Services.AddHttpClient<IDocumentGenerationApiClient, DocumentGenerationApiClient>(httpClient =>
-{
-    httpClient.BaseAddress = new("https://api-main");
-});
-builder.Services.AddHttpClient<IDocumentIngestionApiClient, DocumentIngestionApiClient>(httpClient =>
-{
-    httpClient.BaseAddress = new("https://api-main");
-});
-builder.Services.AddHttpClient<IContentNodeApiClient, ContentNodeApiClient>(httpClient =>
-{
-    httpClient.BaseAddress = new("https://api-main");
-});
-builder.Services.AddHttpClient<IChatApiClient, ChatApiClient>(httpClient =>
-{
-    httpClient.BaseAddress = new("https://api-main");
-});
 
+
+builder.Services.AddSingleton<IUserIdProvider, SignalRCustomUserIdProvider>();
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddMudServices();
 
-builder.Services.AddSingleton<IUserIdProvider, SignalRCustomUserIdProvider>();
+
 
 builder.Services.AddSignalR();
 
@@ -153,6 +174,6 @@ app.MapDefaultEndpoints();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
-app.MapGroup("/authentication").MapLoginAndLogout();
+app.MapGroup("/authentication").MapLoginAndLogout(app);
 
 app.Run();

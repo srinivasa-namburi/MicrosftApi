@@ -41,6 +41,19 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
     private async Task StoreChatMessage(ChatMessageDTO chatMessageDto)
     {
         var chatMessage = _mapper.Map(chatMessageDto, new ChatMessage());
+
+        if (chatMessage.Source == ChatMessageSource.User)
+        {
+            var userInformation =
+                await _dbContext.UserInformations.FirstOrDefaultAsync(x =>
+                    x.ProviderSubjectId == chatMessageDto.UserId);
+
+            if (userInformation != null)
+            {
+                chatMessage.AuthorUserInformationId = userInformation.Id;
+            }
+        }
+
         _dbContext.ChatMessages.Add(chatMessage);
         await _dbContext.SaveChangesAsync();
     }
@@ -60,8 +73,14 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
             Id = Guid.NewGuid()
         };
 
+        var conversation = await _dbContext.ChatConversations
+            .FirstOrDefaultAsync(x => x.Id == userMessageDto.ConversationId);
+
+        var systemPrompt = conversation!.SystemPrompt;
+
         var openAiSettings = new OpenAIPromptExecutionSettings()
         {
+            ChatSystemPrompt = systemPrompt,
             ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions,
             MaxTokens = 3072,
             Temperature = 0.7
@@ -73,13 +92,6 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
         var chatHistoryString = await CreateChatHistoryString(context, userMessageDto, 10);
         var previousSummariesForConversationString = await GetSummariesConversationString(userMessageDto);
 
-        // If the chat history is more than 16000 characters, delete any lines (from the beginning) until the total length is less than 16000 characters
-        //while (chatHistoryString.Length > 16000)
-        //{
-        //    var lines = chatHistoryString.Split("\n");
-        //    chatHistoryString = string.Join("\n", lines.Skip(1));
-        //}
-        
         var userPrompt =
             $"""
             The 5 last chat messages are between the [ChatHistory] and [/ChatHistory] tags.
@@ -164,12 +176,12 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
         ChatMessageDTO userMessageDto, int numberOfMessagesToInclude = Int32.MaxValue)
     {
         List<ChatMessage> chatHistory = new List<ChatMessage>();
-        
+
         if (numberOfMessagesToInclude == Int32.MaxValue)
         {
             chatHistory = await _dbContext.ChatMessages
                 .Where(x => x.ConversationId == userMessageDto.ConversationId && x.Id != userMessageDto.Id)
-                .OrderBy(x=>x.CreatedAt)
+                .OrderBy(x => x.CreatedAt)
                 .ToListAsync();
         }
         else
@@ -178,11 +190,11 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
                 .Where(x => x.ConversationId == userMessageDto.ConversationId && x.Id != userMessageDto.Id)
                 .OrderByDescending(x => x.CreatedAt)
                 .Take(numberOfMessagesToInclude)
-                .OrderBy(x=>x.CreatedAt)
+                .OrderBy(x => x.CreatedAt)
                 .ToListAsync();
         }
 
-        
+
         if (chatHistory.Count == 0)
         {
             return "";
@@ -198,7 +210,7 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
         // We want to summarize any messages prior to the 5 latest messages in the returned chatHistory list
 
         // We need to refresh the chat history list to get the 5 earliest messages
-        var fiveEarliestMessages = chatHistory.OrderBy(x=>x.CreatedAt).Take(5).ToList();
+        var fiveEarliestMessages = chatHistory.OrderBy(x => x.CreatedAt).Take(5).ToList();
         // Get the date from the latest message in the list
         var earliestMessage = fiveEarliestMessages.Last();
 
@@ -206,11 +218,11 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
         {
             await context.Publish(new GenerateChatHistorySummary(userMessageDto.ConversationId, earliestMessage.CreatedAt));
         }
-        
+
         return chatHistoryString;
     }
 
-   
+
     private static string CreateChatHistoryStringFromChatHistory(List<ChatMessage> chatHistory)
     {
         // Create a stringbuilder to store the chat history

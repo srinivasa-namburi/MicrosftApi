@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
 using System.Text;
 using Azure.AI.OpenAI;
 using Microsoft.Extensions.DependencyInjection;
@@ -52,38 +53,37 @@ public class NRCDocumentsPlugin : IPluginImplementation
         return outputStrings;
     }
 
-    [KernelFunction("GetDescriptionForDocumentSection")]
-    [Description(
-        "Writes a description of what types of information is needed, and what should be included, to write a specific section indicated by the section name.")]
-    public async Task<List<string>> GetDescriptionForDocumentSectionAsync(
-        [Description(
-            "The name of the section. Please remove any chapter or section numbering from the section names you're searching for.")]
-        string sectionName)
-    {
-        var documents = await _indexingProcessor.SearchWithHybridSearch(sectionName);
-        var outputStrings = await GenerateSectionDescriptionWithOpenAIAsync(documents);
-        return outputStrings;
-    }
+    //[KernelFunction("GetDescriptionForDocumentSection")]
+    //[Description(
+    //    "Writes a description of what types of information is needed, and what should be included, to write a specific section indicated by the section name.")]
+    //public async Task<List<string>> GetDescriptionForDocumentSectionAsync(
+    //    [Description(
+    //        "The name of the section. Please remove any chapter or section numbering from the section names you're searching for.")]
+    //    string sectionName)
+    //{
+    //    var documents = await _indexingProcessor.SearchWithHybridSearch(sectionName);
+    //    var outputStrings = await GenerateSectionDescriptionWithOpenAIAsync(documents);
+    //    return outputStrings;
+    //}
 
-    [KernelFunction("GetDocumentOutputForSection")]
-    [Description(
-        "Writes output for a specific section indicated by the section name, using knowledge of similar written sections from earlier environmental reports.")]
-    public async Task<List<string>> GetOutputForSectionAsync(
-        [Description(
-            "The name of the section. Please remove any chapter or section numbering from the section names you're searching for.")]
-        string sectionName)
-    {
-        var documents = await _indexingProcessor.SearchWithHybridSearch(sectionName);
-        var outputStrings = await GenerateSectionOutputWithOpenAIAsync(documents);
-        return outputStrings;
-    }
+    //[KernelFunction("GetDocumentOutputForSection")]
+    //[Description(
+    //    "Writes output for a specific section indicated by the section name, using knowledge of similar written sections from earlier environmental reports.")]
+    //public async Task<List<string>> GetOutputForSectionAsync(
+    //    [Description(
+    //        "The name of the section. Please remove any chapter or section numbering from the section names you're searching for.")]
+    //    string sectionName)
+    //{
+    //    var documents = await _indexingProcessor.SearchWithHybridSearch(sectionName);
+    //    var outputStrings = await GenerateSectionOutputWithOpenAIAsync(documents);
+    //    return outputStrings;
+    //}
 
     [KernelFunction("GetBodyTextNodesOnly")]
     [Description(
-        "Gets the body text for each title or section, ignoring its sub sections. If no feasible body text is found, returns an empty list")]
+        "Writes the body text for a title or section, ignoring its sub sections. If no feasible body text is found, returns an empty list")]
     public async Task<List<ContentNode>> GetBodyTextContentNodesOnlyForTitle(
-        [Description("The Section or Title number - 1, 1.1, 1.1.1 etc")]
-        string sectionOrTitleNumber,
+
         [Description("The name of the section or title/heading")]
         string sectionOrTitleText,
         [Description("The Content Node Type we are dealing with - either Heading or Title")]
@@ -91,7 +91,9 @@ public class NRCDocumentsPlugin : IPluginImplementation
         [Description("A long string with an indented table of contents for the whole document to provide context")]
         string tableOfContentsString,
         [Description("The ID of a metadata record for inclusion into generation. Optional.")]
-        Guid? metadataId = null
+        Guid? metadataId = null,
+        [Description("The Section or Title number - 1, 1.1, 1.1.1 etc. Optional.")]
+        string sectionOrTitleNumber = ""
     )
     {
         var contentNodeType = ContentNodeType.Heading;

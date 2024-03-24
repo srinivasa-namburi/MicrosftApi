@@ -3,7 +3,6 @@ using Azure.AI.OpenAI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 using ProjectVico.V2.Plugins.Shared;
 using ProjectVico.V2.Shared.Configuration;
@@ -79,6 +78,17 @@ public class MultiPassLargeReceiveContextAiCompletionService : IAiCompletionServ
         {
             customDataString = documentMetaData.MetadataJson;
         }
+
+        string fullSectionName = "";
+
+        if (string.IsNullOrEmpty(sectionOrTitleNumber))
+        {
+            fullSectionName = sectionOrTitleText;
+        }
+        else
+        {
+            fullSectionName = $"{sectionOrTitleNumber} {sectionOrTitleText}";
+        }
         
         for (int i = 0; i < _numberOfPasses; i++)
         {
@@ -111,7 +121,7 @@ public class MultiPassLargeReceiveContextAiCompletionService : IAiCompletionServ
                          {customDataString}
                          [/CUSTOMDATA]
                          
-                         You are writing the section {sectionOrTitleNumber} - {sectionOrTitleText}. The section examples may contain input from 
+                         You are writing the section {fullSectionName}. The section examples may contain input from 
                          additional sub-sections in addition to the specific section you are writing.
                          
                          In between the [TOC] and [/TOC] tags below, you will find a table of contents for the entire document.
