@@ -91,7 +91,8 @@ var workerDocumentGeneration = builder
     .WithConfigSection(envConnectionStringsConfigurationSection)
     .WithReference(docGenSql)
     .WithReference(queueService)
-    .WithReference(apiMain);
+    .WithReference(apiMain)
+    ;
 
 var workerChat = builder.AddProject<Projects.ProjectVico_V2_Worker_Chat>("worker-chat")
     .WithConfigSection(envServiceConfigurationConfigurationSection)
