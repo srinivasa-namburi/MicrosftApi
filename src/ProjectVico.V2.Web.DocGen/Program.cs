@@ -49,8 +49,6 @@ builder.Services.AddHttpClient<IAuthorizationApiClient, AuthorizationApiClient>(
     httpClient.BaseAddress = new("https://api-main");
 });
 
-builder.Services.AddScoped<IUserContextHolder, UserContextHolder>();
-
 // Add services to the container.
 builder.Services.AddAuthentication("MicrosoftOidc")
     .AddOpenIdConnect("MicrosoftOidc", oidcOptions =>
@@ -114,13 +112,10 @@ builder.Services.AddAuthentication("MicrosoftOidc")
             OnTokenValidated = async context =>
             {
                 var authorizationClient = context.HttpContext.RequestServices.GetRequiredService<IAuthorizationApiClient>();
-                var userContextHolder = context.HttpContext.RequestServices.GetRequiredService<IUserContextHolder>();
-               
                 
-                if (!string.IsNullOrWhiteSpace(context.SecurityToken.EncodedPayload) && context.Principal.Identity is ClaimsIdentity identity && !identity.HasClaim(c => c.Type == "access_token"))
+                if (!string.IsNullOrWhiteSpace(context.SecurityToken.RawData) && context.Principal.Identity is ClaimsIdentity identity && !identity.HasClaim(c => c.Type == "access_token"))
                 {
-                    //identity.AddClaim(new Claim("access_token", context.SecurityToken.EncodedPayload));
-                    userContextHolder.Token = context.SecurityToken.EncodedPayload;
+                    identity.AddClaim(new Claim("access_token", context.SecurityToken.RawData));
                 }
 
                 var userInfo = UserInfo.FromClaimsPrincipal(context.Principal, context.SecurityToken);
@@ -160,22 +155,19 @@ builder.Services.AddMudServices();
 builder.Services.AddSignalR().AddAzureSignalR(options =>
 {
     options.ConnectionString = builder.Configuration.GetConnectionString("signalr");
-    //options.ClaimsProvider = context =>
-    //{
-    //    var user = context.User;
-    //    var claims = new[]
-    //    {
-    //        new Claim("name", user.Identity?.Name ?? "unknown"),
-    //        new Claim("preferred_username", user.FindFirstValue("preferred_username") ?? "unknown"),
-    //        new Claim("access_token", user.FindFirstValue("access_token") ?? "unknown"),
-    //        new Claim("sub", user.FindFirstValue("sub") ?? "unknown"),
-    //        new Claim("iss", user.FindFirstValue("iss") ?? "unknown"),
-    //        new Claim("aud", user.FindFirstValue("aud") ?? "unknown"),
-    //        new Claim("exp", user.FindFirstValue("exp") ?? "unknown")
-    //    };
+    options.ClaimsProvider = context =>
+    {
+        var user = context.User;
+        var claims = new[]
+        {
+            new Claim("name", user.Identity?.Name ?? "unknown"),
+            new Claim("preferred_username", user.FindFirstValue("preferred_username") ?? "unknown"),
+            new Claim("access_token", user.FindFirstValue("access_token") ?? "unknown"),
+            new Claim("sub", user.FindFirstValue("sub") ?? "unknown"),
+        };
 
-    //    return claims;
-    //};
+        return claims;
+    };
 });
 
 var app = builder.Build();

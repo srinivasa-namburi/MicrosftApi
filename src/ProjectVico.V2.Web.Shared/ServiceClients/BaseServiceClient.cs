@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.IdentityModel.Tokens.Jwt;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.Logging;
@@ -17,14 +18,14 @@ public abstract class BaseServiceClient<T> where T : IServiceClient
     private readonly ILogger<T> Logger;
     private readonly HttpClient HttpClient;
 
-    private readonly IUserContextHolder _userContextHolder;
+    private readonly AuthenticationStateProvider _authStateProvider;
     
     public string AccessToken => GetAccessTokenAsync().GetAwaiter().GetResult();
 
-    protected BaseServiceClient(HttpClient httpClient, ILogger<T> logger, IUserContextHolder userContextHolder)
+    protected BaseServiceClient(HttpClient httpClient, ILogger<T> logger, AuthenticationStateProvider authStateProvider)
     {
         Logger = logger;
-        _userContextHolder = userContextHolder;
+        _authStateProvider = authStateProvider;
         HttpClient = httpClient;
     }
 
@@ -72,7 +73,12 @@ public abstract class BaseServiceClient<T> where T : IServiceClient
 
     public async Task<string> GetAccessTokenAsync()
     {
-        var token = _userContextHolder.Token;
+        var authInfo = await _authStateProvider.GetAuthenticationStateAsync();
+        var userInfo = UserInfo.FromClaimsPrincipal(authInfo.User);
+
+        var jwtToken = new JwtSecurityToken(userInfo.Token);
+
+        var token = jwtToken.RawData;
         return token ?? throw new InvalidOperationException("No access_token was saved");
     }
 

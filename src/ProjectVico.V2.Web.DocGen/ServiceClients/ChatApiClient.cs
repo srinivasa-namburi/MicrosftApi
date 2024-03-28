@@ -1,13 +1,13 @@
 ﻿using System.Net;
+using Microsoft.AspNetCore.Components.Authorization;
 using ProjectVico.V2.Shared.Contracts.Chat;
-using ProjectVico.V2.Web.Shared.Auth;
 using ProjectVico.V2.Web.Shared.ServiceClients;
 
 namespace ProjectVico.V2.Web.DocGen.ServiceClients;
 
-public class ChatApiClient : BaseServiceClient<ChatApiClient>, IChatApiClient
+internal sealed class ChatApiClient : BaseServiceClient<ChatApiClient>, IChatApiClient
 {
-    public ChatApiClient(HttpClient httpClient, ILogger<ChatApiClient> logger, IUserContextHolder userContextHolder) : base(httpClient, logger, userContextHolder)
+    public ChatApiClient(HttpClient httpClient, ILogger<ChatApiClient> logger, AuthenticationStateProvider authStateProvider) : base(httpClient, logger, authStateProvider)
     {
     }
 
@@ -36,6 +36,4 @@ public class ChatApiClient : BaseServiceClient<ChatApiClient>, IChatApiClient
         return await response?.Content.ReadFromJsonAsync<List<ChatMessageDTO>>()! ??
                new List<ChatMessageDTO>();
     }
-
-
 }
