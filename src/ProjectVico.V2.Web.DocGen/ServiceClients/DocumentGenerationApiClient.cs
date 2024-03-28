@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using System.Text.Json;
+using Microsoft.AspNetCore.Components.Authorization;
 using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Shared.Models;
 using ProjectVico.V2.Web.Shared.ServiceClients;
@@ -8,8 +9,7 @@ namespace ProjectVico.V2.Web.DocGen.ServiceClients;
 
 internal sealed class DocumentGenerationApiClient : BaseServiceClient<DocumentGenerationApiClient>, IDocumentGenerationApiClient
 {
-    public DocumentGenerationApiClient(HttpClient httpClient, IHttpContextAccessor httpContextAccessor, ILogger<DocumentGenerationApiClient> logger) : base(
-        httpClient, httpContextAccessor, logger)
+    public DocumentGenerationApiClient(HttpClient httpClient, AuthenticationStateProvider asp, ILogger<DocumentGenerationApiClient> logger) : base(httpClient, asp, logger)
     {
     }
 

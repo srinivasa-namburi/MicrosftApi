@@ -38,8 +38,6 @@ builder.AddDocGenDbContext(serviceConfigurationOptions);
 
 builder.Services.AddAutoMapper(typeof(ChatMessageProfile));
 
-builder.Services.AddHttpContextAccessor();
-
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders =
@@ -76,8 +74,6 @@ else // Use RabbitMQ for local development
         x.SetKebabCaseEndpointNameFormatter();
         x.AddConsumers(typeof(Program).Assembly);
 
-        // This is to ensure RabbitMQ has enough time to start up before MassTransit tries to connect to it
-
         x.UsingRabbitMq((context, cfg) =>
         {
             cfg.Host(rabbitMqConnectionString);
@@ -86,8 +82,8 @@ else // Use RabbitMQ for local development
     });
 }
 
-builder.Services.AddSignalR();
-
+builder.Services.AddSignalR().AddNamedAzureSignalR("signalr");
+builder.Services.AddHttpContextAccessor();
 
 var app = builder.Build();
 

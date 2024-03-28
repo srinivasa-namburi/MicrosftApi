@@ -1,13 +1,12 @@
-﻿using ProjectVico.V2.Shared.Models;
+﻿using Microsoft.AspNetCore.Components.Authorization;
+using ProjectVico.V2.Shared.Models;
 using ProjectVico.V2.Web.Shared.ServiceClients;
 
 namespace ProjectVico.V2.Web.DocGen.ServiceClients;
 
 internal sealed class ContentNodeApiClient : BaseServiceClient<ContentNodeApiClient>, IContentNodeApiClient
 {
-    public ContentNodeApiClient(HttpClient httpClient, IHttpContextAccessor httpContextAccessor,
-        ILogger<ContentNodeApiClient> logger) : base(
-        httpClient, httpContextAccessor, logger)
+    public ContentNodeApiClient(HttpClient httpClient, AuthenticationStateProvider asp, ILogger<ContentNodeApiClient> logger) : base(httpClient, asp, logger)
     {
     }
 

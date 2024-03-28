@@ -14,16 +14,13 @@ public class DocumentsController : BaseController
 {
     
     private readonly IPublishEndpoint _publishEndpoint;
-    private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly DocGenerationDbContext _dbContext;
 
     public DocumentsController(
         IPublishEndpoint publishEndpoint,
-        IHttpContextAccessor httpContextAccessor,
         DocGenerationDbContext dbContext)
     {
         _publishEndpoint = publishEndpoint;
-        _httpContextAccessor = httpContextAccessor;
         _dbContext = dbContext;
     }
 
@@ -33,7 +30,7 @@ public class DocumentsController : BaseController
     [Consumes("application/json")]
     public async Task<IActionResult> GenerateDocument([FromBody]GenerateDocumentDTO generateDocumentDto)
     {
-        var claimsPrincipal = _httpContextAccessor.HttpContext.User;
+        var claimsPrincipal = HttpContext.User;
         generateDocumentDto.AuthorOid = claimsPrincipal.GetObjectId();
         
         await _publishEndpoint.Publish<GenerateDocumentDTO>(generateDocumentDto);
@@ -47,7 +44,7 @@ public class DocumentsController : BaseController
     [Consumes("application/json")]
     public async Task<IActionResult> IngestDocument([FromBody] DocumentIngestionRequest documentIngestionRequest)
     {
-        var claimsPrincipal = _httpContextAccessor.HttpContext.User;
+        var claimsPrincipal = HttpContext.User;
 
         if (documentIngestionRequest.Id == Guid.Empty)
         {

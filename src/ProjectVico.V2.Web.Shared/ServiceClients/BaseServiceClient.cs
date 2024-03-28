@@ -2,8 +2,10 @@
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using ProjectVico.V2.Web.Shared.Auth;
 
 namespace ProjectVico.V2.Web.Shared.ServiceClients;
 
@@ -17,19 +19,16 @@ public abstract class BaseServiceClient<T> where T : IServiceClient
 {
     protected readonly ILogger<T> Logger;
     protected readonly HttpClient HttpClient;
-    protected readonly IHttpContextAccessor HttpContextAccessor;
 
-    private HttpContext HttpContext => HttpContextAccessor.HttpContext ??
-                                       throw new InvalidOperationException("No HttpContext available from the IHttpContextAccessor!");
-
+    private readonly AuthenticationStateProvider _asp;
+    
     protected string AccessToken => GetAccessTokenAsync().GetAwaiter().GetResult();
-    protected BaseServiceClient(HttpClient httpClient, IHttpContextAccessor httpContextAccessor, ILogger<T> logger)
+
+    protected BaseServiceClient(HttpClient httpClient, AuthenticationStateProvider asp, ILogger<T> logger)
     {
         Logger = logger;
         HttpClient = httpClient;
-        HttpContextAccessor = httpContextAccessor;
-       
-       
+        _asp = asp;
     }
 
     protected async Task<HttpResponseMessage?> SendGetRequestMessage(string requestUri)
@@ -76,7 +75,10 @@ public abstract class BaseServiceClient<T> where T : IServiceClient
 
     public async Task<string> GetAccessTokenAsync()
     {
-        var accessToken = await HttpContext.GetTokenAsync("access_token");
+        var authenticationState = await _asp.GetAuthenticationStateAsync();
+        var userInfo = UserInfo.FromClaimsPrincipal(authenticationState.User);
+
+        var accessToken = userInfo.Token;
         return accessToken ?? throw new InvalidOperationException("No access_token was saved");
     }
 

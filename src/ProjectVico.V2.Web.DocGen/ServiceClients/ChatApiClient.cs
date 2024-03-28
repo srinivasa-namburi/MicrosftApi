@@ -1,8 +1,5 @@
 ﻿using System.Net;
-using System.Reflection.Metadata.Ecma335;
-using System.Text;
-using System.Text.Json;
-using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.Components.Authorization;
 using ProjectVico.V2.Shared.Contracts.Chat;
 using ProjectVico.V2.Web.Shared.ServiceClients;
 
@@ -10,7 +7,7 @@ namespace ProjectVico.V2.Web.DocGen.ServiceClients;
 
 public class ChatApiClient : BaseServiceClient<ChatApiClient>, IChatApiClient
 {
-    public ChatApiClient(HttpClient httpClient, IHttpContextAccessor httpContextAccessor, ILogger<ChatApiClient> logger) : base(httpClient, httpContextAccessor, logger)
+    public ChatApiClient(HttpClient httpClient, AuthenticationStateProvider asp, ILogger<ChatApiClient> logger) : base(httpClient, asp, logger)
     {
     }
 

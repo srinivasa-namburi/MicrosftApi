@@ -1,13 +1,12 @@
-﻿using ProjectVico.V2.Shared.Contracts.DTO;
+﻿using Microsoft.AspNetCore.Components.Authorization;
+using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Web.Shared.ServiceClients;
 
 namespace ProjectVico.V2.Web.DocGen.ServiceClients;
 
 internal sealed class DocumentIngestionApiClient : BaseServiceClient<DocumentIngestionApiClient>, IDocumentIngestionApiClient
 {
-    public DocumentIngestionApiClient(HttpClient httpClient, IHttpContextAccessor httpContextAccessor,
-        ILogger<DocumentIngestionApiClient> logger) : base(
-        httpClient, httpContextAccessor, logger)
+    public DocumentIngestionApiClient(HttpClient httpClient, AuthenticationStateProvider asp, ILogger<DocumentIngestionApiClient> logger) : base(httpClient, asp, logger)
     {
     }
 

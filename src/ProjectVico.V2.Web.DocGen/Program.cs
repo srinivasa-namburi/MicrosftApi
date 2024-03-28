@@ -1,4 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
@@ -27,10 +28,6 @@ var azureAdSettings = azureAdSection.Get<AzureAdOptions>();
 var serviceConfigurationSection = builder.Configuration.GetSection("ServiceConfiguration");
 builder.Services.Configure<ServiceConfigurationOptions>(serviceConfigurationSection);
 
-builder.Services.AddHttpClient<IWeatherForecaster, ServerWeatherForecaster>(httpClient =>
-{
-    httpClient.BaseAddress = new("https://api-main");
-});
 builder.Services.AddHttpClient<IDocumentGenerationApiClient, DocumentGenerationApiClient>(httpClient =>
 {
     httpClient.BaseAddress = new("https://api-main");
@@ -115,7 +112,14 @@ builder.Services.AddAuthentication("MicrosoftOidc")
             OnTokenValidated = async context =>
             {
                 var authorizationClient = context.HttpContext.RequestServices.GetRequiredService<IAuthorizationApiClient>();
-                var userInfo = UserInfo.FromClaimsPrincipal(context.Principal);
+               
+                
+                if (!string.IsNullOrWhiteSpace(context.SecurityToken.EncodedPayload) && context.Principal.Identity is ClaimsIdentity identity && !identity.HasClaim(c => c.Type == "access_token"))
+                {
+                    identity.AddClaim(new Claim("access_token", context.SecurityToken.EncodedPayload));
+                }
+
+                var userInfo = UserInfo.FromClaimsPrincipal(context.Principal, context.SecurityToken);
                 
                 var user = new UserInfoDTO(userInfo.UserId, userInfo.Name)
                 {
@@ -135,7 +139,7 @@ builder.Services.AddAuthorization();
 builder.Services.AddScoped<AuthenticationStateProvider, PersistingAuthenticationStateProvider>();
 
 builder.Services.AddHttpForwarderWithServiceDiscovery();
-builder.Services.AddHttpContextAccessor();
+
 
 builder.AddAzureBlobService("blob-docing");
 builder.Services.AddScoped<AzureFileHelper>();
@@ -149,9 +153,26 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddMudServices();
 
+builder.Services.AddSignalR().AddAzureSignalR(options =>
+{
+    options.ConnectionString = builder.Configuration.GetConnectionString("signalr");
+    options.ClaimsProvider = context =>
+    {
+        var user = context.User;
+        var claims = new[]
+        {
+            new Claim("name", user.Identity?.Name ?? "unknown"),
+            new Claim("preferred_username", user.FindFirstValue("preferred_username") ?? "unknown"),
+            new Claim("access_token", user.FindFirstValue("access_token") ?? "unknown"),
+            new Claim("sub", user.FindFirstValue("sub") ?? "unknown"),
+            new Claim("iss", user.FindFirstValue("iss") ?? "unknown"),
+            new Claim("aud", user.FindFirstValue("aud") ?? "unknown"),
+            new Claim("exp", user.FindFirstValue("exp") ?? "unknown")
+        };
 
-
-builder.Services.AddSignalR();
+        return claims;
+    };
+});
 
 var app = builder.Build();
 

@@ -103,11 +103,6 @@ else
 
 @code
 {
-    protected override async Task OnParametersSetAsync()
-    {
-
-    }
-
     protected override async Task OnInitializedAsync()
     {
         if (!ConversationId.HasValue && InternalConversationIdCreate)
@@ -135,8 +130,12 @@ else
 
     private async Task StartHubConnections(string token)
     {
+        var azureSignalRConnectionString = Configuration.GetConnectionString("signalr");
+        var azureSignalREndpoint = azureSignalRConnectionString!.Split(';').FirstOrDefault(x => x.StartsWith("Endpoint="))?.Split('=')[1];
+        
         //TODO: This is a hack because SignalR can't use Service Discovery yet
-        apiSignalRAddressBase = Configuration.GetValue<string>("services:api-main:0")!;
+        apiSignalRAddressBase = azureSignalREndpoint!.TrimEnd('/');
+
         hubConnection = new HubConnectionBuilder()
             .WithUrl(Navigation.ToAbsoluteUri($"{apiSignalRAddressBase}/hubs/notification-hub"), options =>
             {

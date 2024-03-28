@@ -9,17 +9,11 @@ namespace ProjectVico.V2.API.Main.Controllers;
 [Route("/api/content-nodes")]
 public class ContentNodeController : BaseController
 {
-    private readonly IPublishEndpoint _publishEndpoint;
-    private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly DocGenerationDbContext _dbContext;
 
     public ContentNodeController(
-        IPublishEndpoint publishEndpoint,
-        IHttpContextAccessor httpContextAccessor,
         DocGenerationDbContext dbContext)
     {
-        _publishEndpoint = publishEndpoint;
-        _httpContextAccessor = httpContextAccessor;
         _dbContext = dbContext;
     }
 

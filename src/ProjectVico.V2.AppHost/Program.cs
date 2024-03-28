@@ -34,9 +34,11 @@ IResourceBuilder<RabbitMQServerResource> docGenRabbitMq;
 IResourceBuilder<AzureServiceBusResource>? sbus;
 IResourceBuilder<IResourceWithConnectionString> queueService;
 
-var docIngBlobs = builder
-    .AddAzureStorage("docing")
-    .AddBlobs("blob-docing");
+
+
+var signalr = builder.ExecutionContext.IsPublishMode
+    ? builder.AddAzureSignalR("signalr")
+    : builder.AddConnectionString("signalr");
 
 if (builder.ExecutionContext.IsRunMode) // For local development
 {
@@ -79,6 +81,7 @@ var apiMain = builder
     .WithConfigSection(envAzureAdConfigurationSection)
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithReference(signalr)
     .WithReference(docGenSql)
     .WithReference(queueService);
 
@@ -132,6 +135,7 @@ var docGenFrontend = builder
     .WithConfigSection(envAzureAdConfigurationSection)
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithReference(signalr)
     .WithReference(apiMain);
 
 builder.Build().Run();

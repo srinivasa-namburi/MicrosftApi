@@ -1,4 +1,5 @@
 ﻿using System.Net;
+using Microsoft.AspNetCore.Components.Authorization;
 using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Web.Shared.ServiceClients;
 
@@ -6,7 +7,7 @@ namespace ProjectVico.V2.Web.DocGen.ServiceClients;
 
 public class AuthorizationApiClient : BaseServiceClient<AuthorizationApiClient>, IAuthorizationApiClient
 {
-    public AuthorizationApiClient(HttpClient httpClient, IHttpContextAccessor httpContextAccessor, ILogger<AuthorizationApiClient> logger) : base(httpClient, httpContextAccessor, logger)
+    public AuthorizationApiClient(HttpClient httpClient, AuthenticationStateProvider asp, ILogger<AuthorizationApiClient> logger) : base(httpClient, asp, logger)
     {
     }
 
