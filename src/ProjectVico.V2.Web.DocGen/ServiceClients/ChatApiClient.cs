@@ -1,13 +1,13 @@
 ﻿using System.Net;
-using Microsoft.AspNetCore.Components.Authorization;
 using ProjectVico.V2.Shared.Contracts.Chat;
+using ProjectVico.V2.Web.Shared.Auth;
 using ProjectVico.V2.Web.Shared.ServiceClients;
 
 namespace ProjectVico.V2.Web.DocGen.ServiceClients;
 
 public class ChatApiClient : BaseServiceClient<ChatApiClient>, IChatApiClient
 {
-    public ChatApiClient(HttpClient httpClient, AuthenticationStateProvider asp, ILogger<ChatApiClient> logger) : base(httpClient, asp, logger)
+    public ChatApiClient(HttpClient httpClient, ILogger<ChatApiClient> logger, IUserContextHolder userContextHolder) : base(httpClient, logger, userContextHolder)
     {
     }
 
@@ -23,7 +23,7 @@ public class ChatApiClient : BaseServiceClient<ChatApiClient>, IChatApiClient
     {
         var conversationIdString = conversationId.ToString();
         var response = await SendGetRequestMessage($"/api/chat/{conversationIdString}");
-        
+
         // If we get a 404, it means that the conversation does not exist - return an empty list
         if (response?.StatusCode == HttpStatusCode.NotFound)
         {
@@ -36,4 +36,6 @@ public class ChatApiClient : BaseServiceClient<ChatApiClient>, IChatApiClient
         return await response?.Content.ReadFromJsonAsync<List<ChatMessageDTO>>()! ??
                new List<ChatMessageDTO>();
     }
+
+
 }

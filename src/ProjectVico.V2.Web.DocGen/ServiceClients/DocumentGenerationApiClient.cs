@@ -1,21 +1,21 @@
 ﻿using System.Net;
 using System.Text.Json;
-using Microsoft.AspNetCore.Components.Authorization;
 using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Shared.Models;
+using ProjectVico.V2.Web.Shared.Auth;
 using ProjectVico.V2.Web.Shared.ServiceClients;
 
 namespace ProjectVico.V2.Web.DocGen.ServiceClients;
 
 internal sealed class DocumentGenerationApiClient : BaseServiceClient<DocumentGenerationApiClient>, IDocumentGenerationApiClient
 {
-    public DocumentGenerationApiClient(HttpClient httpClient, AuthenticationStateProvider asp, ILogger<DocumentGenerationApiClient> logger) : base(httpClient, asp, logger)
+    public DocumentGenerationApiClient(HttpClient httpClient, ILogger<DocumentGenerationApiClient> logger, IUserContextHolder userContextHolder) : base(httpClient, logger, userContextHolder)
     {
     }
+    
 
     public async Task<string?> GenerateDocumentAsync(DocumentGenerationRequest? documentGenerationRequest)
     {
-
         if (documentGenerationRequest == null)
         {
             throw new ArgumentNullException(nameof(documentGenerationRequest));
@@ -61,4 +61,6 @@ internal sealed class DocumentGenerationApiClient : BaseServiceClient<DocumentGe
         return await response?.Content.ReadFromJsonAsync<List<GeneratedDocumentListItem>>()! ??
                throw new IOException("No documents!");
     }
+
+
 }
