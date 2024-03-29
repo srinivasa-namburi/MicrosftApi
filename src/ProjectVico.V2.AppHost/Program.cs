@@ -15,7 +15,6 @@ var envServiceConfigurationConfigurationSection = builder.Configuration.GetSecti
 var envAzureAdConfigurationSection = builder.Configuration.GetSection("AzureAd");
 var envConnectionStringsConfigurationSection = builder.Configuration.GetSection("ConnectionStrings");
 
-// This is true if the AppHost is being invoked as a publisher (creating deployment manifest)
 // Used to determine service configuration.
 var durableDevelopment = Convert.ToBoolean(builder.Configuration["ServiceConfiguration:ProjectVicoServices:DocumentGeneration:DurableDevelopmentServices"]);
 
@@ -33,8 +32,7 @@ IResourceBuilder<SqlServerDatabaseResource> docGenSql;
 IResourceBuilder<RabbitMQServerResource> docGenRabbitMq;
 IResourceBuilder<AzureServiceBusResource>? sbus;
 IResourceBuilder<IResourceWithConnectionString> queueService;
-
-
+IResourceBuilder<AzureAppConfigurationResource> appConfigurationService;
 
 var signalr = builder.ExecutionContext.IsPublishMode
     ? builder.AddAzureSignalR("signalr")
@@ -48,7 +46,6 @@ if (builder.ExecutionContext.IsRunMode) // For local development
             .AddSqlServer("sqldocgen", password: sqlPassword, port: 9001)
             .WithVolumeMount("pvico-sql-docgen-vol", "/var/opt/mssql")
             .AddDatabase(sqlDatabaseName);
-
     }
     else // Don't persist data and queue content - it will be deleted on restart!
     {
@@ -59,7 +56,6 @@ if (builder.ExecutionContext.IsRunMode) // For local development
 
     docGenRabbitMq = builder
            .AddRabbitMQ("rabbitmqdocgen", 9002)
-           //.WithAnnotation(new ContainerImageAnnotation() { Image = "rabbitmq", Tag = "3-management" })
            .WithEnvironment("NODENAME", "rabbit@localhost");
 
     queueService = docGenRabbitMq;
@@ -84,7 +80,6 @@ var apiMain = builder
     .WithReference(signalr)
     .WithReference(docGenSql)
     .WithReference(queueService);
-
 
 var workerDocumentGeneration = builder
     .AddProject<Projects.ProjectVico_V2_Worker_DocumentGeneration>("worker-documentgeneration")
