@@ -5,13 +5,22 @@
 
 <AuthorizeView>
     <Authorized>
-        <form method="post" action="authentication/logout">
-            <AntiforgeryToken />
-            <input type="hidden" name="ReturnUrl" value="@currentUrl"/>
-            <button type="submit" class="mud-button mud-ripple mud-ripple-icon" style="color:inherit; background-color:transparent; border:none;">
-                <MudIcon Icon="@Icons.Material.Filled.ExitToApp"/> Logout @context.User.Identity?.Name
-            </button>
-        </form>
+        @if (!string.IsNullOrEmpty(@context.User.Identity?.Name))
+        {
+            <form method="post" action="authentication/logout">
+                <AntiforgeryToken/>
+                <input type="hidden" name="ReturnUrl" value="@currentUrl"/>
+                <button type="submit" class="mud-button mud-ripple mud-ripple-icon" style="color:inherit; background-color:transparent; border:none;">
+                    <MudIcon Icon="@Icons.Material.Filled.ExitToApp"/> Logout @context.User.Identity?.Name
+                </button>
+            </form>
+        }
+        else
+        {
+            <MudNavLink Href="authentication/login" Icon="@Icons.Material.Filled.Login" Variant="Variant.Text">
+                Login
+            </MudNavLink>
+        }
     </Authorized>
     <NotAuthorized>
         <MudNavLink Href="authentication/login" Icon="@Icons.Material.Filled.Login" Variant="Variant.Text">
