@@ -1,13 +1,13 @@
 ﻿using Microsoft.SemanticKernel.Planning.Handlebars;
 using ProjectVico.V2.DocumentProcess.Shared.Generation;
 using ProjectVico.V2.Shared.Models;
-using ProjectVico.V2.Shared.Models.Enums;
 using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Data.Sql;
+using ProjectVico.V2.Shared.Enums;
 
 namespace ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Generation;
 

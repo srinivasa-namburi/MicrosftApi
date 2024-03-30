@@ -8,8 +8,8 @@ using ProjectVico.V2.Shared.Contracts.Chat;
 using ProjectVico.V2.Shared.Contracts.Messages.Chat.Commands;
 using ProjectVico.V2.Shared.Contracts.Messages.Chat.Events;
 using ProjectVico.V2.Shared.Data.Sql;
+using ProjectVico.V2.Shared.Enums;
 using ProjectVico.V2.Shared.Models;
-using ProjectVico.V2.Shared.Models.Enums;
 
 namespace ProjectVico.V2.Worker.Chat.Consumers;
 
@@ -70,7 +70,8 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
             Source = ChatMessageSource.Assistant,
             CreatedAt = DateTime.UtcNow,
             ReplyToId = userMessageDto.Id,
-            Id = Guid.NewGuid()
+            Id = Guid.NewGuid(),
+            State = ChatMessageCreationState.InProgress
         };
 
         var conversation = await _dbContext.ChatConversations
@@ -127,6 +128,7 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
                 if (!responseDateSet)
                 {
                     assistantMessageDto.CreatedAt = DateTime.UtcNow;
+                    assistantMessageDto.State = ChatMessageCreationState.InProgress;
                     responseDateSet = true;
                 }
                 assistantMessageDto.Message += updateBlock;
@@ -139,8 +141,12 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
         if (updateBlock.Length > 0)
         {
             assistantMessageDto.Message += updateBlock;
-            await context.Publish<ChatMessageResponseReceived>(new ChatMessageResponseReceived(userMessageDto.ConversationId, assistantMessageDto, updateBlock));
         }
+
+        // Set the message state to complete
+        assistantMessageDto.State = ChatMessageCreationState.Complete;
+
+        await context.Publish<ChatMessageResponseReceived>(new ChatMessageResponseReceived(userMessageDto.ConversationId, assistantMessageDto, updateBlock));
 
         // Save Response Message to database
         await StoreChatMessage(assistantMessageDto);

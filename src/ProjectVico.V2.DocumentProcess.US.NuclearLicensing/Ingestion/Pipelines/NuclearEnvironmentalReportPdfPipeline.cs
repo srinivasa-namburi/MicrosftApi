@@ -8,10 +8,10 @@ using Microsoft.Extensions.Logging;
 using ProjectVico.V2.DocumentProcess.Shared.Ingestion.Pipelines;
 using ProjectVico.V2.Shared;
 using ProjectVico.V2.Shared.Configuration;
+using ProjectVico.V2.Shared.Enums;
 using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Shared.Interfaces;
 using ProjectVico.V2.Shared.Models;
-using ProjectVico.V2.Shared.Models.Enums;
 using ProjectVico.V2.Shared.Responses;
 
 namespace ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Ingestion.Pipelines;

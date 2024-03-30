@@ -9,10 +9,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 using ProjectVico.V2.Shared.Configuration;
+using ProjectVico.V2.Shared.Enums;
 using ProjectVico.V2.Shared.Extensions;
 using ProjectVico.V2.Shared.Interfaces;
 using ProjectVico.V2.Shared.Models;
-using ProjectVico.V2.Shared.Models.Enums;
 
 namespace ProjectVico.V2.Shared.Services.Search;
 

@@ -1,6 +1,6 @@
 ﻿using Azure.Storage.Blobs;
 using Azure.Storage.Sas;
-using ProjectVico.V2.Shared.Models.Enums;
+using ProjectVico.V2.Shared.Enums;
 
 namespace ProjectVico.V2.Shared.Helpers;
 

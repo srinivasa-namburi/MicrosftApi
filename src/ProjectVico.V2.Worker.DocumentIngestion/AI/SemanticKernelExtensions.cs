@@ -52,7 +52,7 @@ public static class SemanticKernelExtensions
             
             kernelBuilder.Services.AddAzureOpenAIChatCompletion(serviceConfigurationOptions.OpenAi.PlannerModelDeploymentName, openAiPlanner, "openai-chatcompletion");
             kernelBuilder.Services.AddAzureOpenAITextGeneration(serviceConfigurationOptions.OpenAi.DocGenModelDeploymentName, openAiPlanner, "openai-textgeneration");
-            kernelBuilder.Services.AddAzureOpenAITextEmbeddingGeneration("text-embedding-ada002", openAiPlanner, "openai-embeddinggeneration");
+            kernelBuilder.Services.AddAzureOpenAITextEmbeddingGeneration(serviceConfigurationOptions.OpenAi.EmbeddingModelDeploymentName, openAiPlanner, "openai-embeddinggeneration");
             
             var k = kernelBuilder.Build();
            

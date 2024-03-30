@@ -3,8 +3,8 @@ using Microsoft.Extensions.Options;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentIngestion.Commands;
 using ProjectVico.V2.Shared.Data.Sql;
+using ProjectVico.V2.Shared.Enums;
 using ProjectVico.V2.Shared.Interfaces;
-using ProjectVico.V2.Shared.Models.Enums;
 
 namespace ProjectVico.V2.Worker.DocumentIngestion.Consumers;
 

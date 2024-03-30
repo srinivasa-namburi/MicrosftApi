@@ -1,6 +1,6 @@
 ﻿using System.Text.RegularExpressions;
+using ProjectVico.V2.Shared.Enums;
 using ProjectVico.V2.Shared.Models;
-using ProjectVico.V2.Shared.Models.Enums;
 
 namespace ProjectVico.V2.Shared.Helpers;
 

@@ -1,20 +1,18 @@
-﻿@using Microsoft.AspNetCore.SignalR.Client
-@using ProjectVico.V2.Shared.Contracts.Chat
-@using ProjectVico.V2.Shared.Contracts.DTO
-@using ProjectVico.V2.Shared.Contracts.Messages.Chat.Commands
-@using ProjectVico.V2.Shared.Contracts.Messages.Chat.Events
-@using ProjectVico.V2.Shared.Models.Enums
-@using ProjectVico.V2.Web.Shared.Auth
-@using ProjectVico.V2.Web.Shared.ServiceClients
-@using Color = MudBlazor.Color
-
-@inject IConfiguration Configuration
+﻿@inject IConfiguration Configuration
 @inject IChatApiClient ChatApiClient
 @inject IAuthorizationApiClient AuthorizationApiClient
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 
+@using Microsoft.AspNetCore.SignalR.Client
+@using ProjectVico.V2.Shared.Contracts.Chat
+@using ProjectVico.V2.Shared.Contracts.DTO
+@using ProjectVico.V2.Shared.Contracts.Messages.Chat.Commands
+@using ProjectVico.V2.Shared.Contracts.Messages.Chat.Events
+@using ProjectVico.V2.Shared.Enums
+@using ProjectVico.V2.Web.Shared.Auth
+@using ProjectVico.V2.Web.Shared.ServiceClients
 @implements IDisposable
 
 @code {
@@ -55,26 +53,7 @@
                     @foreach (var chatMessage in ChatMessages.OrderBy(x => x.CreatedAt))
                     {
                         <MudListItem>
-                            @if (chatMessage.Source == ChatMessageSource.User)
-                            {
-                                var align = chatMessage.UserId == CurrentUser?.ProviderSubjectId ? Align.Right : Align.Left;
-
-                                <MudText Typo="Typo.body2" Class="my-0" Align="@align" Color="@Color.Info">@chatMessage.CreatedAt.ToString("MM/dd/yyyy HH:mm:ss")</MudText>
-                                if (!string.IsNullOrEmpty(chatMessage.UserFullName))
-                                {
-                                    <MudText Typo="Typo.body2" Class="my-0" Align="@align" Color="@Color.Info">@chatMessage.UserFullName</MudText>
-                                }
-
-                                <MudText Typo="Typo.body1" Class="my-0 mb-n1" Align="@align">@chatMessage.Message</MudText>
-                            }
-                            else
-                            {
-                                <MudText Typo="Typo.body2" Class="my-0" Align="Align.Left" Color="@Color.Info">@chatMessage.CreatedAt.ToString("MM/dd/yyyy HH:mm:ss")</MudText>
-                                <MudText Typo="Typo.body2" Class="my-0" Align="Align.Left" Color="@Color.Info">Nuclear CoPilot</MudText>
-                                <MudText Typo="Typo.body1" Class="my-0 mb-n1" Align="Align.Left">
-                                    <RenderMultilineText Value="@chatMessage.Message"/>
-                                </MudText>
-                            }
+                            <ChatMessageDisplay ChatMessage="@chatMessage" CurrentUser="CurrentUser"/>
                         </MudListItem>
                     }
                 </MudList>
@@ -173,6 +152,7 @@ else
         var existingMessage = ChatMessages.FirstOrDefault(x => x.Id == obj.ChatMessageDto.Id);
         if (existingMessage != null)
         {
+            existingMessage.State = obj.ChatMessageDto.State;
             // In case we received messages out of order, only update the message if this message has longer content
             if (existingMessage.Message.Length < obj.ChatMessageDto.Message.Length)
             {

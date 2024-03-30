@@ -6,8 +6,8 @@ using ProjectVico.V2.Shared.Contracts.Messages.DocumentIngestion.Events;
 using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Shared.Models;
-using ProjectVico.V2.Shared.Models.Enums;
 using ProjectVico.V2.Shared.Extensions;
+using ProjectVico.V2.Shared.Enums;
 
 namespace ProjectVico.V2.Worker.DocumentIngestion.Consumers.DocumentIngestionSaga;
 

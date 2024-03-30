@@ -1,6 +1,4 @@
 ﻿using MassTransit;
-using ProjectVico.V2.Shared.Models.Classification;
-using ProjectVico.V2.Shared.Models.Enums;
 
 namespace ProjectVico.V2.Shared.Contracts.Messages.DocumentIngestion.Commands;
 

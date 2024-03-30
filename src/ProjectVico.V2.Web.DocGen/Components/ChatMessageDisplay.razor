@@ -1,0 +1,58 @@
+﻿@using ProjectVico.V2.Shared.Contracts.Chat
+@using ProjectVico.V2.Shared.Contracts.DTO
+@using ProjectVico.V2.Shared.Enums
+
+@code {
+    [Parameter] public ChatMessageDTO ChatMessage { get; set; }
+    [Parameter] public UserInfoDTO CurrentUser { get; set; }
+}
+
+
+@{
+    // Align the chat message based on the source of the message
+    // If the message is from the current user, align it to the right
+    // Otherwise, align it to the left
+
+    var align = ChatMessage.Source == ChatMessageSource.User
+        ? (ChatMessage.UserId == CurrentUser?.ProviderSubjectId ? Align.Right : Align.Left)
+        : Align.Left;
+
+    // Apply a style based on alignment
+    var cardAlignmentStyle = align == Align.Right ?
+        "margin-left: auto; width: fit-content; max-width:75%;" :
+        "margin-right: auto; width: fit-content; max-width:75%;";
+
+    if (ChatMessage.Source == ChatMessageSource.Assistant)
+    {
+        ChatMessage.UserFullName = "Nuclear Copilot";
+    }
+}
+
+<MudCard Elevation="2" Style="@cardAlignmentStyle">
+    <MudCardHeader>
+        <CardHeaderAvatar>
+            <MudAvatar Size="Size.Small" Color="@Color.Info">
+                @ChatMessage.UserFullName[..1]
+            </MudAvatar>
+        </CardHeaderAvatar>
+        <CardHeaderContent>
+            <MudText Typo="Typo.body2" Class="my-0" Align="@align" Color="@Color.Info">
+                @ChatMessage.UserFullName
+            </MudText>
+            <MudText Typo="Typo.body2" Class="my-0" Align="@align" Color="@Color.Info">
+                @ChatMessage.CreatedAt.ToString("MM/dd/yyyy HH:mm:ss")
+            </MudText>
+        </CardHeaderContent>
+    </MudCardHeader>
+    <MudCardContent>
+        <MudText Typo="Typo.body1" Class="my-0 mb-n1" Align="@align">
+            <RenderMultilineText Value="@ChatMessage.Message" />
+        </MudText>
+    </MudCardContent>
+    @if (ChatMessage is { Source: ChatMessageSource.Assistant, State: ChatMessageCreationState.InProgress })
+    {
+        <MudCardActions>
+            <MudProgressCircular Indeterminate="true" Size="Size.Small" />
+        </MudCardActions>
+    }
+</MudCard>

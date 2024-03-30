@@ -7,9 +7,9 @@ using Microsoft.SemanticKernel.Connectors.OpenAI;
 using ProjectVico.V2.Plugins.Shared;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Data.Sql;
+using ProjectVico.V2.Shared.Enums;
 using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Shared.Models;
-using ProjectVico.V2.Shared.Models.Enums;
 
 namespace ProjectVico.V2.Plugins.Default.NuclearDocs.Services.AiCompletionService;
 

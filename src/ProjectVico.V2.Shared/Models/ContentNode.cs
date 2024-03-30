@@ -1,5 +1,5 @@
 ﻿using System.Text.Json.Serialization;
-using ProjectVico.V2.Shared.Models.Enums;
+using ProjectVico.V2.Shared.Enums;
 
 namespace ProjectVico.V2.Shared.Models;
 

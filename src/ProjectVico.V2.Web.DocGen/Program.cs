@@ -133,7 +133,7 @@ builder.Services.AddAuthentication("MicrosoftOidc")
 
 // This attaches a cookie OnValidatePrincipal callback to get a new access token when the current one expires, and
 // reissue a cookie with the new access token saved inside. If the refresh fails, the user will be signed out.
-builder.Services.ConfigureCookieOidcRefresh("Cookies", "MicrosoftOidc");
+builder.Services.ConfigureOidcRefreshHandling("Cookies", "MicrosoftOidc");
 builder.Services.AddAuthorization();
 builder.Services.AddScoped<AuthenticationStateProvider, PersistingAuthenticationStateProvider>();
 

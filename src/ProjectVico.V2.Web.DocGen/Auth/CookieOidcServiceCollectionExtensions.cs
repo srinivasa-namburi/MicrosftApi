@@ -5,7 +5,7 @@ namespace ProjectVico.V2.Web.DocGen.Auth;
 
 internal static class CookieOidcServiceCollectionExtensions
 {
-    public static IServiceCollection ConfigureCookieOidcRefresh(this IServiceCollection services, string cookieScheme,
+    public static IServiceCollection ConfigureOidcRefreshHandling(this IServiceCollection services, string cookieScheme,
         string oidcScheme)
     {
         services.AddSingleton<OidcRefreshHandler>();

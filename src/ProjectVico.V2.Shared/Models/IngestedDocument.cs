@@ -1,5 +1,5 @@
-﻿using ProjectVico.V2.Shared.Models.Classification;
-using ProjectVico.V2.Shared.Models.Enums;
+﻿using ProjectVico.V2.Shared.Enums;
+using ProjectVico.V2.Shared.Models.Classification;
 
 namespace ProjectVico.V2.Shared.Models;
 

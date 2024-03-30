@@ -1,6 +1,5 @@
 ﻿using System.Collections.Concurrent;
 using System.ComponentModel;
-using System.ComponentModel.DataAnnotations;
 using System.Text;
 using Azure.AI.OpenAI;
 using Microsoft.Extensions.DependencyInjection;
@@ -9,10 +8,10 @@ using Microsoft.SemanticKernel;
 using ProjectVico.V2.Plugins.Default.NuclearDocs.Services.AiCompletionService;
 using ProjectVico.V2.Plugins.Shared;
 using ProjectVico.V2.Shared.Configuration;
+using ProjectVico.V2.Shared.Enums;
 using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Shared.Interfaces;
 using ProjectVico.V2.Shared.Models;
-using ProjectVico.V2.Shared.Models.Enums;
 
 namespace ProjectVico.V2.Plugins.Default.NuclearDocs;
 

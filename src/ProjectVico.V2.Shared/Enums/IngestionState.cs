@@ -1,4 +1,4 @@
-﻿namespace ProjectVico.V2.Shared.Models.Enums;
+﻿namespace ProjectVico.V2.Shared.Enums;
 
 public enum IngestionState
 {

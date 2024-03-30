@@ -1,8 +1,8 @@
 ﻿using BAMCIS.GeoJSON;
 using NLipsum.Core;
 using ProjectVico.V2.DocumentProcess.Shared.Generation;
+using ProjectVico.V2.Shared.Enums;
 using ProjectVico.V2.Shared.Models;
-using ProjectVico.V2.Shared.Models.Enums;
 
 namespace ProjectVico.V2.Worker.DocumentGeneration.Services;
 

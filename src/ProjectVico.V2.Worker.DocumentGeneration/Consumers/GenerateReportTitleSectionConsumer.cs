@@ -7,8 +7,8 @@ using ProjectVico.V2.DocumentProcess.Shared.Generation;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentGeneration.Commands;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentGeneration.Events;
 using ProjectVico.V2.Shared.Data.Sql;
+using ProjectVico.V2.Shared.Enums;
 using ProjectVico.V2.Shared.Models;
-using ProjectVico.V2.Shared.Models.Enums;
 
 namespace ProjectVico.V2.Worker.DocumentGeneration.Consumers;
 

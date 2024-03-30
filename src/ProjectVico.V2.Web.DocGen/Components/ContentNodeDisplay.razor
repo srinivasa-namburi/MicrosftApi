@@ -1,5 +1,5 @@
-﻿@using ProjectVico.V2.Shared.Models
-@using ProjectVico.V2.Shared.Models.Enums
+﻿@using ProjectVico.V2.Shared.Enums
+@using ProjectVico.V2.Shared.Models
 
 @code {
     [Parameter] public ContentNode? Node { get; set; }
@@ -22,7 +22,6 @@
     if (Node.Type == ContentNodeType.Title || Node.Type == ContentNodeType.Heading)
     {
         <MudExpansionPanels>
-            @* <MudExpansionPanel Text="@Node.Text" Class="@GetPanelClass(Node.Type)"> *@
             <MudExpansionPanel Class="@GetPanelClass(Node.Type)">
                 <TitleContent>
                     <MudGrid>
@@ -33,7 +32,6 @@
                             }
                             else if (Node.GenerationState == ContentNodeGenerationState.InProgress)
                             {
-                                @*  <MudIcon Icon="Icons.TwotoneError" Color="Color.Error" Size="Size.Medium"/> *@
                                 <MudProgressCircular Indeterminate="true" Size="Size.Small" Color="Color.Info" />
                             }
                             else if (Node.GenerationState == ContentNodeGenerationState.Completed)
@@ -42,13 +40,10 @@
                             }
                         </MudItem>
                         <MudItem xs="11">
-                            @*  <MudPaper Class="d-flex align-center justify-center mud-width-full py-8">xs=6</MudPaper> *@
                             @Node.Text
                         </MudItem>
-
                     </MudGrid>
                 </TitleContent>
-
                 <ChildContent>
                     @if (Node.Children != null && Node.Children.Any() && Recursive)
                     {
@@ -58,7 +53,6 @@
                         }
                     }
                 </ChildContent>
-
             </MudExpansionPanel>
         </MudExpansionPanels>
     }
@@ -66,7 +60,6 @@
     else if (Node.Type == ContentNodeType.BodyText)
     {
         <MudText Class="@GetPanelClass(Node.Type)" Style="padding-left: 20px;">
-            @* @Node.Text *@
             <RenderMultilineText Value="@Node.Text" />
         </MudText>
     }

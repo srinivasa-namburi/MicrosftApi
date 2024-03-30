@@ -1,12 +1,10 @@
-﻿using System.Reflection.Metadata.Ecma335;
-using Azure;
+﻿using Azure;
 using Azure.Storage.Blobs;
 using MassTransit;
 using Microsoft.Extensions.Options;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentIngestion.Commands;
-using ProjectVico.V2.Shared.Models.Enums;
 
 namespace ProjectVico.V2.Worker.DocumentIngestion.Consumers;
 

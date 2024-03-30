@@ -1,5 +1,5 @@
-﻿using ProjectVico.V2.Shared.Models;
-using ProjectVico.V2.Shared.Models.Enums;
+﻿using ProjectVico.V2.Shared.Enums;
+using ProjectVico.V2.Shared.Models;
 
 namespace ProjectVico.V2.Plugins.Default.NuclearDocs.Services.AiCompletionService;
 

@@ -1,5 +1,5 @@
 ﻿using MassTransit;
-using ProjectVico.V2.Shared.Models.Enums;
+using ProjectVico.V2.Shared.Enums;
 
 namespace ProjectVico.V2.Shared.Contracts.Messages.DocumentIngestion.Commands;
 
