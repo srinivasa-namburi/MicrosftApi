@@ -8,8 +8,8 @@ internal static class CookieOidcServiceCollectionExtensions
     public static IServiceCollection ConfigureCookieOidcRefresh(this IServiceCollection services, string cookieScheme,
         string oidcScheme)
     {
-        services.AddSingleton<CookieOidcRefresher>();
-        services.AddOptions<CookieAuthenticationOptions>(cookieScheme).Configure<CookieOidcRefresher>(
+        services.AddSingleton<OidcRefreshHandler>();
+        services.AddOptions<CookieAuthenticationOptions>(cookieScheme).Configure<OidcRefreshHandler>(
             (cookieOptions, refresher) =>
             {
                 cookieOptions.Events.OnValidatePrincipal =
@@ -17,6 +17,7 @@ internal static class CookieOidcServiceCollectionExtensions
             });
         services.AddOptions<OpenIdConnectOptions>(oidcScheme).Configure(oidcOptions =>
         {
+         
             // Request a refresh_token.
             oidcOptions.Scope.Add("offline_access");
             // Store the refresh_token.
