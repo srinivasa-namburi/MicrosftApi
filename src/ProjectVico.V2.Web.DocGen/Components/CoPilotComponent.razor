@@ -130,9 +130,6 @@ else
 
     private async Task StartHubConnections(string token)
     {
-        // var azureSignalRConnectionString = Configuration.GetConnectionString("signalr");
-        // var azureSignalREndpoint = azureSignalRConnectionString!.Split(';').FirstOrDefault(x => x.StartsWith("Endpoint="))?.Split('=')[1];
-        
         //TODO: This is a hack because SignalR can't use Service Discovery yet
         apiSignalRAddressBase = Configuration["services:api-main:0"];
 
