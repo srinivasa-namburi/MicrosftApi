@@ -10,13 +10,14 @@
 }
 
 @{
-    var encodedValue = HttpUtility.HtmlEncode(Value ?? string.Empty);
-    //var replacedValue = Regex.Replace(encodedValue, "\r?\n|\r", "<br />");
+    //We're not encoding the value here because we want to allow HTML in the markdown
+    //var encodedValue = HttpUtility.HtmlEncode(Value ?? string.Empty);
+    var encodedValue = Value;
     var markdownPipeline = new MarkdownPipelineBuilder()
                                     .UseAdvancedExtensions()
                                     .UseEmojiAndSmiley()
                                     .UseSmartyPants()
-                                    .UseSoftlineBreakAsHardlineBreak()
+                                    //.UseSoftlineBreakAsHardlineBreak()
                                     .UseAutoLinks(options:new AutoLinkOptions()
                                     {
                                         OpenInNewWindow = true,

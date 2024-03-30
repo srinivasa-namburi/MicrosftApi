@@ -36,6 +36,8 @@
     private HubConnection? hubConnection;
 
     private MudTextField<string> _mudChatTextField;
+    private string _chatTextInput = string.Empty;
+    private bool _chatTextLastKeyWasEnter = false;
     private ElementReference _messagesContainer;
     private MudList _mudMessageList;
 
@@ -53,7 +55,7 @@
                     @foreach (var chatMessage in ChatMessages.OrderBy(x => x.CreatedAt))
                     {
                         <MudListItem>
-                            <ChatMessageDisplay ChatMessage="@chatMessage" CurrentUser="CurrentUser"/>
+                            <ChatMessageDisplay ChatMessage="@chatMessage" CurrentUser="CurrentUser" />
                         </MudListItem>
                     }
                 </MudList>
@@ -65,11 +67,19 @@
             }
             else
             {
-                <MudTextField @ref="_mudChatTextField" T="string" ValueChanged="OnChatTextFieldUpdated"
+
+                <MudTextField @ref="_mudChatTextField" T="string"
+                              OnKeyDown="OnChatTextKeyDown"
+                              ValueChanged="OnChatTextFieldUpdated"
+                              Immediate="false"
+                              DebounceInterval="100"
+                              Lines="2"
+                              MaxLines="6"
+                              AutoGrow="true"
                               AutoFocus="true" FullWidth="true" Placeholder="Type a message..."
                               AdornmentIcon="@Icons.Material.Filled.Send"
                               AdornmentColor="Color.Primary"
-                              Adornment="Adornment.End"/>
+                              Adornment="Adornment.End" />
             }
 
         </MudItem>
@@ -88,7 +98,7 @@ else
         {
             ConversationId = Guid.NewGuid();
         }
-       
+
         if (ConversationId.HasValue)
         {
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
@@ -188,6 +198,12 @@ else
 
     }
 
+    private void OnChatTextKeyDown(KeyboardEventArgs e)
+    {
+        _chatTextLastKeyWasEnter = e is { Key: "Enter", ShiftKey: false };
+
+    }
+
     private async Task OnChatTextFieldUpdated(string chatText)
     {
         if (string.IsNullOrWhiteSpace(chatText))
@@ -195,7 +211,9 @@ else
             return;
         }
 
-        var chatMessage = new ChatMessageDTO
+        if (_chatTextLastKeyWasEnter)
+        {
+            var chatMessage = new ChatMessageDTO
             {
                 ConversationId = ConversationId!.Value,
                 Id = Guid.NewGuid(),
@@ -206,7 +224,9 @@ else
                 UserFullName = CurrentUser!.FullName
             };
 
-        await ProcessMessage(chatMessage);
+            await ProcessMessage(chatMessage);
+        }
+       
     }
 
     private async Task ProcessOtherUserMessage(ChatMessageDTO chatMessageDto)
@@ -237,16 +257,18 @@ else
 
     private async Task ProcessMessage(ChatMessageDTO chatMessageDto)
     {
+        _chatTextLastKeyWasEnter = false;
         if (chatMessageDto.Source == ChatMessageSource.User)
         {
             ChatMessages.Add(chatMessageDto);
+            await _mudChatTextField.Clear();
+            await _mudChatTextField.SetText("");
             await InvokeAsync(StateHasChanged);
             await ScrollMessagesToBottom();
 
             await ChatApiClient.SendChatMessage(chatMessageDto);
-
             await _mudChatTextField.FocusAsync();
-            await _mudChatTextField.Clear();
+
         }
 
     }
@@ -275,4 +297,7 @@ else
         hubConnection.SendAsync("RemoveFromGroup", ConversationId);
         hubConnection.DisposeAsync().AsTask();
     }
+
+
+    
 }

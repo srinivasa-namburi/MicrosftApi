@@ -1,19 +1,19 @@
-using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
-using ProjectVico.V2.Web.DocGen.Components;
 using MudBlazor.Services;
 using ProjectVico.V2.Shared.Configuration;
-using ProjectVico.V2.Web.DocGen.Auth;
-using Microsoft.AspNetCore.Components.Authorization;
-using ProjectVico.V2.Web.DocGen.ServiceClients;
-using ProjectVico.V2.Web.Shared.ServiceClients;
-using Microsoft.AspNetCore.SignalR;
 using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Shared.Helpers;
+using ProjectVico.V2.Web.DocGen.Auth;
+using ProjectVico.V2.Web.DocGen.Components;
+using ProjectVico.V2.Web.DocGen.ServiceClients;
 using ProjectVico.V2.Web.Shared.Auth;
+using ProjectVico.V2.Web.Shared.ServiceClients;
 
 var builder = WebApplication.CreateBuilder(args);
 
