@@ -8,6 +8,7 @@ $containerApps = @{
     "worker-chat" = 4
     "worker-documentingestion" = 4
 }
+
 Write-Host "Scaling container apps in $resourceGroup..."
 
 # Loop through each container app and scale it
