@@ -1,12 +1,21 @@
 ﻿@inherits LayoutComponentBase
-@using ProjectVico.V2.Web.DocGen.Components
+@using System.Linq.Expressions
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.Identity.Web
+@using ProjectVico.V2.Shared.Contracts.Messages
+@using ProjectVico.V2.Web.Shared.ServiceClients
+
+@inject ILogger<MainLayout> Logger
+@inject IConfiguration Configuration
+@inject IAuthorizationApiClient AuthorizationApiClient
+@inject NavigationManager Navigation
 
 <MyMudThemeProvider @bind-IsDarkMode="@_isDarkMode" />
 <MyMudProviders />
 
 <MudLayout>
     <MudAppBar Elevation="3">
-		<MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
         <MudSpacer />
         <MudSwitch @bind-Value="@_isDarkMode" Color="Color.Primary" Class="ma-1" T="bool" ThumbIcon="@Icons.Material.Filled.WbSunny" />
     </MudAppBar>
@@ -16,21 +25,67 @@
         </MudDrawerHeader>
         <NavMenu />
     </MudDrawer>
-    <MudMainContent>
-        <MudContainer MaxWidth="MaxWidth.Large" Class="my-10 pt-10">
-            @Body
-        </MudContainer>
-    </MudMainContent>
+    <CascadingValue TValue="HubConnection" Value="@HubConnection">
+        <MudMainContent>
+            <MudContainer MaxWidth="MaxWidth.Large" Class="my-10 pt-10">
+                @Body
+            </MudContainer>
+        </MudMainContent>
+    </CascadingValue>
 </MudLayout>
 
 @code {
     bool _drawerOpen = true;
 
     private bool _isDarkMode = true;
-    
+    private string? apiSignalRAddressBase;
+    private HubConnection? HubConnection { get; set; }
+
     void DrawerToggle()
     {
         _drawerOpen = !_drawerOpen;
     }
-   
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Only start the SignalR connection if the user is authenticated
+        try
+        {
+            var token = await AuthorizationApiClient.GetAccessTokenAsync();
+            await StartHubConnections(token);
+        }
+        catch (InvalidOperationException e)
+        {
+            // User isn't authenticated yet - ignore.
+        }
+
+    }
+
+    private async Task StartHubConnections(string token)
+    {
+        //TODO: This is a hack because SignalR can't use Service Discovery yet
+        apiSignalRAddressBase = Configuration["services:api-main:0"];
+
+        HubConnection = new HubConnectionBuilder()
+            .WithUrl(Navigation.ToAbsoluteUri($"{apiSignalRAddressBase}/hubs/notification-hub"), options =>
+            {
+                options.AccessTokenProvider = () => Task.FromResult(token)!;
+            })
+            .WithStatefulReconnect()
+            .WithAutomaticReconnect()
+            .Build();
+
+        HubConnection.On<SignalRKeepAlive>(
+            "ReceiveSignalRKeepAliveReceivedNotification",
+            HubReceiveSignalRKeepAliveReceivedNotificationHandler);
+
+
+        await HubConnection.StartAsync();
+    }
+
+    private void HubReceiveSignalRKeepAliveReceivedNotificationHandler(SignalRKeepAlive obj)
+    {
+        this.Logger.LogDebug("KeepAlive SignalR received from API");
+    }
+
 }

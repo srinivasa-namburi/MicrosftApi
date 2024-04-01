@@ -1,0 +1,24 @@
+﻿@inject NavigationManager NavigationManager
+@inject AntiforgeryStateProvider AntiForgery
+<MudText Typo="Typo.h1">Redirecting to Login</MudText>
+@code {
+
+    private string? currentUrl;
+
+    protected override void OnInitialized()
+    {
+        currentUrl = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+        var antiForgeryToken = AntiForgery.GetAntiforgeryToken();
+
+        try
+        {
+            NavigationManager.NavigateTo($"authentication/login?antiForgeryToken={antiForgeryToken.Value}", forceLoad: true);
+        } 
+        catch (InvalidOperationException e)
+        {
+            // We expect this to happen because we are navigating away from the current page - so this happens twice.
+            // We can ignore this exception.
+        }
+    }
+
+}

@@ -7,6 +7,8 @@ $containerApps = @{
     "worker-documentgeneration" = 8
     "worker-chat" = 4
     "worker-documentingestion" = 4
+    "web-docgen" = 2
+    "api-main" = 2
 }
 
 Write-Host "Scaling container apps in $resourceGroup..."

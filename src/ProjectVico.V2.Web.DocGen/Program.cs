@@ -2,7 +2,9 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using MudBlazor.Services;
@@ -14,6 +16,7 @@ using ProjectVico.V2.Web.DocGen.Components;
 using ProjectVico.V2.Web.DocGen.ServiceClients;
 using ProjectVico.V2.Web.Shared.Auth;
 using ProjectVico.V2.Web.Shared.ServiceClients;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -136,14 +139,17 @@ builder.Services.AddAuthentication("MicrosoftOidc")
 builder.Services.ConfigureOidcRefreshHandling("Cookies", "MicrosoftOidc");
 builder.Services.AddAuthorization();
 builder.Services.AddScoped<AuthenticationStateProvider, PersistingAuthenticationStateProvider>();
-
 builder.Services.AddHttpForwarderWithServiceDiscovery();
 
-
 builder.AddAzureBlobService("blob-docing");
+builder.AddRedis("redis");
+
+var redisConnection = ConnectionMultiplexer.Connect(builder.Configuration.GetConnectionString("redis"));
+builder.Services.AddDataProtection()
+    .PersistKeysToStackExchangeRedis(redisConnection, "DataProtection-Keys")
+    ;
+
 builder.Services.AddScoped<AzureFileHelper>();
-
-
 
 builder.Services.AddSingleton<IUserIdProvider, SignalRCustomUserIdProvider>();
 
@@ -185,6 +191,7 @@ if (!app.Environment.IsDevelopment())
 //app.UseHttpsRedirection();
 
 app.UseStaticFiles();
+
 app.UseAntiforgery();
 app.MapDefaultEndpoints();
 

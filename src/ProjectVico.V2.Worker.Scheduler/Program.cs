@@ -71,6 +71,7 @@ else
 }
 
 builder.Services.AddHostedService<ScheduledBlobAutoImportWorker>();
+builder.Services.AddHostedService<ScheduledSignalRKeepAliveWorker>();
 
 var host = builder.Build();
 host.Run();

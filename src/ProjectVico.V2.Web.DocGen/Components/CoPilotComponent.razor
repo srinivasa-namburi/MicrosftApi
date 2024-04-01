@@ -13,7 +13,7 @@
 @using ProjectVico.V2.Shared.Enums
 @using ProjectVico.V2.Web.Shared.Auth
 @using ProjectVico.V2.Web.Shared.ServiceClients
-@implements IDisposable
+@implements IAsyncDisposable
 
 @code {
     [Parameter] public Guid? ConversationId { get; set; }
@@ -31,9 +31,7 @@
     [Parameter] public bool InternalConversationIdCreate { get; set; } = false;
 
     [CascadingParameter] public AuthenticationState? AuthenticationState { get; set; }
-
-    private string? apiSignalRAddressBase;
-    private HubConnection? hubConnection;
+    [CascadingParameter] public HubConnection? HubConnection { get; set; }
 
     private MudTextField<string> _mudChatTextField;
     private string _chatTextInput = string.Empty;
@@ -105,7 +103,7 @@ else
             var userInfo = UserInfo.FromClaimsPrincipal(authState.User);
             CurrentUser = await AuthorizationApiClient.GetUserInfo(userInfo.UserId);
             ChatMessages = await ChatApiClient.GetChatMessages(ConversationId.Value);
-            await StartHubConnections(await ChatApiClient.GetAccessTokenAsync());
+            await StartHubConnections();
         }
     }
 
@@ -117,32 +115,47 @@ else
         }
     }
 
-    private async Task StartHubConnections(string token)
+    private async Task StartHubConnections()
     {
-        //TODO: This is a hack because SignalR can't use Service Discovery yet
-        apiSignalRAddressBase = Configuration["services:api-main:0"];
+        if (HubConnection == null)
+        {
+            HubConnection = new HubConnectionBuilder()
+                .WithUrl($"{Configuration["services:api-main:0"]}/hubs/notification-hub", options =>
+                {
+                    options.AccessTokenProvider = async () =>
+                    {
+                        var token = await AuthorizationApiClient.GetAccessTokenAsync();
+                        return token;
+                    };
+                })
+                .WithAutomaticReconnect()
+                .Build();
 
-        hubConnection = new HubConnectionBuilder()
-            .WithUrl(Navigation.ToAbsoluteUri($"{apiSignalRAddressBase}/hubs/notification-hub"), options =>
-            {
-                options.AccessTokenProvider = () => Task.FromResult(token)!;
-            })
-            .WithStatefulReconnect()
-            .WithAutomaticReconnect()
-            .Build();
+            await HubConnection.StartAsync();
+        }
 
-        hubConnection.On<ChatMessageResponseReceived>( // CorrelationId
+        HubConnection.On<ChatMessageResponseReceived>( // CorrelationId
             "ReceiveChatMessageResponseReceivedNotification",
             HubReceiveChatMessageResponseReceivedNotificationHandler);
 
-        hubConnection.On<ProcessChatMessage>(
+        HubConnection.On<ProcessChatMessage>(
             "ReceiveProcessChatMessageReceivedNotification",
             HubReceiveProcessChatMessageReceivedNotificationHandler);
-
-        await hubConnection.StartAsync();
-
+      
         // Add this Hub Connection to a group matching the ConversationId
-        await hubConnection.SendAsync("AddToGroup", ConversationId);
+        await HubConnection.SendAsync("AddToGroup", ConversationId);
+    }
+
+    // Called on component disposal
+    private async Task StopHubConnections()
+    {
+        if (HubConnection == null) return;
+
+        HubConnection.Remove("ReceiveChatMessageResponseReceivedNotification");
+        HubConnection.Remove("ReceiveProcessChatMessageReceivedNotification");
+
+        await HubConnection.SendAsync("RemoveFromGroup", ConversationId);
+
     }
 
     private async Task HubReceiveProcessChatMessageReceivedNotificationHandler(ProcessChatMessage obj)
@@ -290,14 +303,11 @@ else
         }
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        if (hubConnection == null) return;
-
-        hubConnection.SendAsync("RemoveFromGroup", ConversationId);
-        hubConnection.DisposeAsync().AsTask();
+        if (HubConnection != null)
+        {
+            await StopHubConnections();
+        }
     }
-
-
-    
 }

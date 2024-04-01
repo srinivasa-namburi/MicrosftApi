@@ -34,6 +34,8 @@ IResourceBuilder<AzureServiceBusResource>? sbus;
 IResourceBuilder<IResourceWithConnectionString> queueService;
 IResourceBuilder<AzureAppConfigurationResource> appConfigurationService;
 
+IResourceBuilder<RedisResource> redis;
+
 var signalr = builder.ExecutionContext.IsPublishMode
     ? builder.AddAzureSignalR("signalr")
     : builder.AddConnectionString("signalr");
@@ -42,6 +44,11 @@ if (builder.ExecutionContext.IsRunMode) // For local development
 {
     if (durableDevelopment)
     {
+        redis = builder
+            .AddRedis("redis", 16379)
+            .WithVolumeMount("pvico-redis-vol", "/data")
+            ;
+
         docGenSql = builder
             .AddSqlServer("sqldocgen", password: sqlPassword, port: 9001)
             .WithVolumeMount("pvico-sql-docgen-vol", "/var/opt/mssql")
@@ -52,6 +59,8 @@ if (builder.ExecutionContext.IsRunMode) // For local development
         docGenSql = builder
             .AddSqlServer("sqldocgen", password: sqlPassword, 9001)
             .AddDatabase(sqlDatabaseName);
+
+        redis = builder.AddRedis("redis", 16379);
     }
 
     docGenRabbitMq = builder
@@ -67,6 +76,10 @@ else // For production/Azure deployment
         .PublishAsAzureSqlDatabase()
         .AddDatabase(sqlDatabaseName);
 
+    redis = builder.AddRedis("redis", 16379)
+        .WithVolumeMount("pvico-redis-vol", "/data")
+        .PublishAsAzureRedis();
+
     sbus = builder.AddAzureServiceBus("sbus");
     queueService = sbus;
 }
@@ -78,6 +91,7 @@ var apiMain = builder
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
     .WithReference(signalr)
+    .WithReference(redis)
     .WithReference(docGenSql)
     .WithReference(queueService);
 
@@ -131,6 +145,7 @@ var docGenFrontend = builder
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
     .WithReference(signalr)
+    .WithReference(redis)
     .WithReference(apiMain);
 
 builder.Build().Run();

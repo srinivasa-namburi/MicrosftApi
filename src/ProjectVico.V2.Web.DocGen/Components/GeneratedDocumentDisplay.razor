@@ -1,24 +1,24 @@
 ﻿@inject IDocumentGenerationApiClient DocumentGenerationApiClient
 @inject IContentNodeApiClient ContentNodeApiClient
+@inject IAuthorizationApiClient AuthorizationApiClient
 @inject IConfiguration Configuration
 @inject NavigationManager Navigation
+@implements IAsyncDisposable
 @using Microsoft.AspNetCore.SignalR.Client
 @using ProjectVico.V2.Shared.Contracts.Messages.DocumentGeneration.Events
 @using ProjectVico.V2.Shared.Enums
 @using ProjectVico.V2.Shared.Helpers
 @using ProjectVico.V2.Shared.Models
 @using ProjectVico.V2.Web.Shared.ServiceClients
-@implements IAsyncDisposable
 
 @code {
     [Parameter] public Guid DocumentId { get; set; }
     [Parameter] public bool LiveUpdated { get; set; } = true;
-
     [Parameter] public GeneratedDocument? Document { get; set; }
+    [CascadingParameter] public HubConnection? HubConnection { get; set; }
 
     private bool receivedMessagesVisible = false;
-    private string? apiSignalRAddressBase;
-    private HubConnection? hubConnection;
+    
     private List<string> messages = new List<string>();
 }
 
@@ -53,36 +53,49 @@ else
         Document = await GetDocumentAsync(DocumentId);
         ContentNodeSorter.SortContentNodes(Document.ContentNodes);
 
-        await StartHubConnections(token);
+        await StartHubConnections();
     }
 
-    private async Task StartHubConnections(string token)
+    private async Task StartHubConnections()
     {
-        //TODO: This is a hack because SignalR can't use Service Discovery yet
-        apiSignalRAddressBase = Configuration.GetValue<string>("services:api-main:0")!;
-        hubConnection = new HubConnectionBuilder()
-            .WithUrl(Navigation.ToAbsoluteUri($"{apiSignalRAddressBase}/hubs/notification-hub"), options =>
-            {
-                options.AccessTokenProvider = () => Task.FromResult(token)!;
-            })
-            .WithStatefulReconnect()
-            .WithAutomaticReconnect()
-            .Build();
+        if (HubConnection == null)
+        {
+            HubConnection = new HubConnectionBuilder()
+                .WithUrl($"{Configuration["services:api-main:0"]}/hubs/notification-hub", options =>
+                {
+                    options.AccessTokenProvider = async () =>
+                    {
+                        var token = await AuthorizationApiClient.GetAccessTokenAsync();
+                        return token;
+                    };
+                })
+                .WithAutomaticReconnect()
+                .Build();
 
-        hubConnection.On<string>( // CorrelationId
+            await HubConnection.StartAsync();
+        }
+
+        HubConnection.On<string>( // CorrelationId
             "ReceiveDocumentOutlineNotification",
             HubReceiveDocumentOutlineNotificationHandler);
 
-        hubConnection.On<ContentNodeGenerated>(
+        HubConnection.On<ContentNodeGenerated>(
             "ReceiveContentNodeNotification",
             HubReceiveContentNodeNotificationHandler);
 
-        hubConnection.On<ContentNodeGenerationStateChanged>(
+        HubConnection.On<ContentNodeGenerationStateChanged>(
             "ReceiveContentNodeGenerationStateChangedNotification",
             HubReceiveContentNodeGenerationStateChangedNotificationHandler);
+    }
 
+    // Called on component disposal
+    private async Task StopHubConnections()
+    {
+        if (HubConnection == null) return;
 
-        await hubConnection.StartAsync();
+        HubConnection.Remove("ReceiveDocumentOutlineNotification");
+        HubConnection.Remove("ReceiveContentNodeNotification");
+        HubConnection.Remove("ReceiveContentNodeGenerationStateChangedNotification");
     }
 
     private async Task HubReceiveContentNodeGenerationStateChangedNotificationHandler(ContentNodeGenerationStateChanged message)
@@ -228,6 +241,10 @@ else
 
     public async ValueTask DisposeAsync()
     {
-        if (hubConnection != null) await hubConnection.DisposeAsync();
+        if (HubConnection != null)
+        {
+            await StopHubConnections();
+        }
     }
+
 }

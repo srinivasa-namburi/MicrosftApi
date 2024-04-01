@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using ProjectVico.V2.Shared.Contracts.Chat;
+using ProjectVico.V2.Shared.Contracts.Messages;
 using ProjectVico.V2.Shared.Contracts.Messages.Chat.Commands;
 using ProjectVico.V2.Shared.Contracts.Messages.Chat.Events;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentGeneration.Events;
@@ -33,6 +34,11 @@ public class NotificationHub : Hub
     public async Task SendProcessChatMessageReceivedNotification(string groupId, ProcessChatMessage message)
     {
         await Clients.Groups(groupId).SendAsync("ReceiveProcessChatMessageReceivedNotification", message);
+    }
+
+    public async Task SendSignalRKeepAliveNotification(SignalRKeepAlive message)
+    {
+        await Clients.All.SendAsync("ReceiveSignalRKeepAliveReceivedNotification", message);
     }
 
     public async Task AddToGroup(string groupName)

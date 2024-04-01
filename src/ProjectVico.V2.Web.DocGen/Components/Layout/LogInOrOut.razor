@@ -17,15 +17,11 @@
         }
         else
         {
-            <MudNavLink Href="authentication/login" Icon="@Icons.Material.Filled.Login" Variant="Variant.Text">
-                Login
-            </MudNavLink>
+            <RedirectToLogin />
         }
     </Authorized>
     <NotAuthorized>
-        <MudNavLink Href="authentication/login" Icon="@Icons.Material.Filled.Login" Variant="Variant.Text">
-            Login
-        </MudNavLink>
+        <RedirectToLogin />
     </NotAuthorized>
 </AuthorizeView>
 

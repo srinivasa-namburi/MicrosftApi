@@ -9,6 +9,9 @@ param environmentName string
 @description('The location used for all deployed resources')
 param location string
 
+@description('Id of the user or app to assign application roles')
+param principalId string = ''
+
 
 var tags = {
   'azd-env-name': environmentName
@@ -26,9 +29,19 @@ module resources 'resources.bicep' = {
   params: {
     location: location
     tags: tags
+    principalId: principalId
   }
 }
 
+module redis 'redis/aspire.hosting.azure.bicep.redis.bicep' = {
+  name: 'redis'
+  scope: rg
+  params: {
+    location: location
+    keyVaultName: resources.outputs.SERVICE_BINDING_REDISKV_NAME
+    redisCacheName: 'redis'
+  }
+}
 module sbus 'sbus/aspire.hosting.azure.bicep.servicebus.bicep' = {
   name: 'sbus'
   scope: rg
@@ -69,6 +82,7 @@ output AZURE_CONTAINER_REGISTRY_ENDPOINT string = resources.outputs.AZURE_CONTAI
 output AZURE_CONTAINER_REGISTRY_MANAGED_IDENTITY_ID string = resources.outputs.AZURE_CONTAINER_REGISTRY_MANAGED_IDENTITY_ID
 output AZURE_CONTAINER_APPS_ENVIRONMENT_ID string = resources.outputs.AZURE_CONTAINER_APPS_ENVIRONMENT_ID
 output AZURE_CONTAINER_APPS_ENVIRONMENT_DEFAULT_DOMAIN string = resources.outputs.AZURE_CONTAINER_APPS_ENVIRONMENT_DEFAULT_DOMAIN
+output SERVICE_BINDING_REDISKV_ENDPOINT string = resources.outputs.SERVICE_BINDING_REDISKV_ENDPOINT
 
 output SBUS_SERVICEBUSENDPOINT string = sbus.outputs.serviceBusEndpoint
 output SIGNALR_HOSTNAME string = signalr.outputs.hostName

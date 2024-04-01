@@ -9,8 +9,10 @@
 
 	<ItemGroup>
 		<PackageReference Include="Aspire.Azure.Storage.Blobs" Version="8.0.0-preview.4.24156.9" />
+		<PackageReference Include="Aspire.StackExchange.Redis" Version="8.0.0-preview.4.24156.9" />
 		<PackageReference Include="Azure.Maps.Search" Version="1.0.0-beta.4" />
 		<PackageReference Include="Azure.Storage.Blobs" Version="12.19.1" />
+		<PackageReference Include="Microsoft.AspNetCore.DataProtection.StackExchangeRedis" Version="8.0.2" />
 		<PackageReference Include="Microsoft.Azure.SignalR" Version="1.25.1" />
 		<PackageReference Include="MudBlazor" Version="6.*" />
 		<PackageReference Include="FluentValidation" Version="11.9.0" />

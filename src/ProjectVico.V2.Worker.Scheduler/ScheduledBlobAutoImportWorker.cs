@@ -42,7 +42,7 @@ public class ScheduledBlobAutoImportWorker : BackgroundService
             var taskDelay = taskDelayDefaultMilliseconds;
             if (_logger.IsEnabled(LogLevel.Debug))
             {
-                _logger.LogInformation("ScheduledBlobAutoImportWorker ping: {time}", DateTimeOffset.Now);
+                _logger.LogDebug("ScheduledBlobAutoImportWorker ping: {time}", DateTimeOffset.Now);
             }
 
             foreach (var documentProcess in _options.ProjectVicoServices.DocumentProcesses)

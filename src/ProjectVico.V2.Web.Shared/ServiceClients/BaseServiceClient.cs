@@ -74,6 +74,10 @@ public abstract class BaseServiceClient<T> where T : IServiceClient
     public async Task<string> GetAccessTokenAsync()
     {
         var authInfo = await _authStateProvider.GetAuthenticationStateAsync();
+        if (!authInfo.User.Identity!.IsAuthenticated)
+        {
+            throw new InvalidOperationException("The user is not authenticated");
+        }
         var userInfo = UserInfo.FromClaimsPrincipal(authInfo.User);
 
         var jwtToken = new JwtSecurityToken(userInfo.Token);

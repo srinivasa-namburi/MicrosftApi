@@ -18,7 +18,7 @@ public class ChatMessageResponseReceivedNotificationConsumer : IConsumer<ChatMes
     {
         var message = context.Message;
         var groupId = context.Message.ChatMessageDto.ConversationId.ToString();
-
+        
         // We send the message to any client that has joined the same conversation
         await _hubContext.Clients.Group(groupId).SendAsync("ReceiveChatMessageResponseReceivedNotification", message);
     }
