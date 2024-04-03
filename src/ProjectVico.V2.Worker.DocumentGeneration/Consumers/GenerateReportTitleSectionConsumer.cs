@@ -14,7 +14,6 @@ namespace ProjectVico.V2.Worker.DocumentGeneration.Consumers;
 
 public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleSection>
 {
-    private readonly Kernel _kernel;
     private readonly DocGenerationDbContext _dbContext;
     private readonly ILogger<GenerateReportTitleSectionConsumer> _logger;
     private readonly IPublishEndpoint _publishEndpoint;
@@ -27,7 +26,6 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
         IPublishEndpoint publishEndpoint,
         IBodyTextGenerator bodyTextGenerator)
     {
-        _kernel = kernel;
         _dbContext = dbContext;
         _logger = logger;
         _publishEndpoint = publishEndpoint;
@@ -104,8 +102,8 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
                 {
                     contentNodeGeneratedEvent.ContentNodeId = bodyContentNodes[0].Id;
                 }
-              
-                
+
+
             }
 
             existingContentNode.GenerationState = ContentNodeGenerationState.Completed;
@@ -135,6 +133,7 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
     private async Task<List<ContentNode>> GenerateBodyText(string contentNodeType, string sectionNumber,
         string sectionTitle, string tableOfContentsString, Guid? metadataId = null)
     {
+        // This method is a wrapper around the streaming output of the AI Completion Service.
         var result = await _bodyTextGenerator.GenerateBodyText(contentNodeType, sectionNumber, sectionTitle, tableOfContentsString, metadataId);
         return result;
     }
@@ -150,6 +149,7 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
         var sb = new StringBuilder();
         foreach (var contentNode in contentNodes)
         {
+            // Recursively append the content nodes to the string builder - separate method call to handle recursive calling
             AppendContentNode(sb, contentNode, 0);
         }
         return sb.ToString();

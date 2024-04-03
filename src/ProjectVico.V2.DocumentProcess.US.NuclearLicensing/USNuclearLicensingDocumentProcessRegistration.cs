@@ -1,6 +1,4 @@
-﻿using Azure;
-using Azure.AI.FormRecognizer.DocumentAnalysis;
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using ProjectVico.V2.DocumentProcess.Shared;
 using ProjectVico.V2.DocumentProcess.Shared.Generation;
@@ -10,12 +8,7 @@ using ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Generation;
 using ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Ingestion.Classification.Classifiers;
 using ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Ingestion.Pipelines;
 using ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Mapping;
-using ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Models;
 using ProjectVico.V2.Shared.Configuration;
-using ProjectVico.V2.Shared.Contracts.DTO;
-using ProjectVico.V2.Shared.Helpers;
-using ProjectVico.V2.Shared.Interfaces;
-using ProjectVico.V2.Shared.Mappings;
 
 namespace ProjectVico.V2.DocumentProcess.US.NuclearLicensing;
 
@@ -41,17 +34,15 @@ public class USNuclearLicensingDocumentProcessRegistration : IDocumentProcessReg
         // Generation services
         if (options.ProjectVicoServices.DocumentGeneration.CreateBodyTextNodes)
         {
-            builder.Services.AddScoped<IBodyTextGenerator, USNuclearLicensingSemanticKernelBodyTextGenerator>();
+            //We no longer use Semantic Kernel here - but further down the pipeline. Left for reference.
+            //builder.Services.AddScoped<IBodyTextGenerator, USNuclearLicensingSemanticKernelBodyTextGenerator>();
+            builder.Services.AddScoped<IBodyTextGenerator, USNuclearLicensingBodyTextGenerator>();
         }
-
         builder.Services.AddAutoMapper(typeof(USNuclearLicensingMetadataProfile));
-
         builder.Services
             .AddKeyedScoped<IDocumentOutlineService, NuclearDocumentOutlineService>(ProcessName + "-IDocumentOutlineService");
         // END Generation services
 
         return builder;
-
-        
     }
 }

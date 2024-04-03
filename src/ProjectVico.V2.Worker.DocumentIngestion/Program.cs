@@ -4,6 +4,7 @@ using Azure.Search.Documents;
 using MassTransit;
 using MassTransit.EntityFrameworkCoreIntegration;
 using ProjectVico.V2.DocumentProcess.Shared;
+using ProjectVico.V2.Plugins.Shared;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Extensions;
@@ -36,6 +37,7 @@ builder.Services.AddKeyedScoped<SearchClient>("searchclient-title",
 builder.Services.AddKeyedScoped<SearchClient>("searchclient-customdata",
     (provider, o) => GetSearchClientWithIndex(provider, o, serviceConfigurationOptions.CognitiveSearch.CustomIndex));
 
+builder.DynamicallyRegisterPlugins();
 builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
 
 builder.AddDocGenDbContext(serviceConfigurationOptions);

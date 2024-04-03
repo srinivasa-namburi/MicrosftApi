@@ -9,7 +9,6 @@ using ProjectVico.V2.Plugins.Default.NuclearDocs.Services.AiCompletionService;
 using ProjectVico.V2.Plugins.Shared;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Enums;
-using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Shared.Interfaces;
 using ProjectVico.V2.Shared.Models;
 
@@ -20,23 +19,18 @@ public class NRCDocumentsPlugin : IPluginImplementation
     private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
     private readonly IIndexingProcessor _indexingProcessor;
     private readonly OpenAIClient _openAIClient;
-    private readonly TableHelper _tableHelper;
     private readonly IAiCompletionService _aiCompletionService;
 
     public NRCDocumentsPlugin(
         IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
         IIndexingProcessor indexingProcessor,
         [FromKeyedServices("openai-planner")] OpenAIClient openAIClient,
-        [FromKeyedServices("aicompletion-multipass")] IAiCompletionService aiCompletionService,
-        //[FromKeyedServices("aicompletion-singlepass")] IAiCompletionService aiCompletionService,
-        TableHelper tableHelper
+        IAiCompletionService aiCompletionService
         )
     {
         _serviceConfigurationOptions = serviceConfigurationOptions.Value;
         _indexingProcessor = indexingProcessor;
         _openAIClient = openAIClient;
-
-        _tableHelper = tableHelper;
         _aiCompletionService = aiCompletionService;
     }
 
@@ -52,37 +46,23 @@ public class NRCDocumentsPlugin : IPluginImplementation
         return outputStrings;
     }
 
-    //[KernelFunction("GetDescriptionForDocumentSection")]
-    //[Description(
-    //    "Writes a description of what types of information is needed, and what should be included, to write a specific section indicated by the section name.")]
-    //public async Task<List<string>> GetDescriptionForDocumentSectionAsync(
-    //    [Description(
-    //        "The name of the section. Please remove any chapter or section numbering from the section names you're searching for.")]
-    //    string sectionName)
-    //{
-    //    var documents = await _indexingProcessor.SearchWithHybridSearch(sectionName);
-    //    var outputStrings = await GenerateSectionDescriptionWithOpenAIAsync(documents);
-    //    return outputStrings;
-    //}
-
-    //[KernelFunction("GetDocumentOutputForSection")]
-    //[Description(
-    //    "Writes output for a specific section indicated by the section name, using knowledge of similar written sections from earlier environmental reports.")]
-    //public async Task<List<string>> GetOutputForSectionAsync(
-    //    [Description(
-    //        "The name of the section. Please remove any chapter or section numbering from the section names you're searching for.")]
-    //    string sectionName)
-    //{
-    //    var documents = await _indexingProcessor.SearchWithHybridSearch(sectionName);
-    //    var outputStrings = await GenerateSectionOutputWithOpenAIAsync(documents);
-    //    return outputStrings;
-    //}
-
-    [KernelFunction("GetBodyTextNodesOnly")]
+    [KernelFunction("GetDescriptionForDocumentSection")]
     [Description(
-        "Writes the body text for a title or section, ignoring its sub sections. If no feasible body text is found, returns an empty list")]
-    public async Task<List<ContentNode>> GetBodyTextContentNodesOnlyForTitle(
+        "Writes a description of what types of information is needed, and what should be included, to write a specific section indicated by the section name.")]
+    public async Task<List<string>> GetDescriptionForDocumentSectionAsync(
+        [Description(
+            "The name of the section. Please remove any chapter or section numbering from the section names you're searching for.")]
+        string sectionName)
+    {
+        var documents = await _indexingProcessor.SearchWithHybridSearch(sectionName);
+        var outputStrings = await GenerateSectionDescriptionWithOpenAIAsync(documents);
+        return outputStrings;
+    }
 
+    [KernelFunction("GetStreamingBodyTextForSection")]
+    [Description(
+        "Writes the body text in a streaming fashion for a title or section, ignoring its sub sections. If no feasible body text is found, returns an empty string")]
+    public async IAsyncEnumerable<string> GetStreamingBodyTextForTitleOrSection(
         [Description("The name of the section or title/heading")]
         string sectionOrTitleText,
         [Description("The Content Node Type we are dealing with - either Heading or Title")]
@@ -120,22 +100,26 @@ public class NRCDocumentsPlugin : IPluginImplementation
                 nameof(contentNodeType));
         }
 
-        List<ContentNode> bodyContentNodes =
-            await GenerateBodyContentNodesForTitleOrSection(sectionOrTitleNumber, sectionOrTitleText, contentNodeType,
-                documents, tableOfContentsString, metadataId);
-
-        return bodyContentNodes;
-
-
+        await foreach (var bodyTextPart in GenerateStreamingBodyTextForTitleOrSection(sectionOrTitleNumber,
+            sectionOrTitleText, contentNodeType, documents, tableOfContentsString, metadataId))
+        {
+            yield return bodyTextPart;
+        }
     }
 
-    private async Task<List<ContentNode>> GenerateBodyContentNodesForTitleOrSection(string sectionOrTitleNumber,
+    private async IAsyncEnumerable<string> GenerateStreamingBodyTextForTitleOrSection(string sectionOrTitleNumber,
         string sectionOrTitleText, ContentNodeType contentNodeType, List<ReportDocument> documents,
         string tableOfContentsString, Guid? metadataId = null)
     {
-        var bodyContentNodes = await _aiCompletionService.GetBodyContentNodes(documents, sectionOrTitleNumber, sectionOrTitleText, contentNodeType, tableOfContentsString, metadataId);
-        return bodyContentNodes;
+        var bodyContextTextStream = _aiCompletionService.GetStreamingBodyContentText(documents,
+            sectionOrTitleNumber, sectionOrTitleText, contentNodeType, tableOfContentsString, metadataId);
+
+        await foreach (var bodyTextPart in bodyContextTextStream)
+        {
+            yield return bodyTextPart;
+        }
     }
+
 
     [KernelFunction("GenerateDocumentOutline")]
     [Description("Writes an outline for a new environmental report, including all sections and subsections, using knowledge of similar written sections from earlier environmental reports.")]
@@ -280,64 +264,4 @@ public class NRCDocumentsPlugin : IPluginImplementation
         chatResponses.Add(chatResponseMessage);
         return chatResponses;
     }
-
-    private async Task<List<string>> GenerateSectionOutputWithOpenAIAsync(List<ReportDocument> sections)
-    {
-        // Generate example  // Build the examples for the prompt
-        var sectionExample = new StringBuilder();
-
-        // Get the 6 first sections
-        var firstSections = sections.Take(6).ToList();
-
-        foreach (var section in firstSections)
-        {
-            sectionExample.AppendLine($"[EXAMPLE: {section.Title}]");
-            sectionExample.AppendLine(section.Content);
-            sectionExample.AppendLine();
-        }
-
-        // Generate section output prompt
-        var exampleString = sectionExample.ToString();
-        string sectionPrompt =
-            $"Below, there are several sections from previous applications. Prioritize the FIRST of these examples as it is the most relevant. Don't disregard the other examples though - at least summarize their content to see if it fits in with the primary section or is usable to expand on it.  Using this information, write a similar section(sub-section) or chapter(section), depending on which is most appropriate to the query. Be as verbose as necessary to include all required information. If you are missing details to write specific portions, please indicate that with [DETAIL: <dataType>] - and put the type of data needed in the dataType parameter.\n\n{exampleString}\n\n";
-
-        var systemPrompt =
-            "[SYSTEM]: This is a chat between an intelligent AI bot specializing in assisting with producing environmental reports for Small Modular nuclear Reactors (''SMR'') and one or more participants. The AI has been trained on GPT-4 LLM data through to April 2023 and has access to additional data on more recent SMR environmental report samples. Try to be complete with your responses. Provide responses that can be copied directly into an environmental report, so no polite endings like 'i hope that helps', no beginning with 'Sure, I can do that', etc.\"";
-
-        var chatResponses = new List<string>();
-
-        var chatCompletionOptions = new ChatCompletionsOptions()
-        {
-            Messages =
-            {
-                new ChatRequestSystemMessage(systemPrompt),
-                new ChatRequestUserMessage(sectionPrompt)
-            },
-            DeploymentName = _serviceConfigurationOptions.OpenAi.DocGenModelDeploymentName,
-            MaxTokens = 8192,
-            Temperature = 0.2f,
-            FrequencyPenalty = 0.5f
-        };
-
-        StringBuilder chatStringBuilder = new StringBuilder();
-
-        await foreach (StreamingChatCompletionsUpdate chatUpdate in
-                       await _openAIClient.GetChatCompletionsStreamingAsync(chatCompletionOptions))
-        {
-            if (chatUpdate.Role.HasValue)
-            {
-                Console.Write($"{chatUpdate.Role.Value.ToString().ToUpperInvariant()}: ");
-            }
-
-            if (string.IsNullOrEmpty(chatUpdate.ContentUpdate)) continue;
-
-            Console.Write(chatUpdate.ContentUpdate);
-            chatStringBuilder.Append(chatUpdate.ContentUpdate);
-        }
-
-        chatResponses.Add(chatStringBuilder.ToString());
-        return chatResponses;
-
-    }
-
 }

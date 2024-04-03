@@ -49,8 +49,8 @@ public class IndexIngestedDocumentConsumer : IConsumer<IndexIngestedDocument>
 
         _logger.LogInformation("IndexIngestedDocumentConsumer: Indexing ingested document with CorrelationId {CorrelationId}", context.Message.CorrelationId);
         var fileStream = await _fileHelper.GetFileAsStreamFromFullBlobUrlAsync(ingestedDocument.OriginalDocumentUrl);
-
         await _indexingProcessor.IndexAndStoreContentNodesAsync(ingestedDocument.ContentNodes, ingestedDocument.FileName, fileStream);
+        
         _logger.LogInformation("IndexIngestedDocumentConsumer: Document {CorrelationId} - {FileName} finished indexing", context.Message.CorrelationId, ingestedDocument.Id.ToString());
 
         ingestedDocument.IngestionState = IngestionState.Complete;

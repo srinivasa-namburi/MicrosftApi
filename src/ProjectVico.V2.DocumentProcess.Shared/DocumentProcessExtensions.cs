@@ -3,14 +3,12 @@ using Azure;
 using Azure.AI.FormRecognizer.DocumentAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Options;
 using ProjectVico.V2.DocumentProcess.Shared.Generation;
 using ProjectVico.V2.DocumentProcess.Shared.Mapping;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Shared.Interfaces;
 using ProjectVico.V2.Shared.Mappings;
-using ProjectVico.V2.Shared.Models;
 using ProjectVico.V2.Shared.Services.Search;
 
 namespace ProjectVico.V2.DocumentProcess.Shared;

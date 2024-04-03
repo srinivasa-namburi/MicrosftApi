@@ -8,7 +8,7 @@ namespace ProjectVico.V2.Worker.DocumentGeneration.Services;
 
 public class LoremIpsumBodyTextGenerator : IBodyTextGenerator
 {
-    public async Task<List<ContentNode>> GenerateBodyText(string contentNodeType, string sectionNumber,
+    public async Task<List<ContentNode>> GenerateBodyText(string contentNodeTypeString, string sectionNumber,
         string sectionTitle, string tableOfContentsString, Guid? metadataId = null)
     {
         var minNumberOfParagraphs = 4;

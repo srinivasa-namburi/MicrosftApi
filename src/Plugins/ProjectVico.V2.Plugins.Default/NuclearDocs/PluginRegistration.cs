@@ -9,9 +9,7 @@ public class PluginRegistration : IPluginRegistration
 {
     public IHostApplicationBuilder RegisterPlugin(IHostApplicationBuilder builder)
     {
-        builder.Services.AddKeyedScoped<IAiCompletionService, SinglePassOpenAiCompletionService>("aicompletion-singlepass");
-        builder.Services.AddKeyedScoped<IAiCompletionService, MultiPassLargeReceiveContextAiCompletionService>("aicompletion-multipass");
-
+        builder.Services.AddScoped<IAiCompletionService, MultiPassLargeReceiveContextAiCompletionService>();
         builder.Services.AddScoped<NRCDocumentsPlugin>();
         return builder;
     }

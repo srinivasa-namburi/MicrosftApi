@@ -30,18 +30,11 @@ public class AzureFileHelper
 
         // Sample URL string : https://vicodevwedocing.blob.core.windows.net/ingest-nrc/ingest/2024-02-24/ML13115A763.pdf
         // From this URL, we need to extract the container name and the blob path. The blob path should be everything after the container name.
-        // Maybe turn it into a Url object first?
 
         var url = new Uri(fullBlobUrl);
         var containerName = url.Segments[1].TrimEnd('/');
         var blobPath = fullBlobUrl.Replace(url.Scheme + "://" + url.Host + "/" + containerName + "/", "");
-        
-        //var blobServiceBaseUrl = _blobServiceClient.Uri.ToString();
-        //var blobPathWithContainer = fullBlobUrl.Replace(blobServiceBaseUrl + "/", "");
-
-        //var containerName = blobPathWithContainer.Substring(0, blobPathWithContainer.IndexOf('/'));
-
-        //var blobPath = blobPathWithContainer.Substring(blobPathWithContainer.IndexOf('/') + 1);
+       
         // Remove the SAS token if it exists at the end of the blobPath
         if (blobPath.Contains("?"))
         {
