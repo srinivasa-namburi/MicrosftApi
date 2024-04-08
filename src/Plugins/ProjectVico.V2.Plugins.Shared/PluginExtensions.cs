@@ -12,10 +12,24 @@ namespace ProjectVico.V2.Plugins.Shared
             string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
 
             // Filter for assemblies starting with 'ProjectVico.V2.Plugins.' but not the shared one
-            string[] assemblyPaths = Directory.GetFiles(baseDirectory, "ProjectVico.V2.Plugins.*.dll")
+            string[] pluginAssemblyPaths = Directory.GetFiles(baseDirectory, "ProjectVico.V2.Plugins.*.dll")
                 .Where(path => !path.Contains("ProjectVico.V2.Plugins.Shared"))
                 .ToArray();
+            
+            // Filter for assemblies starting with 'ProjectVico.V2.DocumentProcess.' but not the shared one
+            string [] documentProcessAssemblyPaths = Directory.GetFiles(baseDirectory, "ProjectVico.V2.DocumentProcess.*.dll")
+                .Where(path => !path.Contains("ProjectVico.V2.DocumentProcess.Shared"))
+                .ToArray();
 
+            builder.RegisterPluginsForAssemblies(pluginAssemblyPaths);
+            builder.RegisterPluginsForAssemblies(documentProcessAssemblyPaths);
+
+            return builder;
+        }
+
+        private static IHostApplicationBuilder RegisterPluginsForAssemblies(this IHostApplicationBuilder builder,
+            IEnumerable<string> assemblyPaths)
+        {
             foreach (var path in assemblyPaths)
             {
                 try
@@ -24,7 +38,7 @@ namespace ProjectVico.V2.Plugins.Shared
 
                     // Check and register plugins from the assembly
                     var pluginTypes = assembly.GetTypes()
-                        .Where(t => typeof(IPluginRegistration).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract)
+                        .Where(t => typeof(IPluginRegistration).IsAssignableFrom(t) && t is { IsInterface: false, IsAbstract: false })
                         .ToList();
 
                     foreach (var type in pluginTypes)
@@ -59,7 +73,9 @@ namespace ProjectVico.V2.Plugins.Shared
             // Load all types that implement IPluginImplementation from all assemblies
             // You might want to restrict the search to certain assemblies for performance reasons
             var pluginTypes = AppDomain.CurrentDomain.GetAssemblies()
-                .Where(x=>x.FullName.StartsWith("ProjectVico.V2.Plugins"))
+                .Where(x=>
+                    x.FullName.StartsWith("ProjectVico.V2.Plugins") || 
+                    x.FullName.StartsWith("ProjectVico.V2.DocumentProcess"))
                 .SelectMany(a => a.GetTypes())
                 .Where(t => typeof(IPluginImplementation).IsAssignableFrom(t) && !t.IsAbstract && t.IsClass)
                 .ToList();

@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 using ProjectVico.V2.Shared.Configuration;
+using ProjectVico.V2.Shared.Contracts;
 using ProjectVico.V2.Shared.Enums;
 using ProjectVico.V2.Shared.Extensions;
 using ProjectVico.V2.Shared.Interfaces;
@@ -22,6 +23,9 @@ public class SearchIndexingProcessor : IIndexingProcessor
     private readonly SearchClient _titleSearchClient;
     private readonly SearchClient _sectionSearchClient;
     private readonly SearchClient _customSearchClient;
+
+    private Dictionary<string, SearchClient> _searchClients = new();
+
     private readonly OpenAIClient _openAiClient;
 
     public SearchIndexingProcessor(
@@ -42,7 +46,7 @@ public class SearchIndexingProcessor : IIndexingProcessor
         _serviceConfigurationOptions = serviceConfigurationOptions.Value;
     }
 
-    public bool DeleteAllIndexedDocuments(string indexName)
+    public bool DeleteIndex(string indexName)
     {
         Uri serviceEndpoint = new Uri(_serviceConfigurationOptions.CognitiveSearch.Endpoint);
         var searchIndexClient = new SearchIndexClient(serviceEndpoint, new AzureKeyCredential(_serviceConfigurationOptions.CognitiveSearch.Key));
@@ -61,12 +65,11 @@ public class SearchIndexingProcessor : IIndexingProcessor
 
     }
 
-    public bool CreateIndex(string indexName)
+    public bool CreateOrUpdateIndex(string indexName)
     {
         var vectorSearchProfileName = _serviceConfigurationOptions.CognitiveSearch.VectorSearchProfileName;
         var vectorSearchHnswConfigName = _serviceConfigurationOptions.CognitiveSearch.VectorSearchHnswConfigName;
         var semanticSearchConfigName = _serviceConfigurationOptions.CognitiveSearch.SemanticSearchConfigName;
-
 
         var index = new SearchIndex(indexName)
         {
@@ -134,6 +137,170 @@ public class SearchIndexingProcessor : IIndexingProcessor
         return true;
     }
 
+    public async Task<List<ReportDocument>> SearchWithTitleSearchAsync(string searchText, int top = 12, int k = 7)
+    {
+        var searchResults = await GetReportDocumentsFromSpecifiedSearchClient(searchText, top, k, _titleSearchClient);
+        return searchResults;
+    }
+
+    public async Task<List<ReportDocument>> SearchWithCustomSearchAsync(string searchText, int top = 12, int k = 7)
+    {
+        var searchResults = await GetReportDocumentsFromSpecifiedSearchClient(searchText, top, k, _customSearchClient);
+        return searchResults;
+    }
+
+    public async Task<List<ReportDocument>> SearchWithHybridSearchAsync(string searchText, int top = 12, int k = 7)
+    {
+        var searchResults = await GetReportDocumentsFromSpecifiedSearchClient(searchText, top, k, _sectionSearchClient);
+        return searchResults;
+    }
+
+    public async Task<List<ReportDocument>> SearchSpecifiedIndexAsync(string indexName, string searchText, int top = 12,
+        int k = 7)
+    {
+        var searchClient = GetSearchClient(indexName);
+
+        var searchResults = await GetReportDocumentsFromSpecifiedSearchClient(searchText, top, k, searchClient);
+        return searchResults;
+    }
+
+    public async Task IndexAndStoreContentNodesAsync(List<ContentNode> contentTree, string baseFileName, Stream streamForHashing)
+    {
+        var fileHash = streamForHashing.GenerateHashFromStreamAndResetStream();
+        await IndexAndStoreContentNodesAsync(contentTree, baseFileName, fileHash);
+    }
+
+    public async Task IndexAndStoreContentNodesAsync(List<ContentNode> contentTree, string baseFilename, string fileHash)
+    {
+        var i = 0;
+
+        List<string> titleJsonList = new List<string>();
+        List<string> sectionJsonList = new List<string>();
+
+        foreach (var contentNode in contentTree)
+        {
+            // First, generate json for the Title ContentNodes in the root of the content tree
+            var json = CreateJsonFromContentNode(contentNode, null, null, baseFilename, fileHash);
+            titleJsonList.Add(json);
+            i++;
+
+            // Next, generate json starting from the Heading ContentNodes in the Children collections of the Title ContentNodes
+            foreach (var child in contentNode.Children.Where(x => x.Type == ContentNodeType.Heading))
+            {
+                json = CreateJsonFromContentNode(child, contentNode.Id, contentNode.Text, baseFilename, fileHash);
+                sectionJsonList.Add(json);
+                i++;
+            }
+        }
+
+        // Index the Title json strings with Azure Cognitive Search
+        foreach (string titleJson in titleJsonList)
+        {
+            await IndexJson(titleJson, _titleSearchClient, true);
+        }
+
+        // Index the Section json strings with Azure Cognitive Search
+        foreach (string sectionJson in sectionJsonList)
+        {
+            await IndexJson(sectionJson, _sectionSearchClient, true);
+        }
+
+        Console.WriteLine($"Indexed and stored {i} files for '{baseFilename}'");
+    }
+
+    public async Task IndexAndStoreCustomNodesAsync(List<ContentNode> contentTree, string baseFileName, Stream streamForHashing)
+    {
+        var i = 0;
+
+        List<string> customJsonList = new List<string>();
+
+        foreach (var contentNode in contentTree)
+        {
+            // First, generate json for the custom ContentNodes in the root of the content tree
+            // Currently, this generates for the titles of the content tree -
+            // we might want to index the smaller chunks instead (sectionheadings and below)
+            var json = CreateJsonFromContentNode(contentNode, null, null, baseFileName, streamForHashing);
+            customJsonList.Add(json);
+            i++;
+        }
+
+        // Index the Custom json strings with Azure Cognitive Search
+        foreach (string customJson in customJsonList)
+        {
+            await IndexJson(customJson, _customSearchClient, true);
+        }
+
+        Console.WriteLine($"Indexed and stored {i} files for '{baseFileName}'");
+
+
+    }
+
+    public async Task<IEnumerable<ReportDocument>> GetAllUniqueTitlesAsync(int numberOfUniqueFiles)
+    {
+        //Get all Titles(Chapters) with unique FileHashes from the Title search index. Limit your response to <numberOfUniqueFiles> environmental report documents
+        var searchResults = await _titleSearchClient.SearchAsync<ReportDocument>("*", new SearchOptions
+        {
+            Filter = "Type eq 'Title'",
+            Facets = { "OriginalFileHash" }
+        });
+
+        var documents = searchResults.Value.GetResults().Select(x => x.Document);
+
+        // Get titles from only numberOfUniqueFiles unique environmental reports (files)
+        documents = documents.GroupBy(x => x.OriginalFileHash).Take(numberOfUniqueFiles).SelectMany(x => x);
+
+        // Deduplicate the results on the combination of FileHash and Title
+        documents = documents.GroupBy(x => new { x.OriginalFileHash, x.Title }).Select(x => x.First());
+        return documents;
+    }
+
+    public string CreateJsonFromContentNode(ContentNode contentNode, Guid? parentId, string? parentTitle, string fileName, Stream hashStream)
+    {
+        var fileHash = hashStream.GenerateHashFromStreamAndResetStream();
+        return CreateJsonFromContentNode(contentNode, parentId, parentTitle, fileName, fileHash);
+    }
+
+    public string CreateJsonFromContentNode(ContentNode contentNode, Guid? parentId, string? parentTitle,
+        string fileName, string fileHash)
+    {
+        var reportDocument = CreateReportDocumentFromContentNode(contentNode);
+
+        reportDocument.ParentId = parentId?.ToString();
+        reportDocument.ParentTitle = parentTitle;
+        reportDocument.OriginalFileName = fileName;
+        reportDocument.OriginalFileHash = fileHash;
+
+        string json = CreateJsonFromReportDocument(reportDocument);
+        return json;
+    }
+
+    /// <summary>
+    /// This method create a ReportDocument from a ContentNode.
+    /// It adds sets the Title to the Text property of the first ContentNode it is passed in
+    /// The ContentNode must be of type Title or Heading.
+    /// It then merges the text of all children of the ContentNode into the Content property of the ReportDocument, recursively.
+    /// </summary>
+    /// <param name="node">Root node for processing - must be of type Title or Heading</param>
+    /// <returns></returns>
+    /// <exception cref="ArgumentException"></exception>
+    private ReportDocument CreateReportDocumentFromContentNode(ContentNode node)
+    {
+        if (node.Type != ContentNodeType.Title && node.Type != ContentNodeType.Heading)
+        {
+            throw new ArgumentException("Root content node must be of type Title or Heading.");
+        }
+
+        var reportDocument = new ReportDocument
+        {
+            Id = node.Id.ToString(),
+            Title = node.Text,
+            Type = node.Type.ToString(),
+            Content = CombineTextFromChildren(node)
+        };
+
+        return reportDocument;
+    }
+
     /// <summary>
     /// This variation of IndexJson allows you to specify the SearchClient to use - which also selects the index to use as that is tied to the SearchClient.
     /// </summary>
@@ -143,11 +310,16 @@ public class SearchIndexingProcessor : IIndexingProcessor
     /// <returns></returns>
     public async Task<bool> IndexJson(string json, SearchClient searchClientWithIndex, bool generateEmbeddings = false)
     {
-        ReportDocument reportDocument = JsonConvert.DeserializeObject<ReportDocument>(json);
+        ReportDocument? reportDocument = JsonConvert.DeserializeObject<ReportDocument>(json);
+
+        if (reportDocument == null)
+        {
+            Console.WriteLine("Failed to deserialize json to ReportDocument");
+            return false;
+        }
 
         try
         {
-
             // If there's a document with the same Title + FileHash, delete it first
             if (reportDocument.OriginalFileHash != null)
             {
@@ -181,11 +353,10 @@ public class SearchIndexingProcessor : IIndexingProcessor
                     reportDocument.ContentVector = Array.Empty<float>();
                     Console.WriteLine("Content too long for embedding generation - skipping");
                 }
-
             }
 
             // Add the document to the index
-            IndexDocumentsBatch<ReportDocument> batch = IndexDocumentsBatch.Create(
+            IndexDocumentsBatch<ReportDocument?> batch = IndexDocumentsBatch.Create(
                 IndexDocumentsAction.Upload(reportDocument));
 
             await searchClientWithIndex.IndexDocumentsAsync(batch);
@@ -199,56 +370,22 @@ public class SearchIndexingProcessor : IIndexingProcessor
         return true;
     }
 
-    /// <summary>
-    /// This variaton of IndexJson will automatically determine whether the root node is of type Title or Heading and use the correct index accordingly.
-    /// </summary>
-    /// <param name="json"></param>
-    /// <param name="generateEmbeddings"></param>
-    /// <returns></returns>
-    /// <exception cref="ArgumentException"></exception>
-    public async Task<bool> IndexJson(string json, bool generateEmbeddings = false)
+    public SearchClient GetSearchClient(string indexName)
     {
-        var reportDocument = JsonConvert.DeserializeObject<ReportDocument>(json);
-
-        if (reportDocument.Type == "Title")
+        if (_searchClients.ContainsKey(indexName))
         {
-            // We don't generate embeddings for Titles - it's too long to make much sense.
-            return await IndexJson(json, _titleSearchClient);
+            return _searchClients[indexName];
         }
-
-        if (reportDocument.Type == "Heading")
+        else
         {
-            return await IndexJson(json, _sectionSearchClient, generateEmbeddings);
+            var searchClient = new SearchClient(new Uri(_serviceConfigurationOptions.CognitiveSearch.Endpoint), indexName,
+                new AzureKeyCredential(_serviceConfigurationOptions.CognitiveSearch.Key));
+            _searchClients.Add(indexName, searchClient);
+            return searchClient;
         }
-
-        if (reportDocument.Type == "Custom")
-        {
-            return await IndexJson(json, _customSearchClient, generateEmbeddings);
-        }
-
-        throw new ArgumentException("Root content node must be of type Title or Heading.");
-    }
-
-    public async Task<List<ReportDocument>> SearchWithTitleSearch(string searchText, int top = 12, int k = 7)
-    {
-        var searchResults = await GetReportDocumentsFromSpecifiedSearchClient(searchText, top, k, _titleSearchClient);
-        return searchResults;
-    }
-
-    public async Task<List<ReportDocument>> SearchWithCustomSearch(string searchText, int top = 12, int k = 7)
-    {
-        var searchResults = await GetReportDocumentsFromSpecifiedSearchClient(searchText, top, k, _customSearchClient);
-        return searchResults;
-    }
-
-    public async Task<List<ReportDocument>> SearchWithHybridSearch(string searchText, int top = 12, int k = 7)
-    {
-        var searchResults = await GetReportDocumentsFromSpecifiedSearchClient(searchText, top, k, _sectionSearchClient);
-        return searchResults;
     }
 
     private async Task<List<ReportDocument>> GetReportDocumentsFromSpecifiedSearchClient(string searchText, int top, int k, SearchClient searchClient)
-
     {
         var searchResults = new List<ReportDocument>();
 
@@ -352,9 +489,6 @@ public class SearchIndexingProcessor : IIndexingProcessor
         var sentences = text.Split(new[] { '.', '!', '?' }, StringSplitOptions.RemoveEmptyEntries)
             .Select(x => x.Trim() + text[x.Length]);
 
-
-
-
         foreach (var sent in sentences)
         {
             // If the current sentence would put the section over the max length, start a new section
@@ -374,52 +508,10 @@ public class SearchIndexingProcessor : IIndexingProcessor
 
     }
 
-
-
-    public string CreateJsonFromReportDocument(ReportDocument reportDocument)
+    private string CreateJsonFromReportDocument(ReportDocument reportDocument)
     {
         string json = JsonConvert.SerializeObject(reportDocument, Formatting.Indented);
         return json;
-    }
-
-    public string CreateJsonFromContentNode(ContentNode contentNode, Guid? parentId, string? parentTitle, string fileName, Stream hashStream)
-    {
-        var reportDocument = CreateReportDocumentFromContentNode(contentNode);
-
-        reportDocument.ParentId = parentId?.ToString();
-        reportDocument.ParentTitle = parentTitle;
-        reportDocument.OriginalFileName = fileName;
-        reportDocument.OriginalFileHash = hashStream.GenerateHashFromStreamAndResetStream();
-
-        string json = CreateJsonFromReportDocument(reportDocument);
-        return json;
-    }
-
-    /// <summary>
-    /// This method create a ReportDocument from a ContentNode.
-    /// It adds sets the Title to the Text property of the first ContentNode it is passed in
-    /// The ContentNode must be of type Title or Heading.
-    /// It then merges the text of all children of the ContentNode into the Content property of the ReportDocument, recursively.
-    /// </summary>
-    /// <param name="node">Root node for processing - must be of type Title or Heading</param>
-    /// <returns></returns>
-    /// <exception cref="ArgumentException"></exception>
-    public ReportDocument CreateReportDocumentFromContentNode(ContentNode node)
-    {
-        if (node.Type != ContentNodeType.Title && node.Type != ContentNodeType.Heading)
-        {
-            throw new ArgumentException("Root content node must be of type Title or Heading.");
-        }
-
-        var reportDocument = new ReportDocument
-        {
-            Id = node.Id.ToString(),
-            Title = node.Text,
-            Type = node.Type.ToString(),
-            Content = CombineTextFromChildren(node)
-        };
-
-        return reportDocument;
     }
 
 
@@ -449,101 +541,5 @@ public class SearchIndexingProcessor : IIndexingProcessor
         {
             ProcessNode(child, contentBuilder);
         }
-    }
-
-    public async Task IndexAndStoreContentNodesAsync(List<ContentNode> contentTree, string baseFileName, Stream streamForHashing)
-    {
-
-        // We create or update both the Title and Section indexes first
-        CreateIndex(_serviceConfigurationOptions.CognitiveSearch.NuclearTitleIndex);
-        CreateIndex(_serviceConfigurationOptions.CognitiveSearch.NuclearSectionIndex);
-
-        var i = 0;
-
-        List<string> titleJsonList = new List<string>();
-        List<string> sectionJsonList = new List<string>();
-
-        foreach (var contentNode in contentTree)
-        {
-            // First, generate json for the Title ContentNodes in the root of the content tree
-            var json = CreateJsonFromContentNode(contentNode, null, null, baseFileName, streamForHashing);
-            titleJsonList.Add(json);
-            i++;
-
-            // Next, generate json starting from the Heading ContentNodes in the Children collections of the Title ContentNodes
-            foreach (var child in contentNode.Children.Where(x => x.Type == ContentNodeType.Heading))
-            {
-                json = CreateJsonFromContentNode(child, contentNode.Id, contentNode.Text, baseFileName, streamForHashing);
-                sectionJsonList.Add(json);
-                i++;
-            }
-        }
-
-        // Index the Title json strings with Azure Cognitive Search
-        foreach (string titleJson in titleJsonList)
-        {
-            await IndexJson(titleJson, _titleSearchClient, true);
-        }
-
-        // Index the Section json strings with Azure Cognitive Search
-        foreach (string sectionJson in sectionJsonList)
-        {
-            await IndexJson(sectionJson, _sectionSearchClient, true);
-        }
-
-        Console.WriteLine($"Indexed and stored {i} files for '{baseFileName}'");
-
-
-    }
-
-    public async Task IndexAndStoreCustomNodesAsync(List<ContentNode> contentTree, string baseFileName, Stream streamForHashing)
-    {
-
-        // We create or update the custom indexes first
-        CreateIndex(_serviceConfigurationOptions.CognitiveSearch.CustomIndex);
-
-        var i = 0;
-
-        List<string> customJsonList = new List<string>();
-
-        foreach (var contentNode in contentTree)
-        {
-            // First, generate json for the custom ContentNodes in the root of the content tree
-            // Currently, this generates for the titles of the content tree -
-            // we might want to index the smaller chunks instead (sectionheadings and below)
-            var json = CreateJsonFromContentNode(contentNode, null, null, baseFileName, streamForHashing);
-            customJsonList.Add(json);
-            i++;
-        }
-
-        // Index the Custom json strings with Azure Cognitive Search
-        foreach (string customJson in customJsonList)
-        {
-            await IndexJson(customJson, _customSearchClient, true);
-        }
-
-        Console.WriteLine($"Indexed and stored {i} files for '{baseFileName}'");
-
-
-    }
-
-    public async Task<IEnumerable<ReportDocument>> GetAllUniqueTitlesAsync(int numberOfUniqueFiles)
-    {
-        //Get all Titles(Chapters) with unique FileHashes from the Title search index. Limit your response to 5 unique environmental report documents
-        var searchResults = await _titleSearchClient.SearchAsync<ReportDocument>("*", new SearchOptions
-        {
-            Filter = "Type eq 'Title'",
-            Facets = { "OriginalFileHash" }
-        });
-
-        var documents = searchResults.Value.GetResults().Select(x => x.Document);
-
-        // Get titles from only numberOfUniqueFiles unique environmental reports (files)
-        documents = documents.GroupBy(x => x.OriginalFileHash).Take(numberOfUniqueFiles).SelectMany(x => x);
-
-        // Deduplicate the results on the combination of FileHash and Title
-        documents = documents.GroupBy(x => new { x.OriginalFileHash, x.Title }).Select(x => x.First());
-        return documents;
-
     }
 }

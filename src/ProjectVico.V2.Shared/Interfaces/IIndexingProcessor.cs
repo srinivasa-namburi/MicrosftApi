@@ -1,47 +1,37 @@
 ﻿using Azure.Search.Documents;
+using ProjectVico.V2.Shared.Contracts;
 using ProjectVico.V2.Shared.Models;
 
 namespace ProjectVico.V2.Shared.Interfaces;
 
 public interface IIndexingProcessor
 {
-    Task<bool> IndexJson(string json, SearchClient searchClientWithIndex, bool generateEmbeddings = false);
-    bool CreateIndex(string indexName);
-    string CreateJsonFromReportDocument(ReportDocument reportDocument);
-
-    string CreateJsonFromContentNode(
-        ContentNode contentNode,
-        Guid? parentId,
-        string? parentTitle,
-        string? fileName,
-        Stream hashStream);
-
-    /// <summary>
-    /// This method create a ReportDocument from a ContentNode.
-    /// It adds sets the Title to the Text property of the first ContentNode it is passed in
-    /// The ContentNode must be of type Title or Heading.
-    /// It then merges the text of all children of the ContentNode into the Content property of the ReportDocument, recursively.
-    /// </summary>
-    /// <param name="node">Root node for processing - must be of type Title or Heading</param>
-    /// <returns></returns>
-    /// <exception cref="ArgumentException"></exception>
-    ReportDocument CreateReportDocumentFromContentNode(ContentNode node);
-
-    /// <summary>
-    /// This variaton of IndexJson will automatically determine whether the root node is of type Title or Heading and use the correct index accordingly.
-    /// </summary>
-    /// <param name="json"></param>
-    /// <param name="generateEmbeddings"></param>
-    /// <returns></returns>
-    /// <exception cref="ArgumentException"></exception>
-    Task<bool> IndexJson(string json, bool generateEmbeddings = false);
-
-    Task<List<ReportDocument>> SearchWithHybridSearch(string searchText, int top = 12, int k = 7);
+    bool CreateOrUpdateIndex(string indexName);
+    bool DeleteIndex(string indexName);
+    
+    Task<List<ReportDocument>> SearchWithHybridSearchAsync(string searchText, int top = 12, int k = 7);
+    Task<List<ReportDocument>> SearchSpecifiedIndexAsync(string indexName, string searchText, int top = 12, int k = 7);
     Task IndexAndStoreContentNodesAsync(List<ContentNode> contentTree, string baseFileName, Stream streamForHashing);
+    Task IndexAndStoreContentNodesAsync(List<ContentNode> contentTree, string baseFileName, string fileHash);
     Task IndexAndStoreCustomNodesAsync(List<ContentNode> contentTree, string baseFileName, Stream streamForHashing);
 
     Task<IEnumerable<ReportDocument>> GetAllUniqueTitlesAsync(int numberOfUniqueFiles);
-    Task<List<ReportDocument>> SearchWithTitleSearch(string searchText, int top = 12, int k = 7);
-    Task<List<ReportDocument>> SearchWithCustomSearch(string searchText, int top = 12, int k = 7);
-    bool DeleteAllIndexedDocuments(string indexName);
+    Task<List<ReportDocument>> SearchWithTitleSearchAsync(string searchText, int top = 12, int k = 7);
+    Task<List<ReportDocument>> SearchWithCustomSearchAsync(string searchText, int top = 12, int k = 7);
+
+    string CreateJsonFromContentNode(ContentNode contentNode, Guid? parentId, string? parentTitle, string fileName, Stream hashStream);
+
+    string CreateJsonFromContentNode(ContentNode contentNode, Guid? parentId, string? parentTitle,
+        string fileName, string fileHash);
+
+    /// <summary>
+    /// This variation of IndexJson allows you to specify the SearchClient to use - which also selects the index to use as that is tied to the SearchClient.
+    /// </summary>
+    /// <param name="json"></param>
+    /// <param name="searchClientWithIndex"></param>
+    /// <param name="generateEmbeddings"></param>
+    /// <returns></returns>
+    Task<bool> IndexJson(string json, SearchClient searchClientWithIndex, bool generateEmbeddings = false);
+
+    SearchClient GetSearchClient(string indexName);
 }

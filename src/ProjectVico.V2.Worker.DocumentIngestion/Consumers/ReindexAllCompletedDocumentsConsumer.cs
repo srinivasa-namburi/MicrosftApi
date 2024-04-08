@@ -1,29 +1,29 @@
 ﻿using MassTransit;
 using Microsoft.Extensions.Options;
+using ProjectVico.V2.DocumentProcess.Shared.Search;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentIngestion.Commands;
 using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Enums;
-using ProjectVico.V2.Shared.Interfaces;
 
 namespace ProjectVico.V2.Worker.DocumentIngestion.Consumers;
 
 public class ReindexAllCompletedDocumentsConsumer : IConsumer<ReindexAllCompletedDocuments>
 {
-    private readonly IIndexingProcessor _indexingProcessor;
     private readonly ILogger<ReindexAllCompletedDocumentsConsumer> _logger;
     private readonly DocGenerationDbContext _dbContext;
+    private readonly IServiceProvider _sp;
     private readonly ServiceConfigurationOptions _options;
 
     public ReindexAllCompletedDocumentsConsumer(
-        IIndexingProcessor indexingProcessor,
         ILogger<ReindexAllCompletedDocumentsConsumer> logger,
         DocGenerationDbContext dbContext,
-        IOptions<ServiceConfigurationOptions> options)
+        IOptions<ServiceConfigurationOptions> options,
+        IServiceProvider sp)
     {
-        _indexingProcessor = indexingProcessor;
         _logger = logger;
         _dbContext = dbContext;
+        _sp = sp;
         _options = options.Value;
     }
     public async Task Consume(ConsumeContext<ReindexAllCompletedDocuments> context)
@@ -34,30 +34,36 @@ public class ReindexAllCompletedDocumentsConsumer : IConsumer<ReindexAllComplete
             _logger.LogWarning("ReindexAllCompletedDocumentsConsumer: No completed documents found to reindex");
             return;
         }
-        
-        _logger.LogInformation("ReindexAllCompletedDocumentsConsumer: Reindexing {count} completed documents", completedDocuments.Count());
 
-        var sectionIndexName = _options.CognitiveSearch.NuclearSectionIndex;
-        var titleIndexName = _options.CognitiveSearch.NuclearTitleIndex;
-        var customDataIndexName = _options.CognitiveSearch.CustomIndex;
+        var documentProcesses = _options.ProjectVicoServices.DocumentProcesses;
 
-        _logger.LogInformation("ReindexAllCompletedDocumentsConsumer: Deleting and recreating all indexes");
-        _indexingProcessor.DeleteAllIndexedDocuments(sectionIndexName);
-        _indexingProcessor.DeleteAllIndexedDocuments(titleIndexName);
-        _indexingProcessor.DeleteAllIndexedDocuments(customDataIndexName);
-
-        _indexingProcessor.CreateIndex(sectionIndexName);
-        _indexingProcessor.CreateIndex(titleIndexName);
-        _indexingProcessor.CreateIndex(customDataIndexName);
-        _logger.LogInformation("ReindexAllCompletedDocumentsConsumer: Indexes deleted and recreated");
-
-        foreach (var document in completedDocuments)
+        foreach (var documentProcess in documentProcesses)
         {
-            document.IngestionState = IngestionState.Processing;
-            await _dbContext.SaveChangesAsync();
-            _logger.LogInformation("ReindexAllCompletedDocumentsConsumer: Reindexing document {documentId}", document.Id);
-            await context.Publish(new IndexIngestedDocument(document.Id));
-        }
+            using var scope = _sp.CreateScope();
+            var ragRepository = scope.ServiceProvider.GetKeyedService<IRagRepository>(documentProcess.Name + "-IRagRepository");
 
+            var documentProcessDocuments = completedDocuments.Where(d => d.DocumentProcess == documentProcess.Name);
+            
+            if (ragRepository == null)
+            {
+                _logger.LogError("ReindexAllCompletedDocumentsConsumer: IRagRepository for DocumentProcess {DocumentProcess} not found.", documentProcess.Name);
+                return;
+            }
+
+            _logger.LogInformation("ReindexAllCompletedDocumentsConsumer: Clearing and recreating repositories for Document Process {DocumentProcess}", documentProcess.Name);
+
+            ragRepository.ClearRepositoryContent();
+            ragRepository.CreateOrUpdateRepository();
+
+            _logger.LogInformation("ReindexAllCompletedDocumentsConsumer: Reindexing {count} completed documents for Document Process {DocumentProcess}", documentProcessDocuments.Count(), documentProcess.Name);
+
+            foreach (var document in documentProcessDocuments)
+            {
+                document.IngestionState = IngestionState.Processing;
+                await _dbContext.SaveChangesAsync();
+                _logger.LogInformation("ReindexAllCompletedDocumentsConsumer: Reindexing document {documentId}", document.Id);
+                await context.Publish(new IndexIngestedDocument(document.Id));
+            }
+        }
     }
 }

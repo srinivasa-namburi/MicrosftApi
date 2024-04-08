@@ -5,33 +5,32 @@ using Azure.AI.OpenAI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
-using ProjectVico.V2.Plugins.Default.NuclearDocs.Services.AiCompletionService;
+using ProjectVico.V2.DocumentProcess.Shared.Generation;
+using ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Search;
 using ProjectVico.V2.Plugins.Shared;
 using ProjectVico.V2.Shared.Configuration;
+using ProjectVico.V2.Shared.Contracts;
 using ProjectVico.V2.Shared.Enums;
-using ProjectVico.V2.Shared.Interfaces;
-using ProjectVico.V2.Shared.Models;
 
-namespace ProjectVico.V2.Plugins.Default.NuclearDocs;
+namespace ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Plugins.NuclearDocs;
 
 public class NRCDocumentsPlugin : IPluginImplementation
 {
     private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
-    private readonly IIndexingProcessor _indexingProcessor;
+    private readonly IUSNuclearLicensingRagRepository _ragRepository;
     private readonly OpenAIClient _openAIClient;
     private readonly IAiCompletionService _aiCompletionService;
 
     public NRCDocumentsPlugin(
         IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
-        IIndexingProcessor indexingProcessor,
         [FromKeyedServices("openai-planner")] OpenAIClient openAIClient,
-        IAiCompletionService aiCompletionService
-        )
+        [FromKeyedServices("US.NuclearLicensing-IAiCompletionService")]
+        IAiCompletionService aiCompletionService, IUSNuclearLicensingRagRepository ragRepository)
     {
         _serviceConfigurationOptions = serviceConfigurationOptions.Value;
-        _indexingProcessor = indexingProcessor;
         _openAIClient = openAIClient;
         _aiCompletionService = aiCompletionService;
+        _ragRepository = ragRepository;
     }
 
     [KernelFunction("GetFullChaptersForQuery")]
@@ -41,8 +40,14 @@ public class NRCDocumentsPlugin : IPluginImplementation
         [Description("The query to search for.")]
         string query)
     {
-        var documents = await _indexingProcessor.SearchWithHybridSearch(query);
-        var outputStrings = await GenerateUniqueSectionNamesForQueryAsync(documents);
+        List<ReportDocument> documentList = new List<ReportDocument>();
+        var combinedResult = await _ragRepository.SearchAsync(query);
+        foreach (var searchResult in combinedResult)
+        {
+            documentList.AddRange(searchResult.Documents);
+        }
+
+        var outputStrings = await GenerateUniqueSectionNamesForQueryAsync(documentList);
         return outputStrings;
     }
 
@@ -54,26 +59,34 @@ public class NRCDocumentsPlugin : IPluginImplementation
             "The name of the section. Please remove any chapter or section numbering from the section names you're searching for.")]
         string sectionName)
     {
-        var documents = await _indexingProcessor.SearchWithHybridSearch(sectionName);
-        var outputStrings = await GenerateSectionDescriptionWithOpenAIAsync(documents);
-        return outputStrings;
+        {
+            List<ReportDocument> documentList = new List<ReportDocument>();
+            var combinedResult = await _ragRepository.SearchAsync(sectionName);
+            foreach (var searchResult in combinedResult)
+            {
+                documentList.AddRange(searchResult.Documents);
+            }
+
+            var outputStrings = await GenerateSectionDescriptionWithOpenAIAsync(documentList);
+            return outputStrings;
+        }
     }
 
     [KernelFunction("GetStreamingBodyTextForSection")]
     [Description(
-        "Writes the body text in a streaming fashion for a title or section, ignoring its sub sections. If no feasible body text is found, returns an empty string")]
+            "Writes the body text in a streaming fashion for a title or section, ignoring its sub sections. If no feasible body text is found, returns an empty string")]
     public async IAsyncEnumerable<string> GetStreamingBodyTextForTitleOrSection(
-        [Description("The name of the section or title/heading")]
+            [Description("The name of the section or title/heading")]
         string sectionOrTitleText,
-        [Description("The Content Node Type we are dealing with - either Heading or Title")]
+            [Description("The Content Node Type we are dealing with - either Heading or Title")]
         string contentNodeTypeString,
-        [Description("A long string with an indented table of contents for the whole document to provide context")]
+            [Description("A long string with an indented table of contents for the whole document to provide context")]
         string tableOfContentsString,
-        [Description("The ID of a metadata record for inclusion into generation. Optional.")]
+            [Description("The ID of a metadata record for inclusion into generation. Optional.")]
         Guid? metadataId = null,
-        [Description("The Section or Title number - 1, 1.1, 1.1.1 etc. Optional.")]
+            [Description("The Section or Title number - 1, 1.1, 1.1.1 etc. Optional.")]
         string sectionOrTitleNumber = ""
-    )
+        )
     {
         var contentNodeType = ContentNodeType.Heading;
         if (contentNodeTypeString == "Title")
@@ -84,13 +97,13 @@ public class NRCDocumentsPlugin : IPluginImplementation
         List<ReportDocument> documents = new List<ReportDocument>();
         if (contentNodeType == ContentNodeType.Heading)
         {
-            documents = await _indexingProcessor.SearchWithHybridSearch(sectionOrTitleNumber + " " +
+            documents = await _ragRepository.SearchOnlySubsectionsAsync(sectionOrTitleNumber + " " +
                                                                         sectionOrTitleText);
         }
         else if (contentNodeType == ContentNodeType.Title)
         {
 
-            documents = await _indexingProcessor.SearchWithTitleSearch(sectionOrTitleNumber + " " +
+            documents = await _ragRepository.SearchOnlyTitlesAsync(sectionOrTitleNumber + " " +
                                                                        sectionOrTitleText);
         }
         else
@@ -125,7 +138,7 @@ public class NRCDocumentsPlugin : IPluginImplementation
     [Description("Writes an outline for a new environmental report, including all sections and subsections, using knowledge of similar written sections from earlier environmental reports.")]
     public async Task<List<string>> GenerateDocumentOutlineAsync()
     {
-        var titleDocuments = await _indexingProcessor.GetAllUniqueTitlesAsync(20);
+        var titleDocuments = await _ragRepository.GetAllUniqueTitlesAsync(30);
         List<string> outputStrings = await GenerateDocumentOutlineWithOpenAiAsync(titleDocuments.ToList());
         return outputStrings;
     }
@@ -143,7 +156,7 @@ public class NRCDocumentsPlugin : IPluginImplementation
                 Messages = {
                         new ChatRequestUserMessage(prompt)
                     },
-                MaxTokens = 400,
+                MaxTokens = 600,
                 Temperature = 0.1f,
                 FrequencyPenalty = 0.7f
             });
@@ -157,14 +170,24 @@ public class NRCDocumentsPlugin : IPluginImplementation
 
         var prompt = $"""
                       This is a list of sections and subsections gathered from many different environmental reports.
+                      
                       Please deduplicate the list of sections and subsections, and generate a complete outline for the document.
+                      
                       To deduplicate, please remove any sections or subsections that seem very similar. The content is drawn from many reports, so there will be some overlap.
+                      
                       Create a numbering system that mimics the section numbering in the full
                       pool of sections you are using. 
+                      
+                      If there are items present that are not chapters/titles, sections or subsections, remove them. 
+                      You can identify the items as they will not have a numeric pattern with periods or single number starting them after any whitespace at the beginning.
+                      
                       MAKE SURE that you retain the correct hierarchy of sections and subsections, 
                       preserving the numbering system of [1.1] or [1.1.1] (etc) for a section and [1] for a chapter title.
+                      
                       Don't turn subsections (1.1, 1.1.1) into chapters (1) or vice versa. The hierarchical structure is important.
+                      
                       Remove all TABLE OF CONTENTS, INDEX, APPENDIX, and other non-content chapters and their subsections.
+                      
                       The list of sections follow in the [CONTENT: <content>] section in this request.
                       [CONTENT: {string.Join("\n", sectionStrings)}]\n
                       """;
@@ -178,7 +201,7 @@ public class NRCDocumentsPlugin : IPluginImplementation
                     new ChatRequestSystemMessage(systemPrompt),
                     new ChatRequestUserMessage(prompt)
                 },
-            MaxTokens = 800,
+            MaxTokens = 3000,
             Temperature = 0.1f,
             FrequencyPenalty = 0.8f
         });

@@ -4,10 +4,12 @@ using ProjectVico.V2.DocumentProcess.Shared;
 using ProjectVico.V2.DocumentProcess.Shared.Generation;
 using ProjectVico.V2.DocumentProcess.Shared.Ingestion.Classification.Classifiers;
 using ProjectVico.V2.DocumentProcess.Shared.Ingestion.Pipelines;
+using ProjectVico.V2.DocumentProcess.Shared.Search;
 using ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Generation;
 using ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Ingestion.Classification.Classifiers;
 using ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Ingestion.Pipelines;
 using ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Mapping;
+using ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Search;
 using ProjectVico.V2.Shared.Configuration;
 
 namespace ProjectVico.V2.DocumentProcess.US.NuclearLicensing;
@@ -30,18 +32,23 @@ public class USNuclearLicensingDocumentProcessRegistration : IDocumentProcessReg
         builder.Services
             .AddKeyedScoped<IPdfPipeline, NuclearEnvironmentalReportPdfPipeline>(ProcessName + "-IPdfPipeline");
         // END Ingestion services
-
+        
         // Generation services
         if (options.ProjectVicoServices.DocumentGeneration.CreateBodyTextNodes)
         {
-            //We no longer use Semantic Kernel here - but further down the pipeline. Left for reference.
-            //builder.Services.AddScoped<IBodyTextGenerator, USNuclearLicensingSemanticKernelBodyTextGenerator>();
-            builder.Services.AddScoped<IBodyTextGenerator, USNuclearLicensingBodyTextGenerator>();
+            builder.Services.AddKeyedScoped<IBodyTextGenerator, USNuclearLicensingBodyTextGenerator>(ProcessName + "-IBodyTextGenerator");
         }
+        builder.Services.AddKeyedScoped<IAiCompletionService, MultiPassLargeReceiveContextAiCompletionService>(ProcessName + "-IAiCompletionService");
+        builder.Services.AddKeyedScoped<IDocumentOutlineService, NuclearDocumentOutlineService>(ProcessName + "-IDocumentOutlineService");
+        // END Generation services
+
+        // Shared services
         builder.Services.AddAutoMapper(typeof(USNuclearLicensingMetadataProfile));
         builder.Services
-            .AddKeyedScoped<IDocumentOutlineService, NuclearDocumentOutlineService>(ProcessName + "-IDocumentOutlineService");
-        // END Generation services
+            .AddKeyedScoped<IRagRepository, USNuclearLicensingRagRepository>(ProcessName + "-IRagRepository");
+        builder.Services
+            .AddScoped<IUSNuclearLicensingRagRepository, USNuclearLicensingRagRepository>();
+        // END Shared services
 
         return builder;
     }

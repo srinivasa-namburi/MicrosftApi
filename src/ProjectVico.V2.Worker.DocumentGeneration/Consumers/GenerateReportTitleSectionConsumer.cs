@@ -17,19 +17,21 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
     private readonly DocGenerationDbContext _dbContext;
     private readonly ILogger<GenerateReportTitleSectionConsumer> _logger;
     private readonly IPublishEndpoint _publishEndpoint;
-    private readonly IBodyTextGenerator _bodyTextGenerator;
+    private readonly IServiceProvider _sp;
+    private IBodyTextGenerator? _bodyTextGenerator;
 
     public GenerateReportTitleSectionConsumer(
         Kernel kernel,
         DocGenerationDbContext dbContext,
         ILogger<GenerateReportTitleSectionConsumer> logger,
         IPublishEndpoint publishEndpoint,
-        IBodyTextGenerator bodyTextGenerator)
+        IServiceProvider sp
+        )
     {
         _dbContext = dbContext;
         _logger = logger;
         _publishEndpoint = publishEndpoint;
-        _bodyTextGenerator = bodyTextGenerator;
+        _sp = sp;
     }
 
     public async Task Consume(ConsumeContext<GenerateReportTitleSection> context)
@@ -42,27 +44,28 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
 
         var tableOfContentsString = GeneratePlainTextTableOfContentsFromOutlineJson(message.DocumentOutlineJson);
 
-        try
-        {
-            var trackedDocument =
-                await _dbContext.GeneratedDocuments
+        var trackedDocument =
+            await _dbContext.GeneratedDocuments
                 .FirstOrDefaultAsync(x => x.Id == message.CorrelationId);
 
-            if (trackedDocument == null)
-            {
-                // This is an orphaned generation request - ignored.
-                _logger.LogInformation("Encountered orphaned GenerateReportTitleSection - probably in development with restarting db instance?. Abandoned.");
-                return;
-            }
-            var stream = new MemoryStream(Encoding.UTF8.GetBytes(message.ContentNodeJson));
-            var contentNode = await JsonSerializer.DeserializeAsync<ContentNode>(stream);
+        if (trackedDocument == null)
+        {
+            // This is an orphaned generation request - ignored.
+            _logger.LogInformation("Encountered orphaned GenerateReportTitleSection - probably in development with restarting db instance?. Abandoned.");
+            return;
+        }
+            
+        var stream = new MemoryStream(Encoding.UTF8.GetBytes(message.ContentNodeJson));
+        var contentNode = await JsonSerializer.DeserializeAsync<ContentNode>(stream);
 
-            // Find the content node with the same id as the one we are generating content for
-            // var existingContentNode = trackedDocument.ContentNodes.FirstOrDefault(cn => cn.Id == contentNode.Id);
-            var existingContentNode = await _dbContext.ContentNodes
-                .Include(x => x.Children)
-                .FirstOrDefaultAsync(cn => cn.Id == contentNode.Id)!;
+        // Find the content node with the same id as the one we are generating content for
+        // var existingContentNode = trackedDocument.ContentNodes.FirstOrDefault(cn => cn.Id == contentNode.Id);
+        var existingContentNode = await _dbContext.ContentNodes
+            .Include(x => x.Children)
+            .FirstOrDefaultAsync(cn => cn.Id == contentNode.Id)!;
 
+        try
+        {
             if (existingContentNode != null)
             {
                 existingContentNode.GenerationState = ContentNodeGenerationState.InProgress;
@@ -75,26 +78,22 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
                         GenerationState = ContentNodeGenerationState.InProgress
                     });
 
-                string contentNodeType;
+                var contentNodeType = existingContentNode.Type == ContentNodeType.Title ? "Title" : "Heading";
 
-                if (contentNode.Type == ContentNodeType.Title)
+                var sectionNumber = existingContentNode.Text.Split(' ')[0];
+                var sectionTitle = existingContentNode.Text.Substring(sectionNumber.Length).Trim();
+                var documentProcessName = trackedDocument.DocumentProcess;
+                if (string.IsNullOrEmpty(documentProcessName))
                 {
-                    contentNodeType = "Title";
-                }
-                else
-                {
-                    contentNodeType = "Heading";
+                    throw new InvalidOperationException("DocumentProcessName is null or empty");
                 }
 
-                var sectionNumber = contentNode.Text.Split(' ')[0];
-                var sectionTitle = contentNode.Text.Substring(sectionNumber.Length).Trim();
-
-                var bodyContentNodes = await GenerateBodyText(contentNodeType, sectionNumber, sectionTitle, tableOfContentsString, message.MetadataId);
+                var bodyContentNodes = await GenerateBodyText(contentNodeType, sectionNumber, sectionTitle, tableOfContentsString, documentProcessName, message.MetadataId);
 
                 // Set the Parent of all bodyContentNodes to be the existingContentNode
                 foreach (var bodyContentNode in bodyContentNodes)
                 {
-                    bodyContentNode.ParentId = existingContentNode?.Id;
+                    bodyContentNode.ParentId = existingContentNode.Id;
                     _dbContext.ContentNodes.Add(bodyContentNode);
                 }
 
@@ -102,11 +101,10 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
                 {
                     contentNodeGeneratedEvent.ContentNodeId = bodyContentNodes[0].Id;
                 }
-
-
             }
 
             existingContentNode.GenerationState = ContentNodeGenerationState.Completed;
+
             await _dbContext.SaveChangesAsync();
 
             await _publishEndpoint.Publish<ContentNodeGenerationStateChanged>(
@@ -119,22 +117,45 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
         }
         catch (Exception e)
         {
+            if (existingContentNode == null)
+            {
+                _logger.LogError(e, "Failed to generate content for content node {ContentNodeId} - content node not found", contentNode.Id);
+            }
+            else
+            {
+                _logger.LogError(e, "Failed to generate content for content node {ContentNodeId}", existingContentNode.Id);
+                existingContentNode.GenerationState = ContentNodeGenerationState.Failed;
+                await _dbContext.SaveChangesAsync();
+            }
+            
             contentNodeGeneratedEvent.IsSuccessful = false;
-
         }
         finally
         {
-
             // Publish the ContentNodeGenerated event defined at the top of this file
             await context.Publish(contentNodeGeneratedEvent);
         }
     }
 
     private async Task<List<ContentNode>> GenerateBodyText(string contentNodeType, string sectionNumber,
-        string sectionTitle, string tableOfContentsString, Guid? metadataId = null)
+        string sectionTitle, string tableOfContentsString, string documentProcessName, Guid? metadataId = null)
     {
+        // Resolve the IBodyTextGenerator to be used. If a Keyed service is found that corresponds to the documentProcessName, use that.
+        // Otherwise, resolve to the default IBodyTextGenerator.
+
+        using var scope = _sp.CreateScope();
+        _bodyTextGenerator = scope.ServiceProvider.GetKeyedService<IBodyTextGenerator>(documentProcessName+"-IBodyTextGenerator") ??
+                             _sp.GetService<IBodyTextGenerator>();
+
+
+        if (_bodyTextGenerator == null)
+        {
+            throw new InvalidOperationException("No valid IBodyTextGenerator was found");
+        }
+
         // This method is a wrapper around the streaming output of the AI Completion Service.
-        var result = await _bodyTextGenerator.GenerateBodyText(contentNodeType, sectionNumber, sectionTitle, tableOfContentsString, metadataId);
+        var result = await _bodyTextGenerator.GenerateBodyText(contentNodeType, sectionNumber, sectionTitle,
+            tableOfContentsString, metadataId);
         return result;
     }
 

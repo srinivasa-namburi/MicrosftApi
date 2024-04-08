@@ -35,9 +35,7 @@ builder.Services.AddKeyedScoped<SearchClient>("searchclient-customdata",
 
 builder.DynamicallyRegisterPlugins();
 builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
-
 builder.AddSemanticKernelService();
-
 
 var serviceBusConnectionString = builder.Configuration.GetConnectionString("sbus");
 serviceBusConnectionString = serviceBusConnectionString?.Replace("https://", "sb://").Replace(":443/", "/");

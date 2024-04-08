@@ -1,8 +1,9 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using ProjectVico.V2.DocumentProcess.Shared.Generation;
-using ProjectVico.V2.Plugins.Default.NuclearDocs.Services.AiCompletionService;
+using ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Search;
+using ProjectVico.V2.Shared.Contracts;
 using ProjectVico.V2.Shared.Enums;
-using ProjectVico.V2.Shared.Interfaces;
 using ProjectVico.V2.Shared.Models;
 
 namespace ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Generation;
@@ -10,31 +11,32 @@ namespace ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Generation;
 public class USNuclearLicensingBodyTextGenerator : IBodyTextGenerator
 {
     private readonly IAiCompletionService _aiCompletionService;
-    private readonly IIndexingProcessor _indexingProcessor;
+    private readonly IUSNuclearLicensingRagRepository _ragRepository;
     private readonly ILogger<USNuclearLicensingBodyTextGenerator> _logger;
 
     public USNuclearLicensingBodyTextGenerator(
-        IAiCompletionService aiCompletionService, 
-        IIndexingProcessor indexingProcessor,
-        ILogger<USNuclearLicensingBodyTextGenerator> logger)
+        [FromKeyedServices("US.NuclearLicensing-IAiCompletionService")]
+        IAiCompletionService aiCompletionService,
+        ILogger<USNuclearLicensingBodyTextGenerator> logger,
+        IUSNuclearLicensingRagRepository ragRepository)
     {
         _aiCompletionService = aiCompletionService;
-        _indexingProcessor = indexingProcessor;
         _logger = logger;
+        _ragRepository = ragRepository;
     }
 
     public async Task<List<ContentNode>> GenerateBodyText(string contentNodeTypeString, string sectionNumber,
         string sectionTitle, string tableOfContentsString, Guid? metadataId)
     {
         var contentNodeType = Enum.Parse<ContentNodeType>(contentNodeTypeString);
-        
+
         var documents = await GetDocumentsForQuery(contentNodeType, sectionNumber, sectionTitle);
 
         return await _aiCompletionService.GetBodyContentNodes(
             documents,
             sectionNumber,
             sectionTitle,
-            Enum.Parse<ContentNodeType>(contentNodeTypeString),
+            contentNodeType,
             tableOfContentsString,
             metadataId
         );
@@ -44,16 +46,15 @@ public class USNuclearLicensingBodyTextGenerator : IBodyTextGenerator
         string sectionOrTitleText)
     {
         List<ReportDocument> documents = new List<ReportDocument>();
-        if (contentNodeType == ContentNodeType.Heading)
+        if (contentNodeType == ContentNodeType.Title)
         {
-            documents = await _indexingProcessor.SearchWithHybridSearch(sectionOrTitleNumber + " " +
-                                                                        sectionOrTitleText);
-        }
-        else if (contentNodeType == ContentNodeType.Title)
-        {
+            documents = await _ragRepository.SearchOnlyTitlesAsync(sectionOrTitleNumber + " " + sectionOrTitleText);
 
-            documents = await _indexingProcessor.SearchWithTitleSearch(sectionOrTitleNumber + " " +
-                                                                       sectionOrTitleText);
+        }
+        else if (contentNodeType == ContentNodeType.Heading)
+        {
+            documents = await _ragRepository.SearchOnlySubsectionsAsync(sectionOrTitleNumber + " " + sectionOrTitleText);
+
         }
 
         return documents;

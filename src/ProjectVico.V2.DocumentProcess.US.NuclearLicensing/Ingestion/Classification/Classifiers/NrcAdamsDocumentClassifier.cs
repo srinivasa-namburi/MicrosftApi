@@ -2,9 +2,7 @@
 
 using Azure;
 using Azure.AI.FormRecognizer.DocumentAnalysis;
-using Azure.Storage.Blobs;
 using ProjectVico.V2.DocumentProcess.Shared.Ingestion.Classification.Classifiers;
-using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Shared.Models.Classification;
 
 namespace ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Ingestion.Classification.Classifiers;
@@ -13,14 +11,10 @@ public class NrcAdamsDocumentClassifier : IDocumentClassifier
 {
 
     private readonly DocumentAnalysisClient _documentAnalysisClient;
-    private readonly BlobServiceClient _blobServiceClient;
-    private readonly AzureFileHelper _fileHelper;
 
-    public NrcAdamsDocumentClassifier(DocumentAnalysisClient documentAnalysisClient, BlobServiceClient blobServiceClient, AzureFileHelper fileHelper)
+    public NrcAdamsDocumentClassifier(DocumentAnalysisClient documentAnalysisClient)
     {
         _documentAnalysisClient = documentAnalysisClient;
-        _blobServiceClient = blobServiceClient;
-        _fileHelper = fileHelper;
     }
 
     public async Task<DocumentClassificationResult> ClassifyDocumentFromUri(string documentUriWithSasToken, string classificationModelName)

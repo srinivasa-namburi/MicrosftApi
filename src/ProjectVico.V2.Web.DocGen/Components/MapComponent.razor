@@ -157,8 +157,10 @@
         var longitudeString = await JSRuntime.InvokeAsync<string>("getInnerText", "longitude");
         try
         {
-            DocumentGenerationRequestLocation.Latitude = Double.Parse(latitudeString);
-            DocumentGenerationRequestLocation.Longitude = Double.Parse(longitudeString);
+            // Parse the latitude and longitude strings to double - remember to convert commas to dots for culture-specific decimal separators
+            DocumentGenerationRequestLocation.Latitude = double.Parse(latitudeString.Replace(",", "."), System.Globalization.CultureInfo.InvariantCulture);
+            DocumentGenerationRequestLocation.Longitude = double.Parse(longitudeString.Replace(",", "."), System.Globalization.CultureInfo.InvariantCulture);
+            
         }
         catch
         {

@@ -4,14 +4,17 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
+using ProjectVico.V2.DocumentProcess.Shared.Generation;
+using ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Plugins.NuclearDocs;
 using ProjectVico.V2.Plugins.Shared;
 using ProjectVico.V2.Shared.Configuration;
+using ProjectVico.V2.Shared.Contracts;
 using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Enums;
 using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Shared.Models;
 
-namespace ProjectVico.V2.Plugins.Default.NuclearDocs.Services.AiCompletionService;
+namespace ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Generation;
 
 public class MultiPassLargeReceiveContextAiCompletionService : IAiCompletionService
 {
@@ -19,9 +22,9 @@ public class MultiPassLargeReceiveContextAiCompletionService : IAiCompletionServ
     private readonly OpenAIClient _openAIClient;
     private readonly TableHelper _tableHelper;
     private readonly DocGenerationDbContext _dbContext;
-    private Kernel _sk;
     private readonly IServiceProvider _sp;
-    private int _numberOfPasses = 6;
+    private Kernel _sk;
+    private readonly int _numberOfPasses = 6;
 
     public MultiPassLargeReceiveContextAiCompletionService(
         IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
@@ -232,8 +235,6 @@ public class MultiPassLargeReceiveContextAiCompletionService : IAiCompletionServ
                 // If the response contains the [*COMPLETE*] tag, we can stop the conversation
                 if (responseLine.Contains("[*COMPLETE*]", StringComparison.InvariantCultureIgnoreCase))
                 {
-                    // Remove the [*COMPLETE*] tag from the response
-                    responseLine = responseLine.Replace("[*COMPLETE*]", "");
                     yield break;
                 }
 

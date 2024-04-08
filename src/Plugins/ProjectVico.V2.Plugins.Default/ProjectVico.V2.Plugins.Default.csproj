@@ -26,6 +26,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
+	  <ProjectReference Include="..\..\ProjectVico.V2.DocumentProcess.Shared\ProjectVico.V2.DocumentProcess.Shared.csproj" />
 	  <ProjectReference Include="..\..\ProjectVico.V2.Shared\ProjectVico.V2.Shared.csproj" />
 	  <ProjectReference Include="..\ProjectVico.V2.Plugins.Shared\ProjectVico.V2.Plugins.Shared.csproj" />
 	</ItemGroup>

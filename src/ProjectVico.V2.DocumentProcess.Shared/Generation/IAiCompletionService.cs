@@ -1,7 +1,8 @@
-﻿using ProjectVico.V2.Shared.Enums;
+﻿using ProjectVico.V2.Shared.Contracts;
+using ProjectVico.V2.Shared.Enums;
 using ProjectVico.V2.Shared.Models;
 
-namespace ProjectVico.V2.Plugins.Default.NuclearDocs.Services.AiCompletionService;
+namespace ProjectVico.V2.DocumentProcess.Shared.Generation;
 
 public interface IAiCompletionService
 {

@@ -4,10 +4,6 @@ using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 using Microsoft.SemanticKernel.Embeddings;
 using Microsoft.SemanticKernel.TextGeneration;
-using ProjectVico.V2.Plugins.Default.EarthQuake;
-using ProjectVico.V2.Plugins.Default.GeographicalData;
-using ProjectVico.V2.Plugins.Default.NuclearDocs;
-using ProjectVico.V2.Plugins.Default.Utility;
 using ProjectVico.V2.Plugins.Shared;
 using ProjectVico.V2.Shared.Configuration;
 
@@ -17,17 +13,6 @@ namespace ProjectVico.V2.Worker.DocumentGeneration.AI;
 
 public static class SemanticKernelExtensions
 {
-    private static IHostApplicationBuilder AddSemanticKernelPlugins(this IHostApplicationBuilder builder)
-    {
-        builder.Services.AddScoped<NRCDocumentsPlugin>();
-        builder.Services.AddScoped<EarthquakePlugin>();
-        builder.Services.AddScoped<FacilitiesPlugin>();
-        builder.Services.AddSingleton<DatePlugin>();
-        builder.Services.AddSingleton<ConversionPlugin>();
-
-        return builder;
-    }
-
     private static IHostApplicationBuilder AddCompletionServices(this IHostApplicationBuilder builder)
     {
         var sp = builder.Services.BuildServiceProvider();
@@ -57,7 +42,6 @@ public static class SemanticKernelExtensions
     public static IHostApplicationBuilder AddSemanticKernelService(this IHostApplicationBuilder builder)
     {
         builder.AddCompletionServices();
-        builder.AddSemanticKernelPlugins();
 
         var sp = builder.Services.BuildServiceProvider();
 

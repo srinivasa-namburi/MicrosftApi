@@ -107,7 +107,8 @@ public class NuclearDocumentOutlineService : IDocumentOutlineService
                                   The chapter numbers should be consecutive numbers, so no skipping from 3 to 7 to 22 for example. The outer level should always be 1, 2, 3 etc.
                                   Please also remove any trailing spaces, quotes and dashes from the list.
                                   If the result has duplicate title or section numbers, please keep the order of the output intact, but renumber the titles and
-                                  their children so that there are no duplicates.
+                                  their children so that there are no duplicates. 
+                                  Use proper capitalization - don't use ALL CAPS for the title or section names. Capitalize the first letter of each sentence.
                                   This is an example of the expected format:
 
                                   [FORMAT: {orderedSectionListExample}]\n

@@ -46,7 +46,3 @@ public static class ContentNodeSorter
         return String.Compare(x.Text, y.Text, StringComparison.Ordinal);
     }
 }
-
-// Usage:
-// Assuming `generatedDocument` is an instance of GeneratedDocument
-// ContentNodeSorter.SortContentNodes(generatedDocument.ContentNodes);

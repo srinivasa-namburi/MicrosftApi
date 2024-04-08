@@ -38,6 +38,10 @@
                             {
                                 <MudIcon Icon="@Icons.Material.Rounded.CheckCircle" Color="Color.Success" Size="Size.Medium" />
                             }
+                            else if(Node.GenerationState == ContentNodeGenerationState.Failed)
+                            {
+                                <MudIcon Icon="@Icons.Material.Rounded.Error" Color="Color.Error" Size="Size.Medium" />
+                            }
                         </MudItem>
                         <MudItem xs="11">
                             @Node.Text

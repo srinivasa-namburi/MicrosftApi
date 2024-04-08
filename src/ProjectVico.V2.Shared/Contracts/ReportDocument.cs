@@ -1,4 +1,4 @@
-﻿namespace ProjectVico.V2.Shared.Models;
+﻿namespace ProjectVico.V2.Shared.Contracts;
 
 public class ReportDocument
 {
