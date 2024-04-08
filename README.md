@@ -3,8 +3,7 @@
 This repo contains the Generative AI for Nuclear Licencing Copilot solution accellerator, intended to reduce the time and cost of creating licencing application documents, and is intended to be built upon and customized to meet users' needs. Any output should always be reviewed by a human.
 
 ## Solution Overview
-
-![image](https://github.com/Azure/AI-For-SMRs/assets/18575224/20952d5b-d3bb-4ff6-9327-ace9ad54a12f)
+![V2SolutionArchitectureAndDataflow](https://github.com/Azure/AI-For-SMRs/assets/18575224/04161656-996f-47cc-b1fc-ecd261e0f148)
 
 ## License
 
