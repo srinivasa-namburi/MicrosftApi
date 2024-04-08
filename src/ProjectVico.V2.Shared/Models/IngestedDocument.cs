@@ -10,6 +10,7 @@ public class IngestedDocument : EntityBase
     public string OriginalDocumentUrl { get; set; }
     public string? UploadedByUserOid { get; set; }
     public string? DocumentProcess { get; set; }
+    public string? Plugin { get; set; }
     public IngestionState IngestionState { get; set; } = IngestionState.Uploaded;
     
     public string? ClassificationShortCode { get; set; }

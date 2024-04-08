@@ -8,4 +8,5 @@ public record ProcessIngestedDocument(Guid CorrelationId) : CorrelatedBy<Guid>
     public string OriginalDocumentUrl { get; set; }
     public string? UploadedByUserOid { get; set; }
     public string? DocumentProcessName { get; set; }
+    public string? Plugin { get; set; }
 }

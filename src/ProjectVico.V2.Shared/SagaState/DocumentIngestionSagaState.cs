@@ -21,4 +21,5 @@ public class DocumentIngestionSagaState : SagaStateMachineInstance
     public IngestionState IngestionState { get; set; } = IngestionState.Uploaded;
     public IngestionType IngestionType { get; set; }
     public string? DocumentProcessName { get; set; } = "US.NuclearLicensing";
+    public string? Plugin { get; set; }
 }
