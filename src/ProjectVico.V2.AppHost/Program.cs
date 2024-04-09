@@ -140,7 +140,7 @@ var docGenFrontend = builder
     .WithConfigSection(envConnectionStringsConfigurationSection)
     .WithReference(signalr)
     .WithReference(redis)
-    .WithReference(apiMain.GetEndpoint("https"));
+    .WithReference(apiMain);
 
 builder.Build().Run();
 
