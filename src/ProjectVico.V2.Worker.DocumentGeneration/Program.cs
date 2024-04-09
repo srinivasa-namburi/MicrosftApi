@@ -44,9 +44,6 @@ builder.Services.AddKeyedScoped<SearchClient>("searchclient-section",
     (provider, o) => GetSearchClientWithIndex(provider, o, serviceConfigurationOptions.CognitiveSearch.NuclearSectionIndex));
 builder.Services.AddKeyedScoped<SearchClient>("searchclient-title",
     (provider, o) => GetSearchClientWithIndex(provider, o, serviceConfigurationOptions.CognitiveSearch.NuclearTitleIndex));
-builder.Services.AddKeyedScoped<SearchClient>("searchclient-customdata",
-    (provider, o) => GetSearchClientWithIndex(provider, o, serviceConfigurationOptions.CognitiveSearch.CustomIndex));
-
 
 builder.DynamicallyRegisterPlugins();
 builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);

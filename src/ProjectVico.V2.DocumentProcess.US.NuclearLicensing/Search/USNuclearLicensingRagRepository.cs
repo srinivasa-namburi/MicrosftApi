@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Azure.Search.Documents;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ProjectVico.V2.DocumentProcess.Shared.Search;
 using ProjectVico.V2.Shared.Configuration;
@@ -91,18 +92,33 @@ public class USNuclearLicensingRagRepository : BaseRagRepository, IUSNuclearLice
 
     public async Task<IEnumerable<ReportDocument>> GetAllUniqueTitlesAsync(int numberOfUniqueFiles)
     {
-        var result = await IndexingProcessor.GetAllUniqueTitlesAsync(numberOfUniqueFiles);
-        return result;
+        var titleSearchClient = IndexingProcessor.GetSearchClient("index-01-titles");
+
+        //Get all Titles(Chapters) with unique FileHashes from the Title search index. Limit your response to <numberOfUniqueFiles> environmental report documents
+        var searchResults = await titleSearchClient.SearchAsync<ReportDocument>("*", new SearchOptions
+        {
+            Filter = "Type eq 'Title'",
+            Facets = { "OriginalFileHash" }
+        });
+
+        var documents = searchResults.Value.GetResults().Select(x => x.Document);
+
+        // Get titles from only numberOfUniqueFiles unique environmental reports (files)
+        documents = documents.GroupBy(x => x.OriginalFileHash).Take(numberOfUniqueFiles).SelectMany(x => x);
+
+        // Deduplicate the results on the combination of FileHash and Title
+        documents = documents.GroupBy(x => new { x.OriginalFileHash, x.Title }).Select(x => x.First());
+        return documents;
     }
 
-    public new async Task StoreContentNodesAsync(List<ContentNode> contentNodes, string sourceFileName, Stream streamForHashing)
+    public override async Task StoreContentNodesAsync(List<ContentNode> contentNodes, string sourceFileName, Stream streamForHashing)
     {
         var fileHash = streamForHashing.GenerateHashFromStreamAndResetStream();
         await StoreContentNodesAsync(contentNodes, sourceFileName, fileHash);
 
     }
 
-    public new async Task StoreContentNodesAsync(List<ContentNode> contentNodes, string sourceFileName, string fileHash)
+    public override async Task StoreContentNodesAsync(List<ContentNode> contentNodes, string sourceFileName, string fileHash)
     {
         List<string> titleJsonList = [];
         List<string> sectionJsonList = [];
