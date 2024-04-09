@@ -18,10 +18,7 @@ var durableDevelopment = Convert.ToBoolean(builder.Configuration["ServiceConfigu
 var sqlPassword = builder.AddParameter("sqlPassword", true);
 var sqlDatabaseName = builder.Configuration["ServiceConfiguration:SQL:DatabaseName"];
 
-var rabbitMqPassword = builder.AddParameter("rabbitMqPassword", true);
-
 IResourceBuilder<SqlServerDatabaseResource> docGenSql;
-IResourceBuilder<RabbitMQServerResource> docGenRabbitMq;
 IResourceBuilder<AzureServiceBusResource>? sbus;
 IResourceBuilder<IResourceWithConnectionString> queueService;
 IResourceBuilder<RedisResource> redis;
@@ -47,10 +44,6 @@ if (builder.ExecutionContext.IsRunMode) // For local development
             .WithDataVolume("pvico-sql-docgen-vol")
             .AddDatabase(sqlDatabaseName);
 
-        docGenRabbitMq = builder
-            .AddRabbitMQ("rabbitmqdocgen", password: rabbitMqPassword, port: 9002)
-            .WithDataVolume("pvico-rabbitmq-vol")
-            .WithManagementPlugin();
 
     }
     else // Don't persist data and queue content - it will be deleted on restart!
@@ -61,12 +54,9 @@ if (builder.ExecutionContext.IsRunMode) // For local development
 
         redis = builder.AddRedis("redis", 16379);
 
-        docGenRabbitMq = builder
-            .AddRabbitMQ("rabbitmqdocgen", password:rabbitMqPassword, port: 9002)
-            .WithManagementPlugin();
+
     }
-    
-    queueService = docGenRabbitMq;
+
 }
 else // For production/Azure deployment
 {
@@ -78,14 +68,16 @@ else // For production/Azure deployment
     redis = builder.AddRedis("redis")
         .PublishAsAzureRedis()
         .WithPersistence();
-
-    sbus = builder.AddAzureServiceBus("sbus");
-
-    queueService = sbus;
 }
+
+// Azure Service Bus is used by all variations of configurations
+
+sbus = builder.AddAzureServiceBus("sbus");
+queueService = sbus;
 
 var apiMain = builder
     .AddProject<Projects.ProjectVico_V2_API_Main>("api-main")
+    .WithHttpsEndpoint(6001)
     .WithExternalHttpEndpoints()
     .WithConfigSection(envAzureAdConfigurationSection)
     .WithConfigSection(envServiceConfigurationConfigurationSection)
@@ -135,18 +127,20 @@ var workerScheduler = builder
 var setupManager = builder
     .AddProject<Projects.ProjectVico_V2_SetupManager>("worker-setupmanager")
     .WithReplicas(1) // There can only be one Setup Manager
+    .WithReference(queueService)
     .WithReference(docGenSql)
     .WithConfigSection(envServiceConfigurationConfigurationSection);
 
 var docGenFrontend = builder
     .AddProject<Projects.ProjectVico_V2_Web_DocGen>("web-docgen")
+    .WithHttpsEndpoint(5001)
     .WithExternalHttpEndpoints()
     .WithConfigSection(envAzureAdConfigurationSection)
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
     .WithReference(signalr)
     .WithReference(redis)
-    .WithReference(apiMain);
+    .WithReference(apiMain.GetEndpoint("https"));
 
 builder.Build().Run();
 

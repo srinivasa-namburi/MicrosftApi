@@ -1,10 +1,10 @@
 using Azure;
 using Azure.Identity;
-using Azure.Search.Documents;
 using MassTransit;
 using MassTransit.EntityFrameworkCoreIntegration;
 using ProjectVico.V2.DocumentProcess.Shared;
 using ProjectVico.V2.Plugins.Shared;
+using ProjectVico.V2.Shared;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Extensions;
@@ -23,6 +23,8 @@ await Task.Delay(TimeSpan.FromSeconds(15));
 
 builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
+
+await builder.DelayStartup(serviceConfigurationOptions.ProjectVicoServices.DocumentGeneration.DurableDevelopmentServices);
 
 // Common services and dependencies
 builder.AddAzureServiceBusClient("sbus");

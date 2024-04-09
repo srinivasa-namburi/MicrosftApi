@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Identity.Web;
 using ProjectVico.V2.API.Main.Hubs;
+using ProjectVico.V2.Shared;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Extensions;
 using ProjectVico.V2.Shared.Mappings;
@@ -18,11 +19,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.AddServiceDefaults();
 
 // This is to grant SetupManager time to perform migrations
-Console.WriteLine("Waiting for SetupManager to perform migrations...");
-await Task.Delay(TimeSpan.FromSeconds(15));
-
 
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
+
+await builder.DelayStartup(serviceConfigurationOptions.ProjectVicoServices.DocumentGeneration.DurableDevelopmentServices);
 
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();

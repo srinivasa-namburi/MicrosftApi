@@ -64,7 +64,7 @@
     private async Task StartHubConnections(string token)
     {
         //TODO: This is a hack because SignalR can't use Service Discovery yet
-        apiSignalRAddressBase = Configuration["services:api-main:0"];
+        apiSignalRAddressBase = Configuration["services:api-main:https:0"];
 
         HubConnection = new HubConnectionBuilder()
             .WithUrl(Navigation.ToAbsoluteUri($"{apiSignalRAddressBase}/hubs/notification-hub"), options =>
