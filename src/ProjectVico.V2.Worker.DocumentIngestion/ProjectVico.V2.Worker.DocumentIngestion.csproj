@@ -15,10 +15,10 @@
     <None Remove="s\**" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="MassTransit.Azure.ServiceBus.Core" Version="8.1.3" />
-    <PackageReference Include="MassTransit.EntityFrameworkCore" Version="8.1.3" />
-    <PackageReference Include="MassTransit.Quartz" Version="8.1.3" />
-    <PackageReference Include="MassTransit.RabbitMQ" Version="8.1.3" />
+    <PackageReference Include="MassTransit.Azure.ServiceBus.Core" Version="8.2.0" />
+    <PackageReference Include="MassTransit.EntityFrameworkCore" Version="8.2.0" />
+    <PackageReference Include="MassTransit.Quartz" Version="8.2.0" />
+    <PackageReference Include="MassTransit.RabbitMQ" Version="8.2.0" />
     <PackageReference Include="Microsoft.SemanticKernel" Version="1.3.1" />
     <PackageReference Include="Microsoft.SemanticKernel.Abstractions" Version="1.3.1" />
     <PackageReference Include="Microsoft.SemanticKernel.Connectors.OpenAI" Version="1.3.1" />
