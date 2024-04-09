@@ -18,20 +18,12 @@ builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configur
 
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
 
-builder.AddAzureServiceBus("sbus");
-builder.AddRabbitMQ("rabbitmqdocgen");
-builder.AddKeyedAzureOpenAI("openai-planner");
-builder.AddAzureBlobService("docGenBlobs");
+builder.AddAzureServiceBusClient("sbus");
+builder.AddRabbitMQClient("rabbitmqdocgen");
+builder.AddKeyedAzureOpenAIClient("openai-planner");
+builder.AddAzureBlobClient("docGenBlobs");
 
 builder.AddDocGenDbContext(serviceConfigurationOptions);
-
-builder.Services.AddKeyedScoped<SearchClient>("searchclient-section",
-    (provider, o) => GetSearchClientWithIndex(provider, o, serviceConfigurationOptions.CognitiveSearch.NuclearSectionIndex));
-builder.Services.AddKeyedScoped<SearchClient>("searchclient-title",
-    (provider, o) => GetSearchClientWithIndex(provider, o, serviceConfigurationOptions.CognitiveSearch.NuclearTitleIndex));
-builder.Services.AddKeyedScoped<SearchClient>("searchclient-customdata",
-    (provider, o) => GetSearchClientWithIndex(provider, o, serviceConfigurationOptions.CognitiveSearch.CustomIndex));
-
 
 builder.DynamicallyRegisterPlugins();
 builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
@@ -93,13 +85,3 @@ else
 
 var host = builder.Build();
 host.Run();
-
-
-SearchClient GetSearchClientWithIndex(IServiceProvider serviceProvider, object? key, string indexName)
-{
-    var searchClient = new SearchClient(
-        new Uri(serviceConfigurationOptions.CognitiveSearch.Endpoint),
-        indexName,
-        new AzureKeyCredential(serviceConfigurationOptions.CognitiveSearch.Key));
-    return searchClient;
-}

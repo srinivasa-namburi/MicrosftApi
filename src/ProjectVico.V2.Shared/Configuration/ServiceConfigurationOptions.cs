@@ -10,8 +10,6 @@ public class ServiceConfigurationOptions
     public DocumentIntelligenceOptions DocumentIntelligence { get; set; } = new DocumentIntelligenceOptions();
     public ProjectVicoServicesOptions ProjectVicoServices { get; set; } = new ProjectVicoServicesOptions();
     public SQLOptions SQL { get; set; } = new SQLOptions(); 
-    public RabbitMQOptions RabbitMQ { get; set; } = new RabbitMQOptions();
-
 
     public class AzureMapsOptions
     {
@@ -42,13 +40,7 @@ public class ServiceConfigurationOptions
 
     public class SQLOptions
     {
-        public string Password { get; set; } = string.Empty;
         public string DatabaseName { get; set; } = string.Empty;
-    }
-
-    public class RabbitMQOptions
-    {
-        public string Password { get; set; } = string.Empty;
     }
 
     public class OpenAiOptions

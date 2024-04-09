@@ -25,10 +25,10 @@ builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configur
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
 
 // Common services and dependencies
-builder.AddAzureServiceBus("sbus");
-builder.AddRabbitMQ("rabbitmqdocgen");
-builder.AddKeyedAzureOpenAI("openai-planner");
-builder.AddAzureBlobService("blob-docing");
+builder.AddAzureServiceBusClient("sbus");
+builder.AddRabbitMQClient("rabbitmqdocgen");
+builder.AddKeyedAzureOpenAIClient("openai-planner");
+builder.AddAzureBlobClient("blob-docing");
 
 builder.Services.AddKeyedScoped<SearchClient>("searchclient-section",
     (provider, o) => GetSearchClientWithIndex(provider, o, serviceConfigurationOptions.CognitiveSearch.NuclearSectionIndex));

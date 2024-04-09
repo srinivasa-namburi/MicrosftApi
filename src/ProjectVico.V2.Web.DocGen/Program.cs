@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using MudBlazor.Services;
@@ -141,8 +140,8 @@ builder.Services.AddAuthorization();
 builder.Services.AddScoped<AuthenticationStateProvider, PersistingAuthenticationStateProvider>();
 builder.Services.AddHttpForwarderWithServiceDiscovery();
 
-builder.AddAzureBlobService("blob-docing");
-builder.AddRedis("redis");
+builder.AddAzureBlobClient("blob-docing");
+builder.AddRedisClient("redis");
 
 var redisConnection = ConnectionMultiplexer.Connect(builder.Configuration.GetConnectionString("redis"));
 builder.Services.AddDataProtection()

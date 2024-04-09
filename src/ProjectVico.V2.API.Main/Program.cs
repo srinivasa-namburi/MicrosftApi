@@ -30,9 +30,9 @@ builder.Services.AddProblemDetails();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-builder.AddAzureServiceBus("sbus");
-builder.AddRabbitMQ("rabbitmqdocgen");
-builder.AddAzureBlobService("docGenBlobs");
+builder.AddAzureServiceBusClient("sbus");
+builder.AddRabbitMQClient("rabbitmqdocgen");
+builder.AddAzureBlobClient("docGenBlobs");
 
 builder.AddDocGenDbContext(serviceConfigurationOptions);
 

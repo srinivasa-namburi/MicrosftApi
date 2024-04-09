@@ -1,28 +1,24 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Worker">
-
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>dotnet-ProjectVico.V2.Worker.Scheduler-9b7b7520-210b-4591-a30a-47cb6c906a6b</UserSecretsId>
   </PropertyGroup>
-
   <ItemGroup>
-	  <PackageReference Include="Aspire.Azure.Messaging.ServiceBus" Version="8.0.0-preview.4.24156.9" />
-	  <PackageReference Include="Aspire.Azure.Storage.Blobs" Version="8.0.0-preview.4.24156.9" />
-	  <PackageReference Include="Aspire.RabbitMQ.Client" Version="8.0.0-preview.4.24156.9" />
-	  <PackageReference Include="MassTransit.Azure.ServiceBus.Core" Version="8.1.3" />
-	  <PackageReference Include="MassTransit.EntityFrameworkCore" Version="8.1.3" />
-	  <PackageReference Include="MassTransit.Quartz" Version="8.1.3" />
-	  <PackageReference Include="MassTransit.RabbitMQ" Version="8.1.3" />
-	  <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+    <PackageReference Include="MassTransit.Azure.ServiceBus.Core" Version="8.1.3" />
+    <PackageReference Include="MassTransit.EntityFrameworkCore" Version="8.1.3" />
+    <PackageReference Include="MassTransit.Quartz" Version="8.1.3" />
+    <PackageReference Include="MassTransit.RabbitMQ" Version="8.1.3" />
+    <PackageReference Include="Aspire.Azure.Messaging.ServiceBus" Version="8.0.0-preview.5.24201.12" />
+    <PackageReference Include="Aspire.Azure.Storage.Blobs" Version="8.0.0-preview.5.24201.12" />
+    <PackageReference Include="Aspire.RabbitMQ.Client" Version="8.0.0-preview.5.24201.12" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
   </ItemGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\ProjectVico.V2.ServiceDefaults\ProjectVico.V2.ServiceDefaults.csproj" />
     <ProjectReference Include="..\ProjectVico.V2.Shared\ProjectVico.V2.Shared.csproj" />
   </ItemGroup>
-
   <ItemGroup>
     <Content Update="appsettings.Development.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -35,8 +31,8 @@
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
   </ItemGroup>
-
   <ItemGroup>
     <Folder Include="manifests\" />
+    <Folder Include="Properties\" />
   </ItemGroup>
 </Project>

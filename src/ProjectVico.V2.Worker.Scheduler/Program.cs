@@ -19,9 +19,9 @@ builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configur
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
 
 // Common services and dependencies
-builder.AddAzureServiceBus("sbus");
-builder.AddRabbitMQ("rabbitmqdocgen");
-builder.AddAzureBlobService("blob-docing");
+builder.AddAzureServiceBusClient("sbus");
+builder.AddRabbitMQClient("rabbitmqdocgen");
+builder.AddAzureBlobClient("blob-docing");
 
 // Ingestion specific custom dependencies
 builder.Services.AddScoped<AzureFileHelper>();

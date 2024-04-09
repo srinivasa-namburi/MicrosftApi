@@ -20,25 +20,20 @@ var durableDevelopment = Convert.ToBoolean(builder.Configuration["ServiceConfigu
 
 // The default password for SQL server is in appsettings.json. You can override it in appsettings.Development.json.
 // User name is "sa" and you must use SQL server authentication (not Azure AD/Windows authentication).
-// The password should be in ServiceConfiguration:SQL:Password (see appsettings.json)
-// To connect in SQL Server Management Studio to the local instance, use 127.0.0.1,9001 as the server name (NOT localhost - doesn't work!)
-var sqlPassword = builder.Configuration["ServiceConfiguration:SQL:Password"];
+var sqlPassword = builder.AddParameter("sqlPassword", true);
 var sqlDatabaseName = builder.Configuration["ServiceConfiguration:SQL:DatabaseName"];
-
-// The default password for the RabbitMQ container is in appsettings.json. You can override it in appsettings.Development.json.
-var rabbitMqPassword = builder.Configuration["ServiceConfiguration:RabbitMQ:Password"];
 
 IResourceBuilder<SqlServerDatabaseResource> docGenSql;
 IResourceBuilder<RabbitMQServerResource> docGenRabbitMq;
 IResourceBuilder<AzureServiceBusResource>? sbus;
 IResourceBuilder<IResourceWithConnectionString> queueService;
-IResourceBuilder<AzureAppConfigurationResource> appConfigurationService;
-
 IResourceBuilder<RedisResource> redis;
 
-var signalr = builder.ExecutionContext.IsPublishMode
-    ? builder.AddAzureSignalR("signalr")
-    : builder.AddConnectionString("signalr");
+//var signalr = builder.ExecutionContext.IsPublishMode
+//    ? builder.AddAzureSignalR("signalr")
+//    : builder.AddConnectionString("signalr");
+
+var signalr = builder.AddAzureSignalR("signalr");
 
 if (builder.ExecutionContext.IsRunMode) // For local development
 {
@@ -46,13 +41,19 @@ if (builder.ExecutionContext.IsRunMode) // For local development
     {
         redis = builder
             .AddRedis("redis", 16379)
-            .WithVolumeMount("pvico-redis-vol", "/data")
+            .WithDataVolume("pvico-redis-vol")
+            .WithPersistence()
             ;
 
         docGenSql = builder
             .AddSqlServer("sqldocgen", password: sqlPassword, port: 9001)
-            .WithVolumeMount("pvico-sql-docgen-vol", "/var/opt/mssql")
+            .WithDataVolume("pvico-sql-docgen-vol")
             .AddDatabase(sqlDatabaseName);
+
+        docGenRabbitMq = builder
+            .AddRabbitMQ("rabbitmqdocgen", port: 9002)
+            .WithDataVolume("pvico-rabbitmq-vol");
+            //WithEnvironment("NODENAME", "rabbit@localhost");
     }
     else // Don't persist data and queue content - it will be deleted on restart!
     {
@@ -61,32 +62,33 @@ if (builder.ExecutionContext.IsRunMode) // For local development
             .AddDatabase(sqlDatabaseName);
 
         redis = builder.AddRedis("redis", 16379);
+
+        docGenRabbitMq = builder
+            .AddRabbitMQ("rabbitmqdocgen", port: 9002);
     }
-
-    docGenRabbitMq = builder
-           .AddRabbitMQ("rabbitmqdocgen", 9002)
-           .WithEnvironment("NODENAME", "rabbit@localhost");
-
+    
     queueService = docGenRabbitMq;
 }
 else // For production/Azure deployment
 {
     docGenSql = builder
-        .AddSqlServer("sqldocgen", password: sqlPassword, port: 9001)
+        .AddSqlServer("sqldocgen")
         .PublishAsAzureSqlDatabase()
         .AddDatabase(sqlDatabaseName);
 
-    redis = builder.AddRedis("redis", 16379)
-        .WithVolumeMount("pvico-redis-vol", "/data")
-        .PublishAsAzureRedis();
-
+    redis = builder.AddRedis("redis")
+        .PublishAsContainer()
+        .WithDataVolume("pvico-redis-vol")
+        .WithPersistence();
     sbus = builder.AddAzureServiceBus("sbus");
+
     queueService = sbus;
 }
 
 var apiMain = builder
     .AddProject<Projects.ProjectVico_V2_API_Main>("api-main")
-    .WithHttpsEndpoint(6001)
+    //.WithHttpsEndpoint(6001)
+    .WithExternalHttpEndpoints()
     .WithConfigSection(envAzureAdConfigurationSection)
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
@@ -140,7 +142,8 @@ var setupManager = builder
 
 var docGenFrontend = builder
     .AddProject<Projects.ProjectVico_V2_Web_DocGen>("web-docgen")
-    .WithHttpsEndpoint(5001, "httpsEndpoint")
+    //.WithHttpsEndpoint(5001)
+    .WithExternalHttpEndpoints()
     .WithConfigSection(envAzureAdConfigurationSection)
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
