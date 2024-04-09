@@ -6,11 +6,6 @@ using ProjectVico.V2.AppHost;
 var builder = DistributedApplication.CreateBuilder(args);
 AppHostConfigurationSetup(builder);
 
-//TODO: Add Azure Provisioning
-//Reads needed details from Configuration provider.
-//See sample : https://github.com/dotnet/aspire/blob/main/playground/AzureSearchEndToEnd/AzureSearch.AppHost/appsettings.json
-//builder.AddAzureProvisioning();
-
 var envServiceConfigurationConfigurationSection = builder.Configuration.GetSection("ServiceConfiguration");
 var envAzureAdConfigurationSection = builder.Configuration.GetSection("AzureAd");
 var envConnectionStringsConfigurationSection = builder.Configuration.GetSection("ConnectionStrings");
@@ -31,9 +26,11 @@ IResourceBuilder<AzureServiceBusResource>? sbus;
 IResourceBuilder<IResourceWithConnectionString> queueService;
 IResourceBuilder<RedisResource> redis;
 
-var signalr = builder.ExecutionContext.IsPublishMode
-    ? builder.AddAzureSignalR("signalr")
-    : builder.AddConnectionString("signalr");
+//var signalr = builder.ExecutionContext.IsPublishMode
+//    ? builder.AddAzureSignalR("signalr")
+//    : builder.AddConnectionString("signalr");
+
+var signalr = builder.AddAzureSignalR("signalr");
 
 if (builder.ExecutionContext.IsRunMode) // For local development
 {
@@ -51,9 +48,10 @@ if (builder.ExecutionContext.IsRunMode) // For local development
             .AddDatabase(sqlDatabaseName);
 
         docGenRabbitMq = builder
-            .AddRabbitMQ("rabbitmqdocgen", password:rabbitMqPassword, port: 9002)
-            .WithDataVolume("pvico-rabbitmq-vol");
-            //WithEnvironment("NODENAME", "rabbit@localhost");
+            .AddRabbitMQ("rabbitmqdocgen", password: rabbitMqPassword, port: 9002)
+            .WithDataVolume("pvico-rabbitmq-vol")
+            .WithManagementPlugin();
+
     }
     else // Don't persist data and queue content - it will be deleted on restart!
     {
@@ -64,7 +62,8 @@ if (builder.ExecutionContext.IsRunMode) // For local development
         redis = builder.AddRedis("redis", 16379);
 
         docGenRabbitMq = builder
-            .AddRabbitMQ("rabbitmqdocgen", password:rabbitMqPassword, port: 9002);
+            .AddRabbitMQ("rabbitmqdocgen", password:rabbitMqPassword, port: 9002)
+            .WithManagementPlugin();
     }
     
     queueService = docGenRabbitMq;
