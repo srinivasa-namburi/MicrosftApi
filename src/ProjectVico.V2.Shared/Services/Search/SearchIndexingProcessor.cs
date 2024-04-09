@@ -213,7 +213,7 @@ public class SearchIndexingProcessor : IIndexingProcessor
             }
 
             // Add the document to the index
-            IndexDocumentsBatch<ReportDocument?> batch = IndexDocumentsBatch.Create(
+            IndexDocumentsBatch<ReportDocument> batch = IndexDocumentsBatch.Create(
                 IndexDocumentsAction.Upload(reportDocument));
 
             await searchClientWithIndex.IndexDocumentsAsync(batch);
@@ -229,9 +229,9 @@ public class SearchIndexingProcessor : IIndexingProcessor
 
     public SearchClient GetSearchClient(string indexName)
     {
-        if (_searchClients.ContainsKey(indexName))
+        if (_searchClients.TryGetValue(indexName, out var client))
         {
-            return _searchClients[indexName];
+            return client;
         }
 
         var searchClient = new SearchClient(new Uri(_serviceConfigurationOptions.CognitiveSearch.Endpoint), indexName,
