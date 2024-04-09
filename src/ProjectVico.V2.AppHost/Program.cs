@@ -23,17 +23,17 @@ var durableDevelopment = Convert.ToBoolean(builder.Configuration["ServiceConfigu
 var sqlPassword = builder.AddParameter("sqlPassword", true);
 var sqlDatabaseName = builder.Configuration["ServiceConfiguration:SQL:DatabaseName"];
 
+var rabbitMqPassword = builder.AddParameter("rabbitMqPassword", true);
+
 IResourceBuilder<SqlServerDatabaseResource> docGenSql;
 IResourceBuilder<RabbitMQServerResource> docGenRabbitMq;
 IResourceBuilder<AzureServiceBusResource>? sbus;
 IResourceBuilder<IResourceWithConnectionString> queueService;
 IResourceBuilder<RedisResource> redis;
 
-//var signalr = builder.ExecutionContext.IsPublishMode
-//    ? builder.AddAzureSignalR("signalr")
-//    : builder.AddConnectionString("signalr");
-
-var signalr = builder.AddAzureSignalR("signalr");
+var signalr = builder.ExecutionContext.IsPublishMode
+    ? builder.AddAzureSignalR("signalr")
+    : builder.AddConnectionString("signalr");
 
 if (builder.ExecutionContext.IsRunMode) // For local development
 {
@@ -51,7 +51,7 @@ if (builder.ExecutionContext.IsRunMode) // For local development
             .AddDatabase(sqlDatabaseName);
 
         docGenRabbitMq = builder
-            .AddRabbitMQ("rabbitmqdocgen", port: 9002)
+            .AddRabbitMQ("rabbitmqdocgen", password:rabbitMqPassword, port: 9002)
             .WithDataVolume("pvico-rabbitmq-vol");
             //WithEnvironment("NODENAME", "rabbit@localhost");
     }
@@ -64,7 +64,7 @@ if (builder.ExecutionContext.IsRunMode) // For local development
         redis = builder.AddRedis("redis", 16379);
 
         docGenRabbitMq = builder
-            .AddRabbitMQ("rabbitmqdocgen", port: 9002);
+            .AddRabbitMQ("rabbitmqdocgen", password:rabbitMqPassword, port: 9002);
     }
     
     queueService = docGenRabbitMq;
@@ -77,9 +77,9 @@ else // For production/Azure deployment
         .AddDatabase(sqlDatabaseName);
 
     redis = builder.AddRedis("redis")
-        .PublishAsContainer()
-        .WithDataVolume("pvico-redis-vol")
+        .PublishAsAzureRedis()
         .WithPersistence();
+
     sbus = builder.AddAzureServiceBus("sbus");
 
     queueService = sbus;
@@ -87,7 +87,6 @@ else // For production/Azure deployment
 
 var apiMain = builder
     .AddProject<Projects.ProjectVico_V2_API_Main>("api-main")
-    //.WithHttpsEndpoint(6001)
     .WithExternalHttpEndpoints()
     .WithConfigSection(envAzureAdConfigurationSection)
     .WithConfigSection(envServiceConfigurationConfigurationSection)
@@ -142,7 +141,6 @@ var setupManager = builder
 
 var docGenFrontend = builder
     .AddProject<Projects.ProjectVico_V2_Web_DocGen>("web-docgen")
-    //.WithHttpsEndpoint(5001)
     .WithExternalHttpEndpoints()
     .WithConfigSection(envAzureAdConfigurationSection)
     .WithConfigSection(envServiceConfigurationConfigurationSection)

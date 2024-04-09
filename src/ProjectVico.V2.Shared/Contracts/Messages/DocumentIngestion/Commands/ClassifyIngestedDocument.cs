@@ -10,4 +10,5 @@ public record ClassifyIngestedDocument(Guid CorrelationId) : CorrelatedBy<Guid>
     public string OriginalDocumentUrl { get; set; }
     public string? UploadedByUserOid { get; set; }
     public IngestionType IngestionType { get; set; }
+    public string? Plugin { get; set; }
 }

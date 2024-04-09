@@ -52,10 +52,8 @@ public static class DocumentProcessExtensions
         builder.Services.AddScoped<TableHelper>();
         builder.Services.AddScoped<AzureFileHelper>();
 
-        builder.Services.AddScoped<IContentTreeProcessor, ContentTreeProcessor>();
-        // TODO: This needs to be broken apart into several services, with actual indexing being
-        // part of each specific document process and the common functionality being in a separate service
-        builder.Services.AddScoped<IIndexingProcessor, SearchIndexingProcessor>();
+        builder.Services.AddSingleton<IContentTreeProcessor, ContentTreeProcessor>();
+        builder.Services.AddSingleton<IIndexingProcessor, SearchIndexingProcessor>();
 
         //Basic metadata service
         builder.Services

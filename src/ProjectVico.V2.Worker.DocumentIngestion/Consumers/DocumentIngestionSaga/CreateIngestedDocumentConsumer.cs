@@ -35,6 +35,7 @@ public class CreateIngestedDocumentConsumer : IConsumer<CreateIngestedDocument>
             FileName = context.Message.FileName,
             OriginalDocumentUrl = context.Message.OriginalDocumentUrl,
             DocumentProcess = context.Message.DocumentProcessName,
+            Plugin = context.Message.Plugin,
             UploadedByUserOid = context.Message.UploadedByUserOid,
             IngestionState = IngestionState.Uploaded,
             IngestedDate = DateTime.UtcNow

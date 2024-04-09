@@ -20,8 +20,7 @@ public class ProcessIngestedDocumentConsumer : IConsumer<ProcessIngestedDocument
     private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
     private readonly IServiceProvider _serviceProvider;
     private DocumentProcessOptions? _documentProcessOptions;
-
-
+    
     public ProcessIngestedDocumentConsumer(
         DocGenerationDbContext dbContext,
         IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
@@ -49,8 +48,18 @@ public class ProcessIngestedDocumentConsumer : IConsumer<ProcessIngestedDocument
             return;
         }
 
-        _pipeline = scope.ServiceProvider.GetRequiredKeyedService<IPdfPipeline>(message.DocumentProcessName +"-IPdfPipeline");
+        // If a plugin owns the document, we need to get the pipeline for that plugin.
+        // Otherwise, we get the pipeline for the document process.
 
+        if (message.Plugin == null)
+        {
+            _pipeline = scope.ServiceProvider.GetRequiredKeyedService<IPdfPipeline>(message.DocumentProcessName +"-IPdfPipeline");
+        }
+        else
+        {
+            _pipeline = scope.ServiceProvider.GetRequiredKeyedService<IPdfPipeline>(message.Plugin + "-Plugin-IPdfPipeline");
+        }
+        
         var ingestedDocument = await _dbContext.IngestedDocuments.FindAsync(context.Message.CorrelationId);
         if (ingestedDocument == null)
         {

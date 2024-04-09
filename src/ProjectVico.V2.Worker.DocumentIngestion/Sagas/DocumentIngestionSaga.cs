@@ -25,13 +25,15 @@ public class DocumentIngestionSaga : MassTransitStateMachine<DocumentIngestionSa
                 context.Saga.OriginalDocumentUrl = context.Message.OriginalDocumentUrl;
                 context.Saga.UploadedByUserOid = context.Message.UploadedByUserOid;
                 context.Saga.DocumentProcessName = context.Message.DocumentProcessName;
+                context.Saga.Plugin = context.Message.Plugin;
             })
             .Publish(context => new CreateIngestedDocument(context.Saga.CorrelationId)
             {
                 DocumentProcessName = context.Saga.DocumentProcessName,
                 FileName = context.Saga.FileName,
                 OriginalDocumentUrl = context.Saga.OriginalDocumentUrl,
-                UploadedByUserOid = context.Saga.UploadedByUserOid
+                UploadedByUserOid = context.Saga.UploadedByUserOid,
+                Plugin = context.Saga.Plugin
             })
             .TransitionTo(Creating)
             );
@@ -47,7 +49,8 @@ public class DocumentIngestionSaga : MassTransitStateMachine<DocumentIngestionSa
                 DocumentProcessName = context.Saga.DocumentProcessName,
                 OriginalDocumentUrl = context.Saga.OriginalDocumentUrl,
                 FileName = context.Saga.FileName,
-                UploadedByUserOid = context.Saga.UploadedByUserOid
+                UploadedByUserOid = context.Saga.UploadedByUserOid,
+                Plugin = context.Saga.Plugin
                
             })
             .TransitionTo(Classifying)
@@ -71,6 +74,7 @@ public class DocumentIngestionSaga : MassTransitStateMachine<DocumentIngestionSa
                 OriginalDocumentUrl = context.Saga.OriginalDocumentUrl,
                 FileName = context.Saga.FileName,
                 UploadedByUserOid = context.Saga.UploadedByUserOid,
+                Plugin = context.Saga.Plugin
             })
             .TransitionTo(Processing)
         );

@@ -21,6 +21,9 @@ public abstract class BaseRagRepository : IRagRepository, IBaseRagRepository
     public abstract bool ClearRepositoryContent();
 
     public abstract Task<List<RagRepositorySearchResult>> SearchAsync(string searchText, int top = 12, int k = 7);
+    public abstract Task StoreContentNodesAsync(List<ContentNode> contentNodes, string sourceFileName,
+        Stream streamForHashing);
+    public abstract Task StoreContentNodesAsync(List<ContentNode> contentNodes, string sourceFileName, string fileHash);
     
     public async Task<List<RagRepositorySearchResult>> SearchAsync(DocumentProcessOptions documentProcessOptions,
         string searchText, int top = 12, int k = 7)
@@ -40,16 +43,8 @@ public abstract class BaseRagRepository : IRagRepository, IBaseRagRepository
         return results;
     }
 
-    public async Task StoreContentNodesAsync(List<ContentNode> contentNodes, string sourceFileName,
-        Stream streamForHashing)
-    {
-        await IndexingProcessor.IndexAndStoreContentNodesAsync(contentNodes, sourceFileName, streamForHashing);
-    }
+   
 
-    public async Task StoreContentNodesAsync(List<ContentNode> contentNodes, string sourceFileName, string fileHash)
-    {
-        await IndexingProcessor.IndexAndStoreContentNodesAsync(contentNodes, sourceFileName, fileHash);
-    }
 
 
 }

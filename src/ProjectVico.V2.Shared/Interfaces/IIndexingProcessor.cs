@@ -9,18 +9,18 @@ public interface IIndexingProcessor
     bool CreateOrUpdateIndex(string indexName);
     bool DeleteIndex(string indexName);
     
-    Task<List<ReportDocument>> SearchWithHybridSearchAsync(string searchText, int top = 12, int k = 7);
     Task<List<ReportDocument>> SearchSpecifiedIndexAsync(string indexName, string searchText, int top = 12, int k = 7);
-    Task IndexAndStoreContentNodesAsync(List<ContentNode> contentTree, string baseFileName, Stream streamForHashing);
-    Task IndexAndStoreContentNodesAsync(List<ContentNode> contentTree, string baseFileName, string fileHash);
-    Task IndexAndStoreCustomNodesAsync(List<ContentNode> contentTree, string baseFileName, Stream streamForHashing);
-
-    Task<IEnumerable<ReportDocument>> GetAllUniqueTitlesAsync(int numberOfUniqueFiles);
-    Task<List<ReportDocument>> SearchWithTitleSearchAsync(string searchText, int top = 12, int k = 7);
-    Task<List<ReportDocument>> SearchWithCustomSearchAsync(string searchText, int top = 12, int k = 7);
-
-    string CreateJsonFromContentNode(ContentNode contentNode, Guid? parentId, string? parentTitle, string fileName, Stream hashStream);
-
+   
+    /// <summary>
+    /// This method is used to create a JSON string from a ContentNode object. This JSON string is then used to index the content in Azure Search.
+    /// All Children below the ContentNode are also included in the JSON string, in a recursive fashion (nested Children).
+    /// </summary>
+    /// <param name="contentNode"></param>
+    /// <param name="parentId"></param>
+    /// <param name="parentTitle"></param>
+    /// <param name="fileName"></param>
+    /// <param name="fileHash"></param>
+    /// <returns></returns>
     string CreateJsonFromContentNode(ContentNode contentNode, Guid? parentId, string? parentTitle,
         string fileName, string fileHash);
 
@@ -33,5 +33,10 @@ public interface IIndexingProcessor
     /// <returns></returns>
     Task<bool> IndexJson(string json, SearchClient searchClientWithIndex, bool generateEmbeddings = false);
 
+    /// <summary>
+    /// Returns a SearchClient for the specified index.
+    /// </summary>
+    /// <param name="indexName"></param>
+    /// <returns></returns>
     SearchClient GetSearchClient(string indexName);
 }
