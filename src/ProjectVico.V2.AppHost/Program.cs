@@ -77,7 +77,7 @@ queueService = sbus;
 
 var apiMain = builder
     .AddProject<Projects.ProjectVico_V2_API_Main>("api-main")
-    .WithHttpsEndpoint(6001)
+    //.WithHttpsEndpoint(6001)
     .WithExternalHttpEndpoints()
     .WithConfigSection(envAzureAdConfigurationSection)
     .WithConfigSection(envServiceConfigurationConfigurationSection)
@@ -133,7 +133,7 @@ var setupManager = builder
 
 var docGenFrontend = builder
     .AddProject<Projects.ProjectVico_V2_Web_DocGen>("web-docgen")
-    .WithHttpsEndpoint(5001)
+    //.WithHttpsEndpoint(5001)
     .WithExternalHttpEndpoints()
     .WithConfigSection(envAzureAdConfigurationSection)
     .WithConfigSection(envServiceConfigurationConfigurationSection)

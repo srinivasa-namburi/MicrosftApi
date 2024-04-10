@@ -5,6 +5,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
+    <Content Remove="Properties\launchSettings.json" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Azure.Maps.Search" Version="1.0.0-beta.4" />
     <PackageReference Include="Azure.Storage.Blobs" Version="12.19.1" />
     <PackageReference Include="Microsoft.Azure.SignalR" Version="1.25.1" />
@@ -48,5 +51,11 @@
   </ItemGroup>
   <ItemGroup>
     <UpToDateCheckInput Remove="Components\ConfirmationDialog.razor" />
+  </ItemGroup>
+  <ItemGroup>
+    <_WebToolingArtifacts Remove="Properties\launchSettings.json" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Properties\launchSettings.json" />
   </ItemGroup>
 </Project>

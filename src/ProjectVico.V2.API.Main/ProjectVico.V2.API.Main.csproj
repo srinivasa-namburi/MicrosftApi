@@ -6,6 +6,12 @@
     <!--<InvariantGlobalization>true</InvariantGlobalization>-->
   </PropertyGroup>
   <ItemGroup>
+    <Content Remove="Properties\launchSettings.json" />
+  </ItemGroup>
+  <ItemGroup>
+    <_WebToolingArtifacts Remove="Properties\launchSettings.json" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="MassTransit.Azure.ServiceBus.Core" Version="8.2.0" />
     <PackageReference Include="MassTransit.RabbitMQ" Version="8.2.0" />
     <PackageReference Include="Microsoft.Azure.SignalR" Version="1.25.1" />
@@ -24,5 +30,8 @@
   <ItemGroup>
     <Folder Include="Hubs\" />
     <Folder Include="manifests\" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Properties\launchSettings.json" />
   </ItemGroup>
 </Project>

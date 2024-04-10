@@ -32,23 +32,28 @@ builder.Services.Configure<ServiceConfigurationOptions>(serviceConfigurationSect
 
 builder.Services.AddHttpClient<IDocumentGenerationApiClient, DocumentGenerationApiClient>(httpClient =>
 {
-    httpClient.BaseAddress = new("https://api-main");
+    //httpClient.BaseAddress = new("https://api-main");
+    httpClient.BaseAddress = new("https://localhost:6001");
 });
 builder.Services.AddHttpClient<IDocumentIngestionApiClient, DocumentIngestionApiClient>(httpClient =>
 {
-    httpClient.BaseAddress = new("https://api-main");
+    //httpClient.BaseAddress = new("https://api-main");
+    httpClient.BaseAddress = new("https://localhost:6001");
 });
 builder.Services.AddHttpClient<IContentNodeApiClient, ContentNodeApiClient>(httpClient =>
 {
-    httpClient.BaseAddress = new("https://api-main");
+    //httpClient.BaseAddress = new("https://api-main");
+    httpClient.BaseAddress = new("https://localhost:6001");
 });
 builder.Services.AddHttpClient<IChatApiClient, ChatApiClient>(httpClient =>
 {
-    httpClient.BaseAddress = new("https://api-main");
+    //httpClient.BaseAddress = new("https://api-main");
+    httpClient.BaseAddress = new("https://localhost:6001");
 });
 builder.Services.AddHttpClient<IAuthorizationApiClient, AuthorizationApiClient>(httpClient =>
 {
-    httpClient.BaseAddress = new("https://api-main");
+    //httpClient.BaseAddress = new("https://api-main");
+    httpClient.BaseAddress = new("https://localhost:6001");
 });
 
 // Add services to the container.
