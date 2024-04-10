@@ -1,4 +1,5 @@
 using Aspire.Hosting.Azure;
+using Azure.ResourceManager.SignalR.Models;
 using Microsoft.Extensions.Configuration;
 using ProjectVico.V2.AppHost;
 
@@ -22,7 +23,25 @@ IResourceBuilder<AzureServiceBusResource>? sbus;
 IResourceBuilder<IResourceWithConnectionString> queueService;
 IResourceBuilder<RedisResource> redis;
 
-var signalr = builder.AddAzureSignalR("signalr");
+#pragma warning disable ASPIRE0001
+var signalr = builder.AddAzureSignalR("signalr", (resourceBuilder, construct, options) =>
+{
+    if(builder.ExecutionContext.IsRunMode)
+    {
+        options.Properties.Sku.Tier = SignalRSkuTier.Standard;
+        options.Properties.Sku.Name = "Standard_S1";
+        options.Properties.Sku.Capacity = 1;
+    }
+    else
+    {
+        options.Properties.Sku.Tier = SignalRSkuTier.Premium;
+        options.Properties.Sku.Name = "Premium_P1";
+        options.Properties.Sku.Capacity = 3;
+    }
+    
+});
+
+#pragma warning restore ASPIRE0001
 
 if (builder.ExecutionContext.IsRunMode) // For local development
 {
@@ -66,7 +85,6 @@ queueService = sbus;
 
 var apiMain = builder
     .AddProject<Projects.ProjectVico_V2_API_Main>("api-main")
-    //.WithHttpsEndpoint(6001)
     .WithExternalHttpEndpoints()
     .WithConfigSection(envAzureAdConfigurationSection)
     .WithConfigSection(envServiceConfigurationConfigurationSection)
@@ -122,7 +140,6 @@ var setupManager = builder
 
 var docGenFrontend = builder
     .AddProject<Projects.ProjectVico_V2_Web_DocGen>("web-docgen")
-    //.WithHttpsEndpoint(5001)
     .WithExternalHttpEndpoints()
     .WithConfigSection(envAzureAdConfigurationSection)
     .WithConfigSection(envServiceConfigurationConfigurationSection)

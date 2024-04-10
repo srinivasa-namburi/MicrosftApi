@@ -9,12 +9,12 @@ public static class StartupDelay
         if (!isDurable && builder.Environment.IsDevelopment())
         {
             Console.WriteLine($"Waiting for SetupManager to perform migrations and delete ServiceBus Topics/Queus for non-durable development");
-            await Task.Delay(TimeSpan.FromSeconds(60));
+            await Task.Delay(TimeSpan.FromSeconds(50));
         }
         else
         {
             Console.WriteLine($"Waiting for SetupManager to perform migrations...");
-            await Task.Delay(TimeSpan.FromSeconds(20));
+            await Task.Delay(TimeSpan.FromSeconds(1));
         }
     }
 }
