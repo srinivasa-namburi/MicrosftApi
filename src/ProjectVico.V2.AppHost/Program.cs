@@ -2,7 +2,6 @@ using Aspire.Hosting.Azure;
 using Microsoft.Extensions.Configuration;
 using ProjectVico.V2.AppHost;
 
-
 var builder = DistributedApplication.CreateBuilder(args);
 AppHostConfigurationSetup(builder);
 
@@ -23,10 +22,6 @@ IResourceBuilder<AzureServiceBusResource>? sbus;
 IResourceBuilder<IResourceWithConnectionString> queueService;
 IResourceBuilder<RedisResource> redis;
 
-//var signalr = builder.ExecutionContext.IsPublishMode
-//    ? builder.AddAzureSignalR("signalr")
-//    : builder.AddConnectionString("signalr");
-
 var signalr = builder.AddAzureSignalR("signalr");
 
 if (builder.ExecutionContext.IsRunMode) // For local development
@@ -36,15 +31,12 @@ if (builder.ExecutionContext.IsRunMode) // For local development
         redis = builder
             .AddRedis("redis", 16379)
             .WithDataVolume("pvico-redis-vol")
-            .WithPersistence()
-            ;
+            .WithPersistence();
 
         docGenSql = builder
             .AddSqlServer("sqldocgen", password: sqlPassword, port: 9001)
             .WithDataVolume("pvico-sql-docgen-vol")
             .AddDatabase(sqlDatabaseName);
-
-
     }
     else // Don't persist data and queue content - it will be deleted on restart!
     {
@@ -53,15 +45,12 @@ if (builder.ExecutionContext.IsRunMode) // For local development
             .AddDatabase(sqlDatabaseName);
 
         redis = builder.AddRedis("redis", 16379);
-
-
     }
-
 }
 else // For production/Azure deployment
 {
     docGenSql = builder
-        .AddSqlServer("sqldocgen")
+        .AddSqlServer("sqldocgen", password: sqlPassword)
         .PublishAsAzureSqlDatabase()
         .AddDatabase(sqlDatabaseName);
 
