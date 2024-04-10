@@ -240,6 +240,15 @@ public class SearchIndexingProcessor : IIndexingProcessor
         return searchClient;
     }
 
+    public bool IsEmptyIndex(string indexName)
+    {
+        // If there are no documents in the index, it is empty
+        var searchClient = GetSearchClient(indexName);
+        var searchResults = searchClient.Search<ReportDocument>("*", new SearchOptions { Size = 1 });
+
+        return searchResults.Value == null || !searchResults.Value.GetResults().Any();
+    }
+
     /// <summary>
     ///     This method create a ReportDocument from a ContentNode.
     ///     It adds sets the Title to the Text property of the first ContentNode it is passed in

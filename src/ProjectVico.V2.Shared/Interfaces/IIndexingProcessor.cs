@@ -39,4 +39,6 @@ public interface IIndexingProcessor
     /// <param name="indexName"></param>
     /// <returns></returns>
     SearchClient GetSearchClient(string indexName);
+
+    bool IsEmptyIndex(string indexName);
 }
