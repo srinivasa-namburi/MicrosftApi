@@ -4,6 +4,18 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 	</PropertyGroup>
+	<ItemGroup>
+	  <None Remove="Search\Seed\index-01-sections\index-01-sections_1.json" />
+	  <None Remove="Search\Seed\index-01-titles\index-01-titles_1.json" />
+	</ItemGroup>
+	<ItemGroup>
+	  <EmbeddedResource Include="Search\Seed\index-01-sections\index-01-sections_1.json">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </EmbeddedResource>
+	  <EmbeddedResource Include="Search\Seed\index-01-titles\index-01-titles_1.json">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </EmbeddedResource>
+	</ItemGroup>
 
 	<ItemGroup>
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
