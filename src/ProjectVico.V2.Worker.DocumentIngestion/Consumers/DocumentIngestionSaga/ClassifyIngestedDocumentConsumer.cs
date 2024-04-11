@@ -77,16 +77,18 @@ public class ClassifyIngestedDocumentConsumer : IConsumer<ClassifyIngestedDocume
 
         DocumentClassificationResult? classificationResult;
 
-        if (_documentProcessOptions.ClassifyDocuments)
+        // Currently, we only classify documents that do not have a plugin association
+        // For other documents, we only classify them if the option is enabled in the owning Document Process.
+        if (_documentProcessOptions.ClassifyDocuments && ingestedDocument.Plugin == null)
         {
-            _logger.LogInformation("ClassifyIngestedDocumentConsumer: Classifying CustomData document {DocumentId}", ingestedDocument.Id);
+            _logger.LogInformation("ClassifyIngestedDocumentConsumer: Classifying Ingested Document {DocumentId}", ingestedDocument.Id);
             classificationResult = await ClassifyDocument(message, ingestedDocument, temporaryAccessUrl);
         }
         else
         {
             classificationResult = new DocumentClassificationResult()
             {
-                ClassificationShortCode = "er-numberedchapters",
+                ClassificationShortCode = "no-classification",
                 Confidence = 100,
                 SuccessfulClassification = true
             };

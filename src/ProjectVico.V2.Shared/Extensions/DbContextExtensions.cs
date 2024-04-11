@@ -34,7 +34,6 @@ public static class DbContextExtensions
             settings.ConnectionString = builder.Configuration.GetConnectionString(serviceConfigurationOptions.SQL.DatabaseName);
             settings.HealthChecks = true;
             settings.Tracing = true;
-            settings.Metrics = true;
         });
 
         return builder;

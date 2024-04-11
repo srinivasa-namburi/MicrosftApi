@@ -1,6 +1,5 @@
 ﻿using System.Reflection;
 using AutoMapper;
-using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Shared.Interfaces;
 using ProjectVico.V2.Shared.Models;
 

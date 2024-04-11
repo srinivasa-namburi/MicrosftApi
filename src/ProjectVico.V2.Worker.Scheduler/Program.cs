@@ -1,7 +1,7 @@
 using Azure.Identity;
 using MassTransit;
+using ProjectVico.V2.Shared;
 using ProjectVico.V2.Shared.Configuration;
-using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Extensions;
 using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Worker.Scheduler;
@@ -10,18 +10,15 @@ var builder = Host.CreateApplicationBuilder(args);
 
 builder.AddServiceDefaults();
 
-// This is to grant SetupManager time to perform migrations
-Console.WriteLine("Waiting for SetupManager to perform migrations...");
-await Task.Delay(TimeSpan.FromSeconds(15));
-
-
 builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
 
+await builder.DelayStartup(serviceConfigurationOptions.ProjectVicoServices.DocumentGeneration.DurableDevelopmentServices);
+
 // Common services and dependencies
-builder.AddAzureServiceBus("sbus");
-builder.AddRabbitMQ("rabbitmqdocgen");
-builder.AddAzureBlobService("blob-docing");
+builder.AddAzureServiceBusClient("sbus");
+builder.AddRabbitMQClient("rabbitmqdocgen");
+builder.AddAzureBlobClient("blob-docing");
 
 // Ingestion specific custom dependencies
 builder.Services.AddScoped<AzureFileHelper>();

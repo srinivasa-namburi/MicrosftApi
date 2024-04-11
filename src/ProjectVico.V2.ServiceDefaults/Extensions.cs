@@ -37,7 +37,7 @@ public static class Extensions
             });
 
             // Turn on service discovery by default
-            http.UseServiceDiscovery();
+            http.AddServiceDiscovery();
         });
 
         return builder;

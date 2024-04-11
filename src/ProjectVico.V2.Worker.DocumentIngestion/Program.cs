@@ -1,10 +1,10 @@
 using Azure;
 using Azure.Identity;
-using Azure.Search.Documents;
 using MassTransit;
 using MassTransit.EntityFrameworkCoreIntegration;
 using ProjectVico.V2.DocumentProcess.Shared;
 using ProjectVico.V2.Plugins.Shared;
+using ProjectVico.V2.Shared;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Extensions;
@@ -24,18 +24,13 @@ await Task.Delay(TimeSpan.FromSeconds(15));
 builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
 
-// Common services and dependencies
-builder.AddAzureServiceBus("sbus");
-builder.AddRabbitMQ("rabbitmqdocgen");
-builder.AddKeyedAzureOpenAI("openai-planner");
-builder.AddAzureBlobService("blob-docing");
+await builder.DelayStartup(serviceConfigurationOptions.ProjectVicoServices.DocumentGeneration.DurableDevelopmentServices);
 
-builder.Services.AddKeyedScoped<SearchClient>("searchclient-section",
-    (provider, o) => GetSearchClientWithIndex(provider, o, serviceConfigurationOptions.CognitiveSearch.NuclearSectionIndex));
-builder.Services.AddKeyedScoped<SearchClient>("searchclient-title",
-    (provider, o) => GetSearchClientWithIndex(provider, o, serviceConfigurationOptions.CognitiveSearch.NuclearTitleIndex));
-builder.Services.AddKeyedScoped<SearchClient>("searchclient-customdata",
-    (provider, o) => GetSearchClientWithIndex(provider, o, serviceConfigurationOptions.CognitiveSearch.CustomIndex));
+// Common services and dependencies
+builder.AddAzureServiceBusClient("sbus");
+builder.AddRabbitMQClient("rabbitmqdocgen");
+builder.AddKeyedAzureOpenAIClient("openai-planner");
+builder.AddAzureBlobClient("blob-docing");
 
 builder.DynamicallyRegisterPlugins();
 builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
@@ -124,12 +119,3 @@ else
 
 var host = builder.Build();
 host.Run();
-
-SearchClient GetSearchClientWithIndex(IServiceProvider serviceProvider, object? key, string indexName)
-{
-    var searchClient = new SearchClient(
-        new Uri(serviceConfigurationOptions.CognitiveSearch.Endpoint),
-        indexName,
-        new AzureKeyCredential(serviceConfigurationOptions.CognitiveSearch.Key));
-    return searchClient;
-}
