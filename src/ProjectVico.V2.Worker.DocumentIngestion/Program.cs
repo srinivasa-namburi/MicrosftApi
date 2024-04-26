@@ -1,4 +1,3 @@
-using Azure;
 using Azure.Identity;
 using MassTransit;
 using MassTransit.EntityFrameworkCoreIntegration;
@@ -9,7 +8,7 @@ using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Extensions;
 using ProjectVico.V2.Shared.SagaState;
-using ProjectVico.V2.Worker.DocumentIngestion.AI;
+using ProjectVico.V2.Shared.Services.Search;
 using ProjectVico.V2.Worker.DocumentIngestion.Sagas;
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -20,8 +19,13 @@ builder.AddServiceDefaults();
 Console.WriteLine("Waiting for SetupManager to perform migrations...");
 await Task.Delay(TimeSpan.FromSeconds(15));
 
-
+// Set Configuration ServiceConfigurationOptions:CognitiveServices:Endpoint to the correct value
+// Read the values from the azureAiSearch Connection String
+// Build an IConfigurationSection from ServiceConfigurationOptions, but set the ConnectionString to the azureAiSearch Connection String
+builder.AddAzureSearchClient("aiSearch");
 builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
+builder.Services.AddSingleton<SearchClientFactory>();
+
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
 
 await builder.DelayStartup(serviceConfigurationOptions.ProjectVicoServices.DocumentGeneration.DurableDevelopmentServices);
@@ -31,13 +35,11 @@ builder.AddAzureServiceBusClient("sbus");
 builder.AddRabbitMQClient("rabbitmqdocgen");
 builder.AddKeyedAzureOpenAIClient("openai-planner");
 builder.AddAzureBlobClient("blob-docing");
-
-builder.DynamicallyRegisterPlugins();
-builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
-
 builder.AddDocGenDbContext(serviceConfigurationOptions);
 
-builder.AddSemanticKernelService();
+builder.DynamicallyRegisterPlugins(serviceConfigurationOptions);
+builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
+builder.AddSemanticKernelServices(serviceConfigurationOptions);
 
 var serviceBusConnectionString = builder.Configuration.GetConnectionString("sbus");
 serviceBusConnectionString = serviceBusConnectionString?.Replace("https://", "sb://").Replace(":443/", "/");
@@ -51,6 +53,14 @@ if (!string.IsNullOrWhiteSpace(serviceBusConnectionString))
         x.AddConsumers(typeof(Program).Assembly);
 
         x.AddSagaStateMachine<DocumentIngestionSaga, DocumentIngestionSagaState>()
+            .EntityFrameworkRepository(cfg =>
+            {
+                cfg.ExistingDbContext<DocGenerationDbContext>();
+                cfg.LockStatementProvider =
+                    new SqlLockStatementProvider("dbo", new SqlServerLockStatementFormatter(true));
+            });
+
+        x.AddSagaStateMachine<KernelMemoryDocumentIngestionSaga, KernelMemoryDocumentIngestionSagaState>()
             .EntityFrameworkRepository(cfg =>
             {
                 cfg.ExistingDbContext<DocGenerationDbContext>();

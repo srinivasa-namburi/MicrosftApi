@@ -44,7 +44,9 @@ public class NuclearEnvironmentalReportPdfPipeline : IPdfPipeline
         DocumentProcessOptions documentProcessOptions)
     {
 
-        if (document.ClassificationShortCode != "er-numberedchapters")
+        // If the classification is no-classification, we force processing anyway.
+        // Otherwise, we only support er-numberedchapters classification.
+        if (document.ClassificationShortCode != "er-numberedchapters" && document.ClassificationShortCode != "no-classification")
         {
             _logger.LogWarning("ProcessIngestedDocumentConsumer: Processing stopped because of unsupported classification");
             document.IngestionState = IngestionState.ClassificationUnsupported;
@@ -56,13 +58,9 @@ public class NuclearEnvironmentalReportPdfPipeline : IPdfPipeline
         var stream = await _azureFileHelper.GetFileAsStreamFromFullBlobUrlAsync(document.OriginalDocumentUrl);
 
         stream.Position = 0;
-        // Do all PDF and Content Tree processing here. This class should replicate the process in the console app Program.cs. (ProjectVico.Backend.DocumentIngestion.ConsoleApp)
-        // The only difference is that this class should return a list of ContentNodes instead of writing them to a file, since we want to store them in CosmosDB.
 
         // Grab the PDF file and convert it to a Stream
-
         var documentIntelligenceAnalysisResult = await AnalyzePdfWithDocumentIntelligenceAsync(document.FileName, stream);
-
         var allParagraphs = GetDocumentParagraphsCollectionWithDuplicatesRemoved(documentIntelligenceAnalysisResult);
 
         // For debugging purposes only, get a list of each of SectionHeading and Title Paragraphs

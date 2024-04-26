@@ -85,6 +85,13 @@ public class ScheduledBlobAutoImportWorker : BackgroundService
     private bool NewFilesInContainerPath(string containerName, string folderPath)
     {
         var containerClient = _blobServiceClient.GetBlobContainerClient(containerName);
+
+        // If container or folder does not exist, create it
+        if (!containerClient.Exists())
+        {
+            containerClient.CreateIfNotExists();
+        }
+
         return containerClient.GetBlobs(prefix: folderPath).Any();
     }
 }

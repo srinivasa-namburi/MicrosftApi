@@ -45,19 +45,13 @@ public class ServiceConfigurationOptions
 
     public class OpenAiOptions
     {
-        public string PlannerModelDeploymentName { get; set; } = string.Empty;
-        public string DocGenModelDeploymentName { get; set; } = string.Empty;
+        public string GPT4128KModelDeploymentName { get; set; } = string.Empty;
+        public string GPT432KModelDeploymentName { get; set; } = string.Empty;
         public string EmbeddingModelDeploymentName { get; set; } = string.Empty;
-
     }
 
     public class CognitiveSearchOptions
     {
-        public string Endpoint { get; set; } = string.Empty;
-        public string Key { get; set; } = string.Empty;
-        public string NuclearTitleIndex { get; set; } = string.Empty;
-        public string NuclearSectionIndex { get; set; } = string.Empty;
-        public string CustomIndex { get; set; } = string.Empty;
         public string SemanticSearchConfigName { get; set; } = string.Empty;
         public string VectorSearchProfileName { get; set; } = string.Empty;
         public string VectorSearchHnswConfigName { get; set; } = string.Empty;

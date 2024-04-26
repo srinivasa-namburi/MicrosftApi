@@ -13,13 +13,7 @@ public class DocumentIngestionSagaState : SagaStateMachineInstance
     public string FileName { get; set; }
     public string OriginalDocumentUrl { get; set; }
     public string? UploadedByUserOid { get; set; }
-
     public string? ClassificationShortCode { get; set; }
-    public DocumentClassificationType? ClassificationType { get; set; }
-    public DocumentClassificationSuperType? ClassificationSuperType { get; set; }
-
-    public IngestionState IngestionState { get; set; } = IngestionState.Uploaded;
-    public IngestionType IngestionType { get; set; }
     public string? DocumentProcessName { get; set; } = "US.NuclearLicensing";
     public string? Plugin { get; set; }
 }

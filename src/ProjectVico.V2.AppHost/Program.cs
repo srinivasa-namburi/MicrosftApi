@@ -1,7 +1,12 @@
 using Aspire.Hosting.Azure;
+using Azure.ResourceManager.Redis.Models;
+using Azure.ResourceManager.Search.Models;
+using Azure.ResourceManager.ServiceBus.Models;
 using Azure.ResourceManager.SignalR.Models;
+using Azure.Search.Documents.Models;
 using Microsoft.Extensions.Configuration;
 using ProjectVico.V2.AppHost;
+#pragma warning disable ASPIRE0001
 
 var builder = DistributedApplication.CreateBuilder(args);
 AppHostConfigurationSetup(builder);
@@ -13,8 +18,9 @@ var envConnectionStringsConfigurationSection = builder.Configuration.GetSection(
 // Used to determine service configuration.
 var durableDevelopment = Convert.ToBoolean(builder.Configuration["ServiceConfiguration:ProjectVicoServices:DocumentGeneration:DurableDevelopmentServices"]);
 
-// The default password for SQL server is in appsettings.json. You can override it in appsettings.Development.json.
-// User name is "sa" and you must use SQL server authentication (not Azure AD/Windows authentication).
+// Set the Parameters:SqlPassword Key is user secrets (right click AppHost project, select User Secrets, add the key and value)
+// Example: "Parameters:sqlPassword": "password"
+
 var sqlPassword = builder.AddParameter("sqlPassword", true);
 var sqlDatabaseName = builder.Configuration["ServiceConfiguration:SQL:DatabaseName"];
 
@@ -23,7 +29,6 @@ IResourceBuilder<AzureServiceBusResource>? sbus;
 IResourceBuilder<IResourceWithConnectionString> queueService;
 IResourceBuilder<RedisResource> redis;
 
-#pragma warning disable ASPIRE0001
 var signalr = builder.AddAzureSignalR("signalr", (resourceBuilder, construct, options) =>
 {
     if(builder.ExecutionContext.IsRunMode)
@@ -38,11 +43,35 @@ var signalr = builder.AddAzureSignalR("signalr", (resourceBuilder, construct, op
         options.Properties.Sku.Name = "Premium_P1";
         options.Properties.Sku.Capacity = 3;
     }
-    
 });
 
-#pragma warning restore ASPIRE0001
+var blobStorage = builder
+    .AddAzureStorage("docing")
+    .AddBlobs("blob-docing");
 
+var azureAiSearch = builder.AddAzureSearch("aiSearch", (resourceBuilder, construct, options) =>
+{
+    if (builder.ExecutionContext.IsRunMode)
+    {
+        options.Properties.SkuName = SearchSkuName.Basic;
+    }
+    else
+    {
+        options.Properties.SkuName = SearchSkuName.Standard;
+        options.Properties.ReplicaCount = 2;
+        options.Properties.PartitionCount = 2;
+    }
+});
+
+// OpenAI must be provisioned manually for now, since deployments with multiple models are somewhat unstable still.
+// Please set the connection string "openai-planner" in the configuration to enable this.
+
+//var openAi = builder.AddAzureOpenAI("openai-planner")
+//    .AddDeployment(new AzureOpenAIDeployment("gpt-4-32k", "gpt-4-32k", "0613"))
+//    .AddDeployment(new AzureOpenAIDeployment("gpt-4-128k", "gpt-4", "1106-Preview"))
+//    .AddDeployment(new AzureOpenAIDeployment("text-embedding-ada-002", "text-embedding-ada-002", "2"));
+
+    
 if (builder.ExecutionContext.IsRunMode) // For local development
 {
     if (durableDevelopment)
@@ -64,7 +93,10 @@ if (builder.ExecutionContext.IsRunMode) // For local development
             .AddDatabase(sqlDatabaseName);
 
         redis = builder.AddRedis("redis", 16379);
+       
     }
+
+    sbus = builder.AddAzureServiceBus("sbus");
 }
 else // For production/Azure deployment
 {
@@ -74,13 +106,25 @@ else // For production/Azure deployment
         .AddDatabase(sqlDatabaseName);
 
     redis = builder.AddRedis("redis")
-        .PublishAsAzureRedis()
+        //.PublishAsAzureRedis((resourceBuilder, construct, options) =>
+        //{
+        //    options.Properties.Sku.Name = RedisSkuName.Standard;
+        //    options.Properties.Sku.Family = RedisSkuFamily.BasicOrStandard;
+        //    options.Properties.Sku.Capacity = 1;
+        //})
+        .PublishAsContainer()
+        .WithDataVolume("pvico-redis-vol")
         .WithPersistence();
+
+    sbus = builder.AddAzureServiceBus("sbus", (resourceBuilder, construct, options) =>
+    {
+        options.Properties.Sku.Name = ServiceBusSkuName.Premium;
+        options.Properties.Sku.Tier = ServiceBusSkuTier.Premium;
+        options.Properties.Sku.Capacity = 1;
+    });
+
 }
 
-// Azure Service Bus is used by all variations of configurations
-
-sbus = builder.AddAzureServiceBus("sbus");
 queueService = sbus;
 
 var apiMain = builder
@@ -89,10 +133,40 @@ var apiMain = builder
     .WithConfigSection(envAzureAdConfigurationSection)
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithReference(blobStorage)
     .WithReference(signalr)
     .WithReference(redis)
     .WithReference(docGenSql)
     .WithReference(queueService);
+
+var docGenFrontend = builder
+    .AddProject<Projects.ProjectVico_V2_Web_DocGen>("web-docgen")
+    .WithExternalHttpEndpoints()
+    .WithConfigSection(envAzureAdConfigurationSection)
+    .WithConfigSection(envServiceConfigurationConfigurationSection)
+    .WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithReference(blobStorage)
+    .WithReference(signalr)
+    .WithReference(redis)
+    .WithReference(apiMain);
+
+var setupManager = builder
+    .AddProject<Projects.ProjectVico_V2_SetupManager>("worker-setupmanager")
+    .WithReplicas(1) // There can only be one Setup Manager
+    .WithReference(azureAiSearch)
+    .WithReference(queueService)
+    .WithReference(docGenSql)
+    .WithConfigSection(envServiceConfigurationConfigurationSection);
+
+var workerScheduler = builder
+    .AddProject<Projects.ProjectVico_V2_Worker_Scheduler>("worker-scheduler")
+    .WithReplicas(1) // There can only be one Scheduler
+    .WithConfigSection(envServiceConfigurationConfigurationSection)
+    .WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithReference(blobStorage)
+    .WithReference(docGenSql)
+    .WithReference(queueService)
+    .WithReference(apiMain);
 
 var workerDocumentGeneration = builder
     .AddProject<Projects.ProjectVico_V2_Worker_DocumentGeneration>("worker-documentgeneration")
@@ -100,6 +174,8 @@ var workerDocumentGeneration = builder
         builder.Configuration["ServiceConfiguration:ProjectVicoServices:DocumentGeneration:NumberOfGenerationWorkers"]))
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithReference(azureAiSearch)
+    .WithReference(blobStorage)
     .WithReference(docGenSql)
     .WithReference(queueService)
     .WithReference(apiMain)
@@ -108,6 +184,8 @@ var workerDocumentGeneration = builder
 var workerChat = builder.AddProject<Projects.ProjectVico_V2_Worker_Chat>("worker-chat")
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithReference(azureAiSearch)
+    .WithReference(blobStorage)
     .WithReference(docGenSql)
     .WithReference(queueService)
     .WithReference(apiMain);
@@ -118,34 +196,10 @@ var workerDocumentIngestion = builder
         builder.Configuration["ServiceConfiguration:ProjectVicoServices:DocumentIngestion:NumberOfIngestionWorkers"]))
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithReference(azureAiSearch)
+    .WithReference(blobStorage)
     .WithReference(docGenSql)
     .WithReference(queueService)
-    .WithReference(apiMain);
-
-var workerScheduler = builder
-    .AddProject<Projects.ProjectVico_V2_Worker_Scheduler>("worker-scheduler")
-    .WithReplicas(1) // There can only be one Scheduler
-    .WithConfigSection(envServiceConfigurationConfigurationSection)
-    .WithConfigSection(envConnectionStringsConfigurationSection)
-    .WithReference(docGenSql)
-    .WithReference(queueService)
-    .WithReference(apiMain);
-
-var setupManager = builder
-    .AddProject<Projects.ProjectVico_V2_SetupManager>("worker-setupmanager")
-    .WithReplicas(1) // There can only be one Setup Manager
-    .WithReference(queueService)
-    .WithReference(docGenSql)
-    .WithConfigSection(envServiceConfigurationConfigurationSection);
-
-var docGenFrontend = builder
-    .AddProject<Projects.ProjectVico_V2_Web_DocGen>("web-docgen")
-    .WithExternalHttpEndpoints()
-    .WithConfigSection(envAzureAdConfigurationSection)
-    .WithConfigSection(envServiceConfigurationConfigurationSection)
-    .WithConfigSection(envConnectionStringsConfigurationSection)
-    .WithReference(signalr)
-    .WithReference(redis)
     .WithReference(apiMain);
 
 builder.Build().Run();

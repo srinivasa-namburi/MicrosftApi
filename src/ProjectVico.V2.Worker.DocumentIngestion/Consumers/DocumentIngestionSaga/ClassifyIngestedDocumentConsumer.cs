@@ -17,7 +17,7 @@ namespace ProjectVico.V2.Worker.DocumentIngestion.Consumers.DocumentIngestionSag
 public class ClassifyIngestedDocumentConsumer : IConsumer<ClassifyIngestedDocument>
 {
     private readonly ILogger<ClassifyIngestedDocumentConsumer> _logger;
-    private IDocumentClassifier _classifier;
+    private IDocumentClassifier? _classifier;
     private readonly DocGenerationDbContext _dbContext;
     private readonly AzureFileHelper _azureFileHelper;
     private readonly IServiceProvider _serviceProvider;
@@ -53,7 +53,7 @@ public class ClassifyIngestedDocumentConsumer : IConsumer<ClassifyIngestedDocume
             return;
         }
 
-        _classifier = scope.ServiceProvider.GetRequiredKeyedService<IDocumentClassifier>(message.DocumentProcessName+"-IDocumentClassifier");
+        _classifier = scope.ServiceProvider.GetKeyedService<IDocumentClassifier>(message.DocumentProcessName+"-IDocumentClassifier");
 
         _logger.LogInformation("ClassifyIngestedDocumentConsumer: Classifying {ProcessName} document {FileName} with correlation id {CorrelationId}", message.DocumentProcessName, message.FileName, message.CorrelationId);
 
@@ -79,7 +79,7 @@ public class ClassifyIngestedDocumentConsumer : IConsumer<ClassifyIngestedDocume
 
         // Currently, we only classify documents that do not have a plugin association
         // For other documents, we only classify them if the option is enabled in the owning Document Process.
-        if (_documentProcessOptions.ClassifyDocuments && ingestedDocument.Plugin == null)
+        if (_documentProcessOptions.ClassifyDocuments && ingestedDocument.Plugin == null && _classifier != null)
         {
             _logger.LogInformation("ClassifyIngestedDocumentConsumer: Classifying Ingested Document {DocumentId}", ingestedDocument.Id);
             classificationResult = await ClassifyDocument(message, ingestedDocument, temporaryAccessUrl);
@@ -92,6 +92,9 @@ public class ClassifyIngestedDocumentConsumer : IConsumer<ClassifyIngestedDocume
                 Confidence = 100,
                 SuccessfulClassification = true
             };
+
+            ingestedDocument.ClassificationShortCode = "no-classification";
+            await _dbContext.SaveChangesAsync();
         }
 
         if (classificationResult is { SuccessfulClassification: true })

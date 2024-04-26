@@ -11,8 +11,3 @@ public class DocumentMetadata : EntityBase
     public GeneratedDocument GeneratedDocument { get; set; }
 }
 
-public abstract class MetadataDefinition
-{
-    protected abstract string MetadataType { get; }
-}
-

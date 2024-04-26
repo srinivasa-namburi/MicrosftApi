@@ -61,6 +61,7 @@ public class IngestDocumentsFromAutoImportPathConsumer : IConsumer<IngestDocumen
                         _logger.LogError(exception,
                             "IngestDocumentsFromAutoImportPathConsumer: Failed to copy blob {blobName} from {sourceContainer} to {targetContainer}",
                             blob.Name, context.Message.ContainerName, targetContainerClient.Name);
+                        return;
                     }
                 }
                 finally
@@ -75,7 +76,7 @@ public class IngestDocumentsFromAutoImportPathConsumer : IConsumer<IngestDocumen
                     Id = Guid.NewGuid(),
                     OriginalDocumentUrl = targetBlobClient.Uri.ToString(),
                     DocumentProcessName = message.DocumentProcess,
-                    FileName = targetBlobClient.Uri.Segments.Last(),
+                    FileName = targetBlobClient.Uri.Segments.Last()
                 };
 
                 await context.Publish(request);

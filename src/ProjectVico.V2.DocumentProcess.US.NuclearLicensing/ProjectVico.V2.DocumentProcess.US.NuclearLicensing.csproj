@@ -4,29 +4,16 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 	</PropertyGroup>
-	<ItemGroup>
-	  <None Remove="Search\Seed\index-01-sections\index-01-sections_1.json" />
-	  <None Remove="Search\Seed\index-01-titles\index-01-titles_1.json" />
-	</ItemGroup>
-	<ItemGroup>
-	  <EmbeddedResource Include="Search\Seed\index-01-sections\index-01-sections_1.json">
-	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-	  </EmbeddedResource>
-	  <EmbeddedResource Include="Search\Seed\index-01-titles\index-01-titles_1.json">
-	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-	  </EmbeddedResource>
-	</ItemGroup>
 
 	<ItemGroup>
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
 	</ItemGroup>
 
 	<ItemGroup>
-	  <ProjectReference Include="..\Plugins\ProjectVico.V2.Plugins.Shared\ProjectVico.V2.Plugins.Shared.csproj" />
 	  <ProjectReference Include="..\ProjectVico.V2.DocumentProcess.Shared\ProjectVico.V2.DocumentProcess.Shared.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>
-	  <Folder Include="Mapping\" />
+	  <Folder Include="Models\" />
 	</ItemGroup>
 </Project>

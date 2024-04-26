@@ -11,7 +11,7 @@ using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Extensions;
 using ProjectVico.V2.Shared.SagaState;
-using ProjectVico.V2.Worker.DocumentGeneration.AI;
+using ProjectVico.V2.Shared.Services.Search;
 using ProjectVico.V2.Worker.DocumentGeneration.Sagas;
 using ProjectVico.V2.Worker.DocumentGeneration.Services;
 
@@ -19,7 +19,10 @@ using ProjectVico.V2.Worker.DocumentGeneration.Services;
 var builder = Host.CreateApplicationBuilder(args);
 builder.AddServiceDefaults();
 
+builder.AddAzureSearchClient("aiSearch");
 builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
+builder.Services.AddSingleton<SearchClientFactory>();
+
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
 
 await builder.DelayStartup(serviceConfigurationOptions.ProjectVicoServices.DocumentGeneration.DurableDevelopmentServices);
@@ -27,7 +30,7 @@ await builder.DelayStartup(serviceConfigurationOptions.ProjectVicoServices.Docum
 builder.AddAzureServiceBusClient("sbus");
 builder.AddRabbitMQClient("rabbitmqdocgen");
 builder.AddKeyedAzureOpenAIClient("openai-planner");
-builder.AddAzureBlobClient("docGenBlobs");
+builder.AddAzureBlobClient("blob-docing");
 
 builder.AddDocGenDbContext(serviceConfigurationOptions);
 
@@ -36,10 +39,10 @@ if (!serviceConfigurationOptions.ProjectVicoServices.DocumentGeneration.CreateBo
     builder.Services.AddScoped<IBodyTextGenerator, LoremIpsumBodyTextGenerator>();
 }
 
-builder.DynamicallyRegisterPlugins();
+builder.DynamicallyRegisterPlugins(serviceConfigurationOptions);
 builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
 
-builder.AddSemanticKernelService();
+builder.AddSemanticKernelServices(serviceConfigurationOptions);
 
 var serviceBusConnectionString = builder.Configuration.GetConnectionString("sbus");
 serviceBusConnectionString = serviceBusConnectionString?.Replace("https://", "sb://").Replace(":443/", "/");

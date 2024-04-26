@@ -32,7 +32,7 @@ builder.Services.AddSwaggerGen();
 
 builder.AddAzureServiceBusClient("sbus");
 builder.AddRabbitMQClient("rabbitmqdocgen");
-builder.AddAzureBlobClient("docGenBlobs");
+builder.AddAzureBlobClient("blob-docing");
 
 builder.AddDocGenDbContext(serviceConfigurationOptions);
 

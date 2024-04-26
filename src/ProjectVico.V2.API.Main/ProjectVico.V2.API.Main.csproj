@@ -12,11 +12,11 @@
     <_WebToolingArtifacts Remove="Properties\launchSettings.json" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="MassTransit.Azure.ServiceBus.Core" Version="8.2.0" />
-    <PackageReference Include="MassTransit.RabbitMQ" Version="8.2.0" />
-    <PackageReference Include="Microsoft.Azure.SignalR" Version="1.25.1" />
+    <PackageReference Include="MassTransit.Azure.ServiceBus.Core" Version="8.2.1" />
+    <PackageReference Include="MassTransit.RabbitMQ" Version="8.2.1" />
+    <PackageReference Include="Microsoft.Azure.SignalR" Version="1.25.2" />
     <PackageReference Include="Microsoft.Extensions.ServiceDiscovery.Yarp" Version="8.0.0-preview.4.24156.9" />
-    <PackageReference Include="Microsoft.Identity.Web" Version="2.17.4" />
+    <PackageReference Include="Microsoft.Identity.Web" Version="2.17.5" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
     <PackageReference Include="Aspire.Azure.Messaging.ServiceBus" Version="8.0.0-preview.5.24201.12" />
     <PackageReference Include="Aspire.Azure.Storage.Blobs" Version="8.0.0-preview.5.24201.12" />

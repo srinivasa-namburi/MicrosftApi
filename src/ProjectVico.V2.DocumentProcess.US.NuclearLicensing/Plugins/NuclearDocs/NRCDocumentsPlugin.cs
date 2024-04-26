@@ -7,10 +7,10 @@ using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
 using ProjectVico.V2.DocumentProcess.Shared.Generation;
 using ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Search;
-using ProjectVico.V2.Plugins.Shared;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Contracts;
 using ProjectVico.V2.Shared.Enums;
+using ProjectVico.V2.Shared.Interfaces;
 
 namespace ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Plugins.NuclearDocs;
 
@@ -152,7 +152,7 @@ public class NRCDocumentsPlugin : IPluginImplementation
             var sectionCompletion = await _openAIClient.GetChatCompletionsAsync(
             new ChatCompletionsOptions()
             {
-                DeploymentName = _serviceConfigurationOptions.OpenAi.DocGenModelDeploymentName,
+                DeploymentName = _serviceConfigurationOptions.OpenAi.GPT432KModelDeploymentName,
                 Messages = {
                         new ChatRequestUserMessage(prompt)
                     },
@@ -195,7 +195,7 @@ public class NRCDocumentsPlugin : IPluginImplementation
         var deduplicatedOutlineResponse = await _openAIClient.GetChatCompletionsAsync(
         new ChatCompletionsOptions()
         {
-            DeploymentName = _serviceConfigurationOptions.OpenAi.DocGenModelDeploymentName,
+            DeploymentName = _serviceConfigurationOptions.OpenAi.GPT432KModelDeploymentName,
             Messages =
                 {
                     new ChatRequestSystemMessage(systemPrompt),
@@ -271,7 +271,7 @@ public class NRCDocumentsPlugin : IPluginImplementation
         var sectionCompletion = await _openAIClient.GetChatCompletionsAsync(
                        new ChatCompletionsOptions()
                        {
-                           DeploymentName = _serviceConfigurationOptions.OpenAi.DocGenModelDeploymentName,
+                           DeploymentName = _serviceConfigurationOptions.OpenAi.GPT432KModelDeploymentName,
                            Messages =
                 {
                     new ChatRequestSystemMessage(systemPrompt),

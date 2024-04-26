@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Hosting;
 using ProjectVico.V2.Plugins.Default.EarthQuake.Connectors;
 using ProjectVico.V2.Plugins.Shared;
+using ProjectVico.V2.Shared.Interfaces;
 
 
 namespace ProjectVico.V2.Plugins.Default.EarthQuake;

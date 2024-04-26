@@ -41,37 +41,7 @@ public class USNuclearLicensingRagRepository : BaseRagRepository, IUSNuclearLice
                 return false;
             }
         }
-
-        // If the indexes in the repositories are empty, populate them with content from the json files in Search/Seed/<index-name>/*.json
-
-        //foreach (var repository in _documentProcessOptions.Repositories)
-        //{
-        //    if (IndexingProcessor.IsEmptyIndex(repository))
-        //    {
-
-        //        // The JSON files are stored as Embedded Resources in the ProjectVico.V2.DocumentProcess.US.NuclearLicensing assembly in the Search/Seed/<index-name> folder
-        //        var jsonFiles = Assembly.GetExecutingAssembly().GetManifestResourceNames()
-        //            .Where(x => x.Contains($"Search.Seed.{repository}")).ToList();
-
-        //        foreach (var jsonFile in jsonFiles)
-        //        {
-        //            var jsonStream = Assembly.GetExecutingAssembly().GetManifestResourceStream(jsonFile);
-
-        //            if (jsonStream == null)
-        //            {
-        //                Logger.LogError($"Error reading embedded resource {jsonFile} for Document Process {_documentProcessOptions.Name}");
-        //                return false;
-        //            }
-                    
-
-
-        //            IndexingProcessor.IndexJson(json, IndexingProcessor.GetSearchClient(repository), true);
-        //        }
-        //    }
-
-        //}
-
-
+        
         return true;
     }
 

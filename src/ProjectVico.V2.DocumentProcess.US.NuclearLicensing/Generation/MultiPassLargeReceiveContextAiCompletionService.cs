@@ -72,7 +72,10 @@ public class MultiPassLargeReceiveContextAiCompletionService : IAiCompletionServ
         using var scope = _sp.CreateScope();
         var plugins = new KernelPluginCollection();
 
-        plugins.AddRegisteredPluginsToKernelPluginCollection(_sp, excludePluginType: typeof(NRCDocumentsPlugin));
+        var documentProcess = _serviceConfigurationOptions.ProjectVicoServices.DocumentProcesses
+            .Single(x => x.Name == "US.NuclearLicensing");
+
+        plugins.AddSharedAndDocumentProcessPluginsToPluginCollection(_sp, documentProcess, new List<Type>(){typeof(NRCDocumentsPlugin)});
         _sk = new Kernel(_sp, plugins);
 
         var sectionExample = new StringBuilder();
@@ -167,7 +170,7 @@ public class MultiPassLargeReceiveContextAiCompletionService : IAiCompletionServ
                           For headings, remove the numbering and any heading prefixes like "Section" or "Chapter" from the heading text.
 
                           Make sure to clean up the text inside the Text property of the generated json array which the plugin returns.
-                          In particular, make sure it complies with UTF-8 encoding. Paragraphs should be separateed by two newlines (\n\n)
+                          In particular, make sure it complies with UTF-8 encoding. Paragraphs should be separated by two newlines (\n\n)
                           For lists, use only * and - characters as bullet points, and make sure to have a space after the bullet point character.
 
                           Format the text with Markdown syntax. For example, use #, ##, ### for headings, * and - for bullet points, etc.
@@ -294,7 +297,7 @@ public class MultiPassLargeReceiveContextAiCompletionService : IAiCompletionServ
                 new ChatRequestSystemMessage(systemPrompt),
                 new ChatRequestUserMessage(summarizePrompt)
             },
-            DeploymentName = _serviceConfigurationOptions.OpenAi.DocGenModelDeploymentName,
+            DeploymentName = _serviceConfigurationOptions.OpenAi.GPT432KModelDeploymentName,
             MaxTokens = 8000,
             Temperature = 0.5f,
             FrequencyPenalty = 0.5f

@@ -1,4 +1,7 @@
-﻿using MassTransit;
+﻿using HandlebarsDotNet;
+using MassTransit;
+using Microsoft.Extensions.Options;
+using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentIngestion.Commands;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentIngestion.Events;
@@ -8,19 +11,22 @@ namespace ProjectVico.V2.Worker.DocumentIngestion.Sagas;
 
 public class DocumentIngestionSaga : MassTransitStateMachine<DocumentIngestionSagaState>
 {
-    public DocumentIngestionSaga()
+    private readonly ServiceConfigurationOptions _serviceConfiguration;
+
+    public DocumentIngestionSaga(IOptions<ServiceConfigurationOptions> serviceConfigurationOptions)
     {
+        _serviceConfiguration = serviceConfigurationOptions.Value;
 
         InstanceState(x => x.CurrentState);
 
-        Event(() => DocumentIngestionRequested,
-            x => x.CorrelateById(m => m.Message.Id));
+        Event(() => ClassicDocumentIngestionRequested,
+            x => x.CorrelateById(m => m.Message.CorrelationId));
 
         Initially(
-        When(DocumentIngestionRequested)
+        When(ClassicDocumentIngestionRequested)
             .Then(context =>
             {
-                context.Saga.CorrelationId = context.Message.Id;
+                context.Saga.CorrelationId = context.Message.CorrelationId;
                 context.Saga.FileName = context.Message.FileName;
                 context.Saga.OriginalDocumentUrl = context.Message.OriginalDocumentUrl;
                 context.Saga.UploadedByUserOid = context.Message.UploadedByUserOid;
@@ -36,7 +42,7 @@ public class DocumentIngestionSaga : MassTransitStateMachine<DocumentIngestionSa
                 Plugin = context.Saga.Plugin
             })
             .TransitionTo(Creating)
-            );
+        );
 
         During(Creating,
         When(IngestedDocumentCreatedInDatabase)
@@ -51,16 +57,16 @@ public class DocumentIngestionSaga : MassTransitStateMachine<DocumentIngestionSa
                 FileName = context.Saga.FileName,
                 UploadedByUserOid = context.Saga.UploadedByUserOid,
                 Plugin = context.Saga.Plugin
-               
+
             })
             .TransitionTo(Classifying)
         );
 
-        During(Creating, 
+        During(Creating,
         When(IngestedDocumentRejected)
             .Finalize()
         );
-        
+
         During(Classifying,
         When(IngestedDocumentClassified)
             .Then(context =>
@@ -118,12 +124,19 @@ public class DocumentIngestionSaga : MassTransitStateMachine<DocumentIngestionSa
     public Event<IngestedDocumentCreatedInDatabase> IngestedDocumentCreatedInDatabase { get; private set; }
     public Event<IngestedDocumentRejected> IngestedDocumentRejected { get; private set; }
 
-    public Event<DocumentIngestionRequest> DocumentIngestionRequested { get; private set; }
+    public Event<ClassicDocumentIngestionRequest> ClassicDocumentIngestionRequested { get; private set; }
 
     public State Classifying { get; set; } = null!;
     public State Creating { get; set; } = null!;
     public State Processing { get; set; } = null!;
     public State Indexing { get; set; } = null!;
 
+    private string GetIngestionMethod(string documentProcessName)
+    {
+        var documentProcess = _serviceConfiguration.ProjectVicoServices.DocumentProcesses
+            .FirstOrDefault(process => process?.Name == documentProcessName);
 
+        return documentProcess?.IngestionMethod ?? string.Empty;
+    }
 }
+

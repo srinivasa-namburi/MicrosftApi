@@ -1,8 +1,6 @@
 ﻿using System.Text;
-using Azure;
 using Azure.AI.OpenAI;
 using Azure.Search.Documents;
-using Azure.Search.Documents.Indexes;
 using Azure.Search.Documents.Indexes.Models;
 using Azure.Search.Documents.Models;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,23 +17,24 @@ namespace ProjectVico.V2.Shared.Services.Search;
 public class SearchIndexingProcessor : IIndexingProcessor
 {
     private readonly OpenAIClient _openAiClient;
+    private readonly SearchClientFactory _searchClientFactory;
     private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
-    private readonly Dictionary<string, SearchClient> _searchClients = new();
 
     public SearchIndexingProcessor(
         IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
         [FromKeyedServices("openai-planner")] 
-        OpenAIClient openAiClient)
+        OpenAIClient openAiClient,
+        SearchClientFactory searchClientFactory
+        )
     {
         _openAiClient = openAiClient;
+        _searchClientFactory = searchClientFactory;
         _serviceConfigurationOptions = serviceConfigurationOptions.Value;
     }
 
     public bool DeleteIndex(string indexName)
     {
-        var serviceEndpoint = new Uri(_serviceConfigurationOptions.CognitiveSearch.Endpoint);
-        var searchIndexClient = new SearchIndexClient(serviceEndpoint,
-            new AzureKeyCredential(_serviceConfigurationOptions.CognitiveSearch.Key));
+        var searchIndexClient = _searchClientFactory.GetSearchIndexClientForIndex(indexName);
 
         try
         {
@@ -113,9 +112,7 @@ public class SearchIndexingProcessor : IIndexingProcessor
             }
         };
 
-        var serviceEndpoint = new Uri(_serviceConfigurationOptions.CognitiveSearch.Endpoint);
-        var searchIndexClient = new SearchIndexClient(serviceEndpoint,
-            new AzureKeyCredential(_serviceConfigurationOptions.CognitiveSearch.Key));
+        var searchIndexClient = _searchClientFactory.GetSearchIndexClientForIndex(indexName);
 
         // Create or update the index
         try
@@ -229,15 +226,7 @@ public class SearchIndexingProcessor : IIndexingProcessor
 
     public SearchClient GetSearchClient(string indexName)
     {
-        if (_searchClients.TryGetValue(indexName, out var client))
-        {
-            return client;
-        }
-
-        var searchClient = new SearchClient(new Uri(_serviceConfigurationOptions.CognitiveSearch.Endpoint), indexName,
-            new AzureKeyCredential(_serviceConfigurationOptions.CognitiveSearch.Key));
-        _searchClients.Add(indexName, searchClient);
-        return searchClient;
+        return _searchClientFactory.GetSearchClientForIndex(indexName);
     }
 
     public bool IsEmptyIndex(string indexName)

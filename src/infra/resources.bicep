@@ -1,8 +1,5 @@
 @description('The location used for all deployed resources')
 param location string = resourceGroup().location
-@description('Id of the user or app to assign application roles')
-param principalId string = ''
-
 
 @description('Tags that will be applied to all resources')
 param tags object = {}
@@ -48,10 +45,44 @@ resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2022-10
   tags: tags
 }
 
+resource storageVolume 'Microsoft.Storage/storageAccounts@2022-05-01' = {
+  name: 'vol${resourceToken}'
+  location: location
+  kind: 'StorageV2'
+  sku: {
+    name: 'Standard_LRS'
+  }
+  properties: {
+    largeFileSharesState: 'Enabled'
+  }
+}
+
+resource storageVolumeFileService 'Microsoft.Storage/storageAccounts/fileServices@2022-05-01' = {
+  parent: storageVolume
+  name: 'default'
+}
+
+resource redisPvicoRedisVolFileShare 'Microsoft.Storage/storageAccounts/fileServices/shares@2022-05-01' = {
+  parent: storageVolumeFileService
+  name: take('${toLower('redis')}-${toLower('pvico-redis-vol')}', 32)
+  properties: {
+    shareQuota: 1024
+    enabledProtocols: 'SMB'
+  }
+}
+
 resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2023-05-01' = {
   name: 'cae-${resourceToken}'
   location: location
   properties: {
+    workloadProfiles: [
+      {
+        maximumCount: 10
+        minimumCount: 3
+        name: 'dedicated'
+        workloadProfileType: 'D4'
+      }
+    ]
     appLogsConfiguration: {
       destination: 'log-analytics'
       logAnalyticsConfiguration: {
@@ -63,37 +94,59 @@ resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2023-05-01' 
   tags: tags
 }
 
-resource rediskv 'Microsoft.KeyVault/vaults@2023-07-01' = {
-  name: replace('rediskv-${resourceToken}', '-', '')
-  location: location
+resource redisPvicoRedisVolStore 'Microsoft.App/managedEnvironments/storages@2023-05-01' = {
+  parent: containerAppEnvironment
+  name: take('${toLower('redis')}-${toLower('pvico-redis-vol')}', 32)
   properties: {
-    sku: {
-      name: 'standard'
-      family: 'A'
+    azureFile: {
+      shareName: '${toLower('redis')}-${toLower('pvico-redis-vol')}'
+      accountName: storageVolume.name
+      accountKey: storageVolume.listKeys().keys[0].value
+      accessMode: 'ReadWrite'
     }
-    tenantId: subscription().tenantId
-    enableRbacAuthorization: true
   }
 }
 
-resource rediskvRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(rediskv.id, managedIdentity.id, subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '00482a5a-887f-4fb3-b363-3b7fe8e74483'))
-  scope: rediskv
+resource redis 'Microsoft.App/containerApps@2023-05-02-preview' = {
+  name: 'redis'
+  location: location
+  dependsOn: [storageVolume]
   properties: {
-    principalId: managedIdentity.properties.principalId
-    principalType: 'ServicePrincipal'
-    roleDefinitionId:  subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '00482a5a-887f-4fb3-b363-3b7fe8e74483')
+    environmentId: containerAppEnvironment.id
+    configuration: {
+      activeRevisionsMode: 'Single'
+      ingress: {
+        external: false
+        targetPort: 6379
+        transport: 'tcp'
+      }
+    }
+    template: {
+      volumes: [
+        {
+          name: '${toLower('redis')}-${toLower('pvico-redis-vol')}'
+          storageType: 'AzureFile'
+          storageName: redisPvicoRedisVolStore.name
+        }
+      ]
+      containers: [
+        {
+          image: 'redis:7.2.4'
+          name: 'redis'
+          volumeMounts: [
+            {
+              volumeName: '${toLower('redis')}-${toLower('pvico-redis-vol')}'
+              mountPath: '/data'
+            }
+          ]
+        }
+      ]
+      scale: {
+        minReplicas: 1
+      }
+    }
   }
-}
-
-resource rediskvUserReadRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(rediskv.id, principalId, subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6'))
-  scope: rediskv
-  properties: {
-    principalId: principalId
-    principalType: 'User'
-    roleDefinitionId:  subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
-  }
+  tags: union(tags, {'aspire-resource-name': 'redis'})
 }
 
 output MANAGED_IDENTITY_CLIENT_ID string = managedIdentity.properties.clientId
@@ -105,5 +158,3 @@ output AZURE_CONTAINER_REGISTRY_ENDPOINT string = containerRegistry.properties.l
 output AZURE_CONTAINER_REGISTRY_MANAGED_IDENTITY_ID string = managedIdentity.id
 output AZURE_CONTAINER_APPS_ENVIRONMENT_ID string = containerAppEnvironment.id
 output AZURE_CONTAINER_APPS_ENVIRONMENT_DEFAULT_DOMAIN string = containerAppEnvironment.properties.defaultDomain
-output SERVICE_BINDING_REDISKV_ENDPOINT string = rediskv.properties.vaultUri
-output SERVICE_BINDING_REDISKV_NAME string = rediskv.name

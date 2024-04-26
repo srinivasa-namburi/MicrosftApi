@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Components.Authorization;
 using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Shared.Models;
+using ProjectVico.V2.Shared.Interfaces;
 using ProjectVico.V2.Web.Shared.ServiceClients;
 
 namespace ProjectVico.V2.Web.DocGen.ServiceClients;
@@ -13,21 +14,12 @@ internal sealed class DocumentGenerationApiClient : BaseServiceClient<DocumentGe
     {
     }
 
-    public async Task<string?> GenerateDocumentAsync(DocumentGenerationRequest? documentGenerationRequest)
+    public async Task<string?> GenerateDocumentAsync(GenerateDocumentDTO? generateDocumentDto)
     {
-        if (documentGenerationRequest == null)
+        if (generateDocumentDto == null)
         {
-            throw new ArgumentNullException(nameof(documentGenerationRequest));
+            throw new ArgumentNullException(nameof(generateDocumentDto));
         }
-
-        var generateDocumentDto = new GenerateDocumentDTO
-        {
-            DocumentProcessName = documentGenerationRequest.DocumentProcessName,
-            DocumentTitle = documentGenerationRequest.DocumentTitle,
-            AuthorOid = documentGenerationRequest.AuthorOid,
-            Id = documentGenerationRequest.Id,
-            RequestAsJson = JsonSerializer.Serialize(documentGenerationRequest)
-        };
 
         var response = await SendPostRequestMessage($"/api/documents/generate", generateDocumentDto);
         response?.EnsureSuccessStatusCode();

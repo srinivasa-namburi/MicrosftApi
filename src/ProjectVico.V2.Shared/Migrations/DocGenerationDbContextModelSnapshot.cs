@@ -17,7 +17,7 @@ namespace ProjectVico.V2.Shared.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.2")
+                .HasAnnotation("ProductVersion", "8.0.4")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -645,31 +645,24 @@ namespace ProjectVico.V2.Shared.Migrations
                     b.Property<string>("ClassificationShortCode")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<int?>("ClassificationSuperType")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("ClassificationType")
-                        .HasColumnType("int");
-
                     b.Property<string>("CurrentState")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("Discriminator")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<string>("DocumentProcessName")
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("FileHash")
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("FileName")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<int>("IngestionState")
-                        .HasColumnType("int");
-
-                    b.Property<int>("IngestionType")
-                        .HasColumnType("int");
 
                     b.Property<string>("OriginalDocumentUrl")
                         .IsRequired()
@@ -683,7 +676,22 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.HasKey("CorrelationId");
 
+                    b.HasIndex("DocumentProcessName");
+
+                    b.HasIndex("FileHash");
+
                     b.ToTable("DocumentIngestionSagaStates");
+
+                    b.HasDiscriminator<string>("Discriminator").HasValue("DocumentIngestionSagaState");
+
+                    b.UseTphMappingStrategy();
+                });
+
+            modelBuilder.Entity("ProjectVico.V2.Shared.SagaState.KernelMemoryDocumentIngestionSagaState", b =>
+                {
+                    b.HasBaseType("ProjectVico.V2.Shared.SagaState.DocumentIngestionSagaState");
+
+                    b.HasDiscriminator().HasValue("KernelMemoryDocumentIngestionSagaState");
                 });
 
             modelBuilder.Entity("ProjectVico.V2.Shared.Models.BoundingPolygon", b =>

@@ -6,10 +6,10 @@
     <UserSecretsId>dotnet-ProjectVico.V2.Worker.Scheduler-9b7b7520-210b-4591-a30a-47cb6c906a6b</UserSecretsId>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="MassTransit.Azure.ServiceBus.Core" Version="8.2.0" />
-    <PackageReference Include="MassTransit.EntityFrameworkCore" Version="8.2.0" />
-    <PackageReference Include="MassTransit.Quartz" Version="8.2.0" />
-    <PackageReference Include="MassTransit.RabbitMQ" Version="8.2.0" />
+    <PackageReference Include="MassTransit.Azure.ServiceBus.Core" Version="8.2.1" />
+    <PackageReference Include="MassTransit.EntityFrameworkCore" Version="8.2.1" />
+    <PackageReference Include="MassTransit.Quartz" Version="8.2.1" />
+    <PackageReference Include="MassTransit.RabbitMQ" Version="8.2.1" />
     <PackageReference Include="Aspire.Azure.Messaging.ServiceBus" Version="8.0.0-preview.5.24201.12" />
     <PackageReference Include="Aspire.Azure.Storage.Blobs" Version="8.0.0-preview.5.24201.12" />
     <PackageReference Include="Aspire.RabbitMQ.Client" Version="8.0.0-preview.5.24201.12" />

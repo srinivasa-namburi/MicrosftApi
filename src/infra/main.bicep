@@ -9,9 +9,8 @@ param environmentName string
 @description('The location used for all deployed resources')
 param location string
 
-@description('Id of the user or app to assign application roles')
-param principalId string = ''
-
+@secure()
+param sqlPassword string
 
 var tags = {
   'azd-env-name': environmentName
@@ -29,50 +28,52 @@ module resources 'resources.bicep' = {
   params: {
     location: location
     tags: tags
-    principalId: principalId
   }
 }
 
-module redis 'redis/aspire.hosting.azure.bicep.redis.bicep' = {
-  name: 'redis'
+module aiSearch 'aiSearch/aiSearch.module.bicep' = {
+  name: 'aiSearch'
   scope: rg
   params: {
     location: location
-    keyVaultName: resources.outputs.SERVICE_BINDING_REDISKV_NAME
-    redisCacheName: 'redis'
+    principalId: resources.outputs.MANAGED_IDENTITY_PRINCIPAL_ID
+    principalType: 'ServicePrincipal'
   }
 }
-module sbus 'sbus/aspire.hosting.azure.bicep.servicebus.bicep' = {
+module docing 'docing/docing.module.bicep' = {
+  name: 'docing'
+  scope: rg
+  params: {
+    location: location
+    principalId: resources.outputs.MANAGED_IDENTITY_PRINCIPAL_ID
+    principalType: 'ServicePrincipal'
+  }
+}
+module sbus 'sbus/sbus.module.bicep' = {
   name: 'sbus'
   scope: rg
   params: {
     location: location
     principalId: resources.outputs.MANAGED_IDENTITY_PRINCIPAL_ID
     principalType: 'ServicePrincipal'
-    queues: []
-    serviceBusNamespaceName: 'sbus'
-    topics: []
   }
 }
-module signalr 'signalr/aspire.hosting.azure.bicep.signalr.bicep' = {
+module signalr 'signalr/signalr.module.bicep' = {
   name: 'signalr'
   scope: rg
   params: {
     location: location
-    name: 'signalr'
     principalId: resources.outputs.MANAGED_IDENTITY_PRINCIPAL_ID
     principalType: 'ServicePrincipal'
   }
 }
-module sqldocgen 'sqldocgen/aspire.hosting.azure.bicep.sql.bicep' = {
+module sqldocgen 'sqldocgen/sqldocgen.module.bicep' = {
   name: 'sqldocgen'
   scope: rg
   params: {
     location: location
-    databases: ['ProjectVicoDB']
     principalId: resources.outputs.MANAGED_IDENTITY_PRINCIPAL_ID
     principalName: resources.outputs.MANAGED_IDENTITY_NAME
-    serverName: 'sqldocgen'
   }
 }
 output MANAGED_IDENTITY_CLIENT_ID string = resources.outputs.MANAGED_IDENTITY_CLIENT_ID
@@ -82,8 +83,9 @@ output AZURE_CONTAINER_REGISTRY_ENDPOINT string = resources.outputs.AZURE_CONTAI
 output AZURE_CONTAINER_REGISTRY_MANAGED_IDENTITY_ID string = resources.outputs.AZURE_CONTAINER_REGISTRY_MANAGED_IDENTITY_ID
 output AZURE_CONTAINER_APPS_ENVIRONMENT_ID string = resources.outputs.AZURE_CONTAINER_APPS_ENVIRONMENT_ID
 output AZURE_CONTAINER_APPS_ENVIRONMENT_DEFAULT_DOMAIN string = resources.outputs.AZURE_CONTAINER_APPS_ENVIRONMENT_DEFAULT_DOMAIN
-output SERVICE_BINDING_REDISKV_ENDPOINT string = resources.outputs.SERVICE_BINDING_REDISKV_ENDPOINT
 
+output AISEARCH_CONNECTIONSTRING string = aiSearch.outputs.connectionString
+output DOCING_BLOBENDPOINT string = docing.outputs.blobEndpoint
 output SBUS_SERVICEBUSENDPOINT string = sbus.outputs.serviceBusEndpoint
 output SIGNALR_HOSTNAME string = signalr.outputs.hostName
 output SQLDOCGEN_SQLSERVERFQDN string = sqldocgen.outputs.sqlServerFqdn

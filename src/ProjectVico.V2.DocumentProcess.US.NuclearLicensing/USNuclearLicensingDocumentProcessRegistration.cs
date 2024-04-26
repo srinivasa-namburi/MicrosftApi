@@ -8,7 +8,6 @@ using ProjectVico.V2.DocumentProcess.Shared.Search;
 using ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Generation;
 using ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Ingestion.Classification.Classifiers;
 using ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Ingestion.Pipelines;
-using ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Mapping;
 using ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Search;
 using ProjectVico.V2.Shared.Configuration;
 
@@ -43,11 +42,12 @@ public class USNuclearLicensingDocumentProcessRegistration : IDocumentProcessReg
         // END Generation services
 
         // Shared services
-        builder.Services.AddAutoMapper(typeof(USNuclearLicensingMetadataProfile));
         builder.Services
             .AddKeyedScoped<IRagRepository, USNuclearLicensingRagRepository>(ProcessName + "-IRagRepository");
         builder.Services
             .AddScoped<IUSNuclearLicensingRagRepository, USNuclearLicensingRagRepository>();
+
+
         // END Shared services
 
         return builder;

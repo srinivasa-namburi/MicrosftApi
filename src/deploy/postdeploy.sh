@@ -18,6 +18,9 @@ echo "Scaling container apps in $resourceGroup..."
 for app in "${!containerApps[@]}"
 do
     instanceCount=${containerApps[$app]}
+    
+    echo "Updating workload profile for $app... (setting to dedicated)"
+    az containerapp update -n $app -g $resourceGroup --workload-profile-name dedicated > $null
     echo "Scaling $app to $instanceCount instances..."
     az containerapp update -n $app -g $resourceGroup --min-replicas $instanceCount --max-replicas $instanceCount > /dev/null
 done

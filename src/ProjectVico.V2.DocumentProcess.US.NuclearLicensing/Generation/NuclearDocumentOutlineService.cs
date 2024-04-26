@@ -2,6 +2,7 @@
 using ProjectVico.V2.DocumentProcess.Shared.Generation;
 using ProjectVico.V2.Shared.Models;
 using System.Diagnostics.CodeAnalysis;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
@@ -20,6 +21,7 @@ public class NuclearDocumentOutlineService : IDocumentOutlineService
 
     public NuclearDocumentOutlineService(
         IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
+        [FromKeyedServices("US.NuclearLicensing-Kernel")]
         Kernel sk,
         DocGenerationDbContext dbContext,
         ILogger<NuclearDocumentOutlineService> logger

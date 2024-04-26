@@ -9,7 +9,7 @@ public static class StartupDelay
         if (!isDurable && builder.Environment.IsDevelopment())
         {
             Console.WriteLine($"Waiting for SetupManager to perform migrations and delete ServiceBus Topics/Queus for non-durable development");
-            await Task.Delay(TimeSpan.FromSeconds(50));
+            await Task.Delay(TimeSpan.FromSeconds(120));
         }
         else
         {

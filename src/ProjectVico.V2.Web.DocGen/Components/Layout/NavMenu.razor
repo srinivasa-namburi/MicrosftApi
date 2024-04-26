@@ -6,7 +6,10 @@
             @if (!string.IsNullOrEmpty(context.User.Identity?.Name))
             {
                 <MudNavLink Href="/docs" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ViewList">All Documents</MudNavLink>
-                <MudNavLink Href="/generate" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Description">New Document</MudNavLink>
+                <MudNavGroup Title="New Document" Icon="@Icons.Material.Filled.Description">
+                    <MudNavLink Href="/US.NuclearLicensing/generate">US Nuclear Licensing</MudNavLink>
+                    <MudNavLink Href="/Belgium.NuclearLicensing.DSAR/generate">Belgium Nuclear Licensing</MudNavLink>
+                </MudNavGroup>
                 <MudNavLink Href="/ingest" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.CloudUpload">Ingest Files</MudNavLink>
                 <MudNavLink Href="/copilot" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.AssistantDirection">Nuclear Copilot</MudNavLink>
             }

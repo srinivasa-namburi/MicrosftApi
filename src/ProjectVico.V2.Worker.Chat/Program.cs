@@ -1,12 +1,10 @@
-using Azure;
 using Azure.Identity;
-using Azure.Search.Documents;
 using MassTransit;
 using ProjectVico.V2.DocumentProcess.Shared;
 using ProjectVico.V2.Plugins.Shared;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Extensions;
-using ProjectVico.V2.Worker.Chat.AI;
+using ProjectVico.V2.Shared.Services.Search;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -14,20 +12,22 @@ builder.AddServiceDefaults();
 
 await Task.Delay(TimeSpan.FromSeconds(15));
 
+builder.AddAzureSearchClient("aiSearch");
 builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
+builder.Services.AddSingleton<SearchClientFactory>();
 
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
 
 builder.AddAzureServiceBusClient("sbus");
 builder.AddRabbitMQClient("rabbitmqdocgen");
 builder.AddKeyedAzureOpenAIClient("openai-planner");
-builder.AddAzureBlobClient("docGenBlobs");
+builder.AddAzureBlobClient("blob-docing");
 
 builder.AddDocGenDbContext(serviceConfigurationOptions);
 
-builder.DynamicallyRegisterPlugins();
+builder.DynamicallyRegisterPlugins(serviceConfigurationOptions);
 builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
-builder.AddSemanticKernelService();
+builder.AddSemanticKernelServices(serviceConfigurationOptions);
 
 var serviceBusConnectionString = builder.Configuration.GetConnectionString("sbus");
 serviceBusConnectionString = serviceBusConnectionString?.Replace("https://", "sb://").Replace(":443/", "/");

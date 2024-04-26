@@ -13,6 +13,7 @@ using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Web.DocGen.Auth;
 using ProjectVico.V2.Web.DocGen.Components;
 using ProjectVico.V2.Web.DocGen.ServiceClients;
+using ProjectVico.V2.Web.Shared;
 using ProjectVico.V2.Web.Shared.Auth;
 using ProjectVico.V2.Web.Shared.ServiceClients;
 using StackExchange.Redis;
@@ -23,9 +24,7 @@ builder.AddServiceDefaults();
 
 var azureAdSection = builder.Configuration.GetSection("AzureAd");
 builder.Services.Configure<AzureAdOptions>(azureAdSection);
-
 var azureAdSettings = azureAdSection.Get<AzureAdOptions>();
-
 
 var serviceConfigurationSection = builder.Configuration.GetSection("ServiceConfiguration");
 builder.Services.Configure<ServiceConfigurationOptions>(serviceConfigurationSection);
@@ -173,9 +172,9 @@ builder.Services.AddSignalR().AddAzureSignalR(options =>
     };
 });
 
+builder.Services.AddSingleton<DynamicComponentResolver>();
+
 var app = builder.Build();
-
-
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())

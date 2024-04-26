@@ -265,13 +265,43 @@ public class DocGenerationDbContext : DbContext
         modelBuilder.Entity<DocumentGenerationSagaState>()
             .HasKey(x => x.CorrelationId);
         
+        // Table per hierarchy for Document Ingestion SAGA
+        modelBuilder.Entity<DocumentIngestionSagaState>()
+            .HasDiscriminator<string>("Discriminator")
+            .HasValue<DocumentIngestionSagaState>("DocumentIngestionSagaState")
+            .HasValue<KernelMemoryDocumentIngestionSagaState>("KernelMemoryDocumentIngestionSagaState");
+
+        modelBuilder.Entity<DocumentIngestionSagaState>()
+            .Property("Discriminator")
+            .HasMaxLength(100);
+
+
         // Mass Transit SAGA for Document Ingestion
         modelBuilder.Entity<DocumentIngestionSagaState>()
             .HasKey(x => x.CorrelationId);
+        modelBuilder.Entity<DocumentIngestionSagaState>()
+            .HasIndex(x => x.FileHash)
+            .IsUnique(false);
+        modelBuilder.Entity<DocumentIngestionSagaState>()
+            .HasIndex(x => x.DocumentProcessName)
+            .IsUnique(false);
+        
+        // Mass Transit SAGA for Kernel Memory Document Ingestion
+        // The Key is the same as the base class - this is an EF Core requirement for Table per hierarchy
+
+        modelBuilder.Entity<KernelMemoryDocumentIngestionSagaState>()
+            .HasIndex(x => x.FileHash)
+            .IsUnique(false);
+        modelBuilder.Entity<KernelMemoryDocumentIngestionSagaState>()
+            .HasIndex(x => x.DocumentProcessName)
+            .IsUnique(false);
+
     }
 
     public DbSet<DocumentGenerationSagaState> DocumentGenerationSagaStates { get; set; } = null!;
     public DbSet<DocumentIngestionSagaState> DocumentIngestionSagaStates { get; set; } = null!;
+    public DbSet<KernelMemoryDocumentIngestionSagaState> KernelMemoryDocumentIngestionSagaStates { get; set; } = null!;
+
     public DbSet<GeneratedDocument> GeneratedDocuments { get; set; }
     public DbSet<DocumentMetadata> DocumentMetadata { get; set; }
     public DbSet<IngestedDocument> IngestedDocuments { get; set; }

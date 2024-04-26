@@ -4,7 +4,6 @@ using Azure.AI.FormRecognizer.DocumentAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using ProjectVico.V2.DocumentProcess.Shared.Generation;
-using ProjectVico.V2.DocumentProcess.Shared.Mapping;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Shared.Interfaces;
@@ -46,7 +45,7 @@ public static class DocumentProcessExtensions
             new AzureKeyCredential(options.DocumentIntelligence.Key)));
         
         // Object Mapping with AutoMapper
-        builder.Services.AddAutoMapper(typeof(TableProfile), typeof(MetadataProfile));
+        builder.Services.AddAutoMapper(typeof(TableProfile));
 
         // Ingestion specific custom dependencies
         builder.Services.AddScoped<TableHelper>();
@@ -54,10 +53,6 @@ public static class DocumentProcessExtensions
 
         builder.Services.AddSingleton<IContentTreeProcessor, ContentTreeProcessor>();
         builder.Services.AddSingleton<IIndexingProcessor, SearchIndexingProcessor>();
-
-        //Basic metadata service
-        builder.Services
-            .AddScoped<IMetadataService, MetadataService>();
 
         return builder;
     }
@@ -83,7 +78,6 @@ public static class DocumentProcessExtensions
         if (!Directory.Exists(baseDirectory))
         {
             throw new DirectoryNotFoundException(baseDirectory);
-
         }
 
         var assemblyPath = Directory.GetFiles(baseDirectory, "ProjectVico.V2.DocumentProcess.*.dll")
@@ -107,9 +101,9 @@ public static class DocumentProcessExtensions
 
             foreach (var type in documentProcessRegistrationTypes)
             {
-                if (Activator.CreateInstance(type) is IDocumentProcessRegistration pluginInstance)
+                if (Activator.CreateInstance(type) is IDocumentProcessRegistration documentProcessRegistrationInstance)
                 {
-                    builder = pluginInstance.RegisterDocumentProcess(builder, options);
+                    builder = documentProcessRegistrationInstance.RegisterDocumentProcess(builder, options);
                 }
             }
         }

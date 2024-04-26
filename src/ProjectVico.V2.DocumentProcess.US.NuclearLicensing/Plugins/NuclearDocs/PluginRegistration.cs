@@ -1,6 +1,6 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using ProjectVico.V2.Plugins.Shared;
+using ProjectVico.V2.Shared.Interfaces;
 
 namespace ProjectVico.V2.DocumentProcess.US.NuclearLicensing.Plugins.NuclearDocs;
 

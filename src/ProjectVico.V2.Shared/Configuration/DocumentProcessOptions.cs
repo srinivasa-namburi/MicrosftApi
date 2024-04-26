@@ -7,6 +7,7 @@ public class DocumentProcessOptions
     public string? BlobStorageAutoImportFolderName { get; set; } = string.Empty;
     public bool ClassifyDocuments { get; set; }
     public string? ClassificationModelName { get; set; }
+    public string? IngestionMethod { get; set; } = "Classic";
     public List<string> Repositories { get; set; } = new List<string>();
 
 }
