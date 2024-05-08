@@ -34,8 +34,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.API.Main", "
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.Worker.DocumentGeneration", "ProjectVico.V2.Worker.DocumentGeneration\ProjectVico.V2.Worker.DocumentGeneration.csproj", "{80B084E5-C64C-473E-827C-C0FB7DA97895}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "9. Dummy-Disposable Projects", "9. Dummy-Disposable Projects", "{39A7C0D9-3556-4AE4-88D1-B36A0176D02E}"
-EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.Web.Shared", "ProjectVico.V2.Web.Shared\ProjectVico.V2.Web.Shared.csproj", "{70F30D48-204C-45AE-B39A-C39A910FF68A}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.Web.DocGen", "ProjectVico.V2.Web.DocGen\ProjectVico.V2.Web.DocGen.csproj", "{5FB3C7FE-6B5B-4A1F-969D-237390F06B38}"
