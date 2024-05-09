@@ -7,23 +7,26 @@ namespace ProjectVico.V2.Web.DocGen.ServiceClients;
 
 internal sealed class AuthorizationApiClient : BaseServiceClient<AuthorizationApiClient>, IAuthorizationApiClient
 {
-    public AuthorizationApiClient(HttpClient httpClient, ILogger<AuthorizationApiClient> logger, AuthenticationStateProvider authStateProvider) : base(httpClient, logger, authStateProvider)
+    private readonly IConfiguration _configuration;
+
+    public AuthorizationApiClient(HttpClient httpClient, ILogger<AuthorizationApiClient> logger, AuthenticationStateProvider authStateProvider, IConfiguration configuration) : base(httpClient, logger, authStateProvider)
     {
+        _configuration = configuration;
     }
 
-    public async Task<UserInfoDTO?> StoreOrUpdateUserDetails(UserInfoDTO userInfoDto)
+    public async Task<UserInfoDTO?> StoreOrUpdateUserDetailsAsync(UserInfoDTO userInfoDto)
     {
-        var response = await SendPostRequestMessage($"/api/authorization/store-or-update-user-details", userInfoDto, authorize:false);
+        var response = await SendPostRequestMessage($"/api/authorization/store-or-update-user-details", userInfoDto, authorize: false);
         response?.EnsureSuccessStatusCode();
 
         return await response?.Content.ReadFromJsonAsync<UserInfoDTO>()!;
     }
 
-    public async Task<UserInfoDTO?> GetUserInfo(string providerSubjectId)
+    public async Task<UserInfoDTO?> GetUserInfoAsync(string providerSubjectId)
     {
-       
+
         var response = await SendGetRequestMessage($"/api/authorization/{providerSubjectId}");
-        
+
         // If we get a 404, it means that the user does not exist - return null
         if (response?.StatusCode == HttpStatusCode.NotFound)
         {
@@ -31,8 +34,14 @@ internal sealed class AuthorizationApiClient : BaseServiceClient<AuthorizationAp
         }
 
         response?.EnsureSuccessStatusCode();
-
+        
         // Return user info if found - otherwise return null
         return await response?.Content.ReadFromJsonAsync<UserInfoDTO>()!;
+    }
+
+    public async Task<string> GetApiAddressAsync()
+    {
+        var apiAddress = _configuration["services:api-main:https:0"];
+        return apiAddress;
     }
 }

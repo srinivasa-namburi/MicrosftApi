@@ -49,8 +49,14 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<Folder Include="Contracts\Messages\Chat\Events\" />
 		<Folder Include="Migrations\" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <ProjectReference Include="..\ProjectVico.V2.Shared.Configuration\ProjectVico.V2.Shared.Configuration.csproj" />
+	  <ProjectReference Include="..\ProjectVico.V2.Shared.Contracts\ProjectVico.V2.Shared.Contracts.csproj" />
+	  <ProjectReference Include="..\ProjectVico.V2.Shared.Enums\ProjectVico.V2.Shared.Enums.csproj" />
+	  <ProjectReference Include="..\ProjectVico.V2.Shared.Models\ProjectVico.V2.Shared.Models.csproj" />
 	</ItemGroup>
 
 </Project>

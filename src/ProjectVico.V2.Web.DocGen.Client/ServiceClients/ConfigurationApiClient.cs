@@ -1,0 +1,39 @@
+﻿using System.Net.Http.Json;
+using Microsoft.AspNetCore.Components.Authorization;
+using ProjectVico.V2.Shared.Configuration;
+using ProjectVico.V2.Shared.Contracts.DTO;
+using ProjectVico.V2.Web.Shared.ServiceClients;
+
+namespace ProjectVico.V2.Web.DocGen.Client.ServiceClients;
+
+public class ConfigurationApiClient : WebAssemblyBaseServiceClient<ConfigurationApiClient>, IConfigurationApiClient
+{
+    public ConfigurationApiClient(HttpClient httpClient, ILogger<ConfigurationApiClient> logger, AuthenticationStateProvider authStateProvider) : base(httpClient, logger, authStateProvider)
+    {
+    }
+
+    public async Task<string> GetCurrentAccessTokenAsync()
+    {
+        return await base.GetAccessTokenAsync();
+
+    }
+
+    public async Task<string?> GetAzureMapsKeyAsync()
+    {
+        var response = await SendGetRequestMessage($"/api/configuration/azure-maps-key");
+        response?.EnsureSuccessStatusCode();
+
+        var responseString = await response?.Content.ReadAsStringAsync()!;
+        responseString = responseString.Replace("\"", "").TrimEnd('/');
+        return responseString;
+    }
+
+    public async Task<List<DocumentProcessOptions?>> GetDocumentProcessesAsync()
+    {
+        var response = await SendGetRequestMessage($"/api/configuration/document-processes");
+        response?.EnsureSuccessStatusCode();
+
+        return await response?.Content.ReadFromJsonAsync<List<DocumentProcessOptions>>()! ??
+               throw new IOException("No document processes available!");
+    }
+}

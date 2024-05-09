@@ -1,9 +1,7 @@
 ﻿using System.Net;
-using System.Text.Json;
 using Microsoft.AspNetCore.Components.Authorization;
 using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Shared.Models;
-using ProjectVico.V2.Shared.Interfaces;
 using ProjectVico.V2.Web.Shared.ServiceClients;
 
 namespace ProjectVico.V2.Web.DocGen.ServiceClients;

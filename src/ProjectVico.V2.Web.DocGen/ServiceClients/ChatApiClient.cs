@@ -11,7 +11,7 @@ internal sealed class ChatApiClient : BaseServiceClient<ChatApiClient>, IChatApi
     {
     }
 
-    public async Task<string?> SendChatMessage(ChatMessageDTO chatMessageDto)
+    public async Task<string?> SendChatMessageAsync(ChatMessageDTO chatMessageDto)
     {
         var response = await SendPostRequestMessage($"/api/chat", chatMessageDto);
         response?.EnsureSuccessStatusCode();
@@ -19,7 +19,7 @@ internal sealed class ChatApiClient : BaseServiceClient<ChatApiClient>, IChatApi
         return response?.StatusCode.ToString();
     }
 
-    public async Task<List<ChatMessageDTO>> GetChatMessages(Guid conversationId)
+    public async Task<List<ChatMessageDTO>> GetChatMessagesAsync(Guid conversationId)
     {
         var conversationIdString = conversationId.ToString();
         var response = await SendGetRequestMessage($"/api/chat/{conversationIdString}");

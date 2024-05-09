@@ -1,5 +1,4 @@
 ﻿using ProjectVico.V2.Shared.Contracts.DTO;
-using ProjectVico.V2.Shared.Interfaces;
 using ProjectVico.V2.Shared.Models;
 
 namespace ProjectVico.V2.Web.Shared.ServiceClients;

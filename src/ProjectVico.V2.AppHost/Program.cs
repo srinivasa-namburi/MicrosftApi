@@ -1,9 +1,7 @@
 using Aspire.Hosting.Azure;
-using Azure.ResourceManager.Redis.Models;
 using Azure.ResourceManager.Search.Models;
 using Azure.ResourceManager.ServiceBus.Models;
 using Azure.ResourceManager.SignalR.Models;
-using Azure.Search.Documents.Models;
 using Microsoft.Extensions.Configuration;
 using ProjectVico.V2.AppHost;
 #pragma warning disable ASPIRE0001
@@ -149,6 +147,8 @@ var docGenFrontend = builder
     .WithReference(signalr)
     .WithReference(redis)
     .WithReference(apiMain);
+
+apiMain.WithReference(docGenFrontend); // Neccessary for CORS policy creation
 
 var setupManager = builder
     .AddProject<Projects.ProjectVico_V2_SetupManager>("worker-setupmanager")

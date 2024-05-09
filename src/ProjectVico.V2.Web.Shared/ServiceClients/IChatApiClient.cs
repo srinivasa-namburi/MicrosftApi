@@ -5,6 +5,6 @@ namespace ProjectVico.V2.Web.Shared.ServiceClients;
 public interface IChatApiClient : IServiceClient
 {
     //IAsyncEnumerable<string> SendChatMessage(ChatMessage chatMessage);
-    Task<string?> SendChatMessage(ChatMessageDTO chatMessageDto);
-    Task<List<ChatMessageDTO>> GetChatMessages(Guid conversationId);
+    Task<string?> SendChatMessageAsync(ChatMessageDTO chatMessageDto);
+    Task<List<ChatMessageDTO>> GetChatMessagesAsync(Guid conversationId);
 }

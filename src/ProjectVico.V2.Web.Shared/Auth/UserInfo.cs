@@ -1,6 +1,5 @@
 ﻿using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using Azure.Storage.Blobs.Models;
 
 namespace ProjectVico.V2.Web.Shared.Auth;
 

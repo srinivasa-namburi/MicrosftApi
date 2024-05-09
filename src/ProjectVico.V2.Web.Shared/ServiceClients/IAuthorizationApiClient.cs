@@ -4,6 +4,8 @@ namespace ProjectVico.V2.Web.Shared.ServiceClients;
 
 public interface IAuthorizationApiClient : IServiceClient
 {
-    Task<UserInfoDTO?> StoreOrUpdateUserDetails(UserInfoDTO userInfoDto);
-    Task<UserInfoDTO?> GetUserInfo(string providerSubjectId);
+    Task<UserInfoDTO?> StoreOrUpdateUserDetailsAsync(UserInfoDTO userInfoDto);
+    Task<UserInfoDTO?> GetUserInfoAsync(string providerSubjectId);
+
+    Task<string> GetApiAddressAsync();
 }

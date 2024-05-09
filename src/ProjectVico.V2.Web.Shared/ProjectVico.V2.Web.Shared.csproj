@@ -6,9 +6,9 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
-	<ItemGroup>
+	<!--<ItemGroup>
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
-	</ItemGroup>
+	</ItemGroup>-->
 
   <ItemGroup>
     <Folder Include="Auth\" />
@@ -16,11 +16,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client.Core" Version="8.0.4" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Authorization" Version="8.0.4" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="7.5.1" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\ProjectVico.V2.Shared\ProjectVico.V2.Shared.csproj" />
+    <ProjectReference Include="..\ProjectVico.V2.Shared.Configuration\ProjectVico.V2.Shared.Configuration.csproj" />
+    <ProjectReference Include="..\ProjectVico.V2.Shared.Contracts\ProjectVico.V2.Shared.Contracts.csproj" />
+    <ProjectReference Include="..\ProjectVico.V2.Shared.Models\ProjectVico.V2.Shared.Models.csproj" />
   </ItemGroup>
 
 </Project>

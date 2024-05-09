@@ -1,9 +1,8 @@
-﻿using ProjectVico.V2.Shared.Interfaces;
-using ProjectVico.V2.Shared.Contracts.DTO;
+﻿using ProjectVico.V2.Shared.Contracts.DTO;
 
 namespace ProjectVico.V2.UI.US.NuclearLicensing;
 
-public class DocumentGenerationRequestUSNuclearLicensing : IDocumentGenerationRequest
+public class DocumentGenerationRequestUSNuclearLicensing
 {
     public string DocumentProcessName {get;set; } = "US.NuclearLicensing";
     public string? MetadataModelName => "USNuclearEnvironmentalReportMetadata";

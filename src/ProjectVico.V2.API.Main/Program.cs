@@ -18,8 +18,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.AddServiceDefaults();
 
-// This is to grant SetupManager time to perform migrations
-
+builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
 
 await builder.DelayStartup(serviceConfigurationOptions.ProjectVicoServices.DocumentGeneration.DurableDevelopmentServices);
@@ -82,18 +81,52 @@ else // Use RabbitMQ for local development
     });
 }
 
-builder.Services.AddSignalR().AddNamedAzureSignalR("signalr");
+var frontEndUrl = builder.Configuration["services:web-docgen:https:0"];
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("CorsPolicy", builder => builder.WithOrigins(frontEndUrl)
+        .AllowAnyHeader()
+        .AllowAnyMethod()
+        .AllowCredentials()
+        .SetIsOriginAllowed((host) => true));
+});
+
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddSignalR();
+}
+else
+{
+    builder.Services.AddSignalR().AddAzureSignalR(options =>
+    {
+        options.ConnectionString = builder.Configuration.GetConnectionString("signalr");
+    });
+}
+
 builder.Services.AddHttpContextAccessor();
 
 var app = builder.Build();
 
+var webSocketOptions = new WebSocketOptions()
+{
+    KeepAliveInterval = TimeSpan.FromSeconds(120)
+};
+
+webSocketOptions.AllowedOrigins.Add(frontEndUrl);
+app.UseWebSockets(webSocketOptions);
+
+app.UseCors("CorsPolicy");
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.UseExceptionHandler(app.Environment.IsDevelopment() ? "/error-development" : "/error");
 app.UseStatusCodePages();
 
-app.MapHub<NotificationHub>("/hubs/notification-hub");
+app.MapHub<NotificationHub>("/hubs/notification-hub", options =>
+{
+
+});
 
 app.MapDefaultEndpoints();
 

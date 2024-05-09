@@ -17,7 +17,7 @@ internal sealed class PersistingAuthenticationStateProvider : AuthenticationStat
     public PersistingAuthenticationStateProvider(PersistentComponentState state)
     {
         persistentComponentState = state;
-        subscription = state.RegisterOnPersisting(OnPersistingAsync, RenderMode.InteractiveServer);
+        subscription = state.RegisterOnPersisting(OnPersistingAsync, RenderMode.InteractiveWebAssembly);
     }
 
     public void Dispose()

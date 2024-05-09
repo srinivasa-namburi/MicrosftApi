@@ -1,9 +1,8 @@
-﻿using ProjectVico.V2.Shared.Interfaces;
-using ProjectVico.V2.Shared.Contracts.DTO;
+﻿using ProjectVico.V2.Shared.Contracts.DTO;
 
 namespace ProjectVico.V2.UI.Belgium.NuclearLicensing.DSAR;
 
-public class DocumentGenerationRequestBelgiumNuclearLicensing : IDocumentGenerationRequest
+public class DocumentGenerationRequestBelgiumNuclearLicensing
 {
     public string DocumentProcessName {get;set; } = "Belgium.NuclearLicensing.DSAR";
     public string? MetadataModelName => "BelgiumNuclearLicensingDSARMetadata";

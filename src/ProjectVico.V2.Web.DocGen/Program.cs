@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Components.Authorization;
@@ -11,16 +12,20 @@ using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Web.DocGen.Auth;
+using ProjectVico.V2.Web.DocGen.Client.Layout;
 using ProjectVico.V2.Web.DocGen.Components;
 using ProjectVico.V2.Web.DocGen.ServiceClients;
 using ProjectVico.V2.Web.Shared;
 using ProjectVico.V2.Web.Shared.Auth;
 using ProjectVico.V2.Web.Shared.ServiceClients;
 using StackExchange.Redis;
+using Yarp.ReverseProxy.Transforms;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
+
+//builder.Services.AddReverseProxy();
 
 var azureAdSection = builder.Configuration.GetSection("AzureAd");
 builder.Services.Configure<AzureAdOptions>(azureAdSection);
@@ -46,6 +51,10 @@ builder.Services.AddHttpClient<IChatApiClient, ChatApiClient>(httpClient =>
     httpClient.BaseAddress = new("https+http://api-main");
 });
 builder.Services.AddHttpClient<IAuthorizationApiClient, AuthorizationApiClient>(httpClient =>
+{
+    httpClient.BaseAddress = new("https+http://api-main");
+});
+builder.Services.AddHttpClient<IConfigurationApiClient, ConfigurationApiClient>(httpClient =>
 {
     httpClient.BaseAddress = new("https+http://api-main");
 });
@@ -126,17 +135,24 @@ builder.Services.AddAuthentication("MicrosoftOidc")
                     Email = userInfo.Email
                 };
                 
-                await authorizationClient.StoreOrUpdateUserDetails(user);
+                await authorizationClient.StoreOrUpdateUserDetailsAsync(user);
             }
         };
     })
-    .AddCookie("Cookies");
+    .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme);
 
 // This attaches a cookie OnValidatePrincipal callback to get a new access token when the current one expires, and
 // reissue a cookie with the new access token saved inside. If the refresh fails, the user will be signed out.
-builder.Services.ConfigureOidcRefreshHandling("Cookies", "MicrosoftOidc");
+builder.Services.ConfigureOidcRefreshHandling(CookieAuthenticationDefaults.AuthenticationScheme, "MicrosoftOidc");
 builder.Services.AddAuthorization();
+builder.Services.AddCascadingAuthenticationState();
+
+builder.Services.AddRazorComponents()
+    //.AddInteractiveServerComponents()
+    .AddInteractiveWebAssemblyComponents();
+
 builder.Services.AddScoped<AuthenticationStateProvider, PersistingAuthenticationStateProvider>();
+builder.Services.AddHttpForwarderWithServiceDiscovery();
 
 builder.AddAzureBlobClient("blob-docing");
 builder.AddRedisClient("redis");
@@ -149,12 +165,15 @@ builder.Services.AddScoped<AzureFileHelper>();
 
 builder.Services.AddSingleton<IUserIdProvider, SignalRCustomUserIdProvider>();
 
-// Add services to the container.
-builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
 builder.Services.AddMudServices();
 
-builder.Services.AddSignalR().AddAzureSignalR(options =>
+if (builder.Environment.IsDevelopment())
+{
+   builder.Services.AddSignalR();
+}
+else
+{
+    builder.Services.AddSignalR().AddAzureSignalR(options =>
 {
     options.ConnectionString = builder.Configuration.GetConnectionString("signalr");
     options.ClaimsProvider = context =>
@@ -171,6 +190,11 @@ builder.Services.AddSignalR().AddAzureSignalR(options =>
         return claims;
     };
 });
+}
+
+
+
+//builder.Services.AddSignalR();
 
 builder.Services.AddSingleton<DynamicComponentResolver>();
 
@@ -179,20 +203,79 @@ var app = builder.Build();
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
+    
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
     // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     //app.UseHsts();
 }
-
-//app.UseHttpsRedirection();
+else
+{
+    app.UseWebAssemblyDebugging();
+}
 
 app.UseStaticFiles();
-
+app.UseRouting();
+app.UseAuthorization();
 app.UseAntiforgery();
 app.MapDefaultEndpoints();
 
 app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
+    //.AddInteractiveServerRenderMode()
+    .AddInteractiveWebAssemblyRenderMode()
+    .AddAdditionalAssemblies(typeof(ProjectVico.V2.Web.DocGen.Client._Imports).Assembly);
+
+// BFF Forwarders for the client.
+// Use MapForwarder to forward requests to the API. API address is https://api-main, and all paths starting with /api will be forwarded.
+
+app.MapForwarder("/api/{**catch-all}", "https://api-main/", transformBuilder =>
+{
+    transformBuilder.AddRequestTransform(async transformContext =>
+    {
+        var accessToken = await transformContext.HttpContext.GetTokenAsync("access_token");
+        if (!string.IsNullOrEmpty(accessToken))
+        {
+            transformContext.ProxyRequest.Headers.Authorization = new("Bearer", accessToken);
+        }
+    });
+}).RequireAuthorization();
+
+app.MapForwarder("/hubs/{**catch-all}", "https://api-main/", transformBuilder =>
+{
+    transformBuilder.AddRequestTransform(async transformContext =>
+    {
+        var accessToken = await transformContext.HttpContext.GetTokenAsync("access_token");
+        if (!string.IsNullOrEmpty(accessToken))
+        {
+            transformContext.ProxyRequest.Headers.Authorization = new("Bearer", accessToken);
+        }
+    });
+}).RequireAuthorization();
+
+app.MapGet("/api-address", ()=>
+{
+    var apiAddress = builder.Configuration["services:api-main:https:0"];
+    if (string.IsNullOrEmpty(apiAddress))
+    {
+        return Results.NotFound();
+    }
+    return Results.Ok(apiAddress.TrimEnd('/'));
+});
+
+app.MapGet("/configuration/token", async context =>
+{
+    // get access token from the request
+    var accessToken = await context.Request.HttpContext.GetTokenAsync("access_token");
+
+    if (string.IsNullOrEmpty(accessToken))
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        return;
+    }
+
+    context.Response.ContentType = "text/plain";
+    await context.Response.WriteAsync(accessToken);
+
+}).RequireAuthorization();
 
 app.MapGroup("/authentication").MapLoginAndLogout(app);
 

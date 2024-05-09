@@ -1,0 +1,34 @@
+﻿@using System.Text.RegularExpressions;
+@using Markdig
+@using Markdig.Extensions.AutoLinks
+
+@code {
+    [Parameter]
+    public string Value { get; set; } = default!;
+}
+
+@{
+    //We're not encoding the value here because we want to allow HTML in the markdown
+    //var encodedValue = HttpUtility.HtmlEncode(Value ?? string.Empty);
+    var encodedValue = Value;
+    var markdownPipeline = new MarkdownPipelineBuilder()
+                                    .UseAdvancedExtensions()
+                                    .UseEmojiAndSmiley()
+                                    .UseSmartyPants()
+                                    //.UseSoftlineBreakAsHardlineBreak()
+                                    .UseAutoLinks(options:new AutoLinkOptions()
+                                    {
+                                        OpenInNewWindow = true,
+                                        UseHttpsForWWWLinks = true
+                                    })
+                                    .Build();
+    var markdownContent = Markdown.ToHtml(encodedValue, markdownPipeline);
+    var markupValue = new MarkupString(markdownContent);
+
+    // Add an extra line break to the end of each paragraph to make it easier to read
+    markupValue = new MarkupString(Regex.Replace(markupValue.Value, @"</p>", "</p><br />"));
+
+    if (!string.IsNullOrEmpty(markupValue.Value)){
+        @markupValue
+    }
+}

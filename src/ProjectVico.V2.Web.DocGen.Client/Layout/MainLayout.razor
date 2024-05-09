@@ -1,0 +1,85 @@
+﻿@inherits LayoutComponentBase
+@using Microsoft.AspNetCore.SignalR.Client
+@using ProjectVico.V2.Shared.Contracts.Messages
+@inject ILogger<MainLayout> Logger
+@inject IAuthorizationApiClient AuthorizationApiClient
+@inject IConfigurationApiClient ConfigurationApiClient
+
+<MyMudThemeProvider @bind-IsDarkMode="@_isDarkMode" />
+<MyMudProviders />
+
+<MudLayout>
+    <MudAppBar Elevation="3">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
+        <MudSpacer />
+        <MudSwitch @bind-Value="@_isDarkMode" Color="Color.Primary" Class="ma-1" T="bool" ThumbIcon="@Icons.Material.Filled.WbSunny" />
+    </MudAppBar>
+    <MudDrawer @bind-Open="_drawerOpen" Elevation="3">
+        <MudDrawerHeader>
+            <MudText Typo="Typo.h6">Generative AI for Nuclear Licensing</MudText>
+        </MudDrawerHeader>
+        <NavMenu />
+    </MudDrawer>
+    <CascadingValue TValue="HubConnection" Value="@HubConnection">
+        <MudMainContent>
+            <MudContainer MaxWidth="MaxWidth.Large" Class="my-10 pt-10">
+                @Body
+            </MudContainer>
+        </MudMainContent>
+    </CascadingValue>
+</MudLayout>
+
+@code {
+    bool _drawerOpen = true;
+
+    private bool _isDarkMode = true;
+    public HubConnection? HubConnection { get; set; }
+
+    void DrawerToggle()
+    {
+        _drawerOpen = !_drawerOpen;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Only start the SignalR connection if the user is authenticated
+        try
+        {
+            await StartHubConnections();
+        }
+        catch (InvalidOperationException e)
+        {
+            // User isn't authenticated yet - ignore.
+        }
+
+    }
+
+    private async Task StartHubConnections()
+    {
+        // Get the API base address by calling /api-address on the local server
+        var apiAddress = await AuthorizationApiClient.GetApiAddressAsync();
+               
+        HubConnection = new HubConnectionBuilder()
+            .WithUrl($"{apiAddress}/hubs/notification-hub", options =>
+            {
+                options.AccessTokenProvider = async () => await ConfigurationApiClient.GetAccessTokenAsync();
+            })
+            .WithStatefulReconnect()
+            .WithAutomaticReconnect()
+            .Build();
+
+
+        HubConnection.On<SignalRKeepAlive>(
+            "ReceiveSignalRKeepAliveReceivedNotification",
+            HubReceiveSignalRKeepAliveReceivedNotificationHandler);
+
+
+        await HubConnection.StartAsync();
+    }
+
+    private void HubReceiveSignalRKeepAliveReceivedNotificationHandler(SignalRKeepAlive obj)
+    {
+        this.Logger.LogDebug("KeepAlive SignalR received from API");
+    }
+
+}
