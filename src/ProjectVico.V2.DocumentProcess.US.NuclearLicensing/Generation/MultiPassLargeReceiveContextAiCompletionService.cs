@@ -297,8 +297,8 @@ public class MultiPassLargeReceiveContextAiCompletionService : IAiCompletionServ
                 new ChatRequestSystemMessage(systemPrompt),
                 new ChatRequestUserMessage(summarizePrompt)
             },
-            DeploymentName = _serviceConfigurationOptions.OpenAi.GPT432KModelDeploymentName,
-            MaxTokens = 8000,
+            DeploymentName = _serviceConfigurationOptions.OpenAi.GPT4128KModelDeploymentName,
+            MaxTokens = 4000,
             Temperature = 0.5f,
             FrequencyPenalty = 0.5f
         };

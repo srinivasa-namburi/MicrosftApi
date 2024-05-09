@@ -152,7 +152,7 @@ public class NRCDocumentsPlugin : IPluginImplementation
             var sectionCompletion = await _openAIClient.GetChatCompletionsAsync(
             new ChatCompletionsOptions()
             {
-                DeploymentName = _serviceConfigurationOptions.OpenAi.GPT432KModelDeploymentName,
+                DeploymentName = _serviceConfigurationOptions.OpenAi.GPT4128KModelDeploymentName,
                 Messages = {
                         new ChatRequestUserMessage(prompt)
                     },
@@ -195,7 +195,7 @@ public class NRCDocumentsPlugin : IPluginImplementation
         var deduplicatedOutlineResponse = await _openAIClient.GetChatCompletionsAsync(
         new ChatCompletionsOptions()
         {
-            DeploymentName = _serviceConfigurationOptions.OpenAi.GPT432KModelDeploymentName,
+            DeploymentName = _serviceConfigurationOptions.OpenAi.GPT4128KModelDeploymentName,
             Messages =
                 {
                     new ChatRequestSystemMessage(systemPrompt),

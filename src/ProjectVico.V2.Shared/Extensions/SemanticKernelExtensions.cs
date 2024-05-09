@@ -77,7 +77,7 @@ public static class SemanticKernelExtensions
         if (sp.GetService<ITextGenerationService>() == null)
         {
             builder.Services.AddScoped<ITextGenerationService>(service =>
-                new AzureOpenAITextGenerationService(serviceConfigurationOptions.OpenAi.GPT432KModelDeploymentName,
+                new AzureOpenAITextGenerationService(serviceConfigurationOptions.OpenAi.GPT4128KModelDeploymentName,
                     openAiPlanner, "openai-textgeneration")
             );
         }
