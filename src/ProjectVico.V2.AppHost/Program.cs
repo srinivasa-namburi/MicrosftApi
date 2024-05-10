@@ -1,4 +1,5 @@
 using Aspire.Hosting.Azure;
+using Azure.ResourceManager.Redis.Models;
 using Azure.ResourceManager.Search.Models;
 using Azure.ResourceManager.ServiceBus.Models;
 using Azure.ResourceManager.SignalR.Models;
@@ -61,15 +62,6 @@ var azureAiSearch = builder.AddAzureSearch("aiSearch", (resourceBuilder, constru
     }
 });
 
-// OpenAI must be provisioned manually for now, since deployments with multiple models are somewhat unstable still.
-// Please set the connection string "openai-planner" in the configuration to enable this.
-
-//var openAi = builder.AddAzureOpenAI("openai-planner")
-//    .AddDeployment(new AzureOpenAIDeployment("gpt-4-32k", "gpt-4-32k", "0613"))
-//    .AddDeployment(new AzureOpenAIDeployment("gpt-4-128k", "gpt-4", "1106-Preview"))
-//    .AddDeployment(new AzureOpenAIDeployment("text-embedding-ada-002", "text-embedding-ada-002", "2"));
-
-    
 if (builder.ExecutionContext.IsRunMode) // For local development
 {
     if (durableDevelopment)
@@ -104,14 +96,12 @@ else // For production/Azure deployment
         .AddDatabase(sqlDatabaseName);
 
     redis = builder.AddRedis("redis")
-        //.PublishAsAzureRedis((resourceBuilder, construct, options) =>
-        //{
-        //    options.Properties.Sku.Name = RedisSkuName.Standard;
-        //    options.Properties.Sku.Family = RedisSkuFamily.BasicOrStandard;
-        //    options.Properties.Sku.Capacity = 1;
-        //})
-        .PublishAsContainer()
-        .WithDataVolume("pvico-redis-vol")
+        .PublishAsAzureRedis((resourceBuilder, construct, options) =>
+        {
+            options.Properties.Sku.Name = RedisSkuName.Standard;
+            options.Properties.Sku.Family = RedisSkuFamily.BasicOrStandard;
+            options.Properties.Sku.Capacity = 1;
+        })
         .WithPersistence();
 
     sbus = builder.AddAzureServiceBus("sbus", (resourceBuilder, construct, options) =>
@@ -181,7 +171,10 @@ var workerDocumentGeneration = builder
     .WithReference(apiMain)
     ;
 
-var workerChat = builder.AddProject<Projects.ProjectVico_V2_Worker_Chat>("worker-chat")
+var workerDocumentIngestion = builder
+    .AddProject<Projects.ProjectVico_V2_Worker_DocumentIngestion>("worker-documentingestion")
+    .WithReplicas(Convert.ToUInt16(
+        builder.Configuration["ServiceConfiguration:ProjectVicoServices:DocumentIngestion:NumberOfIngestionWorkers"]))
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
     .WithReference(azureAiSearch)
@@ -190,10 +183,7 @@ var workerChat = builder.AddProject<Projects.ProjectVico_V2_Worker_Chat>("worker
     .WithReference(queueService)
     .WithReference(apiMain);
 
-var workerDocumentIngestion = builder
-    .AddProject<Projects.ProjectVico_V2_Worker_DocumentIngestion>("worker-documentingestion")
-    .WithReplicas(Convert.ToUInt16(
-        builder.Configuration["ServiceConfiguration:ProjectVicoServices:DocumentIngestion:NumberOfIngestionWorkers"]))
+var workerChat = builder.AddProject<Projects.ProjectVico_V2_Worker_Chat>("worker-chat")
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
     .WithReference(azureAiSearch)
@@ -207,7 +197,7 @@ builder.Build().Run();
 void AppHostConfigurationSetup(IDistributedApplicationBuilder distributedApplicationBuilder)
 {
 
-    distributedApplicationBuilder.Configuration.AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
+    distributedApplicationBuilder.Configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
 
     if (distributedApplicationBuilder.ExecutionContext.IsRunMode)
     {
