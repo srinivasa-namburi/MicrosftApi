@@ -85,17 +85,13 @@
     // not currently used
     bool isLoading = false;
 
-    protected override async Task OnInitializedAsync()
-    {
-        credential = new AzureKeyCredential(SubscriptionKey);
-        client = new MapsSearchClient(credential);
-    }
-
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
             SubscriptionKey = await ConfigurationApiClient.GetAzureMapsKeyAsync();
+            credential = new AzureKeyCredential(SubscriptionKey);
+            client = new MapsSearchClient(credential);
             await JSRuntime.InvokeVoidAsync("initializeMap", SubscriptionKey, (float)DocumentGenerationRequestLocation.Latitude, (float)DocumentGenerationRequestLocation.Longitude);
         }
     }

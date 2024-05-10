@@ -9,11 +9,8 @@ param environmentName string
 @description('The location used for all deployed resources')
 param location string
 
-@description('Id of the user or app to assign application roles')
-param principalId string = ''
-
-// @secure()
-// param sqlPassword string
+@secure()
+param sqlPassword string
 
 var tags = {
   'azd-env-name': environmentName
@@ -31,7 +28,6 @@ module resources 'resources.bicep' = {
   params: {
     location: location
     tags: tags
-    principalId: principalId
   }
 }
 
@@ -51,14 +47,6 @@ module docing 'docing/docing.module.bicep' = {
     location: location
     principalId: resources.outputs.MANAGED_IDENTITY_PRINCIPAL_ID
     principalType: 'ServicePrincipal'
-  }
-}
-module redis 'redis/redis.module.bicep' = {
-  name: 'redis'
-  scope: rg
-  params: {
-    keyVaultName: resources.outputs.SERVICE_BINDING_KVB6088994_NAME
-    location: location
   }
 }
 module sbus 'sbus/sbus.module.bicep' = {
@@ -95,7 +83,6 @@ output AZURE_CONTAINER_REGISTRY_ENDPOINT string = resources.outputs.AZURE_CONTAI
 output AZURE_CONTAINER_REGISTRY_MANAGED_IDENTITY_ID string = resources.outputs.AZURE_CONTAINER_REGISTRY_MANAGED_IDENTITY_ID
 output AZURE_CONTAINER_APPS_ENVIRONMENT_ID string = resources.outputs.AZURE_CONTAINER_APPS_ENVIRONMENT_ID
 output AZURE_CONTAINER_APPS_ENVIRONMENT_DEFAULT_DOMAIN string = resources.outputs.AZURE_CONTAINER_APPS_ENVIRONMENT_DEFAULT_DOMAIN
-output SERVICE_BINDING_KVB6088994_ENDPOINT string = resources.outputs.SERVICE_BINDING_KVB6088994_ENDPOINT
 
 output AISEARCH_CONNECTIONSTRING string = aiSearch.outputs.connectionString
 output DOCING_BLOBENDPOINT string = docing.outputs.blobEndpoint
