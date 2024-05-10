@@ -91,7 +91,7 @@ if (builder.ExecutionContext.IsRunMode) // For local development
 else // For production/Azure deployment
 {
     docGenSql = builder
-        .AddSqlServer("sqldocgen", password: sqlPassword)
+        .AddSqlServer("sqldocgen")
         .PublishAsAzureSqlDatabase()
         .AddDatabase(sqlDatabaseName);
 
