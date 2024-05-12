@@ -30,10 +30,9 @@ public static class DbContextExtensions
 
         builder.EnrichSqlServerDbContext<DocGenerationDbContext>(settings =>
         {
-            settings.Retry = true;
+            settings.DisableRetry = false;
             settings.ConnectionString = builder.Configuration.GetConnectionString(serviceConfigurationOptions.SQL.DatabaseName);
-            settings.HealthChecks = true;
-            settings.Tracing = true;
+                        
         });
 
         return builder;

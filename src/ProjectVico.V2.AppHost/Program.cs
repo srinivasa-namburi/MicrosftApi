@@ -6,6 +6,7 @@ using Azure.ResourceManager.SignalR.Models;
 using Microsoft.Extensions.Configuration;
 using ProjectVico.V2.AppHost;
 #pragma warning disable ASPIRE0001
+#pragma warning disable AZPROVISION001
 
 var builder = DistributedApplication.CreateBuilder(args);
 AppHostConfigurationSetup(builder);
@@ -28,7 +29,8 @@ IResourceBuilder<AzureServiceBusResource>? sbus;
 IResourceBuilder<IResourceWithConnectionString> queueService;
 IResourceBuilder<RedisResource> redis;
 
-var signalr = builder.AddAzureSignalR("signalr", (resourceBuilder, construct, options) =>
+ // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
+var signalr = builder.AddAzureSignalR("signalr", configureResource: (resourceBuilder, construct, options) =>
 {
     if(builder.ExecutionContext.IsRunMode)
     {
@@ -47,6 +49,7 @@ var signalr = builder.AddAzureSignalR("signalr", (resourceBuilder, construct, op
 var blobStorage = builder
     .AddAzureStorage("docing")
     .AddBlobs("blob-docing");
+
 
 var azureAiSearch = builder.AddAzureSearch("aiSearch", (resourceBuilder, construct, options) =>
 {
