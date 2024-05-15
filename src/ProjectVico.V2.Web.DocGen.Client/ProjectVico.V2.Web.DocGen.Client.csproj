@@ -22,7 +22,7 @@
 		<PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.4" />
 		<PackageReference Include="Microsoft.Extensions.Http" Version="8.0.0" />
 		<PackageReference Include="MudBlazor" Version="6.*" />
-		<PackageReference Include="FluentValidation" Version="11.9.0" />
+		<PackageReference Include="FluentValidation" Version="11.9.1" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -31,6 +31,7 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\ProjectVico.V2.UI.Belgium.NuclearLicensing.DSAR\ProjectVico.V2.UI.Belgium.NuclearLicensing.DSAR.csproj" />
+		<ProjectReference Include="..\ProjectVico.V2.UI.US.NRC.EnvironmentalReport\ProjectVico.V2.UI.US.NRC.EnvironmentalReport.csproj" />
 		<ProjectReference Include="..\ProjectVico.V2.UI.US.NuclearLicensing\ProjectVico.V2.UI.US.NuclearLicensing.csproj" />
 		<ProjectReference Include="..\ProjectVico.V2.Web.Shared\ProjectVico.V2.Web.Shared.csproj" />
 	</ItemGroup>

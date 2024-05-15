@@ -24,8 +24,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.DocumentProc
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.DocumentProcess.US.NuclearLicensing", "ProjectVico.V2.DocumentProcess.US.NuclearLicensing\ProjectVico.V2.DocumentProcess.US.NuclearLicensing.csproj", "{571E26E7-47FA-44CA-980F-483E1C4B316A}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.DocumentProcess.CustomData", "ProjectVico.V2.DocumentProcess.CustomData\ProjectVico.V2.DocumentProcess.CustomData.csproj", "{987A9190-B29C-4C60-B9F5-57CA489C2335}"
-EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "8. Shared", "8. Shared", "{D7FBA9F4-51F7-4DEA-B08C-1CB6E379010B}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.Shared", "ProjectVico.V2.Shared\ProjectVico.V2.Shared.csproj", "{6ABC1579-1F9D-45A3-B361-09E9E159B35E}"
@@ -60,13 +58,17 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.UI.Belgium.N
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.Web.DocGen.Client", "ProjectVico.V2.Web.DocGen.Client\ProjectVico.V2.Web.DocGen.Client.csproj", "{F438E0F5-9B88-4428-919F-6ED8812A018E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProjectVico.V2.Shared.Contracts", "ProjectVico.V2.Shared.Contracts\ProjectVico.V2.Shared.Contracts.csproj", "{48F704FD-A00C-4A6A-AD08-87E5F3538E36}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.Shared.Contracts", "ProjectVico.V2.Shared.Contracts\ProjectVico.V2.Shared.Contracts.csproj", "{48F704FD-A00C-4A6A-AD08-87E5F3538E36}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProjectVico.V2.Shared.Enums", "ProjectVico.V2.Shared.Enums\ProjectVico.V2.Shared.Enums.csproj", "{3938C5EA-4F40-4FD3-BA5A-5FF0283FB30B}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.Shared.Enums", "ProjectVico.V2.Shared.Enums\ProjectVico.V2.Shared.Enums.csproj", "{3938C5EA-4F40-4FD3-BA5A-5FF0283FB30B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProjectVico.V2.Shared.Models", "ProjectVico.V2.Shared.Models\ProjectVico.V2.Shared.Models.csproj", "{F5BD6380-C73D-4FA1-AE6F-488A942AA90D}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.Shared.Models", "ProjectVico.V2.Shared.Models\ProjectVico.V2.Shared.Models.csproj", "{F5BD6380-C73D-4FA1-AE6F-488A942AA90D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProjectVico.V2.Shared.Configuration", "ProjectVico.V2.Shared.Configuration\ProjectVico.V2.Shared.Configuration.csproj", "{C8CE38E0-FCD4-4117-9928-9E6C5DB06139}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.Shared.Configuration", "ProjectVico.V2.Shared.Configuration\ProjectVico.V2.Shared.Configuration.csproj", "{C8CE38E0-FCD4-4117-9928-9E6C5DB06139}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.DocumentProcess.US.NRC.EnvironmentalReport", "ProjectVico.V2.DocumentProcess.US.NRC.EnvironmentalReport\ProjectVico.V2.DocumentProcess.US.NRC.EnvironmentalReport.csproj", "{5458BBE5-F1FC-4CAE-887E-9B9F22C1B05A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProjectVico.V2.UI.US.NRC.EnvironmentalReport", "ProjectVico.V2.UI.US.NRC.EnvironmentalReport\ProjectVico.V2.UI.US.NRC.EnvironmentalReport.csproj", "{80ECCD09-DD78-4AC8-9AB3-A96761D82A91}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -93,12 +95,6 @@ Global
 		{571E26E7-47FA-44CA-980F-483E1C4B316A}.Publish|Any CPU.Build.0 = Debug|Any CPU
 		{571E26E7-47FA-44CA-980F-483E1C4B316A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{571E26E7-47FA-44CA-980F-483E1C4B316A}.Release|Any CPU.Build.0 = Release|Any CPU
-		{987A9190-B29C-4C60-B9F5-57CA489C2335}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{987A9190-B29C-4C60-B9F5-57CA489C2335}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{987A9190-B29C-4C60-B9F5-57CA489C2335}.Publish|Any CPU.ActiveCfg = Debug|Any CPU
-		{987A9190-B29C-4C60-B9F5-57CA489C2335}.Publish|Any CPU.Build.0 = Debug|Any CPU
-		{987A9190-B29C-4C60-B9F5-57CA489C2335}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{987A9190-B29C-4C60-B9F5-57CA489C2335}.Release|Any CPU.Build.0 = Release|Any CPU
 		{6ABC1579-1F9D-45A3-B361-09E9E159B35E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{6ABC1579-1F9D-45A3-B361-09E9E159B35E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6ABC1579-1F9D-45A3-B361-09E9E159B35E}.Publish|Any CPU.ActiveCfg = Release|Any CPU
@@ -213,6 +209,18 @@ Global
 		{C8CE38E0-FCD4-4117-9928-9E6C5DB06139}.Publish|Any CPU.Build.0 = Debug|Any CPU
 		{C8CE38E0-FCD4-4117-9928-9E6C5DB06139}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C8CE38E0-FCD4-4117-9928-9E6C5DB06139}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5458BBE5-F1FC-4CAE-887E-9B9F22C1B05A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5458BBE5-F1FC-4CAE-887E-9B9F22C1B05A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5458BBE5-F1FC-4CAE-887E-9B9F22C1B05A}.Publish|Any CPU.ActiveCfg = Debug|Any CPU
+		{5458BBE5-F1FC-4CAE-887E-9B9F22C1B05A}.Publish|Any CPU.Build.0 = Debug|Any CPU
+		{5458BBE5-F1FC-4CAE-887E-9B9F22C1B05A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5458BBE5-F1FC-4CAE-887E-9B9F22C1B05A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{80ECCD09-DD78-4AC8-9AB3-A96761D82A91}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{80ECCD09-DD78-4AC8-9AB3-A96761D82A91}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{80ECCD09-DD78-4AC8-9AB3-A96761D82A91}.Publish|Any CPU.ActiveCfg = Debug|Any CPU
+		{80ECCD09-DD78-4AC8-9AB3-A96761D82A91}.Publish|Any CPU.Build.0 = Debug|Any CPU
+		{80ECCD09-DD78-4AC8-9AB3-A96761D82A91}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{80ECCD09-DD78-4AC8-9AB3-A96761D82A91}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -221,7 +229,6 @@ Global
 		{1E893C01-30A6-4507-B6A2-C058FB1AB650} = {D4460E03-6678-477D-B13C-7870EDD82671}
 		{7985819A-B9E5-4324-9F21-C8E45DD1245C} = {24DA4DEF-D3AD-4D2B-8526-513082EBB3DF}
 		{571E26E7-47FA-44CA-980F-483E1C4B316A} = {24DA4DEF-D3AD-4D2B-8526-513082EBB3DF}
-		{987A9190-B29C-4C60-B9F5-57CA489C2335} = {24DA4DEF-D3AD-4D2B-8526-513082EBB3DF}
 		{6ABC1579-1F9D-45A3-B361-09E9E159B35E} = {D7FBA9F4-51F7-4DEA-B08C-1CB6E379010B}
 		{53647382-2946-4094-8707-B481C0196095} = {FF5008BD-2970-41F9-8F1E-61F2DEC9AED5}
 		{80B084E5-C64C-473E-827C-C0FB7DA97895} = {FF5008BD-2970-41F9-8F1E-61F2DEC9AED5}
@@ -242,6 +249,8 @@ Global
 		{3938C5EA-4F40-4FD3-BA5A-5FF0283FB30B} = {D7FBA9F4-51F7-4DEA-B08C-1CB6E379010B}
 		{F5BD6380-C73D-4FA1-AE6F-488A942AA90D} = {D7FBA9F4-51F7-4DEA-B08C-1CB6E379010B}
 		{C8CE38E0-FCD4-4117-9928-9E6C5DB06139} = {D7FBA9F4-51F7-4DEA-B08C-1CB6E379010B}
+		{5458BBE5-F1FC-4CAE-887E-9B9F22C1B05A} = {24DA4DEF-D3AD-4D2B-8526-513082EBB3DF}
+		{80ECCD09-DD78-4AC8-9AB3-A96761D82A91} = {EA6467CC-7141-4DF4-A64B-B570D12CC9A9}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {8B68A6F2-AE7F-4585-941D-282839D6E440}

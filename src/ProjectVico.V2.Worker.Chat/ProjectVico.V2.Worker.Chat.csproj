@@ -25,6 +25,7 @@
     <ProjectReference Include="..\Plugins\ProjectVico.V2.Plugins.Default\ProjectVico.V2.Plugins.Default.csproj" />
     <ProjectReference Include="..\ProjectVico.V2.DocumentProcess.Belgium.NuclearLicensing.DSAR\ProjectVico.V2.DocumentProcess.Belgium.NuclearLicensing.DSAR.csproj" />
     <ProjectReference Include="..\ProjectVico.V2.DocumentProcess.Shared\ProjectVico.V2.DocumentProcess.Shared.csproj" />
+    <ProjectReference Include="..\ProjectVico.V2.DocumentProcess.US.NRC.EnvironmentalReport\ProjectVico.V2.DocumentProcess.US.NRC.EnvironmentalReport.csproj" />
     <ProjectReference Include="..\ProjectVico.V2.DocumentProcess.US.NuclearLicensing\ProjectVico.V2.DocumentProcess.US.NuclearLicensing.csproj" />
     <ProjectReference Include="..\ProjectVico.V2.ServiceDefaults\ProjectVico.V2.ServiceDefaults.csproj" />
     <ProjectReference Include="..\ProjectVico.V2.Shared\ProjectVico.V2.Shared.csproj" />

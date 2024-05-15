@@ -99,25 +99,47 @@ public static class KernelMemoryExtensions
         {
             MaxTokensPerParagraph = PartitionSize,
             MaxTokensPerLine = MaxTokensPerLine,
-            OverlappingTokens = 0,
+            OverlappingTokens = 0
         };
 
-        var kernelMemoryBuilder = new KernelMemoryBuilder()
+        KernelMemoryConfig? kernelMemoryConfig = null;
+        // Only do this if no KernelMemoryConfig has been registered in the service collection
+        if (sp.GetService<KernelMemoryConfig>() == null)
+        {
+            builder.Services.AddOptions<KernelMemoryConfig>().Bind(builder.Configuration.GetSection("KernelMemory"));
+            kernelMemoryConfig = builder.Configuration.GetSection("KernelMemory").Get<KernelMemoryConfig>()! ?? new KernelMemoryConfig();
+            kernelMemoryConfig.DataIngestion ??= new KernelMemoryConfig.DataIngestionConfig();
+
+            if (kernelMemoryConfig.DataIngestion.MemoryDbUpsertBatchSize < 20)
+            {
+                kernelMemoryConfig.DataIngestion.MemoryDbUpsertBatchSize = 20;
+            }
+
+            builder.Services.AddSingleton<KernelMemoryConfig>(kernelMemoryConfig);
+        }
+
+        var kernelMemoryBuilder = new KernelMemoryBuilder();
+        if (kernelMemoryConfig != null)
+        {
+            kernelMemoryBuilder.Services.AddSingleton(kernelMemoryConfig);
+        }
+
+        kernelMemoryBuilder
             .WithAzureOpenAITextEmbeddingGeneration(openAiEmbeddingConfig)
             .WithAzureOpenAITextGeneration(openAiChatCompletionConfig)
             .WithCustomTextPartitioningOptions(textPartitioningOptions)
             .WithAzureBlobsStorage(azureBlobsConfig)
             .WithAzureAISearchMemoryDb(azureAiSearchConfig);
-            
+        
         // Add Logging
         kernelMemoryBuilder.Services.AddLogging(l =>
         {
             l.AddConsole().SetMinimumLevel(LogLevel.Information);
             l.AddConfiguration(builder.Configuration);
         });
-
+       
         var kernelMemory = kernelMemoryBuilder.Build();
-
+        
         builder.Services.AddKeyedSingleton<IKernelMemory>(documentProcessOptions.Name+"-IKernelMemory", kernelMemory);
         
         return builder;
