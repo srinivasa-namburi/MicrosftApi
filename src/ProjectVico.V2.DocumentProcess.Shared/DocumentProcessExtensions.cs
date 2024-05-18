@@ -8,6 +8,7 @@ using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Shared.Interfaces;
 using ProjectVico.V2.Shared.Mappings;
+using ProjectVico.V2.Shared.Services.DocumentInfo;
 using ProjectVico.V2.Shared.Services.Search;
 
 namespace ProjectVico.V2.DocumentProcess.Shared;
@@ -47,8 +48,12 @@ public static class DocumentProcessExtensions
             new Uri(options.DocumentIntelligence.Endpoint),
             new AzureKeyCredential(options.DocumentIntelligence.Key)));
         
-        // Object Mapping with AutoMapper
+        // Table mapping to and from Document Intelligence
         builder.Services.AddAutoMapper(typeof(TableProfile));
+
+        // Document Info Service and associated mappings
+        builder.Services.AddAutoMapper(typeof(DocumentInfoProfile));
+        builder.Services.AddScoped<IDocumentProcessInfoService, DocumentProcessInfoService>();
 
         // Ingestion specific custom dependencies
         builder.Services.AddScoped<TableHelper>();

@@ -4,11 +4,8 @@ using Microsoft.Extensions.Options;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Contracts;
 using ProjectVico.V2.Shared.Data.Sql;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 
-namespace ProjectVico.V2.DocumentProcess.Dynamic.Services
+namespace ProjectVico.V2.Shared.Services.DocumentInfo
 {
     public class DocumentProcessInfoService : IDocumentProcessInfoService
     {
