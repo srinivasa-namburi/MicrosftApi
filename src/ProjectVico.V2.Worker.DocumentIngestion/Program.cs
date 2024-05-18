@@ -107,6 +107,14 @@ else
                     new SqlLockStatementProvider("dbo", new SqlServerLockStatementFormatter(true));
             });
 
+        x.AddSagaStateMachine<KernelMemoryDocumentIngestionSaga, KernelMemoryDocumentIngestionSagaState>()
+            .EntityFrameworkRepository(cfg =>
+            {
+                cfg.ExistingDbContext<DocGenerationDbContext>();
+                cfg.LockStatementProvider =
+                    new SqlLockStatementProvider("dbo", new SqlServerLockStatementFormatter(true));
+            });
+
         x.UsingRabbitMq((context, cfg) =>
         {
             cfg.PrefetchCount = 1;

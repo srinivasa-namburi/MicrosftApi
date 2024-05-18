@@ -4,6 +4,7 @@ namespace ProjectVico.V2.Shared.Contracts;
 
 public interface IDocumentProcessInfo
 {
+    Guid Id { get; set; }
     string ShortName { get; set; }
     string? Description { get; set; }
     List<string> Repositories { get; set; }

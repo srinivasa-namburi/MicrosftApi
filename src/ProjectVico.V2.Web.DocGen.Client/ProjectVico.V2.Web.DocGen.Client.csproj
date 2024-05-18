@@ -27,6 +27,7 @@
 
 	<ItemGroup>
 		<Folder Include="Pages\Ingest\" />
+		<Folder Include="Pages\DocumentProcess\" />
 	</ItemGroup>
 
 	<ItemGroup>

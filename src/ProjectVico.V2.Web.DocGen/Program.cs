@@ -58,6 +58,10 @@ builder.Services.AddHttpClient<IConfigurationApiClient, ConfigurationApiClient>(
 {
     httpClient.BaseAddress = new("https+http://api-main");
 });
+builder.Services.AddHttpClient<IDocumentProcessApiClient, DocumentProcessApiClient>(httpClient =>
+{
+    httpClient.BaseAddress = new("https+http://api-main");
+});
 
 // Add services to the container.
 builder.Services.AddAuthentication("MicrosoftOidc")

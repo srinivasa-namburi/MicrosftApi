@@ -2,6 +2,7 @@ using Azure.Identity;
 using MassTransit;
 using ProjectVico.V2.DocumentProcess.Shared;
 using ProjectVico.V2.Plugins.Shared;
+using ProjectVico.V2.Shared;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Extensions;
 using ProjectVico.V2.Shared.Services.Search;
@@ -10,13 +11,13 @@ var builder = Host.CreateApplicationBuilder(args);
 
 builder.AddServiceDefaults();
 
-await Task.Delay(TimeSpan.FromSeconds(15));
-
 builder.AddAzureSearchClient("aiSearch");
 builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
 builder.Services.AddSingleton<SearchClientFactory>();
 
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
+
+await builder.DelayStartup(serviceConfigurationOptions.ProjectVicoServices.DocumentGeneration.DurableDevelopmentServices);
 
 builder.AddAzureServiceBusClient("sbus");
 builder.AddRabbitMQClient("rabbitmqdocgen");

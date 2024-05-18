@@ -12,6 +12,8 @@ public class DocumentInfoProfile : Profile
     {
         
         CreateMap<DocumentProcessOptions, DocumentProcessInfo>()
+            // For the Id property, set it to Guid.Empty as this isn't used in static document process definitions
+            .ForMember(x => x.Id, y => y.MapFrom(source => Guid.Empty))
             .ForMember(x => x.ShortName, y => y.MapFrom(source => source.Name))
             .ForMember(x => x.Description, y => y.Ignore())
             .ForMember(x => x.Repositories, y => y.MapFrom(source => source.Repositories))

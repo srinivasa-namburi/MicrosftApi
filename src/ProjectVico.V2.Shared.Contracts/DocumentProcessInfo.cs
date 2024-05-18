@@ -4,6 +4,7 @@ namespace ProjectVico.V2.Shared.Contracts;
 
 public class DocumentProcessInfo : IDocumentProcessInfo
 {
+    public Guid Id { get; set; } = Guid.Empty;
     public required string ShortName { get; set; }
     public string? Description { get; set; }
 

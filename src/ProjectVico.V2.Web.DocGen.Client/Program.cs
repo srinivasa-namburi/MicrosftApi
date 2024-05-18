@@ -46,6 +46,11 @@ builder.Services.AddHttpClient<IDocumentIngestionApiClient, DocumentIngestionApi
     client.BaseAddress = serverBaseAddress;
 });
 
+builder.Services.AddHttpClient<IDocumentProcessApiClient, DocumentProcessApiClient>(client =>
+{
+    client.BaseAddress = serverBaseAddress;
+});
+
 
 
 await builder.Build().RunAsync();
