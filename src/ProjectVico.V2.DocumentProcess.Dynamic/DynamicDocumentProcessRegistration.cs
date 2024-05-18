@@ -1,6 +1,9 @@
-﻿using Microsoft.Extensions.Hosting;
+﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using ProjectVico.V2.DocumentProcess.Dynamic.Services;
 using ProjectVico.V2.DocumentProcess.Shared;
 using ProjectVico.V2.Shared.Configuration;
+using ProjectVico.V2.Shared.Mappings;
 
 namespace ProjectVico.V2.DocumentProcess.Dynamic;
 
@@ -10,6 +13,13 @@ public class DynamicDocumentProcessRegistration : IDocumentProcessRegistration
     public string ProcessName => "Dynamic";
     public IHostApplicationBuilder RegisterDocumentProcess(IHostApplicationBuilder builder, ServiceConfigurationOptions options)
     {
+        // Shared / System services
+        builder.Services.AddAutoMapper(typeof(DocumentProcessDefinitionProfile));
+        builder.Services.AddScoped<IDocumentDefinitionService, DocumentDefinitionService>();
 
+        // END Shared / System services
+
+
+        return builder;
     }
 }

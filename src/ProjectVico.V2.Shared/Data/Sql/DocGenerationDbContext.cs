@@ -346,4 +346,6 @@ public class DocGenerationDbContext : DbContext
     public DbSet<ConversationSummary> ConversationSummaries { get; set; }
 
     public DbSet<UserInformation> UserInformations { get; set; }
+
+    public DbSet<DynamicDocumentProcessDefinition> DynamicDocumentProcessDefinitions { get; set; }
 }
