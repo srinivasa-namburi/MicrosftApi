@@ -70,7 +70,9 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.DocumentProc
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.UI.US.NRC.EnvironmentalReport", "ProjectVico.V2.UI.US.NRC.EnvironmentalReport\ProjectVico.V2.UI.US.NRC.EnvironmentalReport.csproj", "{80ECCD09-DD78-4AC8-9AB3-A96761D82A91}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProjectVico.V2.DocumentProcess.Dynamic", "ProjectVico.V2.DocumentProcess.Dynamic\ProjectVico.V2.DocumentProcess.Dynamic.csproj", "{87D40E66-7F27-4087-9C56-A3DF84D30151}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectVico.V2.DocumentProcess.Dynamic", "ProjectVico.V2.DocumentProcess.Dynamic\ProjectVico.V2.DocumentProcess.Dynamic.csproj", "{87D40E66-7F27-4087-9C56-A3DF84D30151}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProjectVico.V2.DocumentProcesses", "ProjectVico.V2.DocumentProcesses\ProjectVico.V2.DocumentProcesses.csproj", "{D090B897-E7A2-4E73-9BBB-0AE26FB69D56}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -229,6 +231,12 @@ Global
 		{87D40E66-7F27-4087-9C56-A3DF84D30151}.Publish|Any CPU.Build.0 = Debug|Any CPU
 		{87D40E66-7F27-4087-9C56-A3DF84D30151}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{87D40E66-7F27-4087-9C56-A3DF84D30151}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D090B897-E7A2-4E73-9BBB-0AE26FB69D56}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D090B897-E7A2-4E73-9BBB-0AE26FB69D56}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D090B897-E7A2-4E73-9BBB-0AE26FB69D56}.Publish|Any CPU.ActiveCfg = Debug|Any CPU
+		{D090B897-E7A2-4E73-9BBB-0AE26FB69D56}.Publish|Any CPU.Build.0 = Debug|Any CPU
+		{D090B897-E7A2-4E73-9BBB-0AE26FB69D56}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D090B897-E7A2-4E73-9BBB-0AE26FB69D56}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -260,6 +268,7 @@ Global
 		{5458BBE5-F1FC-4CAE-887E-9B9F22C1B05A} = {24DA4DEF-D3AD-4D2B-8526-513082EBB3DF}
 		{80ECCD09-DD78-4AC8-9AB3-A96761D82A91} = {EA6467CC-7141-4DF4-A64B-B570D12CC9A9}
 		{87D40E66-7F27-4087-9C56-A3DF84D30151} = {24DA4DEF-D3AD-4D2B-8526-513082EBB3DF}
+		{D090B897-E7A2-4E73-9BBB-0AE26FB69D56} = {24DA4DEF-D3AD-4D2B-8526-513082EBB3DF}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {8B68A6F2-AE7F-4585-941D-282839D6E440}

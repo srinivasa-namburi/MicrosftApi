@@ -14,12 +14,13 @@ public class DynamicDocumentProcessRegistration : IDocumentProcessRegistration
     public IHostApplicationBuilder RegisterDocumentProcess(IHostApplicationBuilder builder, ServiceConfigurationOptions options)
     {
         // Shared / System services
-        builder.Services.AddAutoMapper(typeof(DocumentProcessDefinitionProfile));
-        builder.Services.AddScoped<IDocumentDefinitionService, DocumentDefinitionService>();
+        builder.Services.AddAutoMapper(typeof(DocumentInfoProfile));
+        builder.Services.AddScoped<IDocumentProcessInfoService, DocumentProcessInfoService>();
 
         // END Shared / System services
 
 
+        
         return builder;
     }
 }

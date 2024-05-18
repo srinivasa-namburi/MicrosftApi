@@ -65,6 +65,9 @@ public class DocGenerationDbContext : DbContext
             c => c.ToList());
 
         modelBuilder.Entity<DynamicDocumentProcessDefinition>()
+            .ToTable("DynamicDocumentProcessDefinitions");
+        
+        modelBuilder.Entity<DynamicDocumentProcessDefinition>()
             .HasIndex(nameof(DynamicDocumentProcessDefinition.ShortName))
             .IsUnique();
 

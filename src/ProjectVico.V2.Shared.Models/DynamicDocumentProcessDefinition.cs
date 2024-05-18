@@ -3,7 +3,7 @@ using ProjectVico.V2.Shared.Enums;
 
 namespace ProjectVico.V2.Shared.Models;
 
-public class DynamicDocumentProcessDefinition : EntityBase, IDocumentProcessDefinition
+public class DynamicDocumentProcessDefinition : EntityBase, IDocumentProcessInfo
 {
     public required string ShortName { get; set; }
     public string? Description { get; set; }

@@ -2,7 +2,7 @@
 
 namespace ProjectVico.V2.Shared.Contracts;
 
-public class DocumentProcessDefinition : IDocumentProcessDefinition
+public class DocumentProcessInfo : IDocumentProcessInfo
 {
     public required string ShortName { get; set; }
     public string? Description { get; set; }

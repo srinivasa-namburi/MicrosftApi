@@ -1,0 +1,17 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ProjectVico.V2.DocumentProcess.Belgium.NuclearLicensing.DSAR\ProjectVico.V2.DocumentProcess.Belgium.NuclearLicensing.DSAR.csproj" />
+    <ProjectReference Include="..\ProjectVico.V2.DocumentProcess.Dynamic\ProjectVico.V2.DocumentProcess.Dynamic.csproj" />
+    <ProjectReference Include="..\ProjectVico.V2.DocumentProcess.Shared\ProjectVico.V2.DocumentProcess.Shared.csproj" />
+    <ProjectReference Include="..\ProjectVico.V2.DocumentProcess.US.NRC.EnvironmentalReport\ProjectVico.V2.DocumentProcess.US.NRC.EnvironmentalReport.csproj" />
+    <ProjectReference Include="..\ProjectVico.V2.DocumentProcess.US.NuclearLicensing\ProjectVico.V2.DocumentProcess.US.NuclearLicensing.csproj" />
+  </ItemGroup>
+
+</Project>

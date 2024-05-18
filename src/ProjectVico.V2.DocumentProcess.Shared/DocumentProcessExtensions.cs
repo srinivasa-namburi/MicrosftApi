@@ -19,19 +19,22 @@ public static class DocumentProcessExtensions
     /// Registers all Document Processes defined in the ServiceConfigurationOptions.DocumentProcesses property ("US.NuclearLicensing" only by default)
     /// </summary>
     /// <param name="builder"></param>
-    /// <param name="options"></param>
+    /// <param name="serviceConfigurationOptions"></param>
     /// <returns></returns>
     public static IHostApplicationBuilder RegisterConfiguredDocumentProcesses(this IHostApplicationBuilder builder,
-        ServiceConfigurationOptions options)
+        ServiceConfigurationOptions serviceConfigurationOptions)
     {
 
-        builder.AddCommonDocumentProcessServices(options);
-
-        var documentProcesses = options.ProjectVicoServices.DocumentProcesses;
+        builder.AddCommonDocumentProcessServices(serviceConfigurationOptions);
+        
+        var documentProcesses = serviceConfigurationOptions.ProjectVicoServices.DocumentProcesses;
         foreach (var documentProcess in documentProcesses)
         {
-            builder.AddDocumentProcess(documentProcess.Name, options);
+            builder.AddDocumentProcess(documentProcess.Name, serviceConfigurationOptions);
         }
+
+        // Add the Dynamic Document Process
+        builder.AddDocumentProcess("Dynamic", serviceConfigurationOptions);
 
         return builder;
     }
