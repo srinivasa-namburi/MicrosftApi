@@ -36,6 +36,7 @@ builder.AddAzureBlobClient("blob-docing");
 builder.AddDocGenDbContext(serviceConfigurationOptions);
 
 builder.Services.AddAutoMapper(typeof(ChatMessageProfile));
+builder.Services.AddAutoMapper(typeof(DocumentInfoProfile));
 
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
