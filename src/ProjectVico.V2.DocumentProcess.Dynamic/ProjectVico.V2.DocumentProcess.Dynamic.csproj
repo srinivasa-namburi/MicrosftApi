@@ -7,8 +7,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\ProjectVico.V2.Shared.Contracts\ProjectVico.V2.Shared.Contracts.csproj" />
-    <ProjectReference Include="..\ProjectVico.V2.Shared.Enums\ProjectVico.V2.Shared.Enums.csproj" />
+    <ProjectReference Include="..\ProjectVico.V2.DocumentProcess.Shared\ProjectVico.V2.DocumentProcess.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Generation\" />
   </ItemGroup>
 
 </Project>

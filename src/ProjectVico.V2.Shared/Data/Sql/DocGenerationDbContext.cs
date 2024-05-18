@@ -1,5 +1,8 @@
 ﻿using System.Linq.Expressions;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ProjectVico.V2.Shared.Models;
 using ProjectVico.V2.Shared.SagaState;
 
@@ -41,6 +44,7 @@ public class DocGenerationDbContext : DbContext
                 modelBuilder.Entity(entityType.ClrType).Property(typeof(bool), nameof(EntityBase.IsActive)).HasDefaultValue(true);
                 modelBuilder.Entity(entityType.ClrType).HasIndex(nameof(EntityBase.IsActive));
                 modelBuilder.Entity(entityType.ClrType).HasIndex(new string[]{nameof(EntityBase.DeletedAt), nameof(EntityBase.IsActive)});
+                
                 // Apply global query filter for IsActive
                 var entityParam = Expression.Parameter(entityType.ClrType, "x");
                 var isActiveProperty = Expression.Property(entityParam, nameof(EntityBase.IsActive));
@@ -49,6 +53,30 @@ public class DocGenerationDbContext : DbContext
                 modelBuilder.Entity(entityType.ClrType).HasQueryFilter(lambda);
             }
         }
+
+        // ValueConverter for List<string> to JSON string for storage in a single column
+        var stringListToJsonConverter = new ValueConverter<List<string>, string>(
+            v => JsonSerializer.Serialize(v, (JsonSerializerOptions)null!),
+            v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions)null!) ?? new List<string>());
+
+        var stringListComparer = new ValueComparer<List<string>>(
+            (c1, c2) => c1.SequenceEqual(c2),
+            c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
+            c => c.ToList());
+
+        modelBuilder.Entity<DynamicDocumentProcessDefinition>()
+            .HasIndex(nameof(DynamicDocumentProcessDefinition.ShortName))
+            .IsUnique();
+
+        modelBuilder.Entity<DynamicDocumentProcessDefinition>()
+            .HasIndex(nameof(DynamicDocumentProcessDefinition.LogicType))
+            .IsUnique(false);
+
+        modelBuilder.Entity<DynamicDocumentProcessDefinition>()
+            .Property(e => e.Repositories)
+            .HasConversion(stringListToJsonConverter)
+            .Metadata
+                .SetValueComparer(stringListComparer);
 
         modelBuilder.Entity<ChatConversation>()
             .ToTable("ChatConversations");

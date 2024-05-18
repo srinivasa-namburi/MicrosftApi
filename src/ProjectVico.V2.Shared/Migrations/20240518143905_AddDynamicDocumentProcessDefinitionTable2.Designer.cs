@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ProjectVico.V2.Shared.Data.Sql;
 
@@ -11,9 +12,11 @@ using ProjectVico.V2.Shared.Data.Sql;
 namespace ProjectVico.V2.Shared.Migrations
 {
     [DbContext(typeof(DocGenerationDbContext))]
-    partial class DocGenerationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20240518143905_AddDynamicDocumentProcessDefinitionTable2")]
+    partial class AddDynamicDocumentProcessDefinitionTable2
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
