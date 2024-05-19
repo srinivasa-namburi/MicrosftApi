@@ -6,10 +6,11 @@ using StackExchange.Redis;
 
 namespace ProjectVico.V2.Shared.Repositories;
 
+
 public class DynamicDocumentProcessDefinitionRepository : GenericRepository<DynamicDocumentProcessDefinition>
 {
     private const string CacheKeyAll = "DynamicDocumentProcessDefinitions";
-    private readonly TimeSpan DefaultCacheDuration = TimeSpan.FromMinutes(15);
+    private readonly TimeSpan DefaultCacheDuration = TimeSpan.FromMinutes(60);
 
     public DynamicDocumentProcessDefinitionRepository(
         DocGenerationDbContext dbContext,
@@ -30,7 +31,7 @@ public class DynamicDocumentProcessDefinitionRepository : GenericRepository<Dyna
                 return JsonSerializer.Deserialize<List<DynamicDocumentProcessDefinition>>(cachedData);
             }
 
-            var dynamicDefinitions = await AllRecords().Include(x=>x.Prompts).AsSplitQuery().ToListAsync();
+            var dynamicDefinitions = await AllRecords().ToListAsync();
             await Cache.StringSetAsync(CacheKeyAll, JsonSerializer.Serialize(dynamicDefinitions), CacheDuration);
             return dynamicDefinitions;
         }
@@ -51,11 +52,8 @@ public class DynamicDocumentProcessDefinitionRepository : GenericRepository<Dyna
                 return JsonSerializer.Deserialize<DynamicDocumentProcessDefinition>(cachedData);
             }
 
-
             var dynamicDefinition = await AllRecords()
-                .Include(x=>x.Prompts)
                 .Where(x => x.ShortName == shortName)
-                .AsSplitQuery()
                 .FirstOrDefaultAsync();
             
             if (dynamicDefinition != null)
@@ -70,8 +68,6 @@ public class DynamicDocumentProcessDefinitionRepository : GenericRepository<Dyna
         {
             return await AllRecords()
                 .Where(x => x.ShortName == shortName)
-                .Include(x=>x.Prompts)
-                .AsSplitQuery()
                 .FirstOrDefaultAsync();
         }
     }
