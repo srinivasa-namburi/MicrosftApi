@@ -2,7 +2,7 @@
 using Microsoft.AspNetCore.Mvc;
 using ProjectVico.V2.Shared.Contracts;
 using ProjectVico.V2.Shared.Data.Sql;
-using ProjectVico.V2.Shared.Models;
+using ProjectVico.V2.Shared.Models.DocumentProcess;
 using ProjectVico.V2.Shared.Repositories;
 using ProjectVico.V2.Shared.Services.DocumentInfo;
 

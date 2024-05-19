@@ -1,9 +1,6 @@
-﻿using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
+﻿using Microsoft.Extensions.Hosting;
 using ProjectVico.V2.DocumentProcess.Shared;
 using ProjectVico.V2.Shared.Configuration;
-using ProjectVico.V2.Shared.Mappings;
-using ProjectVico.V2.Shared.Services.DocumentInfo;
 
 namespace ProjectVico.V2.DocumentProcess.Dynamic;
 

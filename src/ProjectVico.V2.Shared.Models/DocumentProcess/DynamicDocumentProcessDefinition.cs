@@ -1,7 +1,7 @@
 ﻿using ProjectVico.V2.Shared.Contracts;
 using ProjectVico.V2.Shared.Enums;
 
-namespace ProjectVico.V2.Shared.Models;
+namespace ProjectVico.V2.Shared.Models.DocumentProcess;
 
 public class DynamicDocumentProcessDefinition : EntityBase, IDocumentProcessInfo
 {
@@ -13,4 +13,6 @@ public class DynamicDocumentProcessDefinition : EntityBase, IDocumentProcessInfo
     public required string BlobStorageAutoImportFolderName { get; set; } = "ingest-auto";
     public bool ClassifyDocuments { get; set; }
     public string? ClassificationModelName { get; set; }
+
+    public List<PromptDefinition> Prompts { get; set; } = [];
 }

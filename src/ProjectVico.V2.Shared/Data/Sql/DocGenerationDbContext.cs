@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ProjectVico.V2.Shared.Models;
+using ProjectVico.V2.Shared.Models.DocumentProcess;
 using ProjectVico.V2.Shared.SagaState;
 
 namespace ProjectVico.V2.Shared.Data.Sql;

@@ -2,7 +2,7 @@
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Contracts;
 using ProjectVico.V2.Shared.Enums;
-using ProjectVico.V2.Shared.Models;
+using ProjectVico.V2.Shared.Models.DocumentProcess;
 
 namespace ProjectVico.V2.Shared.Mappings;
 
