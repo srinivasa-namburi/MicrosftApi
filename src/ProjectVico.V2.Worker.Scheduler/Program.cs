@@ -19,6 +19,7 @@ await builder.DelayStartup(serviceConfigurationOptions.ProjectVicoServices.Docum
 builder.AddAzureServiceBusClient("sbus");
 builder.AddRabbitMQClient("rabbitmqdocgen");
 builder.AddAzureBlobClient("blob-docing");
+builder.AddRedisClient("redis");
 
 // Ingestion specific custom dependencies
 builder.Services.AddScoped<AzureFileHelper>();

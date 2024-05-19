@@ -5,6 +5,7 @@ using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Data.Sql;
 using Microsoft.Extensions.DependencyInjection;
 using ProjectVico.V2.Shared.Data;
+using ProjectVico.V2.Shared.Repositories;
 
 namespace ProjectVico.V2.Shared.Extensions;
 
@@ -34,6 +35,37 @@ public static class DbContextExtensions
             settings.ConnectionString = builder.Configuration.GetConnectionString(serviceConfigurationOptions.SQL.DatabaseName);
                         
         });
+
+        builder.AddRepositories();
+
+        return builder;
+    }
+
+    public static IHostApplicationBuilder AddRepositories(this IHostApplicationBuilder builder)
+    {
+        // Add GenericRepository<T> itself
+        builder.Services.AddScoped(typeof(GenericRepository<>));
+
+        // Get the assembly containing the repositories
+        var repositoryAssembly = typeof(GenericRepository<>).Assembly;
+
+        // Register all classes in the specified namespace that inherit from GenericRepository<T>
+        foreach (var type in repositoryAssembly.GetTypes())
+        {
+            if (type.IsClass && !type.IsAbstract && type.Namespace == "ProjectVico.V2.Shared.Repositories")
+            {
+                var baseType = type.BaseType;
+                while (baseType != null && baseType != typeof(object))
+                {
+                    if (baseType.IsGenericType && baseType.GetGenericTypeDefinition() == typeof(GenericRepository<>))
+                    {
+                        builder.Services.AddScoped(type);
+                        break;
+                    }
+                    baseType = baseType.BaseType;
+                }
+            }
+        }
 
         return builder;
     }

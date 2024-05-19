@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using ProjectVico.V2.Shared.Contracts;
 using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Models;
+using ProjectVico.V2.Shared.Repositories;
 using ProjectVico.V2.Shared.Services.DocumentInfo;
 
 namespace ProjectVico.V2.API.Main.Controllers;
@@ -13,17 +14,19 @@ public class DocumentProcessController : BaseController
 {
     private readonly DocGenerationDbContext _dbContext;
     private readonly IDocumentProcessInfoService _documentProcessInfoService;
+    private readonly DynamicDocumentProcessDefinitionRepository _repository;
     private readonly IMapper _mapper;
 
     public DocumentProcessController(
         DocGenerationDbContext dbContext,
         IDocumentProcessInfoService documentProcessInfoService,
-        IMapper mapper
-        )
+        IMapper mapper, 
+        DynamicDocumentProcessDefinitionRepository repository)
     {
         _dbContext = dbContext;
         _documentProcessInfoService = documentProcessInfoService;
         _mapper = mapper;
+        _repository = repository;
     }
 
     [HttpGet]
@@ -33,7 +36,7 @@ public class DocumentProcessController : BaseController
     [Produces<List<DocumentProcessInfo>>]
     public async Task<ActionResult<List<DocumentProcessInfo>>> GetAllDocumentProcesses()
     {
-        var documentProcesses = _documentProcessInfoService.GetCombinedDocumentInfoList();
+        var documentProcesses = await _documentProcessInfoService.GetCombinedDocumentInfoListAsync();
         if (documentProcesses.Count <1)
         {
             return NotFound();
@@ -75,10 +78,12 @@ public class DocumentProcessController : BaseController
             dynamicDocumentProcess.Id = Guid.NewGuid();
         }
 
-        var createdDocumentProcess = await _dbContext.DynamicDocumentProcessDefinitions.AddAsync(dynamicDocumentProcess);
+        await _repository.AddAsync(dynamicDocumentProcess);
         await _dbContext.SaveChangesAsync();
 
-        if (createdDocumentProcess.Entity == null)
+        var createdDocumentProcess = await _repository.GetByShortNameAsync(dynamicDocumentProcess.ShortName);
+
+        if (createdDocumentProcess == null)
         {
             return BadRequest();
         }

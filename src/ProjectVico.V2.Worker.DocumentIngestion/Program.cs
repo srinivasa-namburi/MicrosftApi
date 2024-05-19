@@ -35,6 +35,8 @@ builder.AddAzureServiceBusClient("sbus");
 builder.AddRabbitMQClient("rabbitmqdocgen");
 builder.AddKeyedAzureOpenAIClient("openai-planner");
 builder.AddAzureBlobClient("blob-docing");
+builder.AddRedisClient("redis");
+
 builder.AddDocGenDbContext(serviceConfigurationOptions);
 
 builder.DynamicallyRegisterPlugins(serviceConfigurationOptions);

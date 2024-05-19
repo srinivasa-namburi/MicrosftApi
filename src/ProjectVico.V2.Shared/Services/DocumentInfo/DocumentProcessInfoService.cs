@@ -1,40 +1,40 @@
 ﻿using AutoMapper;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Contracts;
-using ProjectVico.V2.Shared.Data.Sql;
+using ProjectVico.V2.Shared.Repositories;
 
 namespace ProjectVico.V2.Shared.Services.DocumentInfo
 {
     public class DocumentProcessInfoService : IDocumentProcessInfoService
     {
-        private readonly DocGenerationDbContext _dbContext;
         private readonly IMapper _mapper;
+        private readonly DynamicDocumentProcessDefinitionRepository _repository;
         private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
 
         public DocumentProcessInfoService(
-            DocGenerationDbContext dbContext,
             IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
-            IMapper mapper
+            IMapper mapper,
+            DynamicDocumentProcessDefinitionRepository repository
         )
         {
-            _dbContext = dbContext;
             _mapper = mapper;
+            _repository = repository;
             _serviceConfigurationOptions = serviceConfigurationOptions.Value;
         }
 
-        public List<DocumentProcessInfo> GetCombinedDocumentInfoList()
+        public async Task<List<DocumentProcessInfo>> GetCombinedDocumentInfoListAsync()
         {
             // Materialize the static definitions
             var staticDefinitionOptions = _serviceConfigurationOptions.ProjectVicoServices.DocumentProcesses;
             var mappedStaticDefinitions = staticDefinitionOptions.Select(x => _mapper.Map<DocumentProcessInfo>(x)).ToList();
 
-            // Retrieve and map dynamic definitions
-            var dynamicDefinitions = _dbContext.DynamicDocumentProcessDefinitions.Select(x => _mapper.Map<DocumentProcessInfo>(x)).ToList();
+            // Retrieve and map all dynamic definitions
+            var dynamicDefinitions = await _repository.GetAllDynamicDocumentProcessDefinitionsAsync();
+            var mappedDynamicDefinitions = dynamicDefinitions.Select(x => _mapper.Map<DocumentProcessInfo>(x)).ToList();
 
             // Combine static and dynamic definitions in memory
-            return mappedStaticDefinitions.Concat(dynamicDefinitions).ToList();
+            return mappedStaticDefinitions.Concat(mappedDynamicDefinitions).ToList();
         }
 
         public async Task<DocumentProcessInfo?> GetDocumentInfoByShortNameAsync(string shortName)
@@ -51,12 +51,13 @@ namespace ProjectVico.V2.Shared.Services.DocumentInfo
             }
 
             // If not found in static definitions, search in dynamic definitions from the database
-            result = await _dbContext.DynamicDocumentProcessDefinitions
-                .Where(x => x.ShortName == shortName)
-                .Select(x => _mapper.Map<DocumentProcessInfo>(x))
-                .FirstOrDefaultAsync();
 
+            var dynamicDocumentProcess = await _repository.GetByShortNameAsync(shortName);
+            if (dynamicDocumentProcess == null) return null;
+
+            result = _mapper.Map<DocumentProcessInfo>(dynamicDocumentProcess);
             return result;
+
         }
     }
 }
