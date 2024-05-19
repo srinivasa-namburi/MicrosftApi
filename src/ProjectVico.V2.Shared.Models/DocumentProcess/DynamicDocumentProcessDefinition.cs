@@ -14,5 +14,5 @@ public class DynamicDocumentProcessDefinition : EntityBase, IDocumentProcessInfo
     public bool ClassifyDocuments { get; set; }
     public string? ClassificationModelName { get; set; }
 
-    public List<PromptDefinition> Prompts { get; set; } = [];
+    public List<PromptImplementation> Prompts { get; set; } = [];
 }

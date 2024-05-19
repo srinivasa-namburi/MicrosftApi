@@ -25,11 +25,11 @@ public class DocGenerationDbContext : DbContext
     {
         if (!optionsBuilder.IsConfigured)
         {
-                optionsBuilder.UseSqlServer("ProjectVicoDB");
+            optionsBuilder.UseSqlServer("ProjectVicoDB");
         }
 
     }
-    
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -44,8 +44,8 @@ public class DocGenerationDbContext : DbContext
                 modelBuilder.Entity(entityType.ClrType).Property(typeof(byte[]), nameof(EntityBase.RowVersion)).IsRowVersion();
                 modelBuilder.Entity(entityType.ClrType).Property(typeof(bool), nameof(EntityBase.IsActive)).HasDefaultValue(true);
                 modelBuilder.Entity(entityType.ClrType).HasIndex(nameof(EntityBase.IsActive));
-                modelBuilder.Entity(entityType.ClrType).HasIndex(new string[]{nameof(EntityBase.DeletedAt), nameof(EntityBase.IsActive)});
-                
+                modelBuilder.Entity(entityType.ClrType).HasIndex(new string[] { nameof(EntityBase.DeletedAt), nameof(EntityBase.IsActive) });
+
                 // Apply global query filter for IsActive
                 var entityParam = Expression.Parameter(entityType.ClrType, "x");
                 var isActiveProperty = Expression.Property(entityParam, nameof(EntityBase.IsActive));
@@ -65,9 +65,47 @@ public class DocGenerationDbContext : DbContext
             c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
             c => c.ToList());
 
+        modelBuilder.Entity<PromptDefinition>()
+            .ToTable("PromptDefinitions");
+
+        modelBuilder.Entity<PromptDefinition>()
+            .HasIndex(nameof(PromptDefinition.ShortCode))
+            .IsUnique();
+
+        modelBuilder.Entity<PromptDefinition>()
+            .HasMany(x => x.Implementations)
+            .WithOne(x => x.PromptDefinition)
+            .HasForeignKey(x => x.PromptDefinitionId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<PromptImplementation>()
+            .ToTable("PromptImplementations");
+
+        // Index for unique combination of PromptDefinitionId and DocumentProcessDefinitionId, 
+        // as a PromptDefinition can only be implemented once for a DocumentProcessDefinition
+        modelBuilder.Entity<PromptImplementation>()
+            .HasIndex(nameof(PromptImplementation.PromptDefinitionId), nameof(PromptImplementation.DocumentProcessDefinitionId))
+            .IsUnique();
+
+        modelBuilder.Entity<PromptImplementation>()
+            .HasOne(x => x.PromptDefinition)
+            .WithMany(x => x.Implementations)
+            .HasForeignKey(x => x.PromptDefinitionId)
+            .IsRequired(true)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<PromptImplementation>()
+            .HasOne(x => x.DocumentProcessDefinition)
+            .WithMany(x=>x.Prompts)
+            .HasForeignKey(x => x.DocumentProcessDefinitionId)
+            .IsRequired(true)
+            .OnDelete(DeleteBehavior.Cascade);
+
+
         modelBuilder.Entity<DynamicDocumentProcessDefinition>()
             .ToTable("DynamicDocumentProcessDefinitions");
-        
+
         modelBuilder.Entity<DynamicDocumentProcessDefinition>()
             .HasIndex(nameof(DynamicDocumentProcessDefinition.ShortName))
             .IsUnique();
@@ -105,11 +143,11 @@ public class DocGenerationDbContext : DbContext
         modelBuilder.Entity<UserInformation>()
             .HasIndex(nameof(UserInformation.Email))
             .IsUnique(false);
-        
+
         modelBuilder.Entity<ConversationSummary>()
             .HasIndex(nameof(ConversationSummary.CreatedAt))
             .IsUnique(false);
-        
+
         modelBuilder.Entity<ConversationSummary>()
             .HasIndex(nameof(ConversationSummary.ConversationId))
             .IsUnique(false);
@@ -122,16 +160,16 @@ public class DocGenerationDbContext : DbContext
             .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<ChatMessage>()
-            .HasOne(x=>x.SummarizedByConversationSummary)
-            .WithMany(x=>x.SummarizedChatMessages)
-            .HasForeignKey(x=>x.SummarizedByConversationSummaryId)
+            .HasOne(x => x.SummarizedByConversationSummary)
+            .WithMany(x => x.SummarizedChatMessages)
+            .HasForeignKey(x => x.SummarizedByConversationSummaryId)
             .IsRequired(false)
             .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<ChatMessage>()
             .HasIndex(nameof(ChatMessage.CreatedAt))
             .IsUnique(false);
-        
+
         modelBuilder.Entity<ChatMessage>()
             .HasIndex(nameof(ChatMessage.ConversationId))
             .IsUnique(false);
@@ -142,11 +180,11 @@ public class DocGenerationDbContext : DbContext
 
         // Self-Referencing relationship for ChatMessages - a message may be a reply to another message
         modelBuilder.Entity<ChatMessage>()
-            .HasOne(x=>x.ReplyToChatMessage)
+            .HasOne(x => x.ReplyToChatMessage)
             .WithOne()
             .IsRequired(false)
             .OnDelete(DeleteBehavior.Restrict);
-        
+
         modelBuilder.Entity<IngestedDocument>()
             .HasIndex(d => d.FileHash)
             .IsUnique(false);
@@ -296,7 +334,7 @@ public class DocGenerationDbContext : DbContext
         // Mass Transit SAGA for Document Generation
         modelBuilder.Entity<DocumentGenerationSagaState>()
             .HasKey(x => x.CorrelationId);
-        
+
         // Table per hierarchy for Document Ingestion SAGA
         modelBuilder.Entity<DocumentIngestionSagaState>()
             .HasDiscriminator<string>("Discriminator")
@@ -317,7 +355,7 @@ public class DocGenerationDbContext : DbContext
         modelBuilder.Entity<DocumentIngestionSagaState>()
             .HasIndex(x => x.DocumentProcessName)
             .IsUnique(false);
-        
+
         // Mass Transit SAGA for Kernel Memory Document Ingestion
         // The Key is the same as the base class - this is an EF Core requirement for Table per hierarchy
 
@@ -344,7 +382,7 @@ public class DocGenerationDbContext : DbContext
     public DbSet<TableCell> TableCells { get; set; }
     public DbSet<BoundingRegion> BoundingRegions { get; set; }
     public DbSet<BoundingPolygon> BoundingPolygons { get; set; }
-    
+
     public DbSet<ChatConversation> ChatConversations { get; set; }
     public DbSet<ChatMessage> ChatMessages { get; set; }
     public DbSet<ConversationSummary> ConversationSummaries { get; set; }
