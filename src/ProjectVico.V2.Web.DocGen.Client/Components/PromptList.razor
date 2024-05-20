@@ -1,0 +1,53 @@
+﻿@inject IDocumentProcessApiClient DocumentProcessApiClient
+
+<MudTable Items="Prompts" Hover="true" Striped="true">
+    <HeaderContent>
+        <MudTh>Short Code</MudTh>
+        <MudTh>Description</MudTh>
+        <MudTh>Text</MudTh>
+        <MudTh>Actions</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd>@context.ShortCode</MudTd>
+        <MudTd>@context.Description</MudTd>
+        <MudTd>@context.Text</MudTd>
+        <MudTd>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="() => EditPrompt(context)">Edit</MudButton>
+            @* <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="() => DeletePrompt(context)">Delete</MudButton> *@
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddPrompt">Add New Prompt</MudButton>
+
+<EditPromptDialog @ref="_editPromptDialog" OnPromptSaved="OnPromptSaved" ProcessId="ProcessId"/>
+
+@code {
+    [Parameter] public List<PromptInfo> Prompts { get; set; } = new();
+    [Parameter] public EventCallback OnPromptEdited { get; set; }
+    [Parameter] public Guid ProcessId { get; set; }
+
+    private EditPromptDialog _editPromptDialog;
+
+    private async Task AddPrompt()
+    {
+        await _editPromptDialog.Show(new PromptInfo { DocumentProcessId = ProcessId }, isEditMode: false);
+    }
+
+    private async Task EditPrompt(PromptInfo prompt)
+    {
+        var promptInfo = await DocumentProcessApiClient.GetPromptByIdAsync(prompt.Id);
+        await _editPromptDialog.Show(promptInfo, isEditMode: true);
+    }
+
+    // private async Task DeletePrompt(PromptInfo prompt)
+    // {
+    //     await DocumentProcessApiClient.DeletePromptAsync(prompt.Id);
+    //     await OnPromptEdited.InvokeAsync();
+    // }
+
+    private async Task OnPromptSaved()
+    {
+        await OnPromptEdited.InvokeAsync();
+    }
+}

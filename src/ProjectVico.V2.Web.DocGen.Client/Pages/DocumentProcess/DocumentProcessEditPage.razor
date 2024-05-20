@@ -1,0 +1,19 @@
+﻿@page "/document-processes/edit/{ProcessId:guid?}"
+
+@inject NavigationManager Navigation
+
+<DocumentProcessEditComponent ProcessId="ProcessId" OnProcessSaved="HandleProcessSaved" OnCancel="HandleCancel" />
+
+@code {
+    [Parameter] public Guid? ProcessId { get; set; }
+
+    private void HandleProcessSaved()
+    {
+        Navigation.NavigateTo("/document-processes");
+    }
+
+    private void HandleCancel()
+    {
+        Navigation.NavigateTo("/document-processes");
+    }
+}

@@ -1,0 +1,78 @@
+﻿@using ProjectVico.V2.Shared.Enums
+@inject IDocumentProcessApiClient DocumentProcessApiClient
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudPaper Class="pa-4">
+        <MudTextField @bind-Value="_process.ShortName" Label="Short Name" Disabled="_isEditMode" />
+        <MudTextField @bind-Value="_process.Description" Label="Description" />
+        <MudTextField @bind-Value="_process.BlobStorageContainerName" Label="Blob Storage Container Name" />
+        <MudTextField @bind-Value="_process.BlobStorageAutoImportFolderName" Label="Auto Import Folder Name" />
+        <MudCheckBox @bind-Checked="_process.ClassifyDocuments" Label="Classify Documents" />
+        <MudTextField @bind-Value="_process.ClassificationModelName" Label="Classification Model Name" />
+
+        <MudDivider />
+
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveProcess">Save</MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="Cancel">Cancel</MudButton>
+
+        @if (_isEditMode && _process.Source == ProcessSource.Dynamic)
+        {
+            <MudDivider Class="my-4" />
+
+            <MudExpansionPanels>
+                <MudExpansionPanel Text="Prompts">
+                    <PromptList Prompts="_prompts" OnPromptEdited="ReloadPrompts" ProcessId="@_process.Id" />
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    [Parameter] public Guid? ProcessId { get; set; }
+    [Parameter] public EventCallback OnProcessSaved { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private DocumentProcessInfo _process = new();
+    private bool _isEditMode => ProcessId != null;
+    private List<PromptInfo> _prompts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (_isEditMode)
+        {
+            _process = await DocumentProcessApiClient.GetDocumentProcessInfoByShortNameAsync(ProcessId.ToString());
+            if (_process.Source == ProcessSource.Dynamic)
+            {
+                _prompts = await DocumentProcessApiClient.GetPromptsByProcessIdAsync(_process.Id);
+            }
+        }
+    }
+
+    private async Task SaveProcess()
+    {
+        if (_isEditMode)
+        {
+            await DocumentProcessApiClient.UpdateDynamicDocumentProcessDefinitionAsync(_process);
+        }
+        else
+        {
+            await DocumentProcessApiClient.CreateDynamicDocumentProcessDefinitionAsync(_process);
+        }
+        await OnProcessSaved.InvokeAsync();
+    }
+
+    private async Task Cancel()
+    {
+        await OnCancel.InvokeAsync();
+    }
+
+    private async Task ReloadPrompts()
+    {
+        if (_isEditMode && _process.Source == ProcessSource.Dynamic)
+        {
+            _prompts = await DocumentProcessApiClient.GetPromptsByProcessIdAsync(_process.Id);
+            StateHasChanged();
+        }
+    }
+}

@@ -27,7 +27,6 @@
 
 	<ItemGroup>
 		<Folder Include="Pages\Ingest\" />
-		<Folder Include="Pages\DocumentProcess\" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -67,6 +66,11 @@
 
 	<ItemGroup>
 		<_ContentIncludedByDefault Remove="Layout\LogInOrOut.razor" />
+		<_ContentIncludedByDefault Remove="Pages\DocumentProcess\DocumentProcessEditPage.razor" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <UpToDateCheckInput Remove="Pages\DocumentProcess\DocumentProcessEditPage.razor" />
 	</ItemGroup>
 
 </Project>

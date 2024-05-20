@@ -60,6 +60,14 @@ public class DocumentProcessApiClient : WebAssemblyBaseServiceClient<DocumentPro
         return result;
     }
 
+    public async Task UpdateDynamicDocumentProcessDefinitionAsync(DocumentProcessInfo documentProcessInfo)
+    {
+        var url = $"/api/document-process/{documentProcessInfo.Id}";
+        var response = await SendPutRequestMessage(url, documentProcessInfo);
+        
+        response?.EnsureSuccessStatusCode();
+    }
+
     public async Task<List<PromptInfo>> GetPromptsByProcessIdAsync(Guid processId)
     {
         var url = $"/api/prompts/by-process/{processId}";

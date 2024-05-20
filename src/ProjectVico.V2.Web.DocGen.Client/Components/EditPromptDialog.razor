@@ -1,0 +1,50 @@
+﻿@inject IDocumentProcessApiClient DocumentProcessApiClient
+
+<MudDialog @ref="PromptDialog" MaxWidth="MaxWidth.Medium">
+    <MudDialogTitle>@(_isEditMode ? "Edit Prompt" : "Add Prompt")</MudDialogTitle>
+    <MudDialogContent>
+        <MudTextField @bind-Value="Prompt.ShortCode" Label="Short Code" Disabled="true"/>
+        <MudTextField @bind-Value="Prompt.Description" Label="Description" Disabled="true"/>
+        <MudTextField @bind-Value="Prompt.Text" Label="Text"/>
+    </MudDialogContent>
+    <MudDialogActions>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SavePrompt">Save</MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="Cancel">Cancel</MudButton>
+    </MudDialogActions>
+</MudDialog>
+
+@code {
+    [Parameter] public EventCallback OnPromptSaved { get; set; }
+    [Parameter] public Guid ProcessId { get; set; }
+    
+    private MudDialog PromptDialog;
+    public PromptInfo Prompt { get; set; } = new();
+    private bool _isEditMode = false;
+
+    public async Task Show(PromptInfo prompt, bool isEditMode)
+    {
+        Prompt = prompt;
+        _isEditMode = isEditMode;
+        PromptDialog.Show();
+    }
+
+    private async Task SavePrompt()
+    {
+        if (_isEditMode)
+        {
+            await DocumentProcessApiClient.UpdatePromptAsync(Prompt);
+        }
+        else
+        {
+            await DocumentProcessApiClient.CreatePromptAsync(Prompt);
+        }
+
+        await OnPromptSaved.InvokeAsync();
+        PromptDialog.Close();
+    }
+
+    private void Cancel()
+    {
+        PromptDialog.Close();
+    }
+}

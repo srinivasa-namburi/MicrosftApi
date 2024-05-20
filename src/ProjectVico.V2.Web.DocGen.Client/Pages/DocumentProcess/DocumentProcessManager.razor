@@ -1,0 +1,95 @@
+﻿@page "/document-processes"
+@using ProjectVico.V2.Shared.Enums
+@using ProjectVico.V2.Web.DocGen.Client.ServiceClients
+
+@inject ISnackbar Snackbar
+@inject IDocumentProcessApiClient DocumentProcessApiClient
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudPaper Class="pa-4">
+        <MudTable Items="_documentProcesses" Hover="true" Striped="true" RowClick="RowClicked">
+            <HeaderContent>
+                <MudTh>Short Name</MudTh>
+                <MudTh>Description</MudTh>
+                <MudTh>Logic Type</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.ShortName</MudTd>
+                <MudTd>@context.Description</MudTd>
+                <MudTd>@context.LogicType</MudTd>
+                <MudTd>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Disabled="@IsStaticProcess(context)" OnClick="() => CanEditProcess(context)">Edit</MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@IsStaticProcess(context)" OnClick="() => CanToggleProcess(context)">
+                        @((context.Source == ProcessSource.Dynamic) ? "Disable" : "Enable")
+                    </MudButton>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddProcess">Add New Process</MudButton>
+    </MudPaper>
+</MudContainer>
+
+@if (IsEditComponentVisible)
+{
+    <DocumentProcessEditComponent ProcessId="SelectedProcessId" OnProcessSaved="OnProcessSaved" OnCancel="OnCancel" />
+}
+
+@code {
+    private List<DocumentProcessInfo> _documentProcesses = new();
+    private Guid? SelectedProcessId;
+    private bool IsEditComponentVisible;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _documentProcesses = await DocumentProcessApiClient.GetAllDocumentProcessInfoAsync();
+    }
+
+    private async Task OnProcessSaved()
+    {
+        _documentProcesses = await DocumentProcessApiClient.GetAllDocumentProcessInfoAsync();
+        IsEditComponentVisible = false;
+    }
+
+    private void AddProcess()
+    {
+        SelectedProcessId = null;
+        IsEditComponentVisible = true;
+    }
+
+    private void CanEditProcess(DocumentProcessInfo process)
+    {
+        SelectedProcessId = process.Id;
+        IsEditComponentVisible = true;
+    }
+
+    private async Task CanToggleProcess(DocumentProcessInfo process)
+    {
+        Snackbar.Add("Toggle process functionality is not available yet.", Severity.Info);
+        // if (process.Source == ProcessSource.Static)
+        //     return;
+
+        // process.IsEnabled = !process.IsEnabled;
+        // await DocumentProcessApiClient.UpdateDocumentProcessAsync(process);
+        // _documentProcesses = await DocumentProcessApiClient.GetAllDocumentProcessInfoAsync();
+    }
+
+    private void RowClicked(TableRowClickEventArgs<DocumentProcessInfo> args)
+    {
+        if (args.Item.Source == ProcessSource.Dynamic)
+        {
+            CanEditProcess(args.Item);
+        }
+    }
+
+    private void OnCancel()
+    {
+        IsEditComponentVisible = false;
+    }
+
+    private bool IsStaticProcess(DocumentProcessInfo process)
+    {
+        return process.Source == ProcessSource.Static;
+    }
+}

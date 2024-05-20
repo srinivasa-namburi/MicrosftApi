@@ -13,4 +13,5 @@ public interface IDocumentProcessApiClient : IServiceClient
     Task CreatePromptAsync(PromptInfo promptInfo);
     Task UpdatePromptAsync(PromptInfo promptInfo);
     Task DeletePromptAsync(Guid promptId);
+    Task UpdateDynamicDocumentProcessDefinitionAsync(DocumentProcessInfo documentProcessInfo);
 }
