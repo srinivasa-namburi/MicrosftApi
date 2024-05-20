@@ -1,5 +1,6 @@
 ﻿@using ProjectVico.V2.Shared.Enums
 @inject IDocumentProcessApiClient DocumentProcessApiClient
+@inject ISnackbar Snackbar
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
     <MudPaper Class="pa-4">
@@ -38,7 +39,7 @@
     [Parameter] public EventCallback OnProcessSaved { get; set; }
     [Parameter] public EventCallback OnCancel { get; set; }
 
-    private DocumentProcessInfo _process = new();
+    private DocumentProcessInfo? _process = new();
     private bool _isEditMode => ProcessId != null;
     private List<PromptInfo> _prompts = new();
     private string _indexName = string.Empty;
@@ -47,15 +48,19 @@
     {
         if (_isEditMode)
         {
-            _process = await DocumentProcessApiClient.GetDocumentProcessInfoByShortNameAsync(ProcessId.ToString());
-            if (_process.Source == ProcessSource.Dynamic)
+            if (ProcessId != null)
             {
-                _prompts = await DocumentProcessApiClient.GetPromptsByProcessIdAsync(_process.Id);
-            }
+                _process = await DocumentProcessApiClient.GetDocumentProcessInfoByIdAsync(ProcessId);
 
-            if (_process.Repositories.Any())
-            {
-                _indexName = _process.Repositories.First();
+                if (_process.Source == ProcessSource.Dynamic)
+                {
+                    _prompts = await DocumentProcessApiClient.GetPromptsByProcessIdAsync(_process.Id);
+                }
+
+                if (_process.Repositories.Any())
+                {
+                    _indexName = _process.Repositories.First();
+                }
             }
         }
     }

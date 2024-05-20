@@ -10,7 +10,7 @@ public class DocumentProcessInfo : IDocumentProcessInfo
 
     public List<string> Repositories { get; set; } = [];
 
-    public DocumentProcessLogicType LogicType { get; set; }
+    public DocumentProcessLogicType LogicType { get; set; } = DocumentProcessLogicType.KernelMemory;
 
     public string BlobStorageContainerName { get; set; }
     public string BlobStorageAutoImportFolderName { get; set; } = "ingest-auto";

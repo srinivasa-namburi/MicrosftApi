@@ -48,7 +48,25 @@ public class DocumentProcessApiClient : WebAssemblyBaseServiceClient<DocumentPro
         return result;
     }
 
-    public async Task<DocumentProcessInfo?> CreateDynamicDocumentProcessDefinitionAsync(DocumentProcessInfo documentProcessInfo)
+    public async Task<DocumentProcessInfo?> GetDocumentProcessInfoByIdAsync(Guid? id)
+    {
+        var url = $"/api/document-processes/{id}";
+        var response = await SendGetRequestMessage(url);
+
+        // If we get a 404, it means that the document process does not exist - return null
+        if (response?.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response?.EnsureSuccessStatusCode();
+
+        // Return the DocumentInfo if found - otherwise return null
+        var result = await response?.Content.ReadFromJsonAsync<DocumentProcessInfo>()! ?? null;
+        return result;
+    }
+
+    public async Task<DocumentProcessInfo?> CreateDynamicDocumentProcessDefinitionAsync(DocumentProcessInfo? documentProcessInfo)
     {
         var url = "/api/document-processes";
         var response = await SendPostRequestMessage(url, documentProcessInfo);
@@ -60,7 +78,7 @@ public class DocumentProcessApiClient : WebAssemblyBaseServiceClient<DocumentPro
         return result;
     }
 
-    public async Task UpdateDynamicDocumentProcessDefinitionAsync(DocumentProcessInfo documentProcessInfo)
+    public async Task UpdateDynamicDocumentProcessDefinitionAsync(DocumentProcessInfo? documentProcessInfo)
     {
         var url = $"/api/document-processes/{documentProcessInfo.Id}";
         var response = await SendPutRequestMessage(url, documentProcessInfo);

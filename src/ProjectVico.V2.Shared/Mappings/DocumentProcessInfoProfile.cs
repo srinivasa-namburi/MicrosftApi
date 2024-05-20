@@ -28,5 +28,13 @@ public class DocumentProcessInfoProfile : Profile
         // All the properties are the same, so we can just map the source to the destination
         // DynamicDocumentProcessDefinition has additional properties, but they are not used in the mapping
         CreateMap<DynamicDocumentProcessDefinition, DocumentProcessInfo>();
+
+        CreateMap<DocumentProcessInfo, DynamicDocumentProcessDefinition>()
+            .ForMember(x => x.ShortName, y => y.MapFrom(source => source.ShortName))
+            .ForMember(x => x.BlobStorageContainerName, y => y.MapFrom(source => source.BlobStorageContainerName))
+            .ForMember(x => x.BlobStorageAutoImportFolderName, y => y.MapFrom(source => source.BlobStorageAutoImportFolderName))
+            .ForMember(x => x.ClassifyDocuments, y => y.MapFrom(source => source.ClassifyDocuments))
+            .ForMember(x => x.ClassificationModelName, y => y.MapFrom(source => source.ClassificationModelName))
+            .ForMember(x => x.LogicType, y => y.MapFrom(source => source.LogicType.ToString()));
     }
 }

@@ -62,6 +62,22 @@ public class DocumentProcessController : BaseController
         return Ok(documentProcess);
     }
 
+    [HttpGet("{id:guid}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [Produces<DocumentProcessInfo>]
+    public async Task<ActionResult<DocumentProcessInfo>> GetDocumentProcessById(Guid id)
+    {
+        var documentProcess = await _documentProcessInfoService.GetDocumentInfoByIdAsync(id);
+        if (documentProcess == null)
+        {
+            return NotFound();
+        }
+
+        return Ok(documentProcess);
+    }
+
+
 
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status201Created)]

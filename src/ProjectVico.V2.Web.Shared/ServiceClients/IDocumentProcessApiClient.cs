@@ -6,12 +6,13 @@ public interface IDocumentProcessApiClient : IServiceClient
 {
     Task<List<DocumentProcessInfo>> GetAllDocumentProcessInfoAsync();
     Task<DocumentProcessInfo?> GetDocumentProcessInfoByShortNameAsync(string shortName);
-    Task<DocumentProcessInfo?> CreateDynamicDocumentProcessDefinitionAsync(DocumentProcessInfo documentProcessInfo);
+    Task<DocumentProcessInfo?> CreateDynamicDocumentProcessDefinitionAsync(DocumentProcessInfo? documentProcessInfo);
 
     Task<List<PromptInfo>> GetPromptsByProcessIdAsync(Guid processId);
     Task<PromptInfo> GetPromptByIdAsync(Guid id);
     Task CreatePromptAsync(PromptInfo promptInfo);
     Task UpdatePromptAsync(PromptInfo promptInfo);
     Task DeletePromptAsync(Guid promptId);
-    Task UpdateDynamicDocumentProcessDefinitionAsync(DocumentProcessInfo documentProcessInfo);
+    Task UpdateDynamicDocumentProcessDefinitionAsync(DocumentProcessInfo? documentProcessInfo);
+    Task<DocumentProcessInfo?> GetDocumentProcessInfoByIdAsync(Guid? id);
 }

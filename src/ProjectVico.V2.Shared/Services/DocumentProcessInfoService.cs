@@ -57,7 +57,15 @@ namespace ProjectVico.V2.Shared.Services
 
             result = _mapper.Map<DocumentProcessInfo>(dynamicDocumentProcess);
             return result;
+        }
 
+        public async Task<DocumentProcessInfo?> GetDocumentInfoByIdAsync(Guid id)
+        {
+            var dynamicDocumentProcess = await _repository.GetByIdAsync(id);
+            if (dynamicDocumentProcess == null) return null;
+
+            var result = _mapper.Map<DocumentProcessInfo>(dynamicDocumentProcess);
+            return result;
         }
     }
 }
