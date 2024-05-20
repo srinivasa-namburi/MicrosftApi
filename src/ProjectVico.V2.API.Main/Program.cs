@@ -8,6 +8,7 @@ using ProjectVico.V2.Shared;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Extensions;
 using ProjectVico.V2.Shared.Mappings;
+using ProjectVico.V2.Shared.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -37,7 +38,11 @@ builder.AddRedisClient("redis");
 builder.AddDocGenDbContext(serviceConfigurationOptions);
 
 builder.Services.AddAutoMapper(typeof(ChatMessageProfile));
-builder.Services.AddAutoMapper(typeof(DocumentInfoProfile));
+builder.Services.AddAutoMapper(typeof(DocumentProcessInfoProfile));
+
+builder.Services.AddScoped<IDocumentProcessInfoService, DocumentProcessInfoService>();
+builder.Services.AddScoped<IPromptInfoService, PromptInfoService>();
+
 
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {

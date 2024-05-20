@@ -13,8 +13,8 @@ namespace ProjectVico.V2.API.Main.Controllers;
 public class DocumentProcessController : BaseController
 {
     private readonly DocGenerationDbContext _dbContext;
-    private readonly IDocumentProcessInfoService _documentProcessInfoService;
     private readonly DynamicDocumentProcessDefinitionRepository _repository;
+    private readonly IDocumentProcessInfoService _documentProcessInfoService;
     private readonly IMapper _mapper;
 
     public DocumentProcessController(

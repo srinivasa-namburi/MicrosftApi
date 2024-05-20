@@ -5,7 +5,7 @@ using ProjectVico.V2.Shared.Repositories;
 
 namespace ProjectVico.V2.Shared.Services
 {
-    public class PromptInfoService
+    public class PromptInfoService : IPromptInfoService
     {
         private readonly GenericRepository<PromptDefinition> _promptDefinitionRepository;
         private readonly GenericRepository<PromptImplementation> _promptImplementationRepository;

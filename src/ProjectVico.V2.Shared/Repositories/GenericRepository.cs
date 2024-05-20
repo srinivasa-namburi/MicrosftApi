@@ -1,5 +1,5 @@
 ﻿using System.Text.Json;
-using Microsoft.EntityFrameworkCore;
+using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Models;
 using StackExchange.Redis;
 
@@ -7,12 +7,12 @@ namespace ProjectVico.V2.Shared.Repositories;
 
 public class GenericRepository<T> where T : EntityBase
 {
-    private readonly DbContext _dbContext;
+    private readonly DocGenerationDbContext _dbContext;
     protected readonly IDatabase Cache;
     protected TimeSpan CacheDuration = TimeSpan.FromMinutes(0);
 
     public GenericRepository(
-        DbContext dbContext,
+        DocGenerationDbContext dbContext,
         IConnectionMultiplexer redisConnection)
     {
         _dbContext = dbContext;

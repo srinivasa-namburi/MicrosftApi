@@ -14,7 +14,7 @@ public class DocumentProcessApiClient : WebAssemblyBaseServiceClient<DocumentPro
 
     public async Task<List<DocumentProcessInfo>> GetAllDocumentProcessInfoAsync()
     {
-        var url = "/api/document-process";
+        var url = "/api/document-processes";
         var response = await SendGetRequestMessage(url);
 
         // If we get a 404, it means that no document processes exist - return an empty list
@@ -32,7 +32,7 @@ public class DocumentProcessApiClient : WebAssemblyBaseServiceClient<DocumentPro
 
     public async Task<DocumentProcessInfo?> GetDocumentProcessInfoByShortNameAsync(string shortName)
     {
-        var url = $"/api/document-process/short-name/{shortName}";
+        var url = $"/api/document-processes/short-name/{shortName}";
         var response = await SendGetRequestMessage(url);
 
         // If we get a 404, it means that the document process does not exist - return null
@@ -50,7 +50,7 @@ public class DocumentProcessApiClient : WebAssemblyBaseServiceClient<DocumentPro
 
     public async Task<DocumentProcessInfo?> CreateDynamicDocumentProcessDefinitionAsync(DocumentProcessInfo documentProcessInfo)
     {
-        var url = "/api/document-process";
+        var url = "/api/document-processes";
         var response = await SendPostRequestMessage(url, documentProcessInfo);
         
         response?.EnsureSuccessStatusCode();
@@ -62,7 +62,7 @@ public class DocumentProcessApiClient : WebAssemblyBaseServiceClient<DocumentPro
 
     public async Task UpdateDynamicDocumentProcessDefinitionAsync(DocumentProcessInfo documentProcessInfo)
     {
-        var url = $"/api/document-process/{documentProcessInfo.Id}";
+        var url = $"/api/document-processes/{documentProcessInfo.Id}";
         var response = await SendPutRequestMessage(url, documentProcessInfo);
         
         response?.EnsureSuccessStatusCode();
@@ -70,7 +70,7 @@ public class DocumentProcessApiClient : WebAssemblyBaseServiceClient<DocumentPro
 
     public async Task<List<PromptInfo>> GetPromptsByProcessIdAsync(Guid processId)
     {
-        var url = $"/api/prompts/by-process/{processId}";
+        var url = $"/api/prompts/by-processes/{processId}";
         var response = await SendGetRequestMessage(url);
 
         if (response?.StatusCode == HttpStatusCode.NotFound)

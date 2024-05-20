@@ -8,10 +8,10 @@ namespace ProjectVico.V2.API.Main.Controllers;
 [Route("/api/prompts")]
 public class PromptsController : BaseController
 {
-    private readonly PromptInfoService _promptInfoService;
+    private readonly IPromptInfoService _promptInfoService;
     private readonly IMapper _mapper;
 
-    public PromptsController(PromptInfoService promptInfoService, IMapper mapper)
+    public PromptsController(IPromptInfoService promptInfoService, IMapper mapper)
     {
         _promptInfoService = promptInfoService;
         _mapper = mapper;

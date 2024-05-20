@@ -13,7 +13,7 @@ public class DocumentProcessApiClient : BaseServiceClient<DocumentProcessApiClie
 
     public async Task<List<DocumentProcessInfo>> GetAllDocumentProcessInfoAsync()
     {
-        var url = "/api/document-process";
+        var url = "/api/document-processes";
         var response = await SendGetRequestMessage(url);
 
         // If we get a 404, it means that no document processes exist - return an empty list
@@ -31,7 +31,7 @@ public class DocumentProcessApiClient : BaseServiceClient<DocumentProcessApiClie
 
     public async Task<DocumentProcessInfo?> GetDocumentProcessInfoByShortNameAsync(string shortName)
     {
-        var url = $"/api/document-process/short-name/{shortName}";
+        var url = $"/api/document-processes/short-name/{shortName}";
         var response = await SendGetRequestMessage(url);
 
         // If we get a 404, it means that the document process does not exist - return null
@@ -49,7 +49,7 @@ public class DocumentProcessApiClient : BaseServiceClient<DocumentProcessApiClie
 
     public async Task<DocumentProcessInfo?> CreateDynamicDocumentProcessDefinitionAsync(DocumentProcessInfo documentProcessInfo)
     {
-        var url = "/api/document-process";
+        var url = "/api/document-processes";
         var response = await SendPostRequestMessage(url, documentProcessInfo);
         
         response?.EnsureSuccessStatusCode();
@@ -60,7 +60,7 @@ public class DocumentProcessApiClient : BaseServiceClient<DocumentProcessApiClie
     }
     public async Task UpdateDynamicDocumentProcessDefinitionAsync(DocumentProcessInfo documentProcessInfo)
     {
-        var url = $"/api/document-process/{documentProcessInfo.Id}";
+        var url = $"/api/document-processes/{documentProcessInfo.Id}";
         var response = await SendPutRequestMessage(url, documentProcessInfo);
         
         response?.EnsureSuccessStatusCode();

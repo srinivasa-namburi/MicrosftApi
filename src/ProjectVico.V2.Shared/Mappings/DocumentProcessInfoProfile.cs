@@ -6,9 +6,9 @@ using ProjectVico.V2.Shared.Models.DocumentProcess;
 
 namespace ProjectVico.V2.Shared.Mappings;
 
-public class DocumentInfoProfile : Profile
+public class DocumentProcessInfoProfile : Profile
 {
-    public DocumentInfoProfile()
+    public DocumentProcessInfoProfile()
     {
         
         CreateMap<DocumentProcessOptions, DocumentProcessInfo>()

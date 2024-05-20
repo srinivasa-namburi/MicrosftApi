@@ -52,8 +52,9 @@ public static class DocumentProcessExtensions
         builder.Services.AddAutoMapper(typeof(TableProfile));
 
         // Document Info Service and associated mappings
-        builder.Services.AddAutoMapper(typeof(DocumentInfoProfile));
+        builder.Services.AddAutoMapper(typeof(DocumentProcessInfoProfile));
         builder.Services.AddScoped<IDocumentProcessInfoService, DocumentProcessInfoService>();
+        builder.Services.AddScoped<IPromptInfoService, PromptInfoService>();
 
         // Ingestion specific custom dependencies
         builder.Services.AddScoped<TableHelper>();

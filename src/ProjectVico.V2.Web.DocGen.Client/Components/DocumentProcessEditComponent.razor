@@ -3,12 +3,17 @@
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
     <MudPaper Class="pa-4">
-        <MudTextField @bind-Value="_process.ShortName" Label="Short Name" Disabled="_isEditMode" />
+        <MudTextField @bind-Value="_process.ShortName" Label="Short Name" Disabled="_isEditMode" OnBlur="ComputeIndexName" />
         <MudTextField @bind-Value="_process.Description" Label="Description" />
         <MudTextField @bind-Value="_process.BlobStorageContainerName" Label="Blob Storage Container Name" />
         <MudTextField @bind-Value="_process.BlobStorageAutoImportFolderName" Label="Auto Import Folder Name" />
-        <MudCheckBox @bind-Checked="_process.ClassifyDocuments" Label="Classify Documents" />
-        <MudTextField @bind-Value="_process.ClassificationModelName" Label="Classification Model Name" />
+        <MudTextField @bind-Value="_indexName" Label="Repository Index Name" Disabled="_isEditMode" OnBlur="UpdateRepositories" />
+        <MudCheckBox T="bool" Label="Classify Documents" ValueChanged="@(e => OnClassifyDocumentsCheckboxChanged(e))" />
+
+        @if (_process.ClassifyDocuments)
+        {
+            <MudTextField @bind-Value="_process.ClassificationModelName" Label="Classification Model Name" />
+        }
 
         <MudDivider />
 
@@ -36,6 +41,7 @@
     private DocumentProcessInfo _process = new();
     private bool _isEditMode => ProcessId != null;
     private List<PromptInfo> _prompts = new();
+    private string _indexName = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
@@ -46,11 +52,17 @@
             {
                 _prompts = await DocumentProcessApiClient.GetPromptsByProcessIdAsync(_process.Id);
             }
+
+            if (_process.Repositories.Any())
+            {
+                _indexName = _process.Repositories.First();
+            }
         }
     }
 
     private async Task SaveProcess()
     {
+        UpdateRepositories();
         if (_isEditMode)
         {
             await DocumentProcessApiClient.UpdateDynamicDocumentProcessDefinitionAsync(_process);
@@ -75,4 +87,30 @@
             StateHasChanged();
         }
     }
+
+    private void ComputeIndexName()
+    {
+        if (!_isEditMode && string.IsNullOrWhiteSpace(_indexName))
+        {
+            _indexName = "index-" + _process.ShortName.ToLower()
+                                            .Replace(" ", "-")
+                                            .Replace(".", "-");
+        }
+    }
+
+    private void UpdateRepositories()
+    {
+        _process.Repositories.Clear();
+        _process.Repositories.Add(_indexName);
+    }
+
+    private void OnClassifyDocumentsCheckboxChanged(bool value)
+    {
+        _process.ClassifyDocuments = value;
+        if (!value)
+        {
+            _process.ClassificationModelName = string.Empty;
+        }
+    }
+
 }
