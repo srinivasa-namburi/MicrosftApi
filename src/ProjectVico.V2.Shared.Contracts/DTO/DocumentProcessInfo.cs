@@ -17,4 +17,6 @@ public class DocumentProcessInfo : IDocumentProcessInfo
 
     public bool ClassifyDocuments { get; set; } = false;
     public string? ClassificationModelName { get; set; }
+
+    public ProcessSource Source => Id == Guid.Empty ? ProcessSource.Static : ProcessSource.Dynamic;
 }
