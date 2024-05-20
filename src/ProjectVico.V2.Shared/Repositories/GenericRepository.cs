@@ -7,7 +7,7 @@ namespace ProjectVico.V2.Shared.Repositories;
 
 public class GenericRepository<T> where T : EntityBase
 {
-    protected readonly DbContext _dbContext;
+    private readonly DbContext _dbContext;
     protected readonly IDatabase Cache;
     protected TimeSpan CacheDuration = TimeSpan.FromMinutes(0);
 
@@ -29,7 +29,7 @@ public class GenericRepository<T> where T : EntityBase
         return _dbContext.Set<T>().AsQueryable();
     }
 
-    public async Task<T?> GetByIdAsync(int id, bool useCache = true)
+    public async Task<T?> GetByIdAsync(Guid id, bool useCache = true)
     {
         if (useCache)
         {
@@ -71,5 +71,16 @@ public class GenericRepository<T> where T : EntityBase
         // Update the cache with the updated entity
         var cacheKey = $"{typeof(T).Name}_{entity.Id}";
         await Cache.StringSetAsync(cacheKey, JsonSerializer.Serialize(entity), CacheDuration);
+    }
+
+    public async Task DeleteAsync(T entity)
+    {
+        var cacheKey = $"{typeof(T).Name}_{entity.Id}";
+
+        _dbContext.Set<T>().Remove(entity);
+        await _dbContext.SaveChangesAsync();
+
+        // Remove the entity from the cache if it exists
+        await Cache.KeyDeleteAsync(cacheKey);
     }
 }

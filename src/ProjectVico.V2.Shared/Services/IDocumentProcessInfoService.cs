@@ -1,6 +1,6 @@
-﻿using ProjectVico.V2.Shared.Contracts;
+﻿using ProjectVico.V2.Shared.Contracts.DTO;
 
-namespace ProjectVico.V2.Shared.Services.DocumentInfo;
+namespace ProjectVico.V2.Shared.Services;
 
 public interface IDocumentProcessInfoService
 {

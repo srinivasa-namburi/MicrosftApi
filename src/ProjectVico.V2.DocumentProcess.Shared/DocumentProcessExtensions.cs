@@ -8,7 +8,7 @@ using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Shared.Interfaces;
 using ProjectVico.V2.Shared.Mappings;
-using ProjectVico.V2.Shared.Services.DocumentInfo;
+using ProjectVico.V2.Shared.Services;
 using ProjectVico.V2.Shared.Services.Search;
 
 namespace ProjectVico.V2.DocumentProcess.Shared;

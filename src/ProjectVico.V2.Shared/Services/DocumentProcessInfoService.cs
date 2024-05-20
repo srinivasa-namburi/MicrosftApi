@@ -1,10 +1,10 @@
 ﻿using AutoMapper;
 using Microsoft.Extensions.Options;
 using ProjectVico.V2.Shared.Configuration;
-using ProjectVico.V2.Shared.Contracts;
+using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Shared.Repositories;
 
-namespace ProjectVico.V2.Shared.Services.DocumentInfo
+namespace ProjectVico.V2.Shared.Services
 {
     public class DocumentProcessInfoService : IDocumentProcessInfoService
     {

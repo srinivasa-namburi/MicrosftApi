@@ -1,10 +1,10 @@
 ﻿using AutoMapper;
 using Microsoft.AspNetCore.Mvc;
-using ProjectVico.V2.Shared.Contracts;
+using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Models.DocumentProcess;
 using ProjectVico.V2.Shared.Repositories;
-using ProjectVico.V2.Shared.Services.DocumentInfo;
+using ProjectVico.V2.Shared.Services;
 
 namespace ProjectVico.V2.API.Main.Controllers;
 

@@ -1,6 +1,6 @@
 ﻿using ProjectVico.V2.Shared.Enums;
 
-namespace ProjectVico.V2.Shared.Contracts;
+namespace ProjectVico.V2.Shared.Contracts.DTO;
 
 public class DocumentProcessInfo : IDocumentProcessInfo
 {

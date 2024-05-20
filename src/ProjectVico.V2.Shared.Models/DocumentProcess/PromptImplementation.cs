@@ -11,10 +11,10 @@ public class PromptDefinition : EntityBase
 public class PromptImplementation : EntityBase
 {
     public required Guid PromptDefinitionId { get; set; }
-    public required PromptDefinition PromptDefinition { get; set; }
+    public PromptDefinition? PromptDefinition { get; set; }
 
     public required Guid DocumentProcessDefinitionId { get; set; }
-    public required DynamicDocumentProcessDefinition DocumentProcessDefinition { get; set; }
+    public DynamicDocumentProcessDefinition? DocumentProcessDefinition { get; set; }
 
 
     public required string Text { get; set; }

@@ -1,8 +1,7 @@
 ﻿using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Components.Authorization;
-using ProjectVico.V2.Shared.Contracts;
-using ProjectVico.V2.Shared.Contracts.Chat;
+using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Web.Shared.ServiceClients;
 
 namespace ProjectVico.V2.Web.DocGen.Client.ServiceClients;
@@ -59,5 +58,54 @@ public class DocumentProcessApiClient : WebAssemblyBaseServiceClient<DocumentPro
         // Return the created DocumentInfo
         var result = await response?.Content.ReadFromJsonAsync<DocumentProcessInfo>()! ?? null;
         return result;
+    }
+
+    public async Task<List<PromptInfo>> GetPromptsByProcessIdAsync(Guid processId)
+    {
+        var url = $"/api/prompts/by-process/{processId}";
+        var response = await SendGetRequestMessage(url);
+
+        if (response?.StatusCode == HttpStatusCode.NotFound)
+        {
+            return new List<PromptInfo>();
+        }
+
+        response?.EnsureSuccessStatusCode();
+        return await response?.Content.ReadFromJsonAsync<List<PromptInfo>>() ?? new List<PromptInfo>();
+    }
+
+    public async Task<PromptInfo> GetPromptByIdAsync(Guid id)
+    {
+        var url = $"/api/prompts/{id}";
+        var response = await SendGetRequestMessage(url);
+
+        if (response?.StatusCode == HttpStatusCode.NotFound)
+        {
+            throw new KeyNotFoundException("Prompt not found");
+        }
+
+        response?.EnsureSuccessStatusCode();
+        return await response?.Content.ReadFromJsonAsync<PromptInfo>() ?? throw new KeyNotFoundException("Prompt not found");
+    }
+
+    public async Task CreatePromptAsync(PromptInfo promptInfo)
+    {
+        var url = "/api/prompts";
+        var response = await SendPostRequestMessage(url, promptInfo);
+        response?.EnsureSuccessStatusCode();
+    }
+
+    public async Task UpdatePromptAsync(PromptInfo promptInfo)
+    {
+        var url = $"/api/prompts/{promptInfo.Id}";
+        var response = await SendPutRequestMessage(url, promptInfo);
+        response?.EnsureSuccessStatusCode();
+    }
+
+    public async Task DeletePromptAsync(Guid promptId)
+    {
+        var url = $"/api/prompts/{promptId}";
+        var response = await SendDeleteRequestMessage(url);
+        response?.EnsureSuccessStatusCode();
     }
 }
