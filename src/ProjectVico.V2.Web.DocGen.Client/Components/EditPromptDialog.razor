@@ -1,36 +1,39 @@
 ﻿@inject IDocumentProcessApiClient DocumentProcessApiClient
+@inject IDialogService DialogService
 
-<MudDialog @ref="PromptDialog" MaxWidth="MaxWidth.Medium">
-    <MudDialogTitle>@(_isEditMode ? "Edit Prompt" : "Add Prompt")</MudDialogTitle>
-    <MudDialogContent>
-        <MudTextField @bind-Value="Prompt.ShortCode" Label="Short Code" Disabled="true"/>
-        <MudTextField @bind-Value="Prompt.Description" Label="Description" Disabled="true"/>
-        <MudTextField @bind-Value="Prompt.Text" Label="Text"/>
-    </MudDialogContent>
-    <MudDialogActions>
+<MudDialog MaxWidth="MaxWidth.Medium">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@((IsEditMode ? "Edit Prompt" : "Add Prompt"))</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudTextField @bind-Value="Prompt.ShortCode" Label="Short Code" Disabled="true" />
+        <MudTextField @bind-Value="Prompt.Description" Label="Description" Disabled="true" />
+        <MudTextField @bind-Value="Prompt.Text" Label="Text" />
+    </DialogContent>
+    <DialogActions>
         <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SavePrompt">Save</MudButton>
         <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="Cancel">Cancel</MudButton>
-    </MudDialogActions>
+    </DialogActions>
 </MudDialog>
 
 @code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = default!;
     [Parameter] public EventCallback OnPromptSaved { get; set; }
-    [Parameter] public Guid ProcessId { get; set; }
-    
-    private MudDialog PromptDialog;
-    public PromptInfo Prompt { get; set; } = new();
-    private bool _isEditMode = false;
+    [Parameter] public PromptInfo Prompt { get; set; } = new();
+    [Parameter] public bool IsEditMode { get; set; }
 
-    public async Task Show(PromptInfo prompt, bool isEditMode)
+    protected override void OnParametersSet()
     {
-        Prompt = prompt;
-        _isEditMode = isEditMode;
-        PromptDialog.Show();
+        // Validate that parameters are set correctly
+        if (Prompt == null)
+        {
+            throw new InvalidOperationException("Prompt parameter is required.");
+        }
     }
 
     private async Task SavePrompt()
     {
-        if (_isEditMode)
+        if (IsEditMode)
         {
             await DocumentProcessApiClient.UpdatePromptAsync(Prompt);
         }
@@ -40,11 +43,11 @@
         }
 
         await OnPromptSaved.InvokeAsync();
-        PromptDialog.Close();
+        MudDialog.Close();
     }
 
     private void Cancel()
     {
-        PromptDialog.Close();
+        MudDialog.Cancel();
     }
 }

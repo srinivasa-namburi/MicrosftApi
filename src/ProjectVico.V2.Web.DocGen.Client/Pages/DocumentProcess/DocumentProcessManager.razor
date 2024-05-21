@@ -6,7 +6,7 @@
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
     <MudPaper Class="pa-4">
-        <MudTable Items="_documentProcesses" Hover="true" Striped="true" RowClick="RowClicked">
+        <MudTable Items="_documentProcesses" Hover="true" Striped="false" RowClick="RowClicked">
             <HeaderContent>
                 <MudTh>Short Name</MudTh>
                 <MudTh>Description</MudTh>
@@ -66,12 +66,6 @@
     private async Task CanToggleProcess(DocumentProcessInfo process)
     {
         Snackbar.Add("Toggle process functionality is not available yet.", Severity.Info);
-        // if (process.Source == ProcessSource.Static)
-        //     return;
-
-        // process.IsEnabled = !process.IsEnabled;
-        // await DocumentProcessApiClient.UpdateDocumentProcessAsync(process);
-        // _documentProcesses = await DocumentProcessApiClient.GetAllDocumentProcessInfoAsync();
     }
 
     private void RowClicked(TableRowClickEventArgs<DocumentProcessInfo> args)
