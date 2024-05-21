@@ -9,6 +9,9 @@ public class DocumentOutline : EntityBase
     /// </summary>
     public string FullText { get; set; }
 
+    public Guid DocumentProcessDefinitionId { get; set; }
+    public DynamicDocumentProcessDefinition? DocumentProcessDefinition { get; set; }
+
     public bool TextUsesNumbers()
     {
         // Determine if the outline uses numbers or hashes to indicate hierarchy
