@@ -65,6 +65,26 @@ public class DocGenerationDbContext : DbContext
             c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
             c => c.ToList());
 
+        modelBuilder.Entity<DocumentOutline>()
+            .ToTable("DocumentOutlines");
+
+        modelBuilder.Entity<DocumentOutline>()
+            .HasOne(x => x.DocumentProcessDefinition)
+            .WithOne(x => x.DocumentOutline)
+            .HasForeignKey<DynamicDocumentProcessDefinition>(x => x.DocumentOutlineId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<DocumentOutline>()
+            .HasIndex(nameof(DocumentOutline.DocumentProcessDefinitionId))
+            .IsUnique();
+
+        modelBuilder.Entity<DynamicDocumentProcessDefinition>()
+            .HasOne(x => x.DocumentOutline)
+            .WithOne(x => x.DocumentProcessDefinition)
+            .HasForeignKey<DocumentOutline>(x => x.DocumentProcessDefinitionId)
+            .IsRequired(false);
+        
         modelBuilder.Entity<PromptDefinition>()
             .ToTable("PromptDefinitions");
 
