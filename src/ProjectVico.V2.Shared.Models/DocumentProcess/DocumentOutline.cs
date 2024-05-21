@@ -1,4 +1,6 @@
-﻿namespace ProjectVico.V2.Shared.Models.DocumentProcess;
+﻿using System.Text.Json.Serialization;
+
+namespace ProjectVico.V2.Shared.Models.DocumentProcess;
 
 public class DocumentOutline : EntityBase
 {
@@ -10,6 +12,7 @@ public class DocumentOutline : EntityBase
     public string FullText { get; set; }
 
     public Guid DocumentProcessDefinitionId { get; set; }
+    [JsonIgnore]
     public DynamicDocumentProcessDefinition? DocumentProcessDefinition { get; set; }
 
     public bool TextUsesNumbers()

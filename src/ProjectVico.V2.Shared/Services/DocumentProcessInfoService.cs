@@ -1,4 +1,5 @@
 ﻿using AutoMapper;
+using Humanizer;
 using Microsoft.Extensions.Options;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Contracts.DTO;
@@ -11,14 +12,14 @@ namespace ProjectVico.V2.Shared.Services
     {
         private readonly IMapper _mapper;
         private readonly DynamicDocumentProcessDefinitionRepository _documentProcessRepository;
-        private readonly GenericRepository<DocumentOutline> _documentOutlineRepository;
+        private readonly DocumentOutlineRepository _documentOutlineRepository;
         private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
 
         public DocumentProcessInfoService(
             IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
             IMapper mapper,
             DynamicDocumentProcessDefinitionRepository documentProcessRepository,
-            GenericRepository<DocumentOutline> documentOutlineRepository)
+           DocumentOutlineRepository documentOutlineRepository)
         {
             _mapper = mapper;
             _documentProcessRepository = documentProcessRepository;
@@ -81,7 +82,7 @@ namespace ProjectVico.V2.Shared.Services
             }
 
             // DUMMY DATA
-            dynamicDocumentProcess.DocumentOutline = new DocumentOutline
+            var outline = new DocumentOutline
             {
                 Id = Guid.NewGuid(),
                 FullText = """
@@ -96,7 +97,9 @@ namespace ProjectVico.V2.Shared.Services
             };
             // END DUMMY DATA
 
+            dynamicDocumentProcess.DocumentOutline = outline;
             await _documentProcessRepository.AddAsync(dynamicDocumentProcess);
+
 
             var createdDocumentProcess = await _documentProcessRepository.GetByShortNameAsync(dynamicDocumentProcess.ShortName);
 

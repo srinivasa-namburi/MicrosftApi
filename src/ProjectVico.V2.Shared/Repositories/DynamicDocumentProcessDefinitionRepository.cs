@@ -6,7 +6,6 @@ using StackExchange.Redis;
 
 namespace ProjectVico.V2.Shared.Repositories;
 
-
 public class DynamicDocumentProcessDefinitionRepository : GenericRepository<DynamicDocumentProcessDefinition>
 {
     private const string CacheKeyAll = "DynamicDocumentProcessDefinitions";
@@ -84,5 +83,12 @@ public class DynamicDocumentProcessDefinitionRepository : GenericRepository<Dyna
         await base.UpdateAsync(updatedDefinition, saveChanges);
         // Invalidate the full cache
         await Cache.KeyDeleteAsync(CacheKeyAll);
+
+        // Invalidate the cache for the document outline as well
+        if (updatedDefinition.DocumentOutline != null && updatedDefinition.DocumentOutline.Id != Guid.Empty)
+        {
+            var cacheKey = $"{nameof(DocumentOutline)}:{updatedDefinition.DocumentOutline.Id}";
+            await Cache.KeyDeleteAsync(cacheKey);
+        }
     }
 }

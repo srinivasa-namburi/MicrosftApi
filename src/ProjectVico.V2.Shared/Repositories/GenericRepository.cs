@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using Humanizer;
 using Microsoft.EntityFrameworkCore;
 using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Models;
@@ -20,7 +21,7 @@ public class GenericRepository<T> where T : EntityBase
         Cache = redisConnection.GetDatabase();
     }
 
-    protected void SetCacheDuration(TimeSpan cacheDuration)
+    public void SetCacheDuration(TimeSpan cacheDuration)
     {
         CacheDuration = cacheDuration;
     }
@@ -80,12 +81,15 @@ public class GenericRepository<T> where T : EntityBase
         
         if (saveChanges)
         {
-            await SaveChanges();
+            await SaveChangesAsync();
         }
-        
-        // Cache the newly added entity
-        var cacheKey = $"{typeof(T).Name}_{entity.Id}";
-        await Cache.StringSetAsync(cacheKey, JsonSerializer.Serialize(entity), CacheDuration);
+
+        if (CacheDuration > 0.Seconds())
+        {
+            // Cache the newly added entity
+            var cacheKey = $"{typeof(T).Name}_{entity.Id}";
+            await Cache.StringSetAsync(cacheKey, JsonSerializer.Serialize(entity), CacheDuration);
+        }
     }
 
     public async Task UpdateAsync(T entity, bool saveChanges=true)
@@ -93,12 +97,16 @@ public class GenericRepository<T> where T : EntityBase
         _dbContext.Set<T>().Update(entity);
         if (saveChanges)
         {
-            await SaveChanges();
+            await SaveChangesAsync();
+        }
+
+        if (CacheDuration > 0.Seconds())
+        {
+            // Update the cache with the updated entity
+            var cacheKey = $"{typeof(T).Name}_{entity.Id}";
+            await Cache.StringSetAsync(cacheKey, JsonSerializer.Serialize(entity), CacheDuration);
         }
         
-        // Update the cache with the updated entity
-        var cacheKey = $"{typeof(T).Name}_{entity.Id}";
-        await Cache.StringSetAsync(cacheKey, JsonSerializer.Serialize(entity), CacheDuration);
     }
 
     public async Task DeleteAsync(T entity, bool saveChanges = true)
@@ -108,14 +116,14 @@ public class GenericRepository<T> where T : EntityBase
         _dbContext.Set<T>().Remove(entity);
         if (saveChanges)
         {
-            await SaveChanges();
+            await SaveChangesAsync();
         }
 
         // Remove the entity from the cache if it exists
         await Cache.KeyDeleteAsync(cacheKey);
     }
 
-    public async Task SaveChanges()
+    public async Task SaveChangesAsync()
     {
         await _dbContext.SaveChangesAsync();
     }
