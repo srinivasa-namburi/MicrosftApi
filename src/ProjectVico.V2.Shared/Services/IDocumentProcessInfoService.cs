@@ -5,8 +5,9 @@ namespace ProjectVico.V2.Shared.Services;
 public interface IDocumentProcessInfoService
 {
 
-    Task<DocumentProcessInfo?> GetDocumentInfoByShortNameAsync(string shortName);
+    Task<DocumentProcessInfo?> GetDocumentProcessInfoByShortNameAsync(string shortName);
 
-    Task<List<DocumentProcessInfo>> GetCombinedDocumentInfoListAsync();
-    Task<DocumentProcessInfo?> GetDocumentInfoByIdAsync(Guid id);
+    Task<List<DocumentProcessInfo>> GetCombinedDocumentProcessInfoListAsync();
+    Task<DocumentProcessInfo?> GetDocumentProcessInfoByIdAsync(Guid id);
+    Task<DocumentProcessInfo> CreateDocumentProcessInfoAsync(DocumentProcessInfo documentProcessInfo);
 }

@@ -72,16 +72,16 @@ public class DynamicDocumentProcessDefinitionRepository : GenericRepository<Dyna
         }
     }
 
-    public new async Task AddAsync(DynamicDocumentProcessDefinition newDefinition)
+    public new async Task AddAsync(DynamicDocumentProcessDefinition newDefinition, bool saveChanges = true)
     {
-        await base.AddAsync(newDefinition);
+        await base.AddAsync(newDefinition, saveChanges);
         // Invalidate the full cache
         await Cache.KeyDeleteAsync(CacheKeyAll);
     }
 
-    public new async Task UpdateAsync(DynamicDocumentProcessDefinition updatedDefinition)
+    public new async Task UpdateAsync(DynamicDocumentProcessDefinition updatedDefinition, bool saveChanges = true)
     {
-        await base.UpdateAsync(updatedDefinition);
+        await base.UpdateAsync(updatedDefinition, saveChanges);
         // Invalidate the full cache
         await Cache.KeyDeleteAsync(CacheKeyAll);
     }

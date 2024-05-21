@@ -36,7 +36,7 @@ public class DocumentProcessController : BaseController
     [Produces<List<DocumentProcessInfo>>]
     public async Task<ActionResult<List<DocumentProcessInfo>>> GetAllDocumentProcesses()
     {
-        var documentProcesses = await _documentProcessInfoService.GetCombinedDocumentInfoListAsync();
+        var documentProcesses = await _documentProcessInfoService.GetCombinedDocumentProcessInfoListAsync();
         if (documentProcesses.Count <1)
         {
             return NotFound();
@@ -53,7 +53,7 @@ public class DocumentProcessController : BaseController
     [Produces<DocumentProcessInfo>]
     public async Task<ActionResult<DocumentProcessInfo>> GetDocumentProcessByShortName(string shortName)
     {
-        var documentProcess = await _documentProcessInfoService.GetDocumentInfoByShortNameAsync(shortName);
+        var documentProcess = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(shortName);
         if (documentProcess == null)
         {
             return NotFound();
@@ -68,7 +68,7 @@ public class DocumentProcessController : BaseController
     [Produces<DocumentProcessInfo>]
     public async Task<ActionResult<DocumentProcessInfo>> GetDocumentProcessById(Guid id)
     {
-        var documentProcess = await _documentProcessInfoService.GetDocumentInfoByIdAsync(id);
+        var documentProcess = await _documentProcessInfoService.GetDocumentProcessInfoByIdAsync(id);
         if (documentProcess == null)
         {
             return NotFound();
@@ -87,27 +87,10 @@ public class DocumentProcessController : BaseController
     [Produces<DocumentProcessInfo>]
     public async Task<ActionResult<DocumentProcessInfo>> CreateDocumentProcess([FromBody] DocumentProcessInfo documentProcessInfo)
     {
-        var dynamicDocumentProcess = _mapper.Map<DynamicDocumentProcessDefinition>(documentProcessInfo);
-        
-        if (dynamicDocumentProcess.Id == Guid.Empty)
-        {
-            dynamicDocumentProcess.Id = Guid.NewGuid();
-        }
-
-        await _repository.AddAsync(dynamicDocumentProcess);
-        await _dbContext.SaveChangesAsync();
-
-        var createdDocumentProcess = await _repository.GetByShortNameAsync(dynamicDocumentProcess.ShortName);
-
-        if (createdDocumentProcess == null)
-        {
-            return BadRequest();
-        }
-        
-        var createdDocumentProcessInfo = _mapper.Map<DocumentProcessInfo>(createdDocumentProcess);
-
+        var createdDocumentProcessInfo = await _documentProcessInfoService.CreateDocumentProcessInfoAsync(documentProcessInfo);
         var action = CreatedAtAction(nameof(GetDocumentProcessByShortName), new { shortName = createdDocumentProcessInfo.ShortName }, createdDocumentProcessInfo);
         return action;
     }
+
     
 }

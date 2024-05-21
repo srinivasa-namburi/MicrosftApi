@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Models;
 using StackExchange.Redis;
@@ -29,6 +30,26 @@ public class GenericRepository<T> where T : EntityBase
         return _dbContext.Set<T>().AsQueryable();
     }
 
+    public async Task<List<T>> GetAllAsync(bool useCache = true)
+    {
+        if (useCache)
+        {
+            var cachedData = await Cache.StringGetAsync(typeof(T).Name);
+            if (cachedData.HasValue)
+            {
+                return JsonSerializer.Deserialize<List<T>>(cachedData);
+            }
+
+            var entities = await _dbContext.Set<T>().ToListAsync();
+            await Cache.StringSetAsync(typeof(T).Name, JsonSerializer.Serialize(entities), CacheDuration);
+            return entities;
+        }
+        else
+        {
+            return await _dbContext.Set<T>().ToListAsync();
+        }
+    }
+
     public async Task<T?> GetByIdAsync(Guid id, bool useCache = true)
     {
         if (useCache)
@@ -53,34 +74,51 @@ public class GenericRepository<T> where T : EntityBase
         }
     }
 
-    public async Task AddAsync(T entity)
+    public async Task AddAsync(T entity, bool saveChanges=true)
     {
         await _dbContext.Set<T>().AddAsync(entity);
-        await _dbContext.SaveChangesAsync();
+        
+        if (saveChanges)
+        {
+            await SaveChanges();
+        }
         
         // Cache the newly added entity
         var cacheKey = $"{typeof(T).Name}_{entity.Id}";
         await Cache.StringSetAsync(cacheKey, JsonSerializer.Serialize(entity), CacheDuration);
     }
 
-    public async Task UpdateAsync(T entity)
+    public async Task UpdateAsync(T entity, bool saveChanges=true)
     {
         _dbContext.Set<T>().Update(entity);
-        await _dbContext.SaveChangesAsync();
+        if (saveChanges)
+        {
+            await SaveChanges();
+        }
         
         // Update the cache with the updated entity
         var cacheKey = $"{typeof(T).Name}_{entity.Id}";
         await Cache.StringSetAsync(cacheKey, JsonSerializer.Serialize(entity), CacheDuration);
     }
 
-    public async Task DeleteAsync(T entity)
+    public async Task DeleteAsync(T entity, bool saveChanges = true)
     {
         var cacheKey = $"{typeof(T).Name}_{entity.Id}";
 
         _dbContext.Set<T>().Remove(entity);
-        await _dbContext.SaveChangesAsync();
+        if (saveChanges)
+        {
+            await SaveChanges();
+        }
 
         // Remove the entity from the cache if it exists
         await Cache.KeyDeleteAsync(cacheKey);
     }
+
+    public async Task SaveChanges()
+    {
+        await _dbContext.SaveChangesAsync();
+    }
+
+
 }
