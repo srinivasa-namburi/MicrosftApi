@@ -13,6 +13,9 @@ public class DocumentProcessInfoProfile : Profile
         CreateMap<DocumentProcessOptions, DocumentProcessInfo>()
             // For the Id property, set it to Guid.Empty as this isn't used in static document process definitions
             .ForMember(x => x.Id, y => y.MapFrom(source => Guid.Empty))
+            .ForMember(x => x.ShortName, y => y.MapFrom(source => source.Name))
+            .ForMember(x => x.Description, y => y.MapFrom(source => ""))
+            .ForMember(x => x.OutlineText, y => y.MapFrom(source => ""))
             .ForMember(x => x.LogicType,
                 y => y.MapFrom(source =>
                     Enum.Parse<DocumentProcessLogicType>(source.IngestionMethod ?? "KernelMemory")));

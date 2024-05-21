@@ -10,17 +10,19 @@ namespace ProjectVico.V2.Shared.Services
     public class DocumentProcessInfoService : IDocumentProcessInfoService
     {
         private readonly IMapper _mapper;
-        private readonly DynamicDocumentProcessDefinitionRepository _repository;
+        private readonly DynamicDocumentProcessDefinitionRepository _documentProcessRepository;
+        private readonly GenericRepository<DocumentOutline> _documentOutlineRepository;
         private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
 
         public DocumentProcessInfoService(
             IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
             IMapper mapper,
-            DynamicDocumentProcessDefinitionRepository repository
-        )
+            DynamicDocumentProcessDefinitionRepository documentProcessRepository,
+            GenericRepository<DocumentOutline> documentOutlineRepository)
         {
             _mapper = mapper;
-            _repository = repository;
+            _documentProcessRepository = documentProcessRepository;
+            _documentOutlineRepository = documentOutlineRepository;
             _serviceConfigurationOptions = serviceConfigurationOptions.Value;
         }
 
@@ -31,7 +33,7 @@ namespace ProjectVico.V2.Shared.Services
             var mappedStaticDefinitions = staticDefinitionOptions.Select(x => _mapper.Map<DocumentProcessInfo>(x)).ToList();
 
             // Retrieve and map all dynamic definitions
-            var dynamicDefinitions = await _repository.GetAllDynamicDocumentProcessDefinitionsAsync();
+            var dynamicDefinitions = await _documentProcessRepository.GetAllDynamicDocumentProcessDefinitionsAsync();
             var mappedDynamicDefinitions = dynamicDefinitions.Select(x => _mapper.Map<DocumentProcessInfo>(x)).ToList();
 
             // Combine static and dynamic definitions in memory
@@ -53,7 +55,7 @@ namespace ProjectVico.V2.Shared.Services
 
             // If not found in static definitions, search in dynamic definitions from the database
 
-            var dynamicDocumentProcess = await _repository.GetByShortNameAsync(shortName);
+            var dynamicDocumentProcess = await _documentProcessRepository.GetByShortNameAsync(shortName);
             if (dynamicDocumentProcess == null) return null;
 
             result = _mapper.Map<DocumentProcessInfo>(dynamicDocumentProcess);
@@ -62,7 +64,7 @@ namespace ProjectVico.V2.Shared.Services
 
         public async Task<DocumentProcessInfo?> GetDocumentProcessInfoByIdAsync(Guid id)
         {
-            var dynamicDocumentProcess = await _repository.GetByIdAsync(id);
+            var dynamicDocumentProcess = await _documentProcessRepository.GetByIdAsync(id);
             if (dynamicDocumentProcess == null) return null;
 
             var result = _mapper.Map<DocumentProcessInfo>(dynamicDocumentProcess);
@@ -72,21 +74,37 @@ namespace ProjectVico.V2.Shared.Services
         public async Task<DocumentProcessInfo> CreateDocumentProcessInfoAsync(DocumentProcessInfo documentProcessInfo)
         {
             var dynamicDocumentProcess = _mapper.Map<DynamicDocumentProcessDefinition>(documentProcessInfo);
-        
+
             if (dynamicDocumentProcess.Id == Guid.Empty)
             {
                 dynamicDocumentProcess.Id = Guid.NewGuid();
             }
 
-            await _repository.AddAsync(dynamicDocumentProcess, saveChanges:true);
+            // DUMMY DATA
+            dynamicDocumentProcess.DocumentOutline = new DocumentOutline
+            {
+                Id = Guid.NewGuid(),
+                FullText = """
+                           1 Chapter 1
+                           2 Chapter 2
+                           2.1 Section 2.1
+                           2.1.1 Section 2.1.1
+                           2.2 Section 2.2
+                           3 Chapter 3
+                           3.1 Section 3.1
+                           """
+            };
+            // END DUMMY DATA
 
-            var createdDocumentProcess = await _repository.GetByShortNameAsync(dynamicDocumentProcess.ShortName);
+            await _documentProcessRepository.AddAsync(dynamicDocumentProcess);
+
+            var createdDocumentProcess = await _documentProcessRepository.GetByShortNameAsync(dynamicDocumentProcess.ShortName);
 
             if (createdDocumentProcess == null)
             {
                 throw new Exception("Document process could not be created.");
             }
-        
+
             var createdDocumentProcessInfo = _mapper.Map<DocumentProcessInfo>(createdDocumentProcess);
             return createdDocumentProcessInfo;
         }

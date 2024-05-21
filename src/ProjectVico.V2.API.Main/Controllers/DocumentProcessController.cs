@@ -2,7 +2,6 @@
 using Microsoft.AspNetCore.Mvc;
 using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Shared.Data.Sql;
-using ProjectVico.V2.Shared.Models.DocumentProcess;
 using ProjectVico.V2.Shared.Repositories;
 using ProjectVico.V2.Shared.Services;
 
@@ -76,9 +75,7 @@ public class DocumentProcessController : BaseController
 
         return Ok(documentProcess);
     }
-
-
-
+    
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
