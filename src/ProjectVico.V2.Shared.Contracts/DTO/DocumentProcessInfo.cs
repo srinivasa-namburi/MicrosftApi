@@ -19,4 +19,6 @@ public class DocumentProcessInfo : IDocumentProcessInfo
     public string? ClassificationModelName { get; set; }
 
     public ProcessSource Source => Id == Guid.Empty ? ProcessSource.Static : ProcessSource.Dynamic;
+
+    public string? OutlineText { get; set; }
 }
