@@ -72,21 +72,19 @@ public class NRCDocumentsPlugin : IPluginImplementation
         }
     }
 
-    [KernelFunction("GetStreamingBodyTextForSection")]
-    [Description(
-            "Writes the body text in a streaming fashion for a title or section, ignoring its sub sections. If no feasible body text is found, returns an empty string")]
-    public async IAsyncEnumerable<string> GetStreamingBodyTextForTitleOrSection(
-            [Description("The name of the section or title/heading")]
+    [KernelFunction("GetBodyTextForSection")]
+    [Description("Writes the body text for a title or section, ignoring its sub sections. If no feasible body text is found, returns an empty string")]
+    public async Task<string> GetBodyTextForTitleOrSectionAsync(
+        [Description("The name of the section or title/heading")]
         string sectionOrTitleText,
-            [Description("The Content Node Type we are dealing with - either Heading or Title")]
+        [Description("The Content Node Type we are dealing with - either Heading or Title")]
         string contentNodeTypeString,
-            [Description("A long string with an indented table of contents for the whole document to provide context")]
+        [Description("A long string with an indented table of contents for the whole document to provide context")]
         string tableOfContentsString,
-            [Description("The ID of a metadata record for inclusion into generation. Optional.")]
+        [Description("The ID of a metadata record for inclusion into generation. Optional.")]
         Guid? metadataId = null,
-            [Description("The Section or Title number - 1, 1.1, 1.1.1 etc. Optional.")]
-        string sectionOrTitleNumber = ""
-        )
+        [Description("The Section or Title number - 1, 1.1, 1.1.1 etc. Optional.")]
+        string sectionOrTitleNumber = "")
     {
         var contentNodeType = ContentNodeType.Heading;
         if (contentNodeTypeString == "Title")
@@ -102,7 +100,6 @@ public class NRCDocumentsPlugin : IPluginImplementation
         }
         else if (contentNodeType == ContentNodeType.Title)
         {
-
             documents = await _ragRepository.SearchOnlyTitlesAsync(sectionOrTitleNumber + " " +
                                                                        sectionOrTitleText);
         }
@@ -113,11 +110,16 @@ public class NRCDocumentsPlugin : IPluginImplementation
                 nameof(contentNodeType));
         }
 
-        await foreach (var bodyTextPart in GenerateStreamingBodyTextForTitleOrSection(sectionOrTitleNumber,
-            sectionOrTitleText, contentNodeType, documents, tableOfContentsString, metadataId))
+        await using var enumerator = GenerateStreamingBodyTextForTitleOrSection(sectionOrTitleNumber, sectionOrTitleText,
+            contentNodeType, documents, tableOfContentsString, metadataId).GetAsyncEnumerator();
+
+        var bodyText = "";
+        while (await enumerator.MoveNextAsync())
         {
-            yield return bodyTextPart;
+            bodyText += enumerator.Current;
         }
+
+        return bodyText;
     }
 
     private async IAsyncEnumerable<string> GenerateStreamingBodyTextForTitleOrSection(string sectionOrTitleNumber,

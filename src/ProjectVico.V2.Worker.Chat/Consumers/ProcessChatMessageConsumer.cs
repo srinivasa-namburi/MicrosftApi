@@ -72,6 +72,7 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
             ReplyToId = userMessageDto.Id,
             Id = Guid.NewGuid(),
             State = ChatMessageCreationState.InProgress
+            
         };
 
         var conversation = await _dbContext.ChatConversations
