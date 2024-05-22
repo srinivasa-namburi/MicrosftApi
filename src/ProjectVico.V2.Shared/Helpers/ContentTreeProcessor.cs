@@ -74,7 +74,7 @@ public class ContentTreeProcessor : IContentTreeProcessor
             Messages = { new ChatRequestUserMessage(prompt.ToString()) },
             MaxTokens = 100,
             Temperature = 0.5f,
-            DeploymentName = _serviceConfigurationOptions.OpenAi.GPT4128KModelDeploymentName
+            DeploymentName = _serviceConfigurationOptions.OpenAi.Gpt4o_Or_Gpt4128KDeploymentName
         });
 
         // Get the response from the API

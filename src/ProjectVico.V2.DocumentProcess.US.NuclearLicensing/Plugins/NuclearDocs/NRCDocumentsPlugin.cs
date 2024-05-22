@@ -154,7 +154,7 @@ public class NRCDocumentsPlugin : IPluginImplementation
             var sectionCompletion = await _openAIClient.GetChatCompletionsAsync(
             new ChatCompletionsOptions()
             {
-                DeploymentName = _serviceConfigurationOptions.OpenAi.GPT4128KModelDeploymentName,
+                DeploymentName = _serviceConfigurationOptions.OpenAi.Gpt4o_Or_Gpt4128KDeploymentName,
                 Messages = {
                         new ChatRequestUserMessage(prompt)
                     },
@@ -197,7 +197,7 @@ public class NRCDocumentsPlugin : IPluginImplementation
         var deduplicatedOutlineResponse = await _openAIClient.GetChatCompletionsAsync(
         new ChatCompletionsOptions()
         {
-            DeploymentName = _serviceConfigurationOptions.OpenAi.GPT4128KModelDeploymentName,
+            DeploymentName = _serviceConfigurationOptions.OpenAi.Gpt4o_Or_Gpt4128KDeploymentName,
             Messages =
                 {
                     new ChatRequestSystemMessage(systemPrompt),
@@ -273,13 +273,13 @@ public class NRCDocumentsPlugin : IPluginImplementation
         var sectionCompletion = await _openAIClient.GetChatCompletionsAsync(
                        new ChatCompletionsOptions()
                        {
-                           DeploymentName = _serviceConfigurationOptions.OpenAi.GPT432KModelDeploymentName,
+                           DeploymentName = _serviceConfigurationOptions.OpenAi.Gpt4o_Or_Gpt4128KDeploymentName,
                            Messages =
                 {
                     new ChatRequestSystemMessage(systemPrompt),
                     new ChatRequestSystemMessage(sectionPrompt)
                 },
-                           MaxTokens = 8192,
+                           MaxTokens = 4000,
                            Temperature = 0.2f,
                            FrequencyPenalty = 0.5f
                        });

@@ -47,6 +47,18 @@ public class ServiceConfigurationOptions
     {
         public string GPT4128KModelDeploymentName { get; set; } = string.Empty;
         public string GPT432KModelDeploymentName { get; set; } = string.Empty;
+        public string GPT4oModelDeploymentName { get; set; } = string.Empty;
+
+        public string Gpt4o_Or_Gpt4128KDeploymentName
+        {
+            get
+            {
+                return string.IsNullOrWhiteSpace(GPT4oModelDeploymentName)
+                    ? GPT4128KModelDeploymentName
+                    : GPT4oModelDeploymentName;
+            }
+        }
+
         public string EmbeddingModelDeploymentName { get; set; } = string.Empty;
     }
 

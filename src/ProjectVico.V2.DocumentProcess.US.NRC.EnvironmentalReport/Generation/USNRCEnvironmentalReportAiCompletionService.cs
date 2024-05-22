@@ -328,7 +328,7 @@ public class USNRCEnvironmentalReportAiCompletionService : IAiCompletionService
                 new ChatRequestSystemMessage(systemPrompt),
                 new ChatRequestUserMessage(summarizePrompt)
             },
-            DeploymentName = _serviceConfigurationOptions.OpenAi.GPT4128KModelDeploymentName,
+            DeploymentName = _serviceConfigurationOptions.OpenAi.Gpt4o_Or_Gpt4128KDeploymentName,
             MaxTokens = 4000,
             Temperature = 0.5f,
             FrequencyPenalty = 0.5f

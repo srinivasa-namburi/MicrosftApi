@@ -61,7 +61,7 @@ public static class KernelMemoryExtensions
             Auth = AzureOpenAIConfig.AuthTypes.APIKey,
             Endpoint = openAiEndpoint,
             APIKey = openAiKey,
-            Deployment = serviceConfigurationOptions.OpenAi.GPT4128KModelDeploymentName,
+            Deployment = serviceConfigurationOptions.OpenAi.Gpt4o_Or_Gpt4128KDeploymentName,
             APIType = AzureOpenAIConfig.APITypes.ChatCompletion
         };
 

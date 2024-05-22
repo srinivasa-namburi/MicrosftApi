@@ -61,7 +61,7 @@ public static class SemanticKernelExtensions
         if (sp.GetService<IChatCompletionService>() == null)
         {
             builder.Services.AddScoped<IChatCompletionService>(service =>
-                new AzureOpenAIChatCompletionService(serviceConfigurationOptions.OpenAi.GPT4128KModelDeploymentName,
+                new AzureOpenAIChatCompletionService(serviceConfigurationOptions.OpenAi.Gpt4o_Or_Gpt4128KDeploymentName,
                     openAiPlanner, "openai-chatcompletion")
             );
         }
@@ -77,7 +77,7 @@ public static class SemanticKernelExtensions
         if (sp.GetService<ITextGenerationService>() == null)
         {
             builder.Services.AddScoped<ITextGenerationService>(service =>
-                new AzureOpenAITextGenerationService(serviceConfigurationOptions.OpenAi.GPT4128KModelDeploymentName,
+                new AzureOpenAITextGenerationService(serviceConfigurationOptions.OpenAi.Gpt4o_Or_Gpt4128KDeploymentName,
                     openAiPlanner, "openai-textgeneration")
             );
         }
