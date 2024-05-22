@@ -151,6 +151,7 @@ var setupManager = builder
     .WithReference(azureAiSearch)
     .WithReference(queueService)
     .WithReference(docGenSql)
+    .WithReference(redis)
     .WithConfigSection(envServiceConfigurationConfigurationSection);
 
 var workerScheduler = builder
@@ -161,6 +162,7 @@ var workerScheduler = builder
     .WithReference(blobStorage)
     .WithReference(docGenSql)
     .WithReference(queueService)
+    .WithReference(redis)
     .WithReference(apiMain);
 
 var workerDocumentGeneration = builder
@@ -173,6 +175,7 @@ var workerDocumentGeneration = builder
     .WithReference(blobStorage)
     .WithReference(docGenSql)
     .WithReference(queueService)
+    .WithReference(redis)
     .WithReference(apiMain)
     ;
 
@@ -186,6 +189,7 @@ var workerDocumentIngestion = builder
     .WithReference(blobStorage)
     .WithReference(docGenSql)
     .WithReference(queueService)
+    .WithReference(redis)
     .WithReference(apiMain);
 
 var workerChat = builder.AddProject<Projects.ProjectVico_V2_Worker_Chat>("worker-chat")
@@ -195,6 +199,7 @@ var workerChat = builder.AddProject<Projects.ProjectVico_V2_Worker_Chat>("worker
     .WithReference(blobStorage)
     .WithReference(docGenSql)
     .WithReference(queueService)
+    .WithReference(redis)
     .WithReference(apiMain);
 
 builder.Build().Run();

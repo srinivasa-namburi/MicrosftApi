@@ -23,7 +23,7 @@ public class ChatApiClient : WebAssemblyBaseServiceClient<ChatApiClient>, IChatA
     public async Task<List<ChatMessageDTO>> GetChatMessagesAsync(Guid conversationId, string documentProcessShortName)
     {
         var conversationIdString = conversationId.ToString();
-        var response = await SendGetRequestMessage($"/api/chat/{documentProcessShortName}{conversationIdString}");
+        var response = await SendGetRequestMessage($"/api/chat/{documentProcessShortName}/{conversationIdString}");
 
         // If we get a 404, it means that the conversation does not exist - return an empty list
         if (response?.StatusCode == HttpStatusCode.NotFound)

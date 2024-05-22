@@ -15,19 +15,23 @@ namespace ProjectVico.V2.Worker.Chat.Consumers;
 
 public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
 {
-    private readonly Kernel _kernel;
+    private Kernel _kernel;
     private readonly DocGenerationDbContext _dbContext;
     private readonly IMapper _mapper;
+    private readonly IServiceProvider _sp;
     private string _systemPrompt = "You are a friendly assistant answering questions posed by the user.";
 
     public ProcessChatMessageConsumer(
         Kernel kernel,
         DocGenerationDbContext dbContext,
-        IMapper mapper)
+        IMapper mapper,
+        IServiceProvider sp
+        )
     {
-        _kernel = kernel;
+        //_kernel = kernel;
         _dbContext = dbContext;
         _mapper = mapper;
+        _sp = sp;
     }
 
     public async Task Consume(ConsumeContext<ProcessChatMessage> context)
@@ -78,6 +82,11 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
         var conversation = await _dbContext.ChatConversations
             .FirstOrDefaultAsync(x => x.Id == userMessageDto.ConversationId);
 
+        // Set up Semantic Kernel for the right Document Process
+        using var scope = _sp.CreateScope();
+
+        _kernel = scope.ServiceProvider.GetRequiredKeyedService<Kernel>(conversation.DocumentProcessName + "-Kernel");
+        
         var systemPrompt = conversation!.SystemPrompt;
 
         var openAiSettings = new OpenAIPromptExecutionSettings()

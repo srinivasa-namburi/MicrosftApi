@@ -1,8 +1,11 @@
 ﻿using System.Reflection;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.SemanticKernel;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Interfaces;
+using ProjectVico.V2.Shared.Mappings;
+using ProjectVico.V2.Shared.Services;
 
 namespace ProjectVico.V2.Plugins.Shared
 {
@@ -10,6 +13,12 @@ namespace ProjectVico.V2.Plugins.Shared
     {
         public static IHostApplicationBuilder DynamicallyRegisterPlugins(this IHostApplicationBuilder builder, ServiceConfigurationOptions options)
         {
+
+            // Document Info Service and associated mappings
+            builder.Services.AddAutoMapper(typeof(DocumentProcessInfoProfile));
+            builder.Services.AddScoped<IDocumentProcessInfoService, DocumentProcessInfoService>();
+            builder.Services.AddScoped<IPromptInfoService, PromptInfoService>();
+
             // Define the base directory - assuming it's the current directory for simplicity
             string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
 
@@ -18,17 +27,21 @@ namespace ProjectVico.V2.Plugins.Shared
                 .Where(path => !path.Contains("ProjectVico.V2.Plugins.Shared"))
                 .ToArray();
             
-            // Filter for assemblies starting with 'ProjectVico.V2.DocumentProcess.' but not the shared one
+            // Filter for assemblies starting with 'ProjectVico.V2.DocumentProcess.' including the shared one
             string [] documentProcessAssemblyPaths = Directory.GetFiles(baseDirectory, "ProjectVico.V2.DocumentProcess.*.dll")
-                .Where(path => !path.Contains("ProjectVico.V2.DocumentProcess.Shared"))
                 .ToArray();
 
             // We only want to load Document Process assemblies that match Document Processes that are loaded in our configuration.
             // This is to prevent loading assemblies that are not needed.
             var configuredDocumentProcesses = options.ProjectVicoServices.DocumentProcesses.Select(documentProcess => documentProcess.Name).ToList();
-            documentProcessAssemblyPaths = documentProcessAssemblyPaths
-                .Where(path => configuredDocumentProcesses.Any(documentProcess => path.Contains(documentProcess))).ToArray();
             
+            // Get the paths of the assemblies in the configured Document Processes, and also register plugins from the ProjectVico.V2.DocumentProcess.Shared assembly
+            documentProcessAssemblyPaths = documentProcessAssemblyPaths
+                .Where(path => configuredDocumentProcesses.Any(documentProcess => path.Contains(documentProcess)))
+                .Concat(new[] { Path.Combine(baseDirectory, "ProjectVico.V2.DocumentProcess.Shared.dll") })
+                .ToArray();
+            
+
             builder.RegisterPluginsForAssemblies(pluginAssemblyPaths);
             builder.RegisterPluginsForAssemblies(documentProcessAssemblyPaths);
 
@@ -126,6 +139,14 @@ namespace ProjectVico.V2.Plugins.Shared
                 .Where(t => typeof(IPluginImplementation).IsAssignableFrom(t) && !t.IsAbstract && t.IsClass)
                 .ToList();
 
+            var sharedDocumentProcessPlugins = AppDomain.CurrentDomain.GetAssemblies()
+                .Where(x => x.FullName.StartsWith("ProjectVico.V2.DocumentProcess.Shared"))
+                .SelectMany(a => a.GetTypes())
+                .Where(t => typeof(IPluginImplementation).IsAssignableFrom(t) && !t.IsAbstract && t.IsClass)
+                .ToList();
+
+            documentProcessPlugins = documentProcessPlugins.Concat(sharedDocumentProcessPlugins).ToList();
+
             var allPlugins = basePlugins.Concat(documentProcessPlugins).ToList();
 
             foreach (var pluginType in allPlugins)
@@ -135,11 +156,27 @@ namespace ProjectVico.V2.Plugins.Shared
                 {
                     // Attempt to resolve the type from the service provider
                     var pluginInstance = serviceProvider.GetService(pluginType);
+
+                    // If the plugin instance is null, we will try to resolve for a Keyed service of the same time prefixed with the document process name
+                    if (pluginInstance == null)
+                    {
+                        try
+                        {
+                            pluginInstance = serviceProvider.GetRequiredKeyedService(pluginType,
+                                documentProcess.Name + "-" + pluginType.Name);
+                        }
+                        catch
+                        {
+                            // Don't do anything if the service is not found
+                        }
+                    }
+
                     if (pluginInstance != null)
                     {
                         // Add the plugin to the collection, excluding the specified type
                         kernelPlugins.AddFromObject(pluginInstance, "native_" + pluginType.Name);
                     }
+
                 }
             }
         }

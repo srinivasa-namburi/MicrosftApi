@@ -1,4 +1,4 @@
-﻿@page "/copilot/{ConversationIdString}/{DocumentProcessName}"
+﻿@page "/copilot/{DocumentProcessName}/{ConversationIdString}"
 @page "/copilot/{DocumentProcessName}"
 
 @inject NavigationManager Navigation
@@ -34,7 +34,7 @@
                 else
                 {
                     ConversationId = Guid.NewGuid();
-                    Navigation.NavigateTo($"/copilot/{ConversationId.ToString()}/{documentProcess.ShortName}");
+                    Navigation.NavigateTo($"/copilot/{documentProcess.ShortName}/{ConversationId.ToString()}");
                     _dpError = false;
                     await InvokeAsync(StateHasChanged);
 
