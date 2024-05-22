@@ -128,7 +128,7 @@ public static class KernelMemoryExtensions
             .WithAzureOpenAITextEmbeddingGeneration(openAiEmbeddingConfig)
             .WithAzureOpenAITextGeneration(openAiChatCompletionConfig)
             .WithCustomTextPartitioningOptions(textPartitioningOptions)
-            .WithAzureBlobsStorage(azureBlobsConfig)
+            .WithAzureBlobsDocumentStorage(azureBlobsConfig)
             .WithAzureAISearchMemoryDb(azureAiSearchConfig);
         
         // Add Logging

@@ -11,15 +11,9 @@
 	</ItemGroup>
 
 	<ItemGroup>
-
-		<PackageReference Include="Microsoft.SemanticKernel" Version="1.11.1" />
-		<PackageReference Include="Microsoft.SemanticKernel.Abstractions" Version="1.11.1" />
-		<PackageReference Include="Microsoft.SemanticKernel.Connectors.OpenAI" Version="1.11.1" />
-		<PackageReference Include="Microsoft.SemanticKernel.Core" Version="1.11.1" />
 		<PackageReference Include="Microsoft.SemanticKernel.Planners.Handlebars" Version="1.11.1-preview" />
 		<PackageReference Include="Microsoft.SemanticKernel.Planners.OpenAI" Version="1.11.1-preview" />
 		<PackageReference Include="Microsoft.SemanticKernel.Plugins.OpenApi" Version="1.11.1-alpha" />
-		<PackageReference Include="Microsoft.SemanticKernel.PromptTemplates.Handlebars" Version="1.11.1" />
 		<PackageReference Include="GeoJSON" Version="2.3.1" />
 		<PackageReference Include="Azure.Maps.Rendering" Version="1.0.0-beta.2" />
 		<PackageReference Include="Azure.Maps.Search" Version="1.0.0-beta.4" />
