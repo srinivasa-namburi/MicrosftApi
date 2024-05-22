@@ -35,12 +35,17 @@ public class ChatController : BaseController
         return Ok();
     }
 
-    [HttpGet("{conversationId}")]
+    [HttpGet("{documentProcessName}/{conversationId}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> GetChatMessages(Guid conversationId)
+    public async Task<IActionResult> GetChatMessages(string documentProcessName, Guid conversationId)
     {
+        if (conversationId == Guid.Empty || string.IsNullOrEmpty(documentProcessName))
+        {
+            return BadRequest("Document Process Name and Conversation ID are both required");
+        }
+
         var chatMessages = new List<ChatMessageDTO>();
 
         var chatMessageModels = await _dbContext.ChatMessages
@@ -55,7 +60,8 @@ public class ChatController : BaseController
             var conversation = new ChatConversation
             {
                 Id = conversationId,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow,
+                DocumentProcessName = documentProcessName
             };
 
             _dbContext.ChatConversations.Add(conversation);

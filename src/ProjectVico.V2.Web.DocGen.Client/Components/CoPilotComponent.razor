@@ -7,7 +7,6 @@
 
 @using Microsoft.AspNetCore.SignalR.Client
 @using ProjectVico.V2.Shared.Contracts.Chat
-@using ProjectVico.V2.Shared.Contracts.DTO
 @using ProjectVico.V2.Shared.Contracts.Messages.Chat.Commands
 @using ProjectVico.V2.Shared.Contracts.Messages.Chat.Events
 @using ProjectVico.V2.Shared.Enums
@@ -15,8 +14,12 @@
 @implements IAsyncDisposable
 
 @code {
+    [CascadingParameter] public AuthenticationState? AuthenticationState { get; set; }
+    [CascadingParameter] public HubConnection? HubConnection { get; set; }
+    
     [Parameter] public Guid? ConversationId { get; set; }
-    [Parameter] public EventCallback<Guid?> ConversationIdChanged { get; set; }
+    [Parameter] public string? DocumentProcessName { get; set; }
+
     /// <summary>
     /// This sets the ExternalReferenceId for the conversation. This is used to link the conversation to an external reference.
     /// Used in combination with the ExternalReferenceType parameter. null by default.
@@ -28,9 +31,6 @@
     /// It is false by default.
     /// </summary>
     [Parameter] public bool InternalConversationIdCreate { get; set; } = false;
-
-    [CascadingParameter] public AuthenticationState? AuthenticationState { get; set; }
-    [CascadingParameter] public HubConnection? HubConnection { get; set; }
 
     private MudTextField<string> _mudChatTextField;
     private string _chatTextInput = string.Empty;
@@ -96,12 +96,12 @@ else
             ConversationId = Guid.NewGuid();
         }
 
-        if (ConversationId.HasValue)
+        if (ConversationId.HasValue && !string.IsNullOrEmpty(DocumentProcessName))
         {
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
             var userInfo = UserInfo.FromClaimsPrincipal(authState.User);
             CurrentUser = await AuthorizationApiClient.GetUserInfoAsync(userInfo.UserId);
-            ChatMessages = await ChatApiClient.GetChatMessagesAsync(ConversationId.Value);
+            ChatMessages = await ChatApiClient.GetChatMessagesAsync(ConversationId.Value, DocumentProcessName);
             await StartHubConnections();
         }
     }
@@ -289,18 +289,6 @@ else
     private async Task ScrollMessagesToBottom()
     {
         await JSRuntime.InvokeVoidAsyncIgnoreErrors("scrollToBottom", _messagesContainer);
-    }
-
-    private async Task OnConversationIdChanged(Guid? conversationId)
-    {
-        if (conversationId.HasValue)
-        {
-            ConversationId = conversationId;
-            await ConversationIdChanged.InvokeAsync(conversationId);
-
-            ChatMessages = await ChatApiClient.GetChatMessagesAsync(conversationId.Value);
-            await InvokeAsync(StateHasChanged);
-        }
     }
 
     public async ValueTask DisposeAsync()

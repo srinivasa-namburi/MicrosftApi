@@ -1,11 +1,15 @@
-﻿@page "/copilot/{ConversationIdString}"
-@page "/copilot"
+﻿@page "/copilot/{ConversationIdString}/{DocumentProcessName}"
+@page "/copilot/{DocumentProcessName}"
 
 @inject NavigationManager Navigation
+@inject IDocumentProcessApiClient DocumentProcessApiClient
 
 @code {
     [Parameter] public string? ConversationIdString { get; set; }
+    [Parameter] public string? DocumentProcessName { get; set; }
     [Parameter] public Guid? ConversationId { get; set; }
+
+    private bool _dpError = true;
 
     protected override async Task OnInitializedAsync()
     {
@@ -15,8 +19,28 @@
         }
         else
         {
-            ConversationId = Guid.NewGuid();
-            Navigation.NavigateTo($"/copilot/{ConversationId}");
+            if (string.IsNullOrEmpty(DocumentProcessName))
+            {
+                _dpError = true;
+            }
+            else
+            {
+
+                var documentProcess = await DocumentProcessApiClient.GetDocumentProcessInfoByShortNameAsync(DocumentProcessName);
+                if (documentProcess == null)
+                {
+                    _dpError = true;
+                }
+                else
+                {
+                    ConversationId = Guid.NewGuid();
+                    Navigation.NavigateTo($"/copilot/{ConversationId.ToString()}/{documentProcess.ShortName}");
+                    _dpError = false;
+                    await InvokeAsync(StateHasChanged);
+
+                }
+            }
+            
         }
 
         if (ConversationId.HasValue)
@@ -26,4 +50,19 @@
     }
 }
 
-<CoPilotComponent @bind-ConversationId="ConversationId" InternalConversationIdCreate="false"/>
+@if (_dpError)
+{
+    <div class="alert alert-danger" role="alert">
+        <strong>Loading</strong>
+        @if (string.IsNullOrEmpty(DocumentProcessName))
+        {
+            <span>Document Process not found</span>
+        }
+    </div>
+}
+else
+{
+    <CoPilotComponent ConversationId="@ConversationId" 
+                      DocumentProcessName="@DocumentProcessName" 
+                      InternalConversationIdCreate="false"/>
+}
