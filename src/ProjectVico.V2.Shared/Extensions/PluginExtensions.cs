@@ -118,67 +118,48 @@ namespace ProjectVico.V2.Plugins.Shared
         }
 
         public static void AddSharedAndDocumentProcessPluginsToPluginCollection(
-            this KernelPluginCollection kernelPlugins, 
+            this KernelPluginCollection kernelPlugins,
             IServiceProvider serviceProvider,
             DocumentProcessOptions documentProcess,
             List<Type>? excludedPluginTypes = null)
         {
-            // Load all types that implement IPluginImplementation from Plugins assemblies.
-            // Note that this scans for assemblies that have already been loaded - so RegisterPluginsForAssemblies should be called first
-            
-            var basePlugins = AppDomain.CurrentDomain.GetAssemblies()
-                .Where(x=>
-                    x.FullName.StartsWith("ProjectVico.V2.Plugins"))
-                .SelectMany(a => a.GetTypes())
-                .Where(t => typeof(IPluginImplementation).IsAssignableFrom(t) && !t.IsAbstract && t.IsClass)
-                .ToList();
+            var basePlugins = GetPluginsByAssemblyPrefix("ProjectVico.V2.Plugins");
+            var documentProcessPlugins = GetPluginsByAssemblyPrefix("ProjectVico.V2.DocumentProcess." + documentProcess.Name);
+            var sharedDocumentProcessPlugins = GetPluginsByAssemblyPrefix("ProjectVico.V2.DocumentProcess.Shared");
 
-            var documentProcessPlugins = AppDomain.CurrentDomain.GetAssemblies()
-                .Where(x=> x.FullName.StartsWith("ProjectVico.V2.DocumentProcess."+documentProcess.Name))
-                .SelectMany(a => a.GetTypes())
-                .Where(t => typeof(IPluginImplementation).IsAssignableFrom(t) && !t.IsAbstract && t.IsClass)
-                .ToList();
-
-            var sharedDocumentProcessPlugins = AppDomain.CurrentDomain.GetAssemblies()
-                .Where(x => x.FullName.StartsWith("ProjectVico.V2.DocumentProcess.Shared"))
-                .SelectMany(a => a.GetTypes())
-                .Where(t => typeof(IPluginImplementation).IsAssignableFrom(t) && !t.IsAbstract && t.IsClass)
-                .ToList();
-
-            documentProcessPlugins = documentProcessPlugins.Concat(sharedDocumentProcessPlugins).ToList();
-
-            var allPlugins = basePlugins.Concat(documentProcessPlugins).ToList();
+            var allPlugins = basePlugins.Concat(documentProcessPlugins).Concat(sharedDocumentProcessPlugins).ToList();
 
             foreach (var pluginType in allPlugins)
             {
-                // Ensure the type is not on the exclusionList
-                if (excludedPluginTypes == null || !excludedPluginTypes.Contains(pluginType))
+                if (excludedPluginTypes != null && excludedPluginTypes.Contains(pluginType))
                 {
-                    // Attempt to resolve the type from the service provider
-                    var pluginInstance = serviceProvider.GetService(pluginType);
+                    continue;
+                }
 
-                    // If the plugin instance is null, we will try to resolve for a Keyed service of the same time prefixed with the document process name
-                    if (pluginInstance == null)
-                    {
-                        try
-                        {
-                            pluginInstance = serviceProvider.GetRequiredKeyedService(pluginType,
-                                documentProcess.Name + "-" + pluginType.Name);
-                        }
-                        catch
-                        {
-                            // Don't do anything if the service is not found
-                        }
-                    }
+                try
+                {
+                    var pluginInstance =
+                        serviceProvider.GetService(pluginType) ??
+                        serviceProvider.GetRequiredKeyedService(pluginType,
+                            documentProcess.Name + "-" + pluginType.Name);
 
-                    if (pluginInstance != null)
-                    {
-                        // Add the plugin to the collection, excluding the specified type
-                        kernelPlugins.AddFromObject(pluginInstance, "native_" + pluginType.Name);
-                    }
-
+                    kernelPlugins.AddFromObject(pluginInstance, "native_" + pluginType.Name);
+                }
+                catch (Exception ex)
+                {
+                    // Handle or log exceptions as appropriate
+                    Console.WriteLine($"Error loading assembly or registering plugins: {ex.Message}");
                 }
             }
+        }
+
+        private static List<Type> GetPluginsByAssemblyPrefix(string assemblyPrefix)
+        {
+            return AppDomain.CurrentDomain.GetAssemblies()
+                .Where(x => x.FullName.StartsWith(assemblyPrefix))
+                .SelectMany(a => a.GetTypes())
+                .Where(t => typeof(IPluginImplementation).IsAssignableFrom(t) && !t.IsAbstract && t.IsClass)
+                .ToList();
         }
     }
 }
