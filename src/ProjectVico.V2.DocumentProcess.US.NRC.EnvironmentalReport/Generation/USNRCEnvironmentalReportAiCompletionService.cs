@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 using ProjectVico.V2.DocumentProcess.Shared.Generation;
+using ProjectVico.V2.DocumentProcess.Shared.Plugins.KmDocs;
 using ProjectVico.V2.Plugins.Shared;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Contracts;
@@ -72,7 +73,9 @@ public class USNRCEnvironmentalReportAiCompletionService : IAiCompletionService
     {
         var plugins = new KernelPluginCollection();
         var documentProcess = _serviceConfigurationOptions.ProjectVicoServices.DocumentProcesses.Single(x => x.Name == ProcessName);
-        plugins.AddSharedAndDocumentProcessPluginsToPluginCollection(_sp, documentProcess);
+
+        plugins.AddSharedAndDocumentProcessPluginsToPluginCollection(_sp, documentProcess!,
+            excludedPluginTypes: [typeof(KmDocsPlugin)]);
         
         _sk = new Kernel(_sp, plugins);
 

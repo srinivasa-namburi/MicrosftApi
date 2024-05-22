@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 using ProjectVico.V2.DocumentProcess.Shared.Generation;
+using ProjectVico.V2.DocumentProcess.Shared.Plugins.KmDocs;
 using ProjectVico.V2.Plugins.Shared;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Contracts;
@@ -70,12 +71,14 @@ public class BelgiumNuclearLicensingDSARAiCompletionService : IAiCompletionServi
     {
         var plugins = new KernelPluginCollection();
         var documentProcess = _serviceConfigurationOptions.ProjectVicoServices.DocumentProcesses.Single(x => x.Name == "Belgium.NuclearLicensing.DSAR");
-        plugins.AddSharedAndDocumentProcessPluginsToPluginCollection(_sp, documentProcess);
         
+        plugins.AddSharedAndDocumentProcessPluginsToPluginCollection(_sp, documentProcess!,
+            excludedPluginTypes: [typeof(KmDocsPlugin)]);
+                    
         _sk = new Kernel(_sp, plugins);
 
         var sectionExample = new StringBuilder();
-        var firstDocuments = documents.Take(3).ToList();
+        var firstDocuments = documents.Take(15).ToList();
         
         foreach (var document in firstDocuments)
         {

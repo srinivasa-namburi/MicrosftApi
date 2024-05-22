@@ -75,7 +75,9 @@ public class MultiPassLargeReceiveContextAiCompletionService : IAiCompletionServ
         var documentProcess = _serviceConfigurationOptions.ProjectVicoServices.DocumentProcesses
             .Single(x => x.Name == "US.NuclearLicensing");
 
-        plugins.AddSharedAndDocumentProcessPluginsToPluginCollection(_sp, documentProcess, new List<Type>(){typeof(NRCDocumentsPlugin)});
+        plugins.AddSharedAndDocumentProcessPluginsToPluginCollection(_sp, documentProcess, 
+            excludedPluginTypes: [typeof(NRCDocumentsPlugin)]);
+
         _sk = new Kernel(_sp, plugins);
 
         var sectionExample = new StringBuilder();
