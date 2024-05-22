@@ -8,8 +8,7 @@ $containerApps = @{
     "worker-chat" = 4
     "web-docgen" = 2
     "api-main" = 2
-    "redis" = 1
-    "worker-documentingestion" = 1
+    "worker-documentingestion" = 4
     "worker-scheduler" = 1
     "worker-setupmanager" = 1
 }
@@ -25,6 +24,3 @@ foreach ($app in $containerApps.Keys) {
     Write-Host "Scaling $app to $instanceCount instances..."
     az containerapp update -n $app -g $resourceGroup --min-replicas $instanceCount --max-replicas $instanceCount > $null
 }
-
-Write-Host "Scaling REDIS CPU to 1 core and 4Gi memory..."
-az containerapp update -n redis -g $resourceGroup --cpu 1 --memory 4Gi > $null

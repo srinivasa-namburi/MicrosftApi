@@ -28,9 +28,8 @@ $indexSchemaFile = Get-Content -Raw -Path $selectedIndexNameFile
 $selectedIndexName = ($indexSchemaFile | ConvertFrom-Json).name
 
 # Createing the Index
-Write-Host "Creating Target Search Index."
-
-$result = Invoke-RestMethod  -Uri $uri -Method POST -Body $indexSchemaFile -Headers $headers -ContentType "application/json"
+#Write-Host "Creating Target Search Index."
+#$result = Invoke-RestMethod  -Uri $uri -Method POST -Body $indexSchemaFile -Headers $headers -ContentType "application/json"
 
 # Uploading documents
 Write-Host "Starting to upload index documents from saved JSON files."
