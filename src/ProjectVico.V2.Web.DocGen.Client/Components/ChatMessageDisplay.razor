@@ -1,10 +1,54 @@
 ﻿@using ProjectVico.V2.Shared.Contracts.Chat
-@using ProjectVico.V2.Shared.Contracts.DTO
 @using ProjectVico.V2.Shared.Enums
+@using System.Timers
 
 @code {
     [Parameter] public ChatMessageDTO ChatMessage { get; set; }
     [Parameter] public UserInfoDTO CurrentUser { get; set; }
+
+    private Timer? _timer;
+    private bool _showProgressCircular = true;
+
+    protected override void OnInitialized()
+    {
+        // The timer is used to hide the progress circular after 5 seconds
+        // This call in OnInitialized is necessary to ensure the timer is started when the component is first rendered
+        InitializeOrRestartTimer();
+    }
+
+    protected override void OnParametersSet()
+    {
+        // The timer is used to hide the progress circular after 5 seconds
+        // This call in OnParametersSet is necessary to ensure the timer is restarted when the component is re-rendered due
+        // to updates in the ChatMessage (which is streamed from the server)
+        InitializeOrRestartTimer();
+    }
+
+    private void InitializeOrRestartTimer()
+    {
+        if (ChatMessage.Source == ChatMessageSource.Assistant &&
+            ChatMessage.State == ChatMessageCreationState.InProgress)
+        {
+            _timer?.Dispose();
+
+            _timer = new Timer(5000); // 5 seconds
+            _timer.Elapsed += HideProgressCircular;
+            _timer.AutoReset = false;
+            _timer.Start();
+        }
+    }
+
+    private void HideProgressCircular(object? sender, ElapsedEventArgs e)
+    {
+        _showProgressCircular = false;
+        InvokeAsync(StateHasChanged);
+        _timer?.Dispose();
+    }
+
+    public void Dispose()
+    {
+        _timer?.Dispose();
+    }
 }
 
 
@@ -49,7 +93,7 @@
             <RenderMultilineText Value="@ChatMessage.Message" />
         </MudText>
     </MudCardContent>
-    @if (ChatMessage is { Source: ChatMessageSource.Assistant, State: ChatMessageCreationState.InProgress })
+    @if (ChatMessage is { Source: ChatMessageSource.Assistant, State: ChatMessageCreationState.InProgress } && _showProgressCircular)
     {
         <MudCardActions>
             <MudProgressCircular Indeterminate="true" Size="Size.Small" />

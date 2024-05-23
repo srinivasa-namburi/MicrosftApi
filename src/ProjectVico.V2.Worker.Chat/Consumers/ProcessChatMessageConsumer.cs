@@ -10,6 +10,9 @@ using ProjectVico.V2.Shared.Contracts.Messages.Chat.Events;
 using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Enums;
 using ProjectVico.V2.Shared.Models;
+using Azure.AI.OpenAI;
+using Microsoft.Extensions.Options;
+using ProjectVico.V2.Shared.Configuration;
 
 namespace ProjectVico.V2.Worker.Chat.Consumers;
 
@@ -19,19 +22,28 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
     private readonly DocGenerationDbContext _dbContext;
     private readonly IMapper _mapper;
     private readonly IServiceProvider _sp;
-    private string _systemPrompt = "You are a friendly assistant answering questions posed by the user.";
+    private readonly OpenAIClient _openAIClient;
+    private readonly string _deploymentName;
+    private readonly int _numberOfPasses = 4;
+    private const string CompleteTag = "[COMPLETE]";
+    private const int SlidingWindowSize = 500;  // Adjust the size if needed - must always be bigger than ChunkOutputSize
+    private const int ChunkOutputSize = 20; // Adjust the size if needed - must always be smaller than SlidingWindowSize
 
     public ProcessChatMessageConsumer(
         Kernel kernel,
         DocGenerationDbContext dbContext,
         IMapper mapper,
-        IServiceProvider sp
+        IServiceProvider sp,
+        [FromKeyedServices("openai-planner")] OpenAIClient openAIClient,
+        IOptions<ServiceConfigurationOptions> serviceConfigurationOptions
         )
     {
-        //_kernel = kernel;
+        _kernel = kernel;
         _dbContext = dbContext;
         _mapper = mapper;
         _sp = sp;
+        _openAIClient = openAIClient;
+        _deploymentName = serviceConfigurationOptions.Value.OpenAi.Gpt4o_Or_Gpt4128KDeploymentName;
     }
 
     public async Task Consume(ConsumeContext<ProcessChatMessage> context)
@@ -64,10 +76,6 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
 
     private async Task ProcessUserMessage(ChatMessageDTO userMessageDto, ConsumeContext<ProcessChatMessage> context)
     {
-        // Using Semantic Kernel, process the user message in a streaming fashion. For each update from the stream, publish an event with the 
-        // full response generated so far, as well as a message with just the latest update. The API will consume these events and update the
-        // chat interface with the full response and the latest update.
-
         var assistantMessageDto = new ChatMessageDTO()
         {
             ConversationId = userMessageDto.ConversationId,
@@ -76,185 +84,266 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
             ReplyToId = userMessageDto.Id,
             Id = Guid.NewGuid(),
             State = ChatMessageCreationState.InProgress
-            
         };
 
         var conversation = await _dbContext.ChatConversations
             .FirstOrDefaultAsync(x => x.Id == userMessageDto.ConversationId);
 
-        // Set up Semantic Kernel for the right Document Process
         using var scope = _sp.CreateScope();
 
         _kernel = scope.ServiceProvider.GetRequiredKeyedService<Kernel>(conversation.DocumentProcessName + "-Kernel");
-        
+
         var systemPrompt = conversation!.SystemPrompt;
 
+        var chatHistoryString = await CreateChatHistoryString(context, userMessageDto, 10);
+        var previousSummariesForConversationString = await GetSummariesConversationString(userMessageDto);
+
+        var chatResponses = new List<string>();
+        var lastPassResponse = new List<string>();
+        string originalPrompt = "";
+
+        for (int i = 0; i < _numberOfPasses; i++)
+        {
+            // Initial setup for each pass
+            string userPrompt;
+            if (i == 0)
+            {
+                userPrompt = BuildInitialUserPrompt(chatHistoryString, previousSummariesForConversationString, userMessageDto.Message);
+                originalPrompt = userPrompt; // Store the initial prompt for further passes
+            }
+            else
+            {
+                var summary = await SummarizeOutput(string.Join("\n\n", chatResponses));
+                userPrompt = BuildContinuingUserPrompt(summary, lastPassResponse, originalPrompt, i);
+            }
+
+            var responseDateSet = false;
+            var isComplete = false;
+            lastPassResponse.Clear(); // Clear lastPassResponse at the start of each pass
+
+            string responseLine = "";
+            await foreach (var stringUpdate in GetStreamingResponses(systemPrompt, userPrompt))
+            {
+                Console.Write(stringUpdate);
+                // Continue building the update until we reach a new line
+                responseLine += stringUpdate;
+
+                // If the response contains the [COMPLETE] tag, we can stop the conversation
+                if (responseLine.Contains(CompleteTag, StringComparison.InvariantCultureIgnoreCase))
+                {
+                    responseLine = responseLine.Replace(CompleteTag, "", StringComparison.InvariantCultureIgnoreCase);
+                    isComplete = true;
+                }
+
+                if (responseLine.Contains("\n") || isComplete)
+                {
+                    if (!responseDateSet)
+                    {
+                        assistantMessageDto.CreatedAt = DateTime.UtcNow;
+                        assistantMessageDto.State = ChatMessageCreationState.InProgress;
+                        responseDateSet = true;
+                    }
+
+                    assistantMessageDto.Message += responseLine;
+                    await context.Publish<ChatMessageResponseReceived>(new ChatMessageResponseReceived(assistantMessageDto.ConversationId, assistantMessageDto, responseLine));
+                    chatResponses.Add(responseLine);
+                    lastPassResponse.Add(responseLine);
+                    responseLine = "";
+
+                    if (isComplete)
+                    {
+                        break;
+                    }
+                }
+            }
+
+            if (isComplete)
+            {
+                break;
+            }
+        }
+
+        // Finalize the message state
+        assistantMessageDto.State = ChatMessageCreationState.Complete;
+        await context.Publish<ChatMessageResponseReceived>(new ChatMessageResponseReceived(userMessageDto.ConversationId, assistantMessageDto, assistantMessageDto.Message));
+        await StoreChatMessage(assistantMessageDto);
+    }
+
+
+    private string BuildInitialUserPrompt(string chatHistoryString, string previousSummariesForConversationString, string userMessage)
+    {
+        return $"""
+                The 5 last chat messages are between the [ChatHistory] and [/ChatHistory] tags.
+                A summary of full conversation history is between the [ChatHistorySummary] and [/ChatHistorySummary] tags.
+                The user's question is between the [User] and [/User] tags.
+
+                Please consider this chat history when responding to the user, specifically looking for any context that may be relevant to the user's question.
+
+                Respond with no decoration around your response, but use Markdown formatting.
+                Use any plugins or tools you need to answer the question.
+                 
+                [ChatHistory]
+                {chatHistoryString}
+                [/ChatHistory]
+
+                [ChatHistorySummary]
+                {previousSummariesForConversationString}
+                [/ChatHistorySummary]
+                 
+                [User]
+                {userMessage}
+                [/User]
+
+                This is the initial query in a potentially multi-pass conversation. You are not expected to return the full output in this pass.
+                However, please be as complete as possible in your response for this pass. For this task, including this initial query,
+                we can perform {_numberOfPasses} passes to form a complete response. This is the first pass. Note that you should only take
+                as many passes as you need.
+
+                If you believe the output for the whole chat message is complete (and this is the last needed pass),
+                please end your response with the following text on a new line by itself:
+                [COMPLETE]
+
+                Note - do NOT use that tag to delineate the end of a single response. It should only be used to indicate the end of the whole section
+                when no more passes are needed to finish the section output.
+                """;
+    }
+
+    private string BuildContinuingUserPrompt(string summary, List<string> lastPassResponse, string originalPrompt, int pass)
+    {
+        var lastResponse = string.Join("\n\n", lastPassResponse);
+
+        return $"""
+                 This is a continuing conversation.
+                 
+                 You're now going to continue the previous conversation, expanding on the previous output.
+                 A summary of the output up to now is here :
+                 {summary}
+                 
+                 As a reminder, this was the output of the last pass - DO NOT REPEAT THIS INFORMATION IN THIS PASS:
+                 {lastResponse}
+                 
+                 For the next step, you should continue the conversation. Here's the prompt you should use - but
+                 take care not to repeat the same information you've already provided (as detailed in the summary). Also ignore the initial 
+                 heading and first two paragraphs of the prompt detailing how to respond to the first pass query. 
+                 This is pass number {pass + 1} of {_numberOfPasses} - take that into account when you respond.
+                 
+                 Please start your response with content only - no ASSISTANT texts explaining your logic, tasks or reasoning.
+                 The output from the passes should be possible to tie together with no further parsing necessary.
+                 
+                 If you believe the output for the whole section is complete (and this is the last needed pass),
+                 please end your response with the following text on a
+                 new line by itself:
+                 [COMPLETE]
+                 
+                 Note - do NOT use that tag to delineate the end of a single response. It should only be used to indicate the end of the whole section
+                 when no more passes are needed to finish the section output.
+                 
+                 ORIGINAL PROMPT with examples:
+                 {originalPrompt}
+                 """;
+    }
+
+    private async IAsyncEnumerable<string> GetStreamingResponses(string systemPrompt, string userPrompt)
+    {
         var openAiSettings = new OpenAIPromptExecutionSettings()
         {
             ChatSystemPrompt = systemPrompt,
             ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions,
             MaxTokens = 3072,
-            Temperature = 0.7
+            Temperature = 0.5f,
+            FrequencyPenalty = 0.5f
         };
-
-        var updateBlock = "";
-        var responseDateSet = false;
-
-        var chatHistoryString = await CreateChatHistoryString(context, userMessageDto, 10);
-        var previousSummariesForConversationString = await GetSummariesConversationString(userMessageDto);
-
-        var userPrompt =
-            $"""
-            The 5 last chat messages are between the [ChatHistory] and [/ChatHistory] tags.
-            A summary of full conversation history is between the [ChatHistorySummary] and [/ChatHistorySummary] tags.
-            The user's question is between the [User] and [/User] tags.
-            
-            Please consider this chat history when responding to the user, specifically looking for any context that may be relevant to the user's question.
-            
-            Respond with no decoration around your response, but use Markdown formatting.
-            Use any plugins or tools you need to answer the question.
-             
-            [ChatHistory]
-            {chatHistoryString}
-            [/ChatHistory]
-            
-            [ChatHistorySummary]
-            {previousSummariesForConversationString}
-            [/ChatHistorySummary]
-             
-            [User]
-            {userMessageDto.Message}
-            [/User]
-            """;
 
         var kernelArguments = new KernelArguments(openAiSettings);
 
         await foreach (var response in _kernel.InvokePromptStreamingAsync(userPrompt, kernelArguments))
         {
-            // Publish event with full response so far every 20 characters
-            updateBlock += response;
-            if (updateBlock.Length > 20)
-            {
-                if (!responseDateSet)
-                {
-                    assistantMessageDto.CreatedAt = DateTime.UtcNow;
-                    assistantMessageDto.State = ChatMessageCreationState.InProgress;
-                    responseDateSet = true;
-                }
-                assistantMessageDto.Message += updateBlock;
-                await context.Publish<ChatMessageResponseReceived>(new ChatMessageResponseReceived(userMessageDto.ConversationId, assistantMessageDto, updateBlock));
-                updateBlock = "";
-            }
+            yield return response.ToString();
         }
+    }
 
-        // Publish event with full response so far with any remaining unprocessed characters after stream has ended
-        if (updateBlock.Length > 0)
+    private async Task<string> SummarizeOutput(string originalContent)
+    {
+        var systemPrompt = """
+                           [SYSTEM]: This is a chat between an intelligent AI bot and one or more human participants.
+                           The AI has been trained on GPT-4 LLM data through to April 2024.
+                           """;
+
+        var summarizePrompt = $"""
+                              When responding, do not include ASSISTANT: or initial greetings/information about the reply. 
+                              Only the content/summary, please. Please summarize the following text so it can form the basis of further 
+                              conversation: 
+                              
+                              {originalContent}
+                              """;
+
+        var chatCompletionOptions = new ChatCompletionsOptions
         {
-            assistantMessageDto.Message += updateBlock;
+            Messages =
+            {
+                new ChatRequestSystemMessage(systemPrompt),
+                new ChatRequestUserMessage(summarizePrompt)
+            },
+            DeploymentName = _deploymentName,
+            MaxTokens = 4000,
+            Temperature = 0.5f,
+            FrequencyPenalty = 0.5f
+        };
+
+        var chatStringBuilder = new StringBuilder();
+        await foreach (var chatUpdate in await _openAIClient.GetChatCompletionsStreamingAsync(chatCompletionOptions))
+        {
+            chatStringBuilder.Append(chatUpdate.ContentUpdate);
         }
 
-        // Set the message state to complete
-        assistantMessageDto.State = ChatMessageCreationState.Complete;
-
-        await context.Publish<ChatMessageResponseReceived>(new ChatMessageResponseReceived(userMessageDto.ConversationId, assistantMessageDto, updateBlock));
-
-        // Save Response Message to database
-        await StoreChatMessage(assistantMessageDto);
+        return chatStringBuilder.ToString();
     }
 
     private async Task<string> GetSummariesConversationString(ChatMessageDTO userMessageDto)
     {
-        // Get all summaries for the conversation
         var summaries = await _dbContext.ConversationSummaries
             .Where(x => x.ConversationId == userMessageDto.ConversationId)
             .OrderBy(x => x.CreatedAt)
             .ToListAsync();
 
-        // Create a string with all summaries - separate each with a newline
-        var summariesString = "";
-        foreach (var summary in summaries)
-        {
-            summariesString += summary.SummaryText + "\n";
-        }
-
+        var summariesString = string.Join("\n", summaries.Select(summary => summary.SummaryText));
         return summariesString;
     }
 
-
-    /// <summary>
-    /// Returns chat history, excluding the user message that triggered the assistant response
-    /// </summary>
-    /// <param name="context"></param>
-    /// <param name="userMessageDto"></param>
-    /// <param name="numberOfMessagesToInclude"></param>
-    /// <returns>A formatted string with chat history</returns>
     private async Task<string> CreateChatHistoryString(ConsumeContext<ProcessChatMessage> context,
         ChatMessageDTO userMessageDto, int numberOfMessagesToInclude = Int32.MaxValue)
     {
-        List<ChatMessage> chatHistory = new List<ChatMessage>();
-
-        if (numberOfMessagesToInclude == Int32.MaxValue)
-        {
-            chatHistory = await _dbContext.ChatMessages
-                .Where(x => x.ConversationId == userMessageDto.ConversationId && x.Id != userMessageDto.Id)
-                .OrderBy(x => x.CreatedAt)
-                .ToListAsync();
-        }
-        else
-        {
-            chatHistory = await _dbContext.ChatMessages
-                .Where(x => x.ConversationId == userMessageDto.ConversationId && x.Id != userMessageDto.Id)
-                .OrderByDescending(x => x.CreatedAt)
-                .Take(numberOfMessagesToInclude)
-                .OrderBy(x => x.CreatedAt)
-                .ToListAsync();
-        }
-
-
-        if (chatHistory.Count == 0)
-        {
-            return "";
-        }
+        var chatHistory = await _dbContext.ChatMessages
+            .Where(x => x.ConversationId == userMessageDto.ConversationId && x.Id != userMessageDto.Id)
+            .OrderByDescending(x => x.CreatedAt)
+            .Take(numberOfMessagesToInclude)
+            .OrderBy(x => x.CreatedAt)
+            .ToListAsync();
 
         var fullChatHistoryCount = _dbContext.ChatMessages.Count(x => x.ConversationId == userMessageDto.ConversationId);
-
         var chatHistoryString = CreateChatHistoryStringFromChatHistory(chatHistory);
-
-        // If the total chat history count (number of chat history items) for the conversation
-        // is greater than the number of messages to include, publish a message to the bus to
-        // potentially generate a summary of the chat history.
-        // We want to summarize any messages prior to the 5 latest messages in the returned chatHistory list
-
-        // We need to refresh the chat history list to get the 5 earliest messages
-        var fiveEarliestMessages = chatHistory.OrderBy(x => x.CreatedAt).Take(5).ToList();
-        // Get the date from the latest message in the list
-        var earliestMessage = fiveEarliestMessages.Last();
 
         if (fullChatHistoryCount > numberOfMessagesToInclude)
         {
+            var fiveEarliestMessages = chatHistory.OrderBy(x => x.CreatedAt).Take(5).ToList();
+            var earliestMessage = fiveEarliestMessages.Last();
             await context.Publish(new GenerateChatHistorySummary(userMessageDto.ConversationId, earliestMessage.CreatedAt));
         }
 
         return chatHistoryString;
     }
 
-
     private static string CreateChatHistoryStringFromChatHistory(List<ChatMessage> chatHistory)
     {
-        // Create a stringbuilder to store the chat history
         var chatHistoryBuilder = new StringBuilder();
 
-        // For each chat message, create a string with timestamp, user/assistant, and message. Separate by | character and end with a newline
         foreach (var chatMessage in chatHistory)
         {
             chatHistoryBuilder
-                .AppendLine("role:" + chatMessage.Source.ToString())
+                .AppendLine("role:" + chatMessage.Source)
                 .AppendLine("content:" + chatMessage.Message);
-
         }
 
-        // Output the chat history to a string variable
-        var chatHistoryString = chatHistoryBuilder.ToString();
-        return chatHistoryString;
+        return chatHistoryBuilder.ToString();
     }
 }

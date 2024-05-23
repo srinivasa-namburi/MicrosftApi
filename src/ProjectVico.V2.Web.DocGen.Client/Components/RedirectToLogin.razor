@@ -18,6 +18,16 @@
             // We expect this to happen because we are navigating away from the current page - so this happens twice.
             // We can ignore this exception.
         }
+        catch (NavigationException e)
+        {
+            // We expect this to happen because we are navigating away from the current page - so this happens twice.
+            // We can ignore this exception.
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e.Message);
+        }
+        
     }
 
 }
