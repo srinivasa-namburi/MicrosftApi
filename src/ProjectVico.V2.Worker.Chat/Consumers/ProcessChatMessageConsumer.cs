@@ -51,7 +51,15 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
     {
         var userMessageDto = context.Message.ChatMessageDto;
 
-        await StoreChatMessage(userMessageDto);
+        try
+        {
+            await StoreChatMessage(userMessageDto);
+        }
+        catch (OperationCanceledException e)
+        {
+            // If the message is a duplicate, log the error and exit (as a successful run)
+            return;
+        }
         await ProcessUserMessage(userMessageDto, context);
     }
 
@@ -80,9 +88,10 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
         {
             // If it's a foreign key constraint violation, log the error and exit (as a successful run)
             // This is likely a duplicate message being processed
-            if (e.InnerException is SqlException sqlException && sqlException.Number == 547)
+            if (e.InnerException is SqlException sqlException && (sqlException.Number == 547 || sqlException.Number == 2627))
             {
-                return;
+                throw new OperationCanceledException("Duplicate message detected", e);
+
             }
         }
     }
@@ -115,6 +124,8 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
         var lastPassResponse = new List<string>();
         string originalPrompt = "";
 
+        var fullOutput = new StringBuilder();
+
         for (int i = 0; i < _numberOfPasses; i++)
         {
             // Initial setup for each pass
@@ -126,7 +137,8 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
             }
             else
             {
-                var summary = await SummarizeOutput(string.Join("\n\n", chatResponses));
+                //var summary = await SummarizeOutput(string.Join("\n\n", chatResponses));
+                var summary = string.Join("\n\n", chatResponses);
                 userPrompt = BuildContinuingUserPrompt(summary, lastPassResponse, originalPrompt, i);
             }
 
@@ -198,7 +210,7 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
             }
 
             // Process the last remaining line
-            if (previousLine != null && !isComplete)
+            if (previousLine != null)
             {
                 if (previousLine.Contains(CompleteTag, StringComparison.InvariantCultureIgnoreCase))
                 {
@@ -213,23 +225,20 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
             {
                 var remainingContent = outputBuffer.ToString();
                 outputBuffer.Clear();
-                
 
                 // While the last character is a \n or \, remove it
-                while (remainingContent.EndsWith("\n") || 
-                    remainingContent.EndsWith("\\") || 
+                while (remainingContent.EndsWith("\n") ||
+                    remainingContent.EndsWith("\\") ||
                     remainingContent.EndsWith("\\n") ||
                     remainingContent.EndsWith(" "))
                 {
                     remainingContent = remainingContent.Substring(0, remainingContent.Length - 1);
                 }
-                
+
                 assistantMessageDto.Message += remainingContent;
                 await context.Publish<ChatMessageResponseReceived>(new ChatMessageResponseReceived(assistantMessageDto.ConversationId, assistantMessageDto, remainingContent));
                 chatResponses.Add(remainingContent);
                 lastPassResponse.Add(remainingContent);
-
-                isComplete = true;
             }
 
             if (isComplete)
@@ -240,12 +249,17 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
 
         // Finalize the message state
         assistantMessageDto.State = ChatMessageCreationState.Complete;
+        try
+        {
+            await StoreChatMessage(assistantMessageDto);
+        }
+        catch (OperationCanceledException)
+        {
+            // If the message is a duplicate, log the error and exit (as a successful run)
+            return;
+        }
         await context.Publish<ChatMessageResponseReceived>(new ChatMessageResponseReceived(userMessageDto.ConversationId, assistantMessageDto, assistantMessageDto.Message));
-        await StoreChatMessage(assistantMessageDto);
     }
-
-
-
 
     private string BuildInitialUserPrompt(string chatHistoryString, string previousSummariesForConversationString, string userMessage)
     {
@@ -271,9 +285,14 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
                 {userMessage}
                 [/User]
 
-                This is the initial query in a potentially multi-pass conversation. You are not expected to return the full output in this pass.
-                However, please be as complete as possible in your response for this pass. For this task, including this initial query,
-                we can perform a total of {_numberOfPasses} passes to form a complete response. This is the first pass. Note that you should only take
+                This is the initial query in a potentially multi-pass conversation. If you find it sufficient, you can return the whole
+                response in this pass. If no more tokens are available for output, end this pass with no stop tag. That will signal that 
+                the process should continue to the next pass.
+
+                Try to write complete paragraphs instead of single sentences under a heading.
+
+                Please be as verbose as neccessary in in your response for this pass. For this query in total, including this initial query,
+                we can perform a total of {_numberOfPasses} passes to form a complete response. This is the first pass. Note that you should only use
                 as many passes as you need. If you believe you have fully answered the user's query (and this is the last needed pass),
                 please end your output with the following text surrounded by new lines:
                 
@@ -283,6 +302,12 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
 
                 Note - do NOT use that tag to delineate the end of a single response. It should only be used to indicate the end of the whole section
                 when no more passes are needed to finish the section output.
+
+                Also - do NOT use any special tags to delineate the end of a single response when you expect the output to continue in further passes.
+                The system will pass your response into the next pass automatically, ensuring continuity.
+
+                Please don't end in the middle of a sentence or thought. If you need to continue in the next pass, end at a natural break in the text
+                such as a line break, paragraph break or period. The next pass will pick up where you left off, but start with a new line character. ('\n')
                 """;
     }
 
@@ -294,16 +319,19 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
                  This is a continuing conversation.
                  
                  You're now going to continue the previous conversation, expanding on the previous output.
-                 A summary of the output up to now is here :
+                 
+                 This is the full output up to now is here between the [SUMMARY] tags:
+
+                 [SUMMARY]
                  {summary}
-                 
-                 As a reminder, this was the output of the last pass - DO NOT REPEAT THIS INFORMATION IN THIS PASS:
-                 {lastResponse}
-                 
-                 For the next step, you should continue the conversation. Here's the prompt you should use - but
-                 take care not to repeat the same information you've already provided (as detailed in the summary). Also ignore the initial 
+                 [/SUMMARY]
+                            
+                 For the next step, you should continue the conversation. The prompt you should use is listed in the [ORIGINALPROMPT] tags below - 
+                 but take care not to repeat the same information you've already provided (as detailed in the full output above.). Also ignore the initial 
                  heading and first two paragraphs of the prompt detailing how to respond to the first pass query. 
                  This is pass number {pass + 1} of {_numberOfPasses} - take that into account when you respond.
+
+                 BEGIN your output by using a new line character. ('\n').
                  
                  Please start your response with content only - no ASSISTANT texts explaining your logic, tasks or reasoning.
                  The output from the passes should be possible to tie together with no further parsing necessary.
@@ -319,7 +347,11 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
                  when no more passes are needed to finish the section output.
                  
                  ORIGINAL PROMPT with examples:
+
+                 [ORIGINALPROMPT]
                  {originalPrompt}
+                 [/ORIGINALPROMPT]
+
                  """;
     }
 
@@ -365,7 +397,7 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
                 new ChatRequestUserMessage(summarizePrompt)
             },
             DeploymentName = _deploymentName,
-            MaxTokens = 4000,
+            MaxTokens = 1000,
             Temperature = 0.5f,
             FrequencyPenalty = 0.5f
         };
