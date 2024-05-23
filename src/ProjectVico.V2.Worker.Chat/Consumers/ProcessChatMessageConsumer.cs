@@ -13,6 +13,7 @@ using ProjectVico.V2.Shared.Models;
 using Azure.AI.OpenAI;
 using Microsoft.Extensions.Options;
 using ProjectVico.V2.Shared.Configuration;
+using Microsoft.Data.SqlClient;
 
 namespace ProjectVico.V2.Worker.Chat.Consumers;
 
@@ -71,7 +72,19 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
         }
 
         _dbContext.ChatMessages.Add(chatMessage);
-        await _dbContext.SaveChangesAsync();
+        try
+        {
+            await _dbContext.SaveChangesAsync();
+        }
+        catch (DbUpdateException e)
+        {
+            // If it's a foreign key constraint violation, log the error and exit (as a successful run)
+            // This is likely a duplicate message being processed
+            if (e.InnerException is SqlException sqlException && sqlException.Number == 547)
+            {
+                return;
+            }
+        }
     }
 
     private async Task ProcessUserMessage(ChatMessageDTO userMessageDto, ConsumeContext<ProcessChatMessage> context)
@@ -121,40 +134,102 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
             var isComplete = false;
             lastPassResponse.Clear(); // Clear lastPassResponse at the start of each pass
 
-            string responseLine = "";
+            var lineBuffer = new StringBuilder();
+            var outputBuffer = new StringBuilder();
+            string previousLine = null;
+
             await foreach (var stringUpdate in GetStreamingResponses(systemPrompt, userPrompt))
             {
-                Console.Write(stringUpdate);
-                // Continue building the update until we reach a new line
-                responseLine += stringUpdate;
+                lineBuffer.Append(stringUpdate);
 
-                // If the response contains the [COMPLETE] tag, we can stop the conversation
-                if (responseLine.Contains(CompleteTag, StringComparison.InvariantCultureIgnoreCase))
+                while (lineBuffer.ToString().Contains("\n"))
                 {
-                    responseLine = responseLine.Replace(CompleteTag, "", StringComparison.InvariantCultureIgnoreCase);
-                    isComplete = true;
-                }
+                    var line = lineBuffer.ToString();
+                    var newLineIndex = line.IndexOf("\n");
+                    var currentLine = line.Substring(0, newLineIndex + 1);
 
-                if (responseLine.Contains("\n") || isComplete)
-                {
-                    if (!responseDateSet)
+                    lineBuffer.Remove(0, newLineIndex + 1);
+
+                    // Check for the complete tag in the current line
+                    if (currentLine.Contains(CompleteTag, StringComparison.InvariantCultureIgnoreCase))
                     {
-                        assistantMessageDto.CreatedAt = DateTime.UtcNow;
-                        assistantMessageDto.State = ChatMessageCreationState.InProgress;
-                        responseDateSet = true;
+                        isComplete = true;
+                        currentLine = currentLine.Replace(CompleteTag, "", StringComparison.InvariantCultureIgnoreCase);
                     }
 
-                    assistantMessageDto.Message += responseLine;
-                    await context.Publish<ChatMessageResponseReceived>(new ChatMessageResponseReceived(assistantMessageDto.ConversationId, assistantMessageDto, responseLine));
-                    chatResponses.Add(responseLine);
-                    lastPassResponse.Add(responseLine);
-                    responseLine = "";
+                    // Add previous line to output buffer if available
+                    if (previousLine != null)
+                    {
+                        outputBuffer.Append(previousLine);
+                    }
+
+                    // Set the current line as previous line
+                    previousLine = currentLine;
+
+                    // Output every 30 characters from the output buffer
+                    while (outputBuffer.Length >= 30)
+                    {
+                        var outputSegment = outputBuffer.ToString(0, 30);
+                        outputBuffer.Remove(0, 30);
+
+                        if (!responseDateSet)
+                        {
+                            assistantMessageDto.CreatedAt = DateTime.UtcNow;
+                            assistantMessageDto.State = ChatMessageCreationState.InProgress;
+                            responseDateSet = true;
+                        }
+
+                        assistantMessageDto.Message += outputSegment;
+                        await context.Publish<ChatMessageResponseReceived>(new ChatMessageResponseReceived(assistantMessageDto.ConversationId, assistantMessageDto, outputSegment));
+                        chatResponses.Add(outputSegment);
+                        lastPassResponse.Add(outputSegment);
+                    }
 
                     if (isComplete)
                     {
                         break;
                     }
                 }
+
+                if (isComplete)
+                {
+                    break;
+                }
+            }
+
+            // Process the last remaining line
+            if (previousLine != null && !isComplete)
+            {
+                if (previousLine.Contains(CompleteTag, StringComparison.InvariantCultureIgnoreCase))
+                {
+                    previousLine = previousLine.Replace(CompleteTag, "", StringComparison.InvariantCultureIgnoreCase);
+                    isComplete = true;
+                }
+                outputBuffer.Append(previousLine);
+            }
+
+            // Process any remaining content in the output buffer
+            if (outputBuffer.Length > 0)
+            {
+                var remainingContent = outputBuffer.ToString();
+                outputBuffer.Clear();
+                
+
+                // While the last character is a \n or \, remove it
+                while (remainingContent.EndsWith("\n") || 
+                    remainingContent.EndsWith("\\") || 
+                    remainingContent.EndsWith("\\n") ||
+                    remainingContent.EndsWith(" "))
+                {
+                    remainingContent = remainingContent.Substring(0, remainingContent.Length - 1);
+                }
+                
+                assistantMessageDto.Message += remainingContent;
+                await context.Publish<ChatMessageResponseReceived>(new ChatMessageResponseReceived(assistantMessageDto.ConversationId, assistantMessageDto, remainingContent));
+                chatResponses.Add(remainingContent);
+                lastPassResponse.Add(remainingContent);
+
+                isComplete = true;
             }
 
             if (isComplete)
@@ -168,6 +243,8 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
         await context.Publish<ChatMessageResponseReceived>(new ChatMessageResponseReceived(userMessageDto.ConversationId, assistantMessageDto, assistantMessageDto.Message));
         await StoreChatMessage(assistantMessageDto);
     }
+
+
 
 
     private string BuildInitialUserPrompt(string chatHistoryString, string previousSummariesForConversationString, string userMessage)
@@ -196,12 +273,13 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
 
                 This is the initial query in a potentially multi-pass conversation. You are not expected to return the full output in this pass.
                 However, please be as complete as possible in your response for this pass. For this task, including this initial query,
-                we can perform {_numberOfPasses} passes to form a complete response. This is the first pass. Note that you should only take
-                as many passes as you need.
-
-                If you believe the output for the whole chat message is complete (and this is the last needed pass),
-                please end your response with the following text on a new line by itself:
+                we can perform a total of {_numberOfPasses} passes to form a complete response. This is the first pass. Note that you should only take
+                as many passes as you need. If you believe you have fully answered the user's query (and this is the last needed pass),
+                please end your output with the following text surrounded by new lines:
+                
+                \n
                 [COMPLETE]
+                \n
 
                 Note - do NOT use that tag to delineate the end of a single response. It should only be used to indicate the end of the whole section
                 when no more passes are needed to finish the section output.
@@ -231,10 +309,12 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
                  The output from the passes should be possible to tie together with no further parsing necessary.
                  
                  If you believe the output for the whole section is complete (and this is the last needed pass),
-                 please end your response with the following text on a
-                 new line by itself:
-                 [COMPLETE]
+                 please end your output with the following text surrounded by new lines:
                  
+                 \n
+                 [COMPLETE]
+                 \n
+       
                  Note - do NOT use that tag to delineate the end of a single response. It should only be used to indicate the end of the whole section
                  when no more passes are needed to finish the section output.
                  
