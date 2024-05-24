@@ -13,10 +13,32 @@
 @using ProjectVico.V2.Web.Shared.Auth
 @implements IAsyncDisposable
 
+<style>
+    .chat-container {
+        display: flex;
+        flex-direction: column;
+        height: 80vh;
+    }
+
+    .messages-container {
+        flex: 0 0 85%;
+        border: 3px solid #ddd;
+        padding: 10px;
+        overflow-y: auto;
+    }
+
+    .input-container {
+        flex: 0 0 15%;
+        display: flex;
+        align-items: center;
+        padding-top: 10px;
+    }
+</style>
+
 @code {
     [CascadingParameter] public AuthenticationState? AuthenticationState { get; set; }
     [CascadingParameter] public HubConnection? HubConnection { get; set; }
-    
+
     [Parameter] public Guid? ConversationId { get; set; }
     [Parameter] public string? DocumentProcessName { get; set; }
 
@@ -45,26 +67,25 @@
 
 @if (ConversationId.HasValue)
 {
-    <MudGrid>
-        <MudItem xs="12">
-            <div @ref="_messagesContainer" style="border: 3px solid #ddd; padding: 10px; overflow-y: auto; height: 550px;">
-                <MudList @ref="_mudMessageList" Dense="true" DisablePadding="true">
-                    @foreach (var chatMessage in ChatMessages.OrderBy(x => x.CreatedAt))
-                    {
-                        <MudListItem>
-                            <ChatMessageDisplay ChatMessage="@chatMessage" CurrentUser="CurrentUser" />
-                        </MudListItem>
-                    }
-                </MudList>
-            </div>
+    <div class="chat-container">
+        <div @ref="_messagesContainer" class="messages-container">
+            <MudList @ref="_mudMessageList" Dense="true" DisablePadding="true">
+                @foreach (var chatMessage in ChatMessages.OrderBy(x => x.CreatedAt))
+                {
+                    <MudListItem>
+                        <ChatMessageDisplay ChatMessage="@chatMessage" CurrentUser="CurrentUser" />
+                    </MudListItem>
+                }
+            </MudList>
+        </div>
 
-            @if (CurrentUser == null)
-            {
-                <MudText>Waiting for user information to load...</MudText>
-            }
-            else
-            {
-
+        @if (CurrentUser == null)
+        {
+            <MudText>Waiting for user information to load...</MudText>
+        }
+        else
+        {
+            <div class="input-container">
                 <MudTextField @ref="_mudChatTextField" T="string"
                               OnKeyDown="OnChatTextKeyDown"
                               ValueChanged="OnChatTextFieldUpdated"
@@ -77,10 +98,9 @@
                               AdornmentIcon="@Icons.Material.Filled.Send"
                               AdornmentColor="Color.Primary"
                               Adornment="Adornment.End" />
-            }
-
-        </MudItem>
-    </MudGrid>
+            </div>
+        }
+    </div>
 }
 else
 {
@@ -227,19 +247,19 @@ else
         if (_chatTextLastKeyWasEnter)
         {
             var chatMessage = new ChatMessageDTO
-            {
-                ConversationId = ConversationId!.Value,
-                Id = Guid.NewGuid(),
-                Message = chatText,
-                CreatedAt = DateTime.UtcNow,
-                Source = ChatMessageSource.User,
-                UserId = CurrentUser!.ProviderSubjectId,
-                UserFullName = CurrentUser!.FullName
-            };
+                {
+                    ConversationId = ConversationId!.Value,
+                    Id = Guid.NewGuid(),
+                    Message = chatText,
+                    CreatedAt = DateTime.UtcNow,
+                    Source = ChatMessageSource.User,
+                    UserId = CurrentUser!.ProviderSubjectId,
+                    UserFullName = CurrentUser!.FullName
+                };
 
             await ProcessMessage(chatMessage);
         }
-       
+
     }
 
     private async Task ProcessOtherUserMessage(ChatMessageDTO chatMessageDto)
