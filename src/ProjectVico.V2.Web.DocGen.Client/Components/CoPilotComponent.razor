@@ -17,18 +17,19 @@
     .chat-container {
         display: flex;
         flex-direction: column;
-        height: 80vh;
+        height: calc(90vh - 120px); /* Adjust 20px based on your specific padding/margins */
+        margin: 10px; /* Adjust based on your specific layout needs */
     }
 
     .messages-container {
-        flex: 0 0 85%;
+        flex: 1 1 auto;
         border: 3px solid #ddd;
         padding: 10px;
         overflow-y: auto;
     }
 
     .input-container {
-        flex: 0 0 15%;
+        flex: 0 0 auto;
         display: flex;
         align-items: center;
         padding-top: 10px;
