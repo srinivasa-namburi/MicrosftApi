@@ -57,15 +57,7 @@ public class ChatController : BaseController
         if (chatMessageModels.Count == 0)
         {
             // if there is no existing conversation, create a new one, and then return a 404
-            var conversation = new ChatConversation
-            {
-                Id = conversationId,
-                CreatedAt = DateTime.UtcNow,
-                DocumentProcessName = documentProcessName
-            };
-
-            _dbContext.ChatConversations.Add(conversation);
-            await _dbContext.SaveChangesAsync();
+            await CreateChatConversationAsync(documentProcessName, conversationId);
 
 
             return NotFound();
@@ -84,6 +76,17 @@ public class ChatController : BaseController
         return Ok(chatMessages);
     }
 
+    private async Task<ChatConversation> CreateChatConversationAsync(string documentProcessName, Guid conversationId)
+    {
+        var conversation = new ChatConversation
+        {
+            Id = conversationId,
+            CreatedAt = DateTime.UtcNow,
+            DocumentProcessName = documentProcessName
+        };
 
-
+        _dbContext.ChatConversations.Add(conversation);
+        await _dbContext.SaveChangesAsync();
+        return conversation;
+    }
 }

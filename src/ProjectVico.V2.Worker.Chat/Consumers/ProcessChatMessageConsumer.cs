@@ -286,13 +286,13 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
                 [/User]
 
                 This is the initial query in a potentially multi-pass conversation. If you find it sufficient, you can return the whole
-                response in this pass. If no more tokens are available for output, end this pass with no stop tag. That will signal that 
+                response in this pass. Be concise. If no more tokens are available for output, end this pass with no stop tag. That will signal that 
                 the process should continue to the next pass.
 
                 Try to write complete paragraphs instead of single sentences under a heading.
 
-                Please be as verbose as neccessary in in your response for this pass. For this query in total, including this initial query,
-                we can perform a total of {_numberOfPasses} passes to form a complete response. This is the first pass. Note that you should only use
+                For this query in total, including this initial pass,we can perform a total of {_numberOfPasses} passes to form a complete 
+                response. This is the first pass. Note that you should only use
                 as many passes as you need. If you believe you have fully answered the user's query (and this is the last needed pass),
                 please end your output with the following text surrounded by new lines:
                 
@@ -306,7 +306,7 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
                 Also - do NOT use any special tags to delineate the end of a single response when you expect the output to continue in further passes.
                 The system will pass your response into the next pass automatically, ensuring continuity.
 
-                Please don't end in the middle of a sentence or thought. If you need to continue in the next pass, end at a natural break in the text
+                Please don't end in the middle of a sentence. If you need to continue in the next pass, end at a natural break in the text
                 such as a line break, paragraph break or period. The next pass will pick up where you left off, but start with a new line character. ('\n')
                 """;
     }
