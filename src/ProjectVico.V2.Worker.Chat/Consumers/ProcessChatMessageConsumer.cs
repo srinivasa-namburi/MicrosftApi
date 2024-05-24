@@ -268,7 +268,13 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
                 A summary of full conversation history is between the [ChatHistorySummary] and [/ChatHistorySummary] tags.
                 The user's question is between the [User] and [/User] tags.
 
-                Please consider this chat history when responding to the user, specifically looking for any context that may be relevant to the user's question.
+                Consider this chat history when responding to the user, specifically looking for any context that may be relevant to the user's question.
+                
+                Be precise when answering the user's query, don't provide unnecessary information that goes beyond the user's question.
+                
+                If asked to limit to a certain number of items, please respect that limit and don't list additional items beyond the limit.
+                
+                If it's clear that the user has switched subjects, please make sure you disregard any irrelevant context from the chat history.
 
                 Respond with no decoration around your response, but use Markdown formatting.
                 Use any plugins or tools you need to answer the question.
@@ -290,7 +296,10 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
                 the process should continue to the next pass.
 
                 Try to write complete paragraphs instead of single sentences under a heading.
-
+                
+                If you cite regulations, please enclose those in Markdown links. 
+                For example, [Title 21, Part 11](https://www.ecfr.gov/cgi-bin/text-idx?SID=1f1f0f7f7b1)
+                
                 For this query in total, including this initial pass,we can perform a total of {_numberOfPasses} passes to form a complete 
                 response. This is the first pass. Note that you should only use
                 as many passes as you need. If you believe you have fully answered the user's query (and this is the last needed pass),

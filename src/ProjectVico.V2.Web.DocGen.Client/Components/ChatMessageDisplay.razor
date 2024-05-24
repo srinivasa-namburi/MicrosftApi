@@ -71,6 +71,15 @@
         ChatMessage.UserFullName = "Nuclear Copilot";
     }
 }
+<style>
+    .message-content a:visited {
+        color: mediumpurple !important;
+    }
+
+    .message-content a {
+        color: cornflowerblue !important;
+    }
+</style>
 
 <MudCard Elevation="2" Style="@cardAlignmentStyle">
     <MudCardHeader>
@@ -88,7 +97,7 @@
             </MudText>
         </CardHeaderContent>
     </MudCardHeader>
-    <MudCardContent>
+    <MudCardContent Class="message-content">
         <MudText Typo="Typo.body1" Class="my-0 mb-n1" Align="@align">
             <RenderMultilineText Value="@ChatMessage.Message" />
         </MudText>

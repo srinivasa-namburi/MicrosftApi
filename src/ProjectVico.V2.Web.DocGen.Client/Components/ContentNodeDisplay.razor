@@ -17,6 +17,16 @@
     }
 }
 
+<style>
+    .section-content a:visited {
+        color: mediumpurple !important;
+    }
+
+    .section-content a {
+        color: cornflowerblue !important;
+    }
+</style>
+
 @if (Node != null)
 {
     if (Node.Type == ContentNodeType.Title || Node.Type == ContentNodeType.Heading)
@@ -38,7 +48,7 @@
                             {
                                 <MudIcon Icon="@Icons.Material.Rounded.CheckCircle" Color="Color.Success" Size="Size.Medium" />
                             }
-                            else if(Node.GenerationState == ContentNodeGenerationState.Failed)
+                            else if (Node.GenerationState == ContentNodeGenerationState.Failed)
                             {
                                 <MudIcon Icon="@Icons.Material.Rounded.Error" Color="Color.Error" Size="Size.Medium" />
                             }
@@ -49,13 +59,17 @@
                     </MudGrid>
                 </TitleContent>
                 <ChildContent>
+
                     @if (Node.Children != null && Node.Children.Any() && Recursive)
                     {
-                        foreach (var childNode in Node.Children)
-                        {
-                            <ContentNodeDisplay Node="childNode" Recursive="true" />
-                        }
+                        <div class="section-content">
+                            @foreach (var childNode in Node.Children)
+                            {
+                                <ContentNodeDisplay Node="childNode" Recursive="true" />
+                            }
+                        </div>
                     }
+
                 </ChildContent>
             </MudExpansionPanel>
         </MudExpansionPanels>
