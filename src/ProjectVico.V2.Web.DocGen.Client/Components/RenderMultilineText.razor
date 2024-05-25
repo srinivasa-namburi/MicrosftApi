@@ -1,6 +1,9 @@
 ﻿@using System.Text.RegularExpressions;
 @using Markdig
 @using Markdig.Extensions.AutoLinks
+@using Markdig.Renderers.Html
+@using Markdig.Syntax
+@using Markdig.Syntax.Inlines
 
 @code {
     [Parameter]
@@ -15,15 +18,29 @@
                                     .UseAdvancedExtensions()
                                     .UseEmojiAndSmiley()
                                     .UseSmartyPants()
-                                    //.UseSoftlineBreakAsHardlineBreak()
                                     .UseAutoLinks(options:new AutoLinkOptions()
                                     {
                                         OpenInNewWindow = true,
                                         UseHttpsForWWWLinks = true
+                                       
                                     })
                                     .Build();
-    var markdownContent = Markdown.ToHtml(encodedValue, markdownPipeline);
-    var markupValue = new MarkupString(markdownContent);
+    
+    MarkdownDocument document = Markdown.Parse(Value, markdownPipeline);
+
+    foreach (LinkInline link in document.Descendants<LinkInline>())
+    {
+        link.GetAttributes().AddPropertyIfNotExist("target", "_blank");
+    }
+
+    foreach (AutolinkInline link in document.Descendants<AutolinkInline>())
+    {
+        link.GetAttributes().AddPropertyIfNotExist("target", "_blank");
+    }
+
+    string html = document.ToHtml(markdownPipeline);
+
+    var markupValue = new MarkupString(html);
 
     // Add an extra line break to the end of each paragraph to make it easier to read
     markupValue = new MarkupString(Regex.Replace(markupValue.Value, @"</p>", "</p><br />"));
