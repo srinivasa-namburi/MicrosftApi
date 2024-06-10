@@ -17,10 +17,11 @@ steps:
     packageType: 'sdk'
     version: '8.0.x'
 - task: DotNetCoreCLI@2
+  displayName: 'Aspire Install'
   inputs:
-    command: 'custom'
-    custom: 'workload install aspire'
-    workingDirectory: 'src/'
+    command: custom
+    custom: 'workload '
+    arguments: 'install aspire --source https://api.nuget.org/v3/index.json'
 - task: DotNetCoreCLI@2
   inputs:
     command: 'build'
