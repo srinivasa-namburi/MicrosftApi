@@ -12,7 +12,7 @@ variables:
 jobs:
   - job: SyncToGithub
     variables:
-      - group: GitHubSecrets
+      - group: GitHubSecrets # Ensure this matches the name of your variable group
 
     steps:
       - checkout: self
