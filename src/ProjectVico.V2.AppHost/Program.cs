@@ -52,7 +52,6 @@ var blobStorage = builder
     .AddAzureStorage("docing")
     .AddBlobs("blob-docing");
 
-
 var azureAiSearch = builder.AddAzureSearch("aiSearch", (resourceBuilder, construct, options) =>
 {
     if (builder.ExecutionContext.IsRunMode)
