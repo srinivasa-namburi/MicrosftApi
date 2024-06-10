@@ -13,17 +13,6 @@ param tags object = {}
 
 var resourceToken = uniqueString(resourceGroup().id)
 
-// Existing VNET and subnet
-resource virtualNetwork 'Microsoft.Network/virtualNetworks@2022-01-01' = {
-  id: vnetResourceId
-}
-
-resource subnet 'Microsoft.Network/virtualNetworks/subnets@2022-01-01' existing = {
-  parent: virtualNetwork
-  name: subnetName
-}
-
-
 resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: 'mi-${resourceToken}'
   location: location
