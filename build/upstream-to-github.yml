@@ -21,18 +21,19 @@ jobs:
           echo "Configuring Git"
           git config --global user.name "ADO Upstream Sync"
           git config --global user.email "ado-bot@microsoft.com"
-          echo "Adding remote"
-          git remote add upstream https://$(GITHUB_PAT)@$(GIT_UPSTREAM_URL)
-          echo "Fetching upstream"
-          git fetch upstream
+          echo "Adding remote ghremote"
+          git remote add ghremote https://$(GITHUB_PAT)@$(GIT_UPSTREAM_URL)
+          echo "Fetching upstream from ghremote"
+          git fetch ghremote
           echo "Configured Git with upstream URL: https://$(GITHUB_PAT)@$(GIT_UPSTREAM_URL)"
+
         displayName: "Configure Git"
 
       - script: |
           echo "Checking out branch $(BRANCH_NAME)"
-          git checkout $(BRANCH_NAME)
+          git checkout $(BRANCH_NAME) --track ghremote/$(BRANCH_NAME)
           echo "Pushing to GitHub"
-          git push upstream $(BRANCH_NAME) --force
+          git push ghremote $(BRANCH_NAME) --force
         displayName: "Push to GitHub"
 
       - script: |
