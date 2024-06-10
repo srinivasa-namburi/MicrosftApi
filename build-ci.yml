@@ -26,18 +26,18 @@ steps:
 
 - task: NuGetAuthenticate@1
 
-- task: NuGetCommand@2
-  inputs:
-    command: 'restore'
-    restoreSolution: '**/*.sln'
-    feedsToUse: 'select'
-    vstsFeed: '34c82829-ae45-4ed4-8b6c-f6bfa0427c71/1cb4a1b4-2407-4486-b5e7-e59d597daf32'
-    includeNuGetOrg: false
+# - task: NuGetCommand@2
+#   inputs:
+#     command: 'restore'
+#     restoreSolution: '**/*.sln'
+#     feedsToUse: 'select'
+#     vstsFeed: '34c82829-ae45-4ed4-8b6c-f6bfa0427c71/1cb4a1b4-2407-4486-b5e7-e59d597daf32'
+#     includeNuGetOrg: false
 
 - task: DotNetCoreCLI@2
   displayName: 'DotNet Solution Build'
   inputs:
     command: 'build'
-    arguments: '--no-restore'
+    # arguments: '--no-restore'
     projects: 'src/ProjectVico.V2.sln'
     workingDirectory: 'src/'
