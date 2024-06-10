@@ -7,7 +7,7 @@ pool:
 variables:
   GIT_UPSTREAM_URL: $(GIT_UPSTREAM_URL)
   GITHUB_PAT: $(GITHUB_PAT)
-  BRANCH_NAME: "upstream"
+  BRANCH_NAME: "adosync"
 
 jobs:
   - job: SyncToGithub
@@ -21,19 +21,24 @@ jobs:
           echo "Configuring Git"
           git config --global user.name "ADO Upstream Sync"
           git config --global user.email "ado-bot@microsoft.com"
-          echo "Adding remote ghremote"
-          git remote add ghremote https://$(GITHUB_PAT)@$(GIT_UPSTREAM_URL)
-          echo "Fetching upstream from ghremote"
-          git fetch ghremote
-          echo "Configured Git with upstream URL: https://$(GITHUB_PAT)@$(GIT_UPSTREAM_URL)"
-
-        displayName: "Configure Git"
+          echo "Adding remote"
+          git remote add upstream https://$(GITHUB_PAT)@$(GIT_UPSTREAM_URL)
+          echo "Fetching upstream"
+          git fetch upstream
+          echo "Checking if remote branch $(BRANCH_NAME) exists"
+          if git show-ref --verify --quiet refs/remotes/upstream/$(BRANCH_NAME); then
+            echo "Remote branch $(BRANCH_NAME) exists."
+            git checkout $(BRANCH_NAME)
+          else
+            echo "Remote branch $(BRANCH_NAME) does not exist. Creating it."
+            git checkout -b $(BRANCH_NAME)
+            git push upstream $(BRANCH_NAME)
+          fi
+        displayName: "Configure Git and Create Branch if Necessary"
 
       - script: |
-          echo "Checking out branch $(BRANCH_NAME)"
-          git checkout $(BRANCH_NAME) --track ghremote/$(BRANCH_NAME)
           echo "Pushing to GitHub"
-          git push ghremote $(BRANCH_NAME) --force
+          git push upstream $(BRANCH_NAME):$(BRANCH_NAME) --force
         displayName: "Push to GitHub"
 
       - script: |
