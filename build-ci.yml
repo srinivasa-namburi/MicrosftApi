@@ -16,14 +16,26 @@ steps:
   inputs:
     packageType: 'sdk'
     version: '8.0.x'
+
 - task: DotNetCoreCLI@2
   displayName: 'Aspire Install'
   inputs:
     command: custom
     custom: 'workload '
     arguments: 'install aspire --source https://api.nuget.org/v3/index.json'
+
+- task: NuGetCommand@2
+  displayName: 'Azure Artifacts NuGet Restore'
+  inputs:
+    command: 'restore'
+    restoreSolution: 'src/ProjectVico.v2.sln'
+    feedsToUse: 'config'
+    nugetConfigPath: 'src/NuGet.config'
+
 - task: DotNetCoreCLI@2
+  displayName: 'DotNet Solution Build'
   inputs:
     command: 'build'
+    arguments: '--no-restore'
     projects: 'src/ProjectVico.V2.sln'
     workingDirectory: 'src/'
