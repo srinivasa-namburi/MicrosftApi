@@ -5,40 +5,35 @@ pool:
   vmImage: "ubuntu-latest"
 
 variables:
+  GIT_UPSTREAM_URL: $(GIT_UPSTREAM_URL)
+  GITHUB_PAT: $(GITHUB_PAT)
   BRANCH_NAME: "upstream"
 
 jobs:
   - job: SyncToGithub
     variables:
-      - group: GitHubSecrets # Ensure this matches the name of your variable group
+      - group: GitHubSecrets
 
     steps:
       - checkout: self
-        persistCredentials: true
 
       - script: |
           echo "Configuring Git"
           git config --global user.name "ADO Upstream Sync"
           git config --global user.email "ado-bot@microsoft.com"
           echo "Adding remote"
-          git remote add upstream $(GIT_UPSTREAM_URL)
+          git remote add upstream https://$(GITHUB_PAT)@$(GIT_UPSTREAM_URL)
           echo "Fetching upstream"
           git fetch upstream
-          echo "Configured Git with upstream URL: $(GIT_UPSTREAM_URL)"
+          echo "Configured Git with upstream URL: https://$(GITHUB_PAT)@$(GIT_UPSTREAM_URL)"
         displayName: "Configure Git"
 
       - script: |
           echo "Checking out branch $(BRANCH_NAME)"
           git checkout $(BRANCH_NAME)
-          echo "Setting up credentials"
-          git config credential.helper store
-          echo "https://$(GITHUB_USERNAME):$(GITHUB_PAT)@github.com" > ~/.git-credentials
           echo "Pushing to GitHub"
           git push upstream $(BRANCH_NAME) --force
         displayName: "Push to GitHub"
-        env:
-          GITHUB_USERNAME: $(GITHUB_USERNAME)
-          GITHUB_PAT: $(GITHUB_PAT)
 
       - script: |
           echo "Installing GitHub CLI"
