@@ -1,54 +1,54 @@
 trigger:
-  - upstream
+- upstream
 
 pool:
-  vmImage: "ubuntu-latest"
+  vmImage: 'ubuntu-latest'
 
 variables:
-  BRANCH_NAME: "upstream"
+  BRANCH_NAME: 'upstream'
 
 jobs:
-  - job: SyncToGithub
-    variables:
-      - group: GitHubSecrets # Needs to match name of Variable Group in Library.
+- job: SyncToGithub
+  variables:
+    - group: GitHubSecrets  # Ensure this matches the name of your variable group
 
-    steps:
-      - checkout: self
-        persistCredentials: true
+  steps:
+  - checkout: self
+    persistCredentials: true
 
-      - displayName: "Configure Git for Upstream to GitHub"
-        script: |
-          echo "Configuring Git"
-          git config --global user.name "ADO Upstream Sync"
-          git config --global user.email "ado-bot@microsoft.com"
-          echo "Adding remote"
-          git remote add upstream $(GIT_UPSTREAM_URL)
-          echo "Fetching upstream"
-          git fetch upstream
-          echo "Configured Git with upstream URL: $(GIT_UPSTREAM_URL)"
+  - script: |
+      echo "Configuring Git"
+      git config --global user.name "ADO Upstream Sync"
+      git config --global user.email "ado-bot@microsoft.com"
+      echo "Adding remote"
+      git remote add upstream $(GIT_UPSTREAM_URL)
+      echo "Fetching upstream"
+      git fetch upstream
+      echo "Configured Git with upstream URL: $(GIT_UPSTREAM_URL)"
+    displayName: 'Configure Git'
 
-      - displayName: "Push to GitHub"
-        script: |
-          echo "Checking out branch $(BRANCH_NAME)"
-          git checkout $(BRANCH_NAME)
-          echo "Pushing to GitHub"
-          git push upstream $(BRANCH_NAME) --force
+  - script: |
+      echo "Checking out branch $(BRANCH_NAME)"
+      git checkout $(BRANCH_NAME)
+      echo "Pushing to GitHub"
+      git push upstream $(BRANCH_NAME) --force
+    displayName: 'Push to GitHub'
 
-      - displayName: "Install GitHub CLI"
-        script: |
-          echo "Installing GitHub CLI"
-          curl -sSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
-          sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
-          echo "Adding GitHub CLI repository"
-          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-          sudo apt update
-          sudo apt install gh
+  - script: |
+      echo "Installing GitHub CLI"
+      curl -sSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+      sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+      echo "Adding GitHub CLI repository"
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+      sudo apt update
+      sudo apt install gh
+    displayName: 'Install GitHub CLI'
 
-      - displayName: "Create Pull Request"
-        env:
-          GITHUB_PAT: $(GITHUB_PAT)
-        script: |
-          echo "Authenticating GitHub CLI"
-          echo $(GITHUB_PAT) | gh auth login --with-token
-          echo "Creating Pull Request"
-          gh pr create --title "Automated PR from ADO" --body "This PR was automatically created by Azure DevOps Pipeline." --head $(BRANCH_NAME) --base main
+  - script: |
+      echo "Authenticating GitHub CLI"
+      echo $(GITHUB_PAT) | gh auth login --with-token
+      echo "Creating Pull Request"
+      gh pr create --title "Automated PR from ADO" --body "This PR was automatically created by Azure DevOps Pipeline." --head $(BRANCH_NAME) --base main
+    displayName: 'Create Pull Request'
+    env:
+      GITHUB_PAT: $(GITHUB_PAT)
