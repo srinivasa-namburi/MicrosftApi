@@ -1,4 +1,4 @@
-name: v2-deploy-public
+name: v2-deploy
 
 on:
   workflow_dispatch:
@@ -8,6 +8,7 @@ on:
 
 # Set up permissions for deploying with secretless Azure federated credentials
 # https://learn.microsoft.com/en-us/azure/developer/github/connect-from-azure?tabs=azure-portal%2Clinux#set-up-azure-login-with-openid-connect-authentication
+
 permissions:
   id-token: write
   contents: read
@@ -24,6 +25,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Change to working directory (src)
+        run: cd src
+
+      - name: Delete infra folder if present
+        run: rm -rf infra
+
+      - name: Set up infra folder based on deployment model
+        run: |
+          if [ "${{ env.DEPLOYMENT_MODEL }}" == "public" ]; then
+            cp -r infra.public infra
+          else
+            cp -r infra.private infra
+          fi
+        env:
+          DEPLOYMENT_MODEL: ${{ vars.DEPLOYMENT_MODEL }}
 
       - name: Install azd
         uses: Azure/setup-azd@v1.0.0
