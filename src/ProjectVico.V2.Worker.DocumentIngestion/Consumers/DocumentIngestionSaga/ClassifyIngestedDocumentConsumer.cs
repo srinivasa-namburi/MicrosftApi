@@ -68,12 +68,7 @@ public class ClassifyIngestedDocumentConsumer : IConsumer<ClassifyIngestedDocume
         ingestedDocument.IngestionState = IngestionState.Classifying;
         await _dbContext.SaveChangesAsync();
 
-        // Get temporary access URL for the ingested document
-        var temporaryAccessUrl = _azureFileHelper.GetTemporaryFileUrl(
-            message.OriginalDocumentUrl,
-            15.Minutes(),
-            message.IngestionType
-        );
+        var temporaryAccessUrl = _azureFileHelper.GetProxiedBlobUrl(message.OriginalDocumentUrl);
 
         DocumentClassificationResult? classificationResult;
 

@@ -49,32 +49,10 @@ public class AzureFileHelper
 
     }
 
-    public string GetTemporaryFileUrl(string originalUrl, TimeSpan accessTimeSpan, IngestionType ingestionType)
+    public string GetProxiedBlobUrl(string blobUrl)
     {
-       
-        var blobServiceBaseUrl = _blobServiceClient.Uri.ToString();
-
-        // Set blobPathWithContainer to be the originalUrl without the blobServiceBaseUrl
-        var blobPathWithContainer = originalUrl.Remove(0, blobServiceBaseUrl.Length);
-        // Remove any '/' at the beginning of the blobPathWithContainer
-        blobPathWithContainer = blobPathWithContainer.TrimStart('/');
-
-        var containerName = blobPathWithContainer.Substring(0, blobPathWithContainer.IndexOf('/'));
-        var blobPath = blobPathWithContainer.Substring(blobPathWithContainer.IndexOf('/') + 1);
-        
-        
-        // Generate a SAS token for the blob with the specified access time span
-        var sasBuilder = new BlobSasBuilder(BlobContainerSasPermissions.Read, DateTimeOffset.UtcNow.Add(accessTimeSpan))
-        {
-            BlobContainerName = containerName,
-            Resource = "b",
-            StartsOn = DateTimeOffset.UtcNow
-        };
-
-        var blobClient = _blobServiceClient.GetBlobContainerClient(containerName).GetBlobClient(blobPath);
-        var sasUrl = blobClient.GenerateSasUri(sasBuilder).ToString();
-
-        return sasUrl;
+        var fileDownloadActionUrl = "/api/file/download/";
+        return fileDownloadActionUrl + "?fileUrl=" + blobUrl;
     }
 
 }
