@@ -10,6 +10,8 @@ declare -A containerApps=(
     ["worker-documentingestion"]=4
     ["web-docgen"]=2
     ["api-main"]=2
+    ["worker-scheduler"]=1
+    ["worker-setupmanager"]=1
 )
 
 echo "Scaling container apps in $resourceGroup..."
