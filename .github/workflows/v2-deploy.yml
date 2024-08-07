@@ -3,18 +3,12 @@ name: v2-deploy
 on:
   workflow_dispatch:
 
-# GitHub Actions workflow to deploy to Azure using azd
-# To configure required secrets for connecting to Azure, simply run `azd pipeline config`
-
-# Set up permissions for deploying with secretless Azure federated credentials
-# https://learn.microsoft.com/en-us/azure/developer/github/connect-from-azure?tabs=azure-portal%2Clinux#set-up-azure-login-with-openid-connect-authentication
-
 permissions:
   id-token: write
   contents: read
 
 jobs:
-  build:
+  provision-deploy:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -40,7 +34,8 @@ jobs:
 
       - name: Set up infra folder based on deployment model
         run: |
-          if [ "${{ env.DEPLOYMENT_MODEL }}" == "public" ]; then
+          DEPLOYMENT_MODEL=${{ env.DEPLOYMENT_MODEL }}
+          if [ "$DEPLOYMENT_MODEL" == "public" ]; then
             cp -r infra.public infra
           else
             cp -r infra.private infra
