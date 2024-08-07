@@ -54,19 +54,13 @@ resource peSqlServer_34MHlY0Ot 'Microsoft.Network/privateEndpoints@2023-11-01' =
   }
 }
 
-resource sqlFirewallRule_n7p8WgM0M 'Microsoft.Sql/servers/firewallRules@2020-11-01-preview' = {
-  parent: sqlServer_34MHlY0Ot
-  name: 'AllowAllAzureIps'
-  properties: {
-    startIpAddress: '0.0.0.0'
-    endIpAddress: '0.0.0.0'
-  }
-}
-
 resource sqlDatabase_RnsdBrRX2 'Microsoft.Sql/servers/databases@2020-11-01-preview' = {
   parent: sqlServer_34MHlY0Ot
   name: 'ProjectVicoDB'
   location: location
+  sku: {
+    name: 'HS_Gen5_6'
+  }
   properties: {
   }
 }

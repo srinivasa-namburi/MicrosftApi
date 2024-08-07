@@ -28,7 +28,7 @@ resource signalRService_iD3Yrl49T 'Microsoft.SignalRService/signalR@2022-02-01' 
   }
   kind: 'SignalR'
   properties: {
-    publicNetworkAccess: 'Disabled'
+    publicNetworkAccess: 'Enabled'
     features: [
       {
         flag: 'ServiceMode'
