@@ -33,25 +33,25 @@ resource containerRegistry 'Microsoft.ContainerRegistry/registries@2023-07-01' =
   tags: tags
 }
 
-resource peContainerRegistry 'Microsoft.Network/privateEndpoints@2023-11-01' = if (peSubnet != '') {
-  name: '${containerRegistry.name}-pl'
-  tags: tags
-  location: location
-  properties: {
-    subnet: {
-      id: peSubnet
-    }
-    privateLinkServiceConnections: [
-      {
-        name: '${containerRegistry.name}-pl'
-        properties: {
-          privateLinkServiceId: containerRegistry.id
-          groupIds: ['registry']
-        }
-      }
-    ]
-  }
-}
+// resource peContainerRegistry 'Microsoft.Network/privateEndpoints@2023-11-01' = if (peSubnet != '') {
+//   name: '${containerRegistry.name}-pl'
+//   tags: tags
+//   location: location
+//   properties: {
+//     subnet: {
+//       id: peSubnet
+//     }
+//     privateLinkServiceConnections: [
+//       {
+//         name: '${containerRegistry.name}-pl'
+//         properties: {
+//           privateLinkServiceId: containerRegistry.id
+//           groupIds: ['registry']
+//         }
+//       }
+//     ]
+//   }
+// }
 
 resource caeMiRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(containerRegistry.id, managedIdentity.id, subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d'))
