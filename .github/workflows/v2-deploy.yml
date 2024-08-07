@@ -27,6 +27,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Use DotNet SDK 8.0.x
+        uses: actions/setup-dotnet@v1
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Install .Net Aspire workload
+        run: dotnet workload install aspire
+
       - name: Delete infra folder if present
         run: rm -rf infra
 
