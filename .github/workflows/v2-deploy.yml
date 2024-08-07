@@ -20,6 +20,9 @@ jobs:
       AZURE_SUBNET_CAE: ${{ vars.AZURE_SUBNET_CAE }}
       AZURE_SUBNET_PE: ${{ vars.AZURE_SUBNET_PE }}
     steps:
+      - name: Clean workspace
+        uses: AutoModality/action-clean@v1
+
       - name: Checkout
         uses: actions/checkout@v4
 
