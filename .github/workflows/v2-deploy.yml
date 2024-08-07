@@ -45,13 +45,13 @@ jobs:
           rm -f azure.yaml
           cp azure-ci.yaml azure.yaml
 
-      - name: Install azd
+      - name: Install AZD
         uses: Azure/setup-azd@v1.0.0
 
-      - name: Apt install wslu to open links
+      - name: Install text-based browsers for AZD authentication
         run: |
           sudo apt update -y
-          sudo apt install wslu -y
+          sudo apt install lynx links2 elinks w3m -y
 
       - name: Log in with Azure (Client Credentials)
         if: ${{ env.AZURE_CREDENTIALS != '' }}
