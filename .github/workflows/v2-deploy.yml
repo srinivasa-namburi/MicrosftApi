@@ -48,6 +48,11 @@ jobs:
       - name: Install azd
         uses: Azure/setup-azd@v1.0.0
 
+      - name: Apt install wslu to open links
+        run: |
+          sudo apt update -y
+          sudo apt install wslu -y
+
       - name: Log in with Azure (Client Credentials)
         if: ${{ env.AZURE_CREDENTIALS != '' }}
         run: |
