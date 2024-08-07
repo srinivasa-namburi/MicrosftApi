@@ -42,6 +42,11 @@ jobs:
         env:
           DEPLOYMENT_MODEL: ${{ vars.DEPLOYMENT_MODEL }}
 
+      - name: Activate azure-ci.yaml for CI/CD deployment
+        run: |
+          rm -f azure.yaml
+          cp azure-ci.yaml azure.yaml
+
       - name: Install azd
         uses: Azure/setup-azd@v1.0.0
 
