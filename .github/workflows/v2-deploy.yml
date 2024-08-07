@@ -17,6 +17,8 @@ jobs:
       AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
       AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+      AZURE_SUBNET_CAE: ${{ vars.AZURE_SUBNET_CAE }}
+      AZURE_SUBNET_PE: ${{ vars.AZURE_SUBNET_PE }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

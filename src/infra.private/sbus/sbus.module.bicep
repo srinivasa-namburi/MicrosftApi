@@ -12,6 +12,12 @@ param principalId string
 @description('')
 param principalType string
 
+@description('')
+param peSubnet string = ''
+
+@description('')
+param tags object = {}
+
 
 resource serviceBusNamespace_r4wPCvQVC 'Microsoft.ServiceBus/namespaces@2021-11-01' = {
   name: toLower(take('sbus${uniqueString(resourceGroup().id)}', 24))
@@ -25,6 +31,27 @@ resource serviceBusNamespace_r4wPCvQVC 'Microsoft.ServiceBus/namespaces@2021-11-
     capacity: 1
   }
   properties: {
+      publicNetworkAccess: 'Disabled'
+  }
+}
+
+resource peServiceBusNamespace_r4wPCvQVC 'Microsoft.Network/privateEndpoints@2023-11-01' = if (peSubnet != '') {
+  name: '${serviceBusNamespace_r4wPCvQVC.name}-pl'
+  tags: tags
+  location: location
+  properties: {
+    subnet: {
+      id: peSubnet
+    }
+    privateLinkServiceConnections: [
+      {
+        name: '${serviceBusNamespace_r4wPCvQVC.name}-pl'
+        properties: {
+          privateLinkServiceId: serviceBusNamespace_r4wPCvQVC.id
+          groupIds: ['namespace']
+        }
+      }
+    ]
   }
 }
 
@@ -39,3 +66,7 @@ resource roleAssignment_Cp26g1LUw 'Microsoft.Authorization/roleAssignments@2022-
 }
 
 output serviceBusEndpoint string = serviceBusNamespace_r4wPCvQVC.properties.serviceBusEndpoint
+
+// Custom
+output name string = serviceBusNamespace_r4wPCvQVC.name
+output pe_ip string = peServiceBusNamespace_r4wPCvQVC.properties.customDnsConfigs[0].ipAddresses[0]

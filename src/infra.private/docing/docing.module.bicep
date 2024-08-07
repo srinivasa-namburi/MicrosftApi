@@ -9,8 +9,13 @@ param principalId string
 @description('')
 param principalType string
 
+@description('')
+param peSubnet string = ''
 
-resource storageAccount_ZrwAiVlDH 'Microsoft.Storage/storageAccounts@2022-09-01' = {
+@description('')
+param tags object = {}
+
+resource storageAccount_ZrwAiVlDH 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   name: toLower(take('docing${uniqueString(resourceGroup().id)}', 24))
   location: location
   tags: {
@@ -22,6 +27,30 @@ resource storageAccount_ZrwAiVlDH 'Microsoft.Storage/storageAccounts@2022-09-01'
   kind: 'StorageV2'
   properties: {
     accessTier: 'Hot'
+    networkAcls: {
+      defaultAction: 'Deny'
+    }
+    publicNetworkAccess: 'Disabled'
+  }
+}
+
+resource peStorageAccount_ZrwAiVlDH 'Microsoft.Network/privateEndpoints@2023-11-01' = if (peSubnet != '') {
+  name: '${storageAccount_ZrwAiVlDH.name}-pl'
+  tags: tags
+  location: location
+  properties: {
+    subnet: {
+      id: peSubnet
+    }
+    privateLinkServiceConnections: [
+      {
+        name: '${storageAccount_ZrwAiVlDH.name}-pl'
+        properties: {
+          privateLinkServiceId: storageAccount_ZrwAiVlDH.id
+          groupIds: ['blob']
+        }
+      }
+    ]
   }
 }
 
@@ -65,3 +94,7 @@ resource roleAssignment_eB8mbL3FS 'Microsoft.Authorization/roleAssignments@2022-
 output blobEndpoint string = storageAccount_ZrwAiVlDH.properties.primaryEndpoints.blob
 output queueEndpoint string = storageAccount_ZrwAiVlDH.properties.primaryEndpoints.queue
 output tableEndpoint string = storageAccount_ZrwAiVlDH.properties.primaryEndpoints.table
+
+// Custom
+output name string = storageAccount_ZrwAiVlDH.name
+output pe_ip string = peStorageAccount_ZrwAiVlDH.properties.customDnsConfigs[0].ipAddresses[0]
