@@ -20,9 +20,6 @@ jobs:
       AZURE_SUBNET_CAE: ${{ vars.AZURE_SUBNET_CAE }}
       AZURE_SUBNET_PE: ${{ vars.AZURE_SUBNET_PE }}
     steps:
-      - name: Clean workspace
-        uses: AutoModality/action-clean@v1
-
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -34,8 +31,10 @@ jobs:
       - name: Install .Net Aspire workload
         run: dotnet workload install aspire
 
-      - name: Delete infra folder if present
-        run: rm -rf infra
+      - name: Delete existing folders used for previous deploymens
+        run: |
+          rm -rf infra
+          rm -rf .azure
 
       - name: Set up infra folder based on deployment model
         run: |
