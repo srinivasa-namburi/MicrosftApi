@@ -19,7 +19,12 @@ jobs:
       AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
       AZURE_SUBNET_CAE: ${{ vars.AZURE_SUBNET_CAE }}
       AZURE_SUBNET_PE: ${{ vars.AZURE_SUBNET_PE }}
+      AZURE_CREDENTIALS_REWRITTEN: ${{ secrets.AZURE_CREDENTIALS }}
     steps:
+      - name: Rewrite Azure Credentials to old format
+        run: |
+          AZURE_CREDENTIALS_REWRITTEN=$(echo "${AZURE_CREDENTIALS}" | jq -r '. | { clientId: .appId // .clientId, clientSecret: .password // .clientSecret, tenantId: .tenant // .tenantId }')
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -65,7 +70,7 @@ jobs:
       - name: Login with Azure CLI (Client Credentials)
         uses: Azure/login@v2
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          creds: ${{ env.AZURE_CREDENTIALS_REWRITTEN }}
 
       - name: Log in with Azure Developer CLI (Client Credentials)
         if: ${{ env.AZURE_CREDENTIALS != '' }}
