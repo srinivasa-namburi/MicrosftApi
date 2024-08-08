@@ -39,8 +39,6 @@ jobs:
             AZURE_CREDENTIALS_REWRITTEN=${AZURE_CREDENTIALS}
           fi
           echo "AZURE_CREDENTIALS_REWRITTEN=${AZURE_CREDENTIALS_REWRITTEN}" >> $GITHUB_ENV
-          echo "Stored AZURE_CREDENTIALS_REWRITTEN in environment variable"
-          echo "${AZURE_CREDENTIALS_REWRITTEN}"
         env:
           AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
 
