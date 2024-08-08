@@ -46,17 +46,6 @@ jobs:
         env:
           AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Set cloud environment variables
-        run: |
-
-          if [ "$AZURE_CLOUD" == "usgov"] || [ "$AZURE_CLOUD" == "AzureUSGovernment"]; then
-            echo "AZURE_ENVIRONMENT=AzureUSGovernment" >> $GITHUB_ENV
-          else
-            echo "AZURE_ENVIRONMENT=AzureCloud" >> $GITHUB_ENV
-          fi
-        env:
-          AZURE_CLOUD: ${{ env.AZURE_CLOUD }}
-
       - name: Debug AZURE_CREDENTIALS_REWRITTEN
         run: |
           echo "AZURE_CREDENTIALS_REWRITTEN=${AZURE_CREDENTIALS_REWRITTEN}"
@@ -98,7 +87,7 @@ jobs:
         uses: Azure/login@v2
         with:
           creds: ${{ env.AZURE_CREDENTIALS_REWRITTEN }}
-          environment: ${{ env.AZURE_ENVIRONMENT }}
+          environment: ${{ vars.AZURE_CLOUD }}
 
       - name: Log in with Azure Developer CLI (Client Credentials)
         if: ${{ env.AZURE_CREDENTIALS != '' }}
@@ -110,7 +99,7 @@ jobs:
 
           # Set cloud.name to contents of AZURE_CLOUD
           # Display the current cloud name
-          azd config set cloud.name ${AZURE_ENVIRONMENT}
+          azd config set cloud.name ${AZURE_CLOUD}
           echo "Current AZD cloud name: $(az cloud show --query name -o tsv)"
 
           azd auth login \
@@ -119,6 +108,7 @@ jobs:
             --tenant-id "${tenant_id}"
         env:
           AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+          AZURE_CLOUD: ${{ vars.AZURE_CLOUD }}
 
       - name: Provision Infrastructure
         run: azd provision --no-prompt
