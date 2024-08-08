@@ -19,7 +19,6 @@ jobs:
       AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
       AZURE_SUBNET_CAE: ${{ vars.AZURE_SUBNET_CAE }}
       AZURE_SUBNET_PE: ${{ vars.AZURE_SUBNET_PE }}
-      AZURE_CREDENTIALS_REWRITTEN: ${{ secrets.AZURE_CREDENTIALS }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,13 +31,20 @@ jobs:
       - name: Install .Net Aspire workload
         run: dotnet workload install aspire
 
-      - name: Rewrite Azure Credentials to old format
+      - name: Rewrite Azure Credentials to old format if necessary
         run: |
-          AZURE_CREDENTIALS_REWRITTEN=$(echo "${AZURE_CREDENTIALS}" | jq -r '. | { clientId: .appId // .clientId, clientSecret: .password // .clientSecret, tenantId: .tenant // .tenantId }')
+          if echo "${AZURE_CREDENTIALS}" | jq -e 'has("clientSecret") | not' > /dev/null; then
+            AZURE_CREDENTIALS_REWRITTEN=$(echo "${AZURE_CREDENTIALS}" | jq -r '{ clientId: .appId, displayName: .displayName, clientSecret: .password, tenantId: .tenant }')
+          else
+            AZURE_CREDENTIALS_REWRITTEN=${AZURE_CREDENTIALS}
+          fi
+          echo "AZURE_CREDENTIALS_REWRITTEN=${AZURE_CREDENTIALS_REWRITTEN}" >> $GITHUB_ENV
+          echo "Stored AZURE_CREDENTIALS_REWRITTEN in environment variable"
+          echo "${AZURE_CREDENTIALS_REWRITTEN}"
         env:
           AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Delete existing folders used for previous deploymens
+      - name: Delete existing folders used for previous deployments
         run: |
           rm -rf infra
           rm -rf .azure
@@ -50,9 +56,9 @@ jobs:
             cp -r infra.public infra
           else
             cp -r infra.private infra
-          fi
         env:
           DEPLOYMENT_MODEL: ${{ vars.DEPLOYMENT_MODEL }}
+
       - name: Set execute permission on .sh and .ps1 scripts in the ./deploy folder
         run: chmod ugo+x deploy/*.sh deploy/*.ps1
 
