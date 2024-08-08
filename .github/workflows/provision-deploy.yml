@@ -24,6 +24,8 @@ jobs:
       - name: Rewrite Azure Credentials to old format
         run: |
           AZURE_CREDENTIALS_REWRITTEN=$(echo "${AZURE_CREDENTIALS}" | jq -r '. | { clientId: .appId // .clientId, clientSecret: .password // .clientSecret, tenantId: .tenant // .tenantId }')
+        env:
+          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Checkout
         uses: actions/checkout@v4
