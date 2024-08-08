@@ -34,7 +34,7 @@ jobs:
       - name: Rewrite Azure Credentials to old format if necessary
         run: |
           if ! echo "${AZURE_CREDENTIALS}" | jq -e 'has("clientSecret")' > /dev/null; then
-            AZURE_CREDENTIALS_REWRITTEN=$(echo "${AZURE_CREDENTIALS}" | jq -c '{ clientId: .appId, displayName: .displayName, clientSecret: .password, tenant: .tenant }')
+            AZURE_CREDENTIALS_REWRITTEN=$(echo "${AZURE_CREDENTIALS}" | jq -c '{ clientId: .appId, displayName: .displayName, clientSecret: .password, tenantId: .tenant }')
           else
             AZURE_CREDENTIALS_REWRITTEN=${AZURE_CREDENTIALS}
           fi
