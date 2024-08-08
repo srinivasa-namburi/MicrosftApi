@@ -9,12 +9,6 @@ param principalId string
 @description('')
 param principalType string
 
-@description('')
-param peSubnet string = ''
-
-@description('')
-param tags object = {}
-
 
 resource searchService_65MAWFiAj 'Microsoft.Search/searchServices@2023-11-01' = {
   name: toLower(take('aiSearch${uniqueString(resourceGroup().id)}', 24))
@@ -29,28 +23,12 @@ resource searchService_65MAWFiAj 'Microsoft.Search/searchServices@2023-11-01' = 
     replicaCount: 2
     partitionCount: 2
     hostingMode: 'default'
-    disableLocalAuth: true
-    publicNetworkAccess: 'Disabled'
-  }
-}
-
-resource peSearchService_65MAWFiAj 'Microsoft.Network/privateEndpoints@2023-11-01' = if (peSubnet != '') {
-  name: '${searchService_65MAWFiAj.name}-pl'
-  tags: tags
-  location: location
-  properties: {
-    subnet: {
-      id: peSubnet
-    }
-    privateLinkServiceConnections: [
-      {
-        name: '${searchService_65MAWFiAj.name}-pl'
-        properties: {
-          privateLinkServiceId: searchService_65MAWFiAj.id
-          groupIds: ['searchService']
-        }
+    disableLocalAuth: false
+    authOptions: {
+      aadOrApiKey: {
+        aadAuthFailureMode: 'http403'
       }
-    ]
+    }
   }
 }
 
@@ -75,7 +53,3 @@ resource roleAssignment_V8mKGEf6f 'Microsoft.Authorization/roleAssignments@2022-
 }
 
 output connectionString string = 'Endpoint=https://${searchService_65MAWFiAj.name}.search.windows.net'
-
-// Custom
-output name string = searchService_65MAWFiAj.name
-output pe_ip string = peSearchService_65MAWFiAj.properties.customDnsConfigs[0].ipAddresses[0]

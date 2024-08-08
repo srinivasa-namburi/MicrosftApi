@@ -12,11 +12,8 @@ param location string
 @description('Id of the user or app to assign application roles')
 param principalId string = ''
 
-@description('The resource identifier of the subnet for the private endpoints environment - must have aligned private DNS zones / custom DNS for resolution')
-param peSubnet string
-
-@description('The resource identifier of the container apps environment subnet. Must be delegated to the service Microsoft.App/environments')
-param containerAppEnvSubnet string
+// @secure()
+// param sqlPassword string
 
 var tags = {
   'azd-env-name': environmentName
@@ -35,8 +32,6 @@ module resources 'resources.bicep' = {
     location: location
     tags: tags
     principalId: principalId
-    peSubnet: peSubnet
-    containerAppEnvSubnet: containerAppEnvSubnet
   }
 }
 
@@ -47,8 +42,6 @@ module aiSearch 'aiSearch/aiSearch.module.bicep' = {
     location: location
     principalId: resources.outputs.MANAGED_IDENTITY_PRINCIPAL_ID
     principalType: 'ServicePrincipal'
-    tags: tags
-    peSubnet: peSubnet
   }
 }
 module docing 'docing/docing.module.bicep' = {
@@ -58,8 +51,6 @@ module docing 'docing/docing.module.bicep' = {
     location: location
     principalId: resources.outputs.MANAGED_IDENTITY_PRINCIPAL_ID
     principalType: 'ServicePrincipal'
-    tags: tags
-    peSubnet: peSubnet
   }
 }
 module redis 'redis/redis.module.bicep' = {
@@ -68,8 +59,6 @@ module redis 'redis/redis.module.bicep' = {
   params: {
     keyVaultName: resources.outputs.SERVICE_BINDING_KVB6088994_NAME
     location: location
-    tags: tags
-    peSubnet: peSubnet
   }
 }
 module sbus 'sbus/sbus.module.bicep' = {
@@ -79,8 +68,6 @@ module sbus 'sbus/sbus.module.bicep' = {
     location: location
     principalId: resources.outputs.MANAGED_IDENTITY_PRINCIPAL_ID
     principalType: 'ServicePrincipal'
-    tags: tags
-    peSubnet: peSubnet
   }
 }
 module signalr 'signalr/signalr.module.bicep' = {
@@ -90,8 +77,6 @@ module signalr 'signalr/signalr.module.bicep' = {
     location: location
     principalId: resources.outputs.MANAGED_IDENTITY_PRINCIPAL_ID
     principalType: 'ServicePrincipal'
-    tags: tags
-    peSubnet: peSubnet
   }
 }
 module sqldocgen 'sqldocgen/sqldocgen.module.bicep' = {
@@ -101,8 +86,6 @@ module sqldocgen 'sqldocgen/sqldocgen.module.bicep' = {
     location: location
     principalId: resources.outputs.MANAGED_IDENTITY_PRINCIPAL_ID
     principalName: resources.outputs.MANAGED_IDENTITY_NAME
-    tags: tags
-    peSubnet: peSubnet
   }
 }
 output MANAGED_IDENTITY_CLIENT_ID string = resources.outputs.MANAGED_IDENTITY_CLIENT_ID
@@ -119,17 +102,3 @@ output DOCING_BLOBENDPOINT string = docing.outputs.blobEndpoint
 output SBUS_SERVICEBUSENDPOINT string = sbus.outputs.serviceBusEndpoint
 output SIGNALR_HOSTNAME string = signalr.outputs.hostName
 output SQLDOCGEN_SQLSERVERFQDN string = sqldocgen.outputs.sqlServerFqdn
-
-// Custom
-output AI_SEARCH_NAME string = aiSearch.outputs.name
-output AI_SEARCH_PE_IP string = aiSearch.outputs.pe_ip
-output DOCING_NAME string = docing.outputs.name
-output DOCING_PE_IP string = docing.outputs.pe_ip
-output REDIS_NAME string = redis.outputs.name
-output REDIS_PE_IP string = redis.outputs.pe_ip
-output SBUS_NAME string = sbus.outputs.name
-output SBUS_PE_IP string = sbus.outputs.pe_ip
-output SIGNALR_NAME string = signalr.outputs.name
-output SIGNALR_PE_IP string = signalr.outputs.pe_ip
-output SQLDOCGEN_NAME string = sqldocgen.outputs.name
-output SQLDOCGEN_PE_IP string = sqldocgen.outputs.pe_ip
