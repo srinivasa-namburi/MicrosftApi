@@ -21,12 +21,6 @@ jobs:
       AZURE_SUBNET_PE: ${{ vars.AZURE_SUBNET_PE }}
       AZURE_CREDENTIALS_REWRITTEN: ${{ secrets.AZURE_CREDENTIALS }}
     steps:
-      - name: Rewrite Azure Credentials to old format
-        run: |
-          AZURE_CREDENTIALS_REWRITTEN=$(echo "${AZURE_CREDENTIALS}" | jq -r '. | { clientId: .appId // .clientId, clientSecret: .password // .clientSecret, tenantId: .tenant // .tenantId }')
-        env:
-          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
-
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -37,6 +31,12 @@ jobs:
 
       - name: Install .Net Aspire workload
         run: dotnet workload install aspire
+
+      - name: Rewrite Azure Credentials to old format
+        run: |
+          AZURE_CREDENTIALS_REWRITTEN=$(echo "${AZURE_CREDENTIALS}" | jq -r '. | { clientId: .appId // .clientId, clientSecret: .password // .clientSecret, tenantId: .tenant // .tenantId }')
+        env:
+          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Delete existing folders used for previous deploymens
         run: |
