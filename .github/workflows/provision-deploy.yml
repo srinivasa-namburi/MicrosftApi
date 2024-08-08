@@ -1,4 +1,4 @@
-name: v2-deploy
+name: provision-deploy
 
 on:
   workflow_dispatch:
@@ -62,7 +62,12 @@ jobs:
           sudo apt update -y
           sudo apt install lynx links2 elinks w3m -y
 
-      - name: Log in with Azure (Client Credentials)
+      - name: Login with Azure CLI (Client Credentials)
+        uses: Azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Log in with Azure Developer CLI (Client Credentials)
         if: ${{ env.AZURE_CREDENTIALS != '' }}
         run: |
           info=$(echo "${AZURE_CREDENTIALS}" | jq -r '.')
