@@ -15,7 +15,7 @@ AppHostConfigurationSetup(builder);
 
 var envServiceConfigurationConfigurationSection = builder.Configuration.GetSection("ServiceConfiguration");
 var envAzureAdConfigurationSection = builder.Configuration.GetSection("AzureAd");
-var envConnectionStringsConfigurationSection = builder.Configuration.GetSection("ConnectionStrings");
+//var envConnectionStringsConfigurationSection = builder.Configuration.GetSection("ConnectionStrings");
 
 // Used to determine service configuration.
 var durableDevelopment = Convert.ToBoolean(builder.Configuration["ServiceConfiguration:ProjectVicoServices:DocumentGeneration:DurableDevelopmentServices"]);
@@ -26,10 +26,13 @@ var durableDevelopment = Convert.ToBoolean(builder.Configuration["ServiceConfigu
 var sqlPassword = builder.AddParameter("sqlPassword", true);
 var sqlDatabaseName = builder.Configuration["ServiceConfiguration:SQL:DatabaseName"];
 
+
+
 IResourceBuilder<SqlServerDatabaseResource> docGenSql;
 IResourceBuilder<AzureServiceBusResource>? sbus;
 IResourceBuilder<IResourceWithConnectionString> queueService;
 IResourceBuilder<RedisResource> redis;
+IResourceBuilder<IResourceWithConnectionString> openAi;
 
  // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
 var signalr = builder.AddAzureSignalR("signalr", configureResource: (resourceBuilder, construct, options) =>
@@ -65,6 +68,8 @@ var azureAiSearch = builder.AddAzureSearch("aiSearch", (resourceBuilder, constru
         options.Properties.PartitionCount = 2;
     }
 });
+
+openAi = builder.AddConnectionString("openai-planner");
 
 if (builder.ExecutionContext.IsRunMode) // For local development
 {
@@ -124,7 +129,8 @@ var apiMain = builder
     .WithExternalHttpEndpoints()
     .WithConfigSection(envAzureAdConfigurationSection)
     .WithConfigSection(envServiceConfigurationConfigurationSection)
-    .WithConfigSection(envConnectionStringsConfigurationSection)
+    //.WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithReference(openAi)
     .WithReference(blobStorage)
     .WithReference(signalr)
     .WithReference(redis)
@@ -136,7 +142,7 @@ var docGenFrontend = builder
     .WithExternalHttpEndpoints()
     .WithConfigSection(envAzureAdConfigurationSection)
     .WithConfigSection(envServiceConfigurationConfigurationSection)
-    .WithConfigSection(envConnectionStringsConfigurationSection)
+    //.WithConfigSection(envConnectionStringsConfigurationSection)
     .WithReference(blobStorage)
     .WithReference(signalr)
     .WithReference(redis)
@@ -147,17 +153,20 @@ apiMain.WithReference(docGenFrontend); // Neccessary for CORS policy creation
 var setupManager = builder
     .AddProject<Projects.ProjectVico_V2_SetupManager>("worker-setupmanager")
     .WithReplicas(1) // There can only be one Setup Manager
+    .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithReference(azureAiSearch)
     .WithReference(queueService)
     .WithReference(docGenSql)
     .WithReference(redis)
-    .WithConfigSection(envServiceConfigurationConfigurationSection);
+    .WithReference(openAi);
+
+    
 
 var workerScheduler = builder
     .AddProject<Projects.ProjectVico_V2_Worker_Scheduler>("worker-scheduler")
     .WithReplicas(1) // There can only be one Scheduler
     .WithConfigSection(envServiceConfigurationConfigurationSection)
-    .WithConfigSection(envConnectionStringsConfigurationSection)
+    //.WithConfigSection(envConnectionStringsConfigurationSection)
     .WithReference(blobStorage)
     .WithReference(docGenSql)
     .WithReference(queueService)
@@ -169,12 +178,13 @@ var workerDocumentGeneration = builder
     .WithReplicas(Convert.ToUInt16(
         builder.Configuration["ServiceConfiguration:ProjectVicoServices:DocumentGeneration:NumberOfGenerationWorkers"]))
     .WithConfigSection(envServiceConfigurationConfigurationSection)
-    .WithConfigSection(envConnectionStringsConfigurationSection)
+    //.WithConfigSection(envConnectionStringsConfigurationSection)
     .WithReference(azureAiSearch)
     .WithReference(blobStorage)
     .WithReference(docGenSql)
     .WithReference(queueService)
     .WithReference(redis)
+    .WithReference(openAi)
     .WithReference(apiMain)
     ;
 
@@ -183,22 +193,24 @@ var workerDocumentIngestion = builder
     .WithReplicas(Convert.ToUInt16(
         builder.Configuration["ServiceConfiguration:ProjectVicoServices:DocumentIngestion:NumberOfIngestionWorkers"]))
     .WithConfigSection(envServiceConfigurationConfigurationSection)
-    .WithConfigSection(envConnectionStringsConfigurationSection)
+    //.WithConfigSection(envConnectionStringsConfigurationSection)
     .WithReference(azureAiSearch)
     .WithReference(blobStorage)
     .WithReference(docGenSql)
     .WithReference(queueService)
     .WithReference(redis)
+    .WithReference(openAi)
     .WithReference(apiMain);
 
 var workerChat = builder.AddProject<Projects.ProjectVico_V2_Worker_Chat>("worker-chat")
     .WithConfigSection(envServiceConfigurationConfigurationSection)
-    .WithConfigSection(envConnectionStringsConfigurationSection)
+    //.WithConfigSection(envConnectionStringsConfigurationSection)
     .WithReference(azureAiSearch)
     .WithReference(blobStorage)
     .WithReference(docGenSql)
     .WithReference(queueService)
     .WithReference(redis)
+    .WithReference(openAi)
     .WithReference(apiMain);
 
 builder.Build().Run();
