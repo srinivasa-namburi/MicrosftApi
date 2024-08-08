@@ -34,11 +34,11 @@ jobs:
       - name: Rewrite Azure Credentials to old format if necessary
         run: |
           if ! echo "${AZURE_CREDENTIALS}" | jq -e 'has("clientSecret")' > /dev/null; then
-            AZURE_CREDENTIALS_REWRITTEN=$(echo "${AZURE_CREDENTIALS}" | jq -c '{ clientId: .appId, displayName: .displayName, clientSecret: .password, tenantId: .tenant }')
+            AZURE_CREDENTIALS_REWRITTEN=$(echo "${AZURE_CREDENTIALS}" | jq -c --arg subscriptionId "${AZURE_SUBSCRIPTION_ID}" '{ clientId: .appId, displayName: .displayName, clientSecret: .password, tenantId: .tenant, subscriptionId: $subscriptionId }')
           else
-            AZURE_CREDENTIALS_REWRITTEN=${AZURE_CREDENTIALS}
+            AZURE_CREDENTIALS_REWRITTEN=$(echo "${AZURE_CREDENTIALS}" | jq -c --arg subscriptionId "${AZURE_SUBSCRIPTION_ID}" '. + {subscriptionId: $subscriptionId}')
           fi
-          echo "AZURE_CREDENTIALS_REWRITTEN=$(echo "$AZURE_CREDENTIALS_REWRITTEN" | jq -c .)" >> $GITHUB_ENV
+          echo "AZURE_CREDENTIALS_REWRITTEN=$(echo \"$AZURE_CREDENTIALS_REWRITTEN\" | jq -c .)" >> $GITHUB_ENV
         env:
           AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
 
