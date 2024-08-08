@@ -110,7 +110,7 @@ jobs:
 
           # Set cloud.name to contents of AZURE_CLOUD
           # Display the current cloud name
-          azd config set cloud.name "${AZURE_ENVIRONMENT}"
+          azd config set cloud.name ${AZURE_ENVIRONMENT}
           echo "Current AZD cloud name: $(az cloud show --query name -o tsv)"
 
           azd auth login \
