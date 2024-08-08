@@ -46,6 +46,8 @@ jobs:
           fi
         env:
           DEPLOYMENT_MODEL: ${{ vars.DEPLOYMENT_MODEL }}
+      - name: Set execute permission on .sh and .ps1 scripts in the ./deploy folder
+        run: chmod ugo+x deploy/*.sh deploy/*.ps1
 
       - name: Activate azure-ci.yaml for CI/CD deployment
         run: |
