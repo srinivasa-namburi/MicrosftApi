@@ -132,8 +132,7 @@ var apiMain = builder
     .WithExternalHttpEndpoints()
     .WithConfigSection(envAzureAdConfigurationSection)
     .WithConfigSection(envServiceConfigurationConfigurationSection)
-    //.WithConfigSection(envConnectionStringsConfigurationSection)
-    .WithReference(openAi)
+    .WithConfigSection(envConnectionStringsConfigurationSection)
     .WithReference(blobStorage)
     .WithReference(signalr)
     .WithReference(redis)
@@ -169,7 +168,7 @@ var workerScheduler = builder
     .AddProject<Projects.ProjectVico_V2_Worker_Scheduler>("worker-scheduler")
     .WithReplicas(1) // There can only be one Scheduler
     .WithConfigSection(envServiceConfigurationConfigurationSection)
-    //.WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithConfigSection(envConnectionStringsConfigurationSection)
     .WithReference(blobStorage)
     .WithReference(docGenSql)
     .WithReference(queueService)
@@ -181,13 +180,12 @@ var workerDocumentGeneration = builder
     .WithReplicas(Convert.ToUInt16(
         builder.Configuration["ServiceConfiguration:ProjectVicoServices:DocumentGeneration:NumberOfGenerationWorkers"]))
     .WithConfigSection(envServiceConfigurationConfigurationSection)
-    //.WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithConfigSection(envConnectionStringsConfigurationSection)
     .WithReference(azureAiSearch)
     .WithReference(blobStorage)
     .WithReference(docGenSql)
     .WithReference(queueService)
     .WithReference(redis)
-    .WithReference(openAi)
     .WithReference(apiMain)
     ;
 
@@ -196,24 +194,22 @@ var workerDocumentIngestion = builder
     .WithReplicas(Convert.ToUInt16(
         builder.Configuration["ServiceConfiguration:ProjectVicoServices:DocumentIngestion:NumberOfIngestionWorkers"]))
     .WithConfigSection(envServiceConfigurationConfigurationSection)
-    //.WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithConfigSection(envConnectionStringsConfigurationSection)
     .WithReference(azureAiSearch)
     .WithReference(blobStorage)
     .WithReference(docGenSql)
     .WithReference(queueService)
     .WithReference(redis)
-    .WithReference(openAi)
     .WithReference(apiMain);
 
 var workerChat = builder.AddProject<Projects.ProjectVico_V2_Worker_Chat>("worker-chat")
     .WithConfigSection(envServiceConfigurationConfigurationSection)
-    //.WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithConfigSection(envConnectionStringsConfigurationSection)
     .WithReference(azureAiSearch)
     .WithReference(blobStorage)
     .WithReference(docGenSql)
     .WithReference(queueService)
     .WithReference(redis)
-    .WithReference(openAi)
     .WithReference(apiMain);
 
 builder.Build().Run();
