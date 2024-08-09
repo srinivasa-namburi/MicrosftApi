@@ -15,7 +15,7 @@ AppHostConfigurationSetup(builder);
 
 var envServiceConfigurationConfigurationSection = builder.Configuration.GetSection("ServiceConfiguration");
 var envAzureAdConfigurationSection = builder.Configuration.GetSection("AzureAd");
-//var envConnectionStringsConfigurationSection = builder.Configuration.GetSection("ConnectionStrings");
+var envConnectionStringsConfigurationSection = builder.Configuration.GetSection("ConnectionStrings");
 
 
 // This is a dummy change that should follow through to GitHub PR
