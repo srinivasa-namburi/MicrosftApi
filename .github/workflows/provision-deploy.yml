@@ -116,9 +116,27 @@ jobs:
         env:
           AZD_INITIAL_ENVIRONMENT_CONFIG: ${{ secrets.AZD_INITIAL_ENVIRONMENT_CONFIG }}
 
+      - name: Create appsettings.Production.json file
+        run: |
+          # Copy appsettings.json to appsettings.Production.json (in the ProjectVico.AppHost directory)
+          cp src/appsettings.json src/appsettings.Production.json
+          # Create a ConnectionStrings section in appsettings.Production.json with the openai-planner connection string
+          jq --arg openai_planner "${openai_planner}" '.ConnectionStrings.openai-planner = $openai_planner' src/appsettings.Production.json > src/appsettings.Production.json.tmp
+          # Create the ServiceConfiguration:AzureMaps:Key key in appsettings.Production.json with the Azure Maps key
+          jq --arg ServiceConfiguration__AzureMaps__Key "${ServiceConfiguration__AzureMaps__Key}" '.ServiceConfiguration.AzureMaps.Key = $ServiceConfiguration__AzureMaps__Key' src/appsettings.Production.json > src/appsettings.Production.json.tmp
+
+
+          # Display the contents of appsettings.Production.json
+          cat src/appsettings.Production.json
+
+          # Pause execution for 20 seconds
+          sleep 20
+
+        env:
+          openai_planner: ${{ secrets.openai_planner }}
+          ServiceConfiguration__AzureMaps__Key: ${{ secrets.ServiceConfiguration__AzureMaps__Key }}
+
       - name: Deploy Application
         run: azd deploy --no-prompt
         env:
           AZURE_RESOURCE_GROUP: rg-${{ env.AZURE_ENV_NAME }}
-          openai_planner: ${{ secrets.PVICO_OPENAI_CONNECTIONSTRING }}
-          ServiceConfiguration__AzureMaps__Key: ${{ secrets.PVICO_AZUREMAPS_KEY }}
