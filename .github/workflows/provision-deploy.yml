@@ -120,5 +120,5 @@ jobs:
         run: azd deploy --no-prompt
         env:
           AZURE_RESOURCE_GROUP: rg-${{ env.AZURE_ENV_NAME }}
-          ConnectionStrings__openai_planner: ${{ secrets.PVICO_OPENAI_CONNECTIONSTRING }}
+          openai_planner: ${{ secrets.PVICO_OPENAI_CONNECTIONSTRING }}
           ServiceConfiguration__AzureMaps__Key: ${{ secrets.PVICO_AZUREMAPS_KEY }}
