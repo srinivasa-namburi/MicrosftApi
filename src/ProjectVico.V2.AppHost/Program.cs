@@ -17,19 +17,15 @@ var envServiceConfigurationConfigurationSection = builder.Configuration.GetSecti
 var envAzureAdConfigurationSection = builder.Configuration.GetSection("AzureAd");
 var envConnectionStringsConfigurationSection = builder.Configuration.GetSection("ConnectionStrings");
 
-
-// This is a dummy change that should follow through to GitHub PR
-
 // Used to determine service configuration.
 var durableDevelopment = Convert.ToBoolean(builder.Configuration["ServiceConfiguration:ProjectVicoServices:DocumentGeneration:DurableDevelopmentServices"]);
 
 // Set the Parameters:SqlPassword Key is user secrets (right click AppHost project, select User Secrets, add the key and value)
 // Example: "Parameters:sqlPassword": "password"
 
+// Change from ADO
 var sqlPassword = builder.AddParameter("sqlPassword", true);
 var sqlDatabaseName = builder.Configuration["ServiceConfiguration:SQL:DatabaseName"];
-
-
 
 IResourceBuilder<SqlServerDatabaseResource> docGenSql;
 IResourceBuilder<AzureServiceBusResource>? sbus;
@@ -71,8 +67,6 @@ var azureAiSearch = builder.AddAzureSearch("aiSearch", (resourceBuilder, constru
         options.Properties.PartitionCount = 2;
     }
 });
-
-openAi = builder.AddConnectionString("openai-planner");
 
 if (builder.ExecutionContext.IsRunMode) // For local development
 {
