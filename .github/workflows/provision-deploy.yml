@@ -137,8 +137,8 @@ jobs:
           sleep 20
 
         env:
-          openai_planner: ${{ secrets.openai_planner }}
-          ServiceConfiguration__AzureMaps__Key: ${{ secrets.ServiceConfiguration__AzureMaps__Key }}
+          openai_planner: ${{ secrets.PVICO_OPENAI_CONNECTIONSTRING }}
+          ServiceConfiguration__AzureMaps__Key: ${{ secrets.PVICO_AZUREMAPS_KEY }}
 
       - name: Deploy Application
         run: azd deploy --no-prompt
