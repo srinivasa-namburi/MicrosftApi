@@ -118,16 +118,20 @@ jobs:
 
       - name: Create appsettings.Production.json file
         run: |
-          # Copy appsettings.json to appsettings.Production.json (in the ProjectVico.AppHost directory)
-          cp src/appsettings.json src/appsettings.Production.json
-          # Create a ConnectionStrings section in appsettings.Production.json with the openai-planner connection string
-          jq --arg openai_planner "${openai_planner}" '.ConnectionStrings.openai-planner = $openai_planner' src/appsettings.Production.json > src/appsettings.Production.json.tmp
-          # Create the ServiceConfiguration:AzureMaps:Key key in appsettings.Production.json with the Azure Maps key
-          jq --arg ServiceConfiguration__AzureMaps__Key "${ServiceConfiguration__AzureMaps__Key}" '.ServiceConfiguration.AzureMaps.Key = $ServiceConfiguration__AzureMaps__Key' src/appsettings.Production.json > src/appsettings.Production.json.tmp
+          # Copy appsettings.json to appsettings.Production.json (in the ProjectVico.V2.AppHost directory)
+          cp ProjectVico.V2.AppHost/appsettings.json ProjectVico.V2.AppHost/appsettings.Production.json
 
+          # Create a ConnectionStrings section in appsettings.Production.json with the openai-planner connection string
+          jq --arg openai_planner "${openai_planner}" '.ConnectionStrings.openai-planner = $openai_planner' ProjectVico.V2.AppHost/appsettings.Production.json > ProjectVico.V2.AppHost/appsettings.Production.json.tmp
+
+          # Create the ServiceConfiguration:AzureMaps:Key key in appsettings.Production.json with the Azure Maps key
+          jq --arg ServiceConfiguration__AzureMaps__Key "${ServiceConfiguration__AzureMaps__Key}" '.ServiceConfiguration.AzureMaps.Key = $ServiceConfiguration__AzureMaps__Key' ProjectVico.V2.AppHost/appsettings.Production.json > ProjectVico.V2.AppHost/appsettings.Production.json.tmp
+
+          #Delete the temporary file
+          rm ProjectVico.V2.AppHost/appsettings.Production.json.tmp
 
           # Display the contents of appsettings.Production.json
-          cat src/appsettings.Production.json
+          cat ProjectVico.V2.AppHost/appsettings.Production.json
 
           # Pause execution for 20 seconds
           sleep 20
