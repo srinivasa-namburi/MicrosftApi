@@ -20,7 +20,6 @@ jobs:
       AZURE_SUBNET_CAE: ${{ vars.AZURE_SUBNET_CAE }}
       AZURE_SUBNET_PE: ${{ vars.AZURE_SUBNET_PE }}
       AZURE_CLOUD: ${{ vars.AZURE_CLOUD }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,6 +45,15 @@ jobs:
           echo "AZURE_CREDENTIALS_REWRITTEN=${AZURE_CREDENTIALS_REWRITTEN}" >> $GITHUB_ENV
         env:
           AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set cloud environment variables
+        run: |
+
+          if [ "${{ env.AZURE_CLOUD }}" == "usgov"] || [ "${{ env.AZURE_CLOUD }}" == "AzureUSGovernment"]; then
+            echo "AZURE_CLOUD=AzureUSGovernment" >> $GITHUB_ENV
+          else
+            echo "AZURE_CLOUD=AzureCloud" >> $GITHUB_ENV
+          fi
 
       - name: Debug AZURE_CREDENTIALS_REWRITTEN
         run: |
@@ -88,7 +96,7 @@ jobs:
         uses: Azure/login@v2
         with:
           creds: ${{ env.AZURE_CREDENTIALS_REWRITTEN }}
-          environment: ${{ vars.AZURE_CLOUD }}
+          environment: ${{ env.AZURE_CLOUD }}
 
       - name: Log in with Azure Developer CLI (Client Credentials)
         if: ${{ env.AZURE_CREDENTIALS != '' }}
@@ -99,7 +107,6 @@ jobs:
           tenant_id=$(echo "${info}" | jq -r '.tenant // .tenantId')
 
           # Set cloud.name to contents of AZURE_CLOUD
-          # Display the current cloud name
           azd config set cloud.name ${AZURE_CLOUD}
           echo "Current AZD cloud name: $(az cloud show --query name -o tsv)"
 
