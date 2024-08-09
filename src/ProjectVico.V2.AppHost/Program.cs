@@ -18,6 +18,8 @@ var envAzureAdConfigurationSection = builder.Configuration.GetSection("AzureAd")
 //var envConnectionStringsConfigurationSection = builder.Configuration.GetSection("ConnectionStrings");
 
 
+// This is a dummy change that should follow through to GitHub PR
+
 // Used to determine service configuration.
 var durableDevelopment = Convert.ToBoolean(builder.Configuration["ServiceConfiguration:ProjectVicoServices:DocumentGeneration:DurableDevelopmentServices"]);
 
