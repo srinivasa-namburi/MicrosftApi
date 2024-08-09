@@ -17,6 +17,7 @@ var envServiceConfigurationConfigurationSection = builder.Configuration.GetSecti
 var envAzureAdConfigurationSection = builder.Configuration.GetSection("AzureAd");
 //var envConnectionStringsConfigurationSection = builder.Configuration.GetSection("ConnectionStrings");
 
+
 // Used to determine service configuration.
 var durableDevelopment = Convert.ToBoolean(builder.Configuration["ServiceConfiguration:ProjectVicoServices:DocumentGeneration:DurableDevelopmentServices"]);
 
@@ -142,8 +143,7 @@ var docGenFrontend = builder
     .WithExternalHttpEndpoints()
     .WithConfigSection(envAzureAdConfigurationSection)
     .WithConfigSection(envServiceConfigurationConfigurationSection)
-    //.WithConfigSection(envConnectionStringsConfigurationSection)
-    .WithReference(blobStorage)
+    .WithConfigSection(envConnectionStringsConfigurationSection)
     .WithReference(signalr)
     .WithReference(redis)
     .WithReference(apiMain);
@@ -151,14 +151,15 @@ var docGenFrontend = builder
 apiMain.WithReference(docGenFrontend); // Neccessary for CORS policy creation
 
 var setupManager = builder
-    .AddProject<Projects.ProjectVico_V2_SetupManager>("worker-setupmanager")
-    .WithReplicas(1) // There can only be one Setup Manager
-    .WithConfigSection(envServiceConfigurationConfigurationSection)
-    .WithReference(azureAiSearch)
-    .WithReference(queueService)
-    .WithReference(docGenSql)
-    .WithReference(redis)
-    .WithReference(openAi);
+        .AddProject<Projects.ProjectVico_V2_SetupManager>("worker-setupmanager")
+        .WithReplicas(1) // There can only be one Setup Manager
+        .WithConfigSection(envServiceConfigurationConfigurationSection)
+        .WithConfigSection(envConnectionStringsConfigurationSection)
+        .WithReference(azureAiSearch)
+        .WithReference(queueService)
+        .WithReference(docGenSql)
+        .WithReference(redis)
+    ;
 
     
 
