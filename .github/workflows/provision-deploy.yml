@@ -121,21 +121,22 @@ jobs:
           # Copy appsettings.json to appsettings.Production.json (in the ProjectVico.V2.AppHost directory)
           cp ProjectVico.V2.AppHost/appsettings.json ProjectVico.V2.AppHost/appsettings.Production.json
 
-          # Create a ConnectionStrings section in appsettings.Production.json with the openai-planner connection string
-          jq --arg openai_planner "${openai_planner}" '.ConnectionStrings.openai-planner = $openai_planner' ProjectVico.V2.AppHost/appsettings.Production.json > ProjectVico.V2.AppHost/appsettings.Production.json.tmp
+          # Ensure ConnectionStrings and ServiceConfiguration.AzureMaps objects exist and add respective fields
+          jq --arg openai_planner "${openai_planner}" --arg azure_maps_key "${ServiceConfiguration__AzureMaps__Key}" '
+            .ConnectionStrings = (.ConnectionStrings // {}) |
+            .ConnectionStrings["openai-planner"] = $openai_planner |
+            .ServiceConfiguration.AzureMaps = (.ServiceConfiguration.AzureMaps // {}) |
+            .ServiceConfiguration.AzureMaps.Key = $azure_maps_key' \
+            ProjectVico.V2.AppHost/appsettings.Production.json > ProjectVico.V2.AppHost/appsettings.Production.json.tmp
 
-          # Create the ServiceConfiguration:AzureMaps:Key key in appsettings.Production.json with the Azure Maps key
-          jq --arg ServiceConfiguration__AzureMaps__Key "${ServiceConfiguration__AzureMaps__Key}" '.ServiceConfiguration.AzureMaps.Key = $ServiceConfiguration__AzureMaps__Key' ProjectVico.V2.AppHost/appsettings.Production.json > ProjectVico.V2.AppHost/appsettings.Production.json.tmp
-
-          #Delete the temporary file
-          rm ProjectVico.V2.AppHost/appsettings.Production.json.tmp
+          # Move the temporary file to the final appsettings.Production.json
+          mv ProjectVico.V2.AppHost/appsettings.Production.json.tmp ProjectVico.V2.AppHost/appsettings.Production.json
 
           # Display the contents of appsettings.Production.json
           cat ProjectVico.V2.AppHost/appsettings.Production.json
 
           # Pause execution for 20 seconds
           sleep 20
-
         env:
           openai_planner: ${{ secrets.PVICO_OPENAI_CONNECTIONSTRING }}
           ServiceConfiguration__AzureMaps__Key: ${{ secrets.PVICO_AZUREMAPS_KEY }}
