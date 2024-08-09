@@ -131,12 +131,6 @@ jobs:
 
           # Move the temporary file to the final appsettings.Production.json
           mv ProjectVico.V2.AppHost/appsettings.Production.json.tmp ProjectVico.V2.AppHost/appsettings.Production.json
-
-          # Display the contents of appsettings.Production.json
-          cat ProjectVico.V2.AppHost/appsettings.Production.json
-
-          # Pause execution for 20 seconds
-          sleep 20
         env:
           openai_planner: ${{ secrets.PVICO_OPENAI_CONNECTIONSTRING }}
           ServiceConfiguration__AzureMaps__Key: ${{ secrets.PVICO_AZUREMAPS_KEY }}
