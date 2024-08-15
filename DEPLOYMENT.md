@@ -1,7 +1,7 @@
 ## Solution Deployment
 
 # Pre-Requisites
-1. Create a Service Principle, with owner permissions on the tenant, which will be used to deploy solution (can be deleted right after deployment)
+1. Create two Service Principles. One with owner permissions on the tenant, which will be used to deploy solution (can be deleted right after deployment). The other other acts as the Application client against Microsoft Entra to run authentication. This one requires no special permissions for the service principal itself (it's permission-less and mirrors the permissions of the users using it to authenticate in our application)
   - ![image](https://github.com/user-attachments/assets/e95ce5ad-36cc-4be9-a2ab-644c23b4bf47)
 2. Create an App Registration
   - ![image](https://github.com/user-attachments/assets/561b9f33-854e-4f5e-99f1-d3064afe835a)
