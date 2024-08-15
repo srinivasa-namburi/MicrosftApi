@@ -10,25 +10,27 @@ using ProjectVico.V2.Shared.Contracts.Messages.Chat.Events;
 using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Enums;
 using ProjectVico.V2.Shared.Models;
+using Microsoft.Data.SqlClient;
+using ProjectVico.V2.DocumentProcess.Shared;
+using ProjectVico.V2.DocumentProcess.Shared.Prompts;
+using Scriban;
 
 namespace ProjectVico.V2.Worker.Chat.Consumers;
 
 public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
 {
     private Kernel _kernel;
+    private IPromptCatalogTypes _promptCatalogTypes;
     private readonly DocGenerationDbContext _dbContext;
     private readonly IMapper _mapper;
     private readonly IServiceProvider _sp;
-    private string _systemPrompt = "You are a friendly assistant answering questions posed by the user.";
-
+    
     public ProcessChatMessageConsumer(
-        Kernel kernel,
         DocGenerationDbContext dbContext,
         IMapper mapper,
         IServiceProvider sp
         )
     {
-        //_kernel = kernel;
         _dbContext = dbContext;
         _mapper = mapper;
         _sp = sp;
@@ -38,7 +40,15 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
     {
         var userMessageDto = context.Message.ChatMessageDto;
 
-        await StoreChatMessage(userMessageDto);
+        try
+        {
+            await StoreChatMessage(userMessageDto);
+        }
+        catch (OperationCanceledException e)
+        {
+            // If the message is a duplicate, log the error and exit (as a successful run)
+            return;
+        }
         await ProcessUserMessage(userMessageDto, context);
     }
 
@@ -59,6 +69,20 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
         }
 
         _dbContext.ChatMessages.Add(chatMessage);
+        try
+        {
+            await _dbContext.SaveChangesAsync();
+        }
+        catch (DbUpdateException e)
+        {
+            // If it's a foreign key constraint violation, log the error and exit (as a successful run)
+            // This is likely a duplicate message being processed
+            if (e.InnerException is SqlException sqlException && (sqlException.Number == 547 || sqlException.Number == 2627))
+            {
+                throw new OperationCanceledException("Duplicate message detected", e);
+
+            }
+        }
         await _dbContext.SaveChangesAsync();
     }
 
@@ -76,7 +100,7 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
             ReplyToId = userMessageDto.Id,
             Id = Guid.NewGuid(),
             State = ChatMessageCreationState.InProgress
-            
+
         };
 
         var conversation = await _dbContext.ChatConversations
@@ -85,9 +109,13 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
         // Set up Semantic Kernel for the right Document Process
         using var scope = _sp.CreateScope();
 
-        _kernel = scope.ServiceProvider.GetRequiredKeyedService<Kernel>(conversation.DocumentProcessName + "-Kernel");
-        
-        var systemPrompt = conversation!.SystemPrompt;
+        //_kernel = scope.ServiceProvider.GetRequiredKeyedService<Kernel>(conversation.DocumentProcessName + "-Kernel");
+        _kernel = scope.ServiceProvider.GetRequiredServiceForDocumentProcess<Kernel>(conversation.DocumentProcessName)!;
+
+        _promptCatalogTypes =
+            scope.ServiceProvider.GetRequiredServiceForDocumentProcess<IPromptCatalogTypes>(conversation.DocumentProcessName)!;
+
+        var systemPrompt = _promptCatalogTypes.ChatSystemPrompt;
 
         var openAiSettings = new OpenAIPromptExecutionSettings()
         {
@@ -97,52 +125,20 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
             Temperature = 1.0
         };
 
-        var updateBlock = "";
-        var responseDateSet = false;
+
 
         var chatHistoryString = await CreateChatHistoryString(context, userMessageDto, 10);
         var previousSummariesForConversationString = await GetSummariesConversationString(userMessageDto);
 
-        var userPrompt =
-            $"""
-            The 5 last chat messages are between the [ChatHistory] and [/ChatHistory] tags.
-            A summary of full conversation history is between the [ChatHistorySummary] and [/ChatHistorySummary] tags.
-            The user's question is between the [User] and [/User] tags.
-            
-            Consider this chat history when responding to the user, specifically 
-            looking for any context that may be relevant to the user's question.
-
-            Be precise when answering the user's query, don't provide unnecessary information 
-            that goes beyond the user's question.
-
-            If asked to limit to a certain number of items, please respect that limit and don't list 
-            additional items beyond the limit.
-
-            If it's clear that the user has switched subjects, please make sure you disregard any irrelevant 
-            context from the chat history.
-
-            Respond with no decoration around your response, but use Markdown formatting.
-            Use any plugins or tools you need to answer the question.
-
-            Try to write complete paragraphs instead of single sentences under a heading.
-
-            If you cite regulations, please enclose those in Markdown links. 
-            For example, [Title 21, Part 11](https://www.ecfr.gov/cgi-bin/text-idx?SID=1f1f0f7f7b1)
-             
-            [ChatHistory]
-            {chatHistoryString}
-            [/ChatHistory]
-            
-            [ChatHistorySummary]
-            {previousSummariesForConversationString}
-            [/ChatHistorySummary]
-             
-            [User]
-            {userMessageDto.Message}
-            [/User]
-            """;
-
+        var userPrompt = BuildUserPrompt(
+            chatHistoryString, 
+            previousSummariesForConversationString,
+            userMessageDto.Message);
+        
         var kernelArguments = new KernelArguments(openAiSettings);
+
+        var updateBlock = "";
+        var responseDateSet = false;
 
         await foreach (var response in _kernel.InvokePromptStreamingAsync(userPrompt, kernelArguments))
         {
@@ -177,6 +173,22 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
         await StoreChatMessage(assistantMessageDto);
     }
 
+    private string BuildUserPrompt(string chatHistoryString, string previousSummariesForConversationString, string userMessage)
+    {
+        var initialUserPrompt = _promptCatalogTypes.ChatSinglePassUserPrompt;
+        var template = Template.Parse(initialUserPrompt);
+
+        var result = template.Render(new
+        {
+            chatHistoryString,
+            previousSummariesForConversationString,
+            userMessage
+            
+        }, member => member.Name);
+
+        return result;
+    }
+    
     private async Task<string> GetSummariesConversationString(ChatMessageDTO userMessageDto)
     {
         // Get all summaries for the conversation
@@ -265,7 +277,6 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
             chatHistoryBuilder
                 .AppendLine("role:" + chatMessage.Source.ToString())
                 .AppendLine("content:" + chatMessage.Message);
-
         }
 
         // Output the chat history to a string variable

@@ -1,25 +1,45 @@
 using Azure.Identity;
 using Azure.Messaging.ServiceBus.Administration;
+using ProjectVico.V2.DocumentProcess.Shared;
+using ProjectVico.V2.DocumentProcess.Shared.Generation;
+using ProjectVico.V2.Plugins.Shared;
 using ProjectVico.V2.SetupManager;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Extensions;
+using ProjectVico.V2.Shared.Services.Search;
+
 
 var builder = Host.CreateApplicationBuilder(args);
 
 builder.AddServiceDefaults();
-
-builder.AddAzureServiceBusClient("sbus");
-builder.AddRedisClient("redis");
+builder.AddAzureSearchClient("aiSearch");
 
 builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
+builder.Services.AddSingleton<SearchClientFactory>();
+
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
+
+builder.AddAzureServiceBusClient("sbus");
+builder.AddKeyedAzureOpenAIClient("openai-planner");
+builder.AddAzureBlobClient("blob-docing");
+builder.AddRedisClient("redis");
 
 builder.AddDocGenDbContext(serviceConfigurationOptions);
 
-builder.Services.AddOpenTelemetry()
-    .WithTracing(tracing => tracing.AddSource(DocGenDbInitializerService.ActivitySourceName));
+if (!serviceConfigurationOptions.ProjectVicoServices.DocumentGeneration.CreateBodyTextNodes)
+{
+    builder.Services.AddScoped<IBodyTextGenerator, LoremIpsumBodyTextGenerator>();
+}
 
-builder.Services.AddSingleton<DocGenDbInitializerService>();
+builder.DynamicallyRegisterPlugins(serviceConfigurationOptions);
+builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
+builder.AddSemanticKernelServices(serviceConfigurationOptions);
+
+
+builder.Services.AddOpenTelemetry()
+    .WithTracing(tracing => tracing.AddSource(SetupDataInitializerService.ActivitySourceName));
+
+builder.Services.AddSingleton<SetupDataInitializerService>();
 
 if (builder.Environment.IsDevelopment() && !serviceConfigurationOptions.ProjectVicoServices.DocumentGeneration.DurableDevelopmentServices)
 {
@@ -27,7 +47,8 @@ if (builder.Environment.IsDevelopment() && !serviceConfigurationOptions.ProjectV
     await DeleteAllQueues(sbusConnectionString);
 }
 
-builder.Services.AddHostedService(sp => sp.GetRequiredService<DocGenDbInitializerService>());
+builder.Services.AddHostedService(sp => sp.GetRequiredService<SetupDataInitializerService>());
+
 
 var host = builder.Build();
 host.Run();

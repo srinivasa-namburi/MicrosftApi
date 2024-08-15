@@ -29,6 +29,7 @@ $selectedIndexName = ($indexSchemaFile | ConvertFrom-Json).name
 
 # Createing the Index
 #Write-Host "Creating Target Search Index."
+#This is now done as part of system startup in SetupManager
 #$result = Invoke-RestMethod  -Uri $uri -Method POST -Body $indexSchemaFile -Headers $headers -ContentType "application/json"
 
 # Uploading documents

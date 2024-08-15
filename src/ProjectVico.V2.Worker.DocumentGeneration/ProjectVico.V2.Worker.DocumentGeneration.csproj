@@ -9,6 +9,12 @@
     <NoWarn>SKEXP0060;SKEXP0061;SKEXP0042;SKEXP0011;SKEXP0001</NoWarn>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="Services\**" />
+    <Content Remove="Services\**" />
+    <EmbeddedResource Remove="Services\**" />
+    <None Remove="Services\**" />
+  </ItemGroup>
+  <ItemGroup>
     <None Remove="Plans\DocumentOutlineGeneration.txt" />
   </ItemGroup>
   <ItemGroup>
@@ -21,12 +27,6 @@
     <PackageReference Include="MassTransit.EntityFrameworkCore" Version="8.2.1" />
     <PackageReference Include="MassTransit.Quartz" Version="8.2.1" />
     <PackageReference Include="MassTransit.RabbitMQ" Version="8.2.1" />
-    <PackageReference Include="NLipsum" Version="1.1.0" />
-    <PackageReference Include="Aspire.Azure.AI.OpenAI" Version="8.0.0-preview.7.24251.11" />
-    <PackageReference Include="Aspire.Azure.Messaging.ServiceBus" Version="8.0.1" />
-    <PackageReference Include="Aspire.Azure.Search.Documents" Version="8.0.1" />
-    <PackageReference Include="Aspire.Azure.Storage.Blobs" Version="8.0.1" />
-    <PackageReference Include="Aspire.RabbitMQ.Client" Version="8.0.1" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
   </ItemGroup>
   <ItemGroup>

@@ -13,7 +13,6 @@ using ProjectVico.V2.Shared.Extensions;
 using ProjectVico.V2.Shared.SagaState;
 using ProjectVico.V2.Shared.Services.Search;
 using ProjectVico.V2.Worker.DocumentGeneration.Sagas;
-using ProjectVico.V2.Worker.DocumentGeneration.Services;
 
 
 var builder = Host.CreateApplicationBuilder(args);
