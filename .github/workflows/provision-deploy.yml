@@ -47,19 +47,19 @@ jobs:
         env:
           AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Debug AZURE_CREDENTIALS_REWRITTEN
-        run: |
-          echo "AZURE_CREDENTIALS_REWRITTEN=${AZURE_CREDENTIALS_REWRITTEN}"
-
       - name: Delete existing folders used for previous deployments
         run: |
-          rm -rf infra
-          rm -rf .azure
 
       - name: Set up infra folder based on deployment model
         run: |
           set -e
           DEPLOYMENT_MODEL=${{ vars.DEPLOYMENT_MODEL }}
+
+          # Delete existing infra folder
+          rm -rf infra
+          rm -rf .azure
+
+          # Copy infra folder based on deployment model
           if [ "$DEPLOYMENT_MODEL" == "public" ]; then
             cp -r infra.public infra
           else
@@ -82,7 +82,7 @@ jobs:
       - name: Install text-based browsers for AZD authentication
         run: |
           sudo apt update -y
-          sudo apt install lynx links2 elinks w3m -y
+          sudo apt install lynx -y
 
       - name: Login with Azure CLI (Client Credentials)
         uses: Azure/login@v2
@@ -131,11 +131,37 @@ jobs:
 
           # Move the temporary file to the final appsettings.Production.json
           mv ProjectVico.V2.AppHost/appsettings.Production.json.tmp ProjectVico.V2.AppHost/appsettings.Production.json
+
+          # Display the full appsettings.Production.json file
+          echo "*****************************************************************************************"
+          cat ProjectVico.V2.AppHost/appsettings.Production.json
+          echo "*****************************************************************************************"
         env:
           openai_planner: ${{ secrets.PVICO_OPENAI_CONNECTIONSTRING }}
           ServiceConfiguration__AzureMaps__Key: ${{ secrets.PVICO_AZUREMAPS_KEY }}
 
+      - name: Add AzureAd configuration to appsettings.Production.json
+        run: |
+          # Load the existing appsettings.Production.json into a variable
+          appsettings=$(cat ProjectVico.V2.AppHost/appsettings.Production.json)
+
+          # Load the AzureAd configuration from the secret
+          azureAdConfig=$(echo "${PVICO_ENTRA_CREDENTIALS}")
+
+          # Merge the AzureAd configuration into the appsettings under the "AzureAd" key
+          merged=$(echo "${appsettings}" | jq --argjson azureAdConfig "${azureAdConfig}" '. + {AzureAd: $azureAdConfig}')
+
+          # Write the merged configuration back to the appsettings.Production.json file
+          echo "${merged}" > ProjectVico.V2.AppHost/appsettings.Production.json
+
+          # Display the full appsettings.Production.json file
+          echo "*****************************************************************************************"
+          cat ProjectVico.V2.AppHost/appsettings.Production.json
+          echo "*****************************************************************************************"
+        env:
+          PVICO_ENTRA_CREDENTIALS: ${{ secrets.PVICO_ENTRA_CREDENTIALS }}
+
       - name: Deploy Application
-        run: azd deploy --no-prompt
+        run: azd deploy --no-prompt --debug
         env:
           AZURE_RESOURCE_GROUP: rg-${{ env.AZURE_ENV_NAME }}
