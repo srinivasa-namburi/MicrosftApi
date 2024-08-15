@@ -4,7 +4,7 @@
 - Create a Service Principle, with owner permissions on the tenant, which will be used to deploy solution (can be deleted right after deployment)
   - ![image](https://github.com/user-attachments/assets/e95ce5ad-36cc-4be9-a2ab-644c23b4bf47)
 - Create an App Registration
-  - ![image](https://github.com/user-attachments/assets/5599dd35-025d-40be-a8b3-c88399aff74d)
+  - ![image](https://github.com/user-attachments/assets/561b9f33-854e-4f5e-99f1-d3064afe835a)
 - Fork the Repository
   -  ![image](https://github.com/user-attachments/assets/556c6ac0-7354-447b-8c91-1a15469aee8f)
 - Add Azure credential with Owner access, you can create a Service Principle for the deployment and delete it right after
