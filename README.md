@@ -18,6 +18,10 @@ Build a Good Understanding of Generative AI with these courses:
 - [Generative AI with Azure OpenAI Service (DALL-E Overview) - C# Corner](https://www.c-sharpcorner.com/article/generative-ai-with-azure-openai-dall-e-overview/)
 - [Develop Generative AI solutions with Azure OpenAI Service Tutorial](https://learn.microsoft.com/en-us/training/paths/develop-ai-solutions-azure-openai/)
 
+## Deployment
+
+Please see [DEPLOYMENT](DEPLOYMENT.md) for the solution's deployment guide.
+
 ## Running the Word Copilot Solution
 
 The Word Copilot connects to a WebAPI backend which is interfacing with the Semantic Kernal. This can either be running on your local machine, or it can be running in Azure. If you are running it from your own machine, see steps below in section
