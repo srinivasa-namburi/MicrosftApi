@@ -53,22 +53,15 @@ jobs:
         shell: powershell
         run: |
           $token = "${{ env.PVICO_TRAININGDATA_DOWNLOAD_TOKEN }}"
-          $repoUrl = "https://$token:@github.com/Azure/AI-for-SMRs-TrainingData.git"
+          $repoUrl = "https://${token}:@github.com/Azure/AI-for-SMRs-TrainingData.git"
           git clone $repoUrl ./AI-for-SMRs-TrainingData
 
-      - name: Set Environment Variables
+      - name: Run AI Search Index Population Script
+        shell: powershell
         env:
           PVICO_AISEARCH_HOST: ${{ vars.PVICO_AISEARCH_HOST }}
           PVICO_AISEARCH_KEY: ${{ secrets.PVICO_AISEARCH_KEY }}
           PVICO_INDEXES_TO_POPULATE: ${{ vars.PVICO_INDEXES_TO_POPULATE }}
-        shell: powershell
-        run: |
-          $env:PVICO_AISEARCH_HOST = "${{ env.PVICO_AISEARCH_HOST }}"
-          $env:PVICO_AISEARCH_KEY = "${{ env.PVICO_AISEARCH_KEY }}"
-          $env:PVICO_INDEXES_TO_POPULATE = "${{ env.PVICO_INDEXES_TO_POPULATE }}"
-
-      - name: Run AI Search Index Population Script
-        shell: powershell
         run: |
           cd ./AI-for-SMRs-TrainingData
           ./index-restore.ps1 -targetSearchServiceName $env:PVICO_AISEARCH_HOST -targetAdminKey $env:PVICO_AISEARCH_KEY
