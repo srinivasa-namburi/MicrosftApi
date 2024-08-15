@@ -1,17 +1,20 @@
 ## Solution Deployment
 
 # Pre-Requisites
-- Create a Service Principle, with owner permissions on the tenant, which will be used to deploy solution (can be deleted right after deployment)
+1. Create a Service Principle, with owner permissions on the tenant, which will be used to deploy solution (can be deleted right after deployment)
   - ![image](https://github.com/user-attachments/assets/e95ce5ad-36cc-4be9-a2ab-644c23b4bf47)
-- Create an App Registration
+2. Create an App Registration
   - ![image](https://github.com/user-attachments/assets/561b9f33-854e-4f5e-99f1-d3064afe835a)
-- Fork the Repository
+3. Fork the Repository
   -  ![image](https://github.com/user-attachments/assets/556c6ac0-7354-447b-8c91-1a15469aee8f)
-- Add Azure credential with Owner access, you can create a Service Principle for the deployment and delete it right after
+4. Add Azure credential with Owner access, you can create a Service Principle for the deployment and delete it right after
   -  ![image](https://github.com/user-attachments/assets/1bdd6805-791e-4db7-a2bc-82f8a878ecf4)
-- Create pre-req resources in Azure Portal: Azure OpenAI service, VNET, Azure Maps
+5. Create the following pre-req resources in Azure Portal. These can be in any Resource Group:
+    1. Azure OpenAI service
+    2. A Virtual Network
+    3. Azure Maps
   - <img width="349" alt="image" src="https://github.com/user-attachments/assets/e7b7ba2d-d56d-4c81-b5b3-6c50e37d538f">
-- Add the following deployment variables to the Secrets and Variables section of the repository:   
+6. Add the following deployment variables to the Secrets and Variables section of the repository:   
   - AZURE_ENV_NAME: {Whatever you’d like the Resource Group to be named}
   - AZURE_SUBSCRIPTION_ID: {Your Subscription ID}
   - AZURE_CLOUD: {AzureUSGovernment | } 
