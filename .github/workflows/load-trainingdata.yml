@@ -1,0 +1,74 @@
+name: load-trainingdata
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  populate-indexes:
+    runs-on: windows-latest
+
+    steps:
+      - name: Validate Secrets and Environment Variables
+        env:
+          PVICO_AISEARCH_HOST: ${{ vars.PVICO_AISEARCH_HOST }}
+          PVICO_AISEARCH_KEY: ${{ secrets.PVICO_AISEARCH_KEY }}
+          PVICO_INDEXES_TO_POPULATE: ${{ vars.PVICO_INDEXES_TO_POPULATE }}
+        shell: powershell
+        run: |
+          # Validate PVICO_AISEARCH_HOST secret
+          if (-not $env:PVICO_AISEARCH_HOST) {
+            Write-Host "Error: The PVICO_AISEARCH_HOST secret is not set. Exiting..."
+            exit 1
+          }
+
+          # Validate PVICO_AISEARCH_KEY secret
+          if (-not $env:PVICO_AISEARCH_KEY) {
+            Write-Host "Error: The PVICO_AISEARCH_KEY secret is not set. Exiting..."
+            exit 1
+          }
+
+          # Validate PVICO_INDEXES_TO_POPULATE variable
+          if (-not $env:PVICO_INDEXES_TO_POPULATE) {
+            Write-Host "Warning: The PVICO_INDEXES_TO_POPULATE variable is not set or is empty. Defaulting to index-us-nrc-envrep-sections."
+          } else {
+            $indexes = $env:PVICO_INDEXES_TO_POPULATE
+
+            # Regex pattern to validate index names
+            $pattern = "^[a-zA-Z][a-zA-Z0-9_-]*(;[a-zA-Z][a-zA-Z0-9_-]*)*$"
+
+            if ($indexes -match $pattern) {
+              Write-Host "PVICO_INDEXES_TO_POPULATE is set to: $indexes"
+            } else {
+              Write-Host "Error: The PVICO_INDEXES_TO_POPULATE variable is not formatted correctly. It must be a single index or multiple indices separated by semicolons without spaces."
+              exit 1
+            }
+          }
+
+      - name: Checkout the AI-for-SMRs-TrainingData repository
+        env:
+          PVICO_TRAININGDATA_DOWNLOAD_TOKEN: ${{ secrets.PVICO_TRAININGDATA_DOWNLOAD_TOKEN }}
+        shell: powershell
+        run: |
+          $token = "${{ env.PVICO_TRAININGDATA_DOWNLOAD_TOKEN }}"
+          $repoUrl = "https://$token:@github.com/Azure/AI-for-SMRs-TrainingData.git"
+          git clone $repoUrl ./AI-for-SMRs-TrainingData
+
+      - name: Set Environment Variables
+        env:
+          PVICO_AISEARCH_HOST: ${{ vars.PVICO_AISEARCH_HOST }}
+          PVICO_AISEARCH_KEY: ${{ secrets.PVICO_AISEARCH_KEY }}
+          PVICO_INDEXES_TO_POPULATE: ${{ vars.PVICO_INDEXES_TO_POPULATE }}
+        shell: powershell
+        run: |
+          $env:PVICO_AISEARCH_HOST = "${{ env.PVICO_AISEARCH_HOST }}"
+          $env:PVICO_AISEARCH_KEY = "${{ env.PVICO_AISEARCH_KEY }}"
+          $env:PVICO_INDEXES_TO_POPULATE = "${{ env.PVICO_INDEXES_TO_POPULATE }}"
+
+      - name: Run AI Search Index Population Script
+        shell: powershell
+        run: |
+          cd ./AI-for-SMRs-TrainingData
+          ./index-restore.ps1 -targetSearchServiceName $env:PVICO_AISEARCH_HOST -targetAdminKey $env:PVICO_AISEARCH_KEY
