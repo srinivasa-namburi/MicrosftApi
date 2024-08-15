@@ -38,46 +38,157 @@ public class USNRCEnvironmentalReportDocumentOutlineService : IDocumentOutlineSe
     {
         List<string> documentOutlineLines;
 
+        // Original sample. 
+        #region Original sample - commented out
+        //var orderedSectionListExample = """
+        //                                1. Site Redress
+        //                                1.1 Description of Site Preparation Activities
+        //                                1.2 Site Redress Plan
+        //                                1.2.1 Site Redress Plan Objective and Considerations
+        //                                1.2.2 Description of Site Redress
+        //                                1.2.3 NRC Notification Upon Completion
+
+        //                                2. Need for Power
+
+        //                                3. Plant Description
+        //                                3.1 External Appearance and Plant Layout
+        //                                3.2 Reactor Power Conversion System
+        //                                3.2.1 Plant Water Use
+        //                                3.2.1.1 Water Consumption
+        //                                3.2.1.2 Water Treatment
+        //                                3.2.2 Cooling System
+        //                                3.2.2.1 Description and Operational Modes
+        //                                3.2.2.2 Component Descriptions
+
+        //                                4. Environmental Impacts of Construction
+        //                                4.1 Land-use impacts
+        //                                4.2 Water-related impacts
+        //                                4.3 Ecological impacts
+
+        //                                5. Socioeconomic Impacts
+        //                                5.1 Radiation Exposure to Construction Workers
+        //                                5.2 Measures and Controls to Limit Adverse Impacts During Construction
+
+        //                                6. Environmental Measurements and Monitoring Programs
+        //                                6.1 Summary of Monitoring Programs
+
+        //                                7. Environmental Impacts of Postulated Accidents Involving Radioactive Materials
+        //                                7.1 Conclusions
+
+        //                                8. Alternatives to the Proposed Action
+
+        //                                9. Alternative Sites
+
+        //                                10. Environmental Consequences of the Proposed Action
+        //                                """;
+        #endregion
+
         var orderedSectionListExample = """
-                                        1. Site Redress
-                                        1.1 Description of Site Preparation Activities
-                                        1.2 Site Redress Plan
-                                        1.2.1 Site Redress Plan Objective and Considerations
-                                        1.2.2 Description of Site Redress
-                                        1.2.3 NRC Notification Upon Completion
-
-                                        2. Need for Power
-
+                                        1. Introduction
+                                        1.1. Project Overview
+                                        1.2. Applicant Information
+                                        1.3. Site Location
+                                        1.4. Regulatory Requirements
+                                        2. Environmental Description
+                                        2.1. Land Use and Geology
+                                        2.1.1. Topography
+                                        2.1.2. Soil Characteristics
+                                        2.1.3. Seismic Conditions
+                                        2.2. Water Resources
+                                        2.2.1. Surface Water
+                                        2.2.2. Groundwater
+                                        2.3. Ecology
+                                        2.3.1. Terrestrial Ecology
+                                        2.3.2. Aquatic Ecology
+                                        2.4. Climate and Meteorology
+                                        2.4.1. Local Climate
+                                        2.4.2. Meteorological Data
                                         3. Plant Description
-                                        3.1 External Appearance and Plant Layout
-                                        3.2 Reactor Power Conversion System
-                                        3.2.1 Plant Water Use
-                                        3.2.1.1 Water Consumption
-                                        3.2.1.2 Water Treatment
-                                        3.2.2 Cooling System
-                                        3.2.2.1 Description and Operational Modes
-                                        3.2.2.2 Component Descriptions
-
+                                        3.1. Plant Layout
+                                        3.2. Reactor Design
+                                        3.2.1. Reactor Core
+                                        3.2.2. Safety Systems
+                                        3.3. Auxiliary Systems
+                                        3.3.1. Cooling Systems
+                                        3.3.2. Waste Management Systems
                                         4. Environmental Impacts of Construction
-                                        4.1 Land-use impacts
-                                        4.2 Water-related impacts
-                                        4.3 Ecological impacts
-
-                                        5. Socioeconomic Impacts
-                                        5.1 Radiation Exposure to Construction Workers
-                                        5.2 Measures and Controls to Limit Adverse Impacts During Construction
-
-                                        6. Environmental Measurements and Monitoring Programs
-                                        6.1 Summary of Monitoring Programs
-
+                                        4.1. Land Disturbance
+                                        4.2. Air Quality
+                                        4.2.1. Dust Generation
+                                        4.2.2. Emissions from Equipment
+                                        4.3. Water Quality
+                                        4.4. Noise Levels
+                                        4.5. Waste Generation
+                                        4.5.1. Solid Waste
+                                        4.5.2. Hazardous Waste
+                                        5. Environmental Impacts of Station Operation
+                                        5.1. Air Quality
+                                        5.1.1. Routine Emissions
+                                        5.1.2. Accidental Releases
+                                        5.2. Water Quality
+                                        5.2.1. Thermal Discharge
+                                        5.2.2. Chemical Discharge
+                                        5.3. Land Use
+                                        5.4. Ecology
+                                        5.4.1. Terrestrial Impacts
+                                        5.4.2. Aquatic Impacts
+                                        6. Environmental Measurement and Monitoring Programs
+                                        6.1. Air Monitoring
+                                        6.2. Water Monitoring
+                                        6.3. Ecological Monitoring
+                                        6.4. Program Management
+                                        6.4.1. Data Collection
+                                        6.4.2. Data Analysis
                                         7. Environmental Impacts of Postulated Accidents Involving Radioactive Materials
-                                        7.1 Conclusions
-
-                                        8. Alternatives to the Proposed Action
-
-                                        9. Alternative Sites
-
-                                        10. Environmental Consequences of the Proposed Action
+                                        7.1. Accident Scenarios
+                                        7.2. Radiological Consequences
+                                        7.3. Mitigation Measures
+                                        7.4. Health Risks
+                                        8. Need for Power
+                                        8.1. Regional Energy Demand
+                                        8.2. Alternative Energy Sources
+                                        8.3. Future Projections
+                                        8.4. Justification for the Proposed Project
+                                        9. Alternatives to the Proposed Action
+                                        9.1. No-Action Alternative
+                                        9.2. Alternative Sites
+                                        9.3. Alternative Technologies
+                                        9.4. Comparison of Alternatives
+                                        10. Non-Radiological Health Impacts
+                                        10.1. Occupational Health
+                                        10.2. Public Health
+                                        10.3. Noise
+                                        10.4. Air Emissions
+                                        11. Radiological Health Impacts
+                                        11.1. Worker Exposure
+                                        11.2. Public Exposure
+                                        11.3. Dose Assessment
+                                        11.4. Radiation Protection
+                                        12. Cumulative Impacts
+                                        12.1. Past Actions
+                                        12.2. Present Actions
+                                        12.3. Future Actions
+                                        12.4. Combined Impacts
+                                        13. Mitigation Measures
+                                        13.1. Design Features
+                                        13.2. Operational Controls
+                                        13.3. Monitoring Programs
+                                        13.4. Contingency Plans
+                                        14. Conclusions
+                                        14.1. Summary of Findings
+                                        14.2. Environmental Significance
+                                        14.3. Effectiveness of Mitigation
+                                        14.4. Recommendations
+                                        15. References
+                                        15.1. Scientific Studies
+                                        15.2. Regulatory Documents
+                                        15.3. Technical Reports
+                                        15.4. Other Sources
+                                        16. Appendices
+                                        16.1. Technical Data
+                                        16.2. Modeling Results
+                                        16.3. Supporting Documentation
+                                        16.4. Additional Information
                                         """;
 
         if (_serviceConfigurationOptions.ProjectVicoServices.DocumentGeneration.UseFullDocumentOutlineGeneration)
