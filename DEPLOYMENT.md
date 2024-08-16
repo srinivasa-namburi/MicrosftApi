@@ -7,7 +7,7 @@
     ```
       -  ![image](https://github.com/user-attachments/assets/556c6ac0-7354-447b-8c91-1a15469aee8f)
     
-2. Create a Service Principle, with Owner access on the Subscription being used for deployment resource group, which will be used to deploy solution (can be deleted right after deployment). This one either requires (1) Cloud Application Administrator or (2) Application Developer permission on the tenant (Microsoft Entra). Application Developer is normally sufficient - and both Cloud Application Administrator and Application Developer supersede it. To do this, run this command (you must have the Azure CLI installed and be logged on to the tenant using "az login" first - you can download the Azure CLI here if you don't have it : https://learn.microsoft.com/en-us/cli/azure/install-azure-cli). Substitute <subscriptionId> with your actual subscription id:
+2. Create a Service Principle with either  (1) Cloud Application Administrator or (2) Application Developer permission on the tenant (Microsoft Entra). Application Developer is normally sufficient - and both Cloud Application Administrator and Application Developer supersede it. To do this, run this command (you must have the Azure CLI installed and be logged on to the tenant using "az login" first - you can download the Azure CLI here if you don't have it : https://learn.microsoft.com/en-us/cli/azure/install-azure-cli). Substitute <subscriptionId> with your actual subscription id:
   ```
     az ad sp create-for-rbac
             --name "sp-ms-industrypermitting-deploy"
@@ -17,7 +17,8 @@
 3. Create the following pre-req resources in Azure Portal. These can be in any Resource Group:
     1. Azure OpenAI service
     2. Azure Maps
-      - <img width="349" alt="image" src="https://github.com/user-attachments/assets/e7b7ba2d-d56d-4c81-b5b3-6c50e37d538f">
+      - ![image](https://github.com/user-attachments/assets/36341022-c7ed-4411-886b-554a9593b453)
+
 
   4. If using private networking:
         - Create or select a VNET in the Azure Portal in the same subscription of the deployment
