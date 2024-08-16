@@ -16,8 +16,15 @@ jobs:
           PVICO_AISEARCH_HOST: ${{ vars.PVICO_AISEARCH_HOST }}
           PVICO_AISEARCH_KEY: ${{ secrets.PVICO_AISEARCH_KEY }}
           PVICO_INDEXES_TO_POPULATE: ${{ vars.PVICO_INDEXES_TO_POPULATE }}
+          PVICO_TRAININGDATA_DOWNLOAD_TOKEN: ${{ secrets.PVICO_TRAININGDATA_DOWNLOAD_TOKEN }}
         shell: powershell
         run: |
+          # Validate PVICO_TRAININGDATA_DOWNLOAD_TOKEN secret
+          if (-not $env:PVICO_TRAININGDATA_DOWNLOAD_TOKEN) {
+            Write-Host "Error: The PVICO_TRAININGDATA_DOWNLOAD_TOKEN secret is not set. Exiting..."
+            exit 1
+          }
+
           # Validate PVICO_AISEARCH_HOST secret
           if (-not $env:PVICO_AISEARCH_HOST) {
             Write-Host "Error: The PVICO_AISEARCH_HOST secret is not set. Exiting..."
