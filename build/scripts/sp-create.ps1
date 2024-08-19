@@ -1,17 +1,46 @@
+<#
+.SYNOPSIS
+This script creates an Azure AD Application (App Registration) with an associated Service Principal,
+sets up API scopes, roles, and generates a client secret.
+
+.DESCRIPTION
+- The script first checks if an Azure AD Application with the specified name already exists.
+- If the application already exists, the script outputs instructions on how to delete the existing 
+  App Registration using its ID, then exits without making any changes.
+- If the application does not exist, the script creates the Azure AD Application and the corresponding 
+  Service Principal, sets up API scopes and roles, and generates a client secret.
+- The final output includes the necessary configuration details (Client ID, Client Secret, Tenant ID, etc.) 
+  in JSON format, which is intended for use as a GitHub secret or similar secure storage.
+- The script also assigns the executing user as the Owner of the Service Principal.
+
+.PARAMETER AppName
+The display name of the Azure AD Application to create or check for existence. 
+If not specified, it defaults to "sp-ms-industrypermitting".
+
+.EXAMPLE
+.\sp-create.ps1 -AppName "my-app-registration"
+
+# This command will create an Azure AD Application and Service Principal with the name "my-app-registration".
+# If an application with this name already exists, it will provide instructions for deleting the existing application 
+# using its ID.
+
+#>
+
 param(
     [string]$AppName = "sp-ms-industrypermitting"
 )
 
 # Check if the Azure AD Application already exists
 Write-Host "Checking if Azure AD application $AppName already exists..."
-$existingApp = az ad app list --display-name $AppName | ConvertFrom-Json
+$existingApp = az ad app list --filter "displayName eq '$AppName'" | ConvertFrom-Json
 
 if ($existingApp.Count -gt 0) {
     $existingAppId = $existingApp[0].appId
     $existingObjectId = $existingApp[0].id
 
     Write-Host "Azure AD application $AppName already exists with AppId: $existingAppId and ObjectId: $existingObjectId."
-    Write-Host "To delete the existing app registration, use the following commands:"
+
+    Write-Host "To delete the existing app registration, use the following command:"
     Write-Host ""
     Write-Host "az ad app delete --id $existingObjectId"
     Write-Host ""
@@ -34,6 +63,9 @@ $instance = if ($cloudName -eq "AzureUSGovernment") {
 # Get the tenant ID directly from the signed-in user's context
 $TenantId = az account show --query 'tenantId' -o tsv
 
+# Get the domain from the tenant
+$Domain = az rest --method GET --uri "https://graph.microsoft.com/v1.0/domains" --query "value[0].id" -o tsv
+
 Write-Host "Creating Azure AD application..."
 $App = az ad app create `
   --display-name $AppName `
@@ -44,23 +76,24 @@ $App = az ad app create `
 $AppId = $App.appId
 $ObjectId = $App.id
 
-# Get the domain name
-$Domain = (az ad signed-in-user show --query 'userPrincipalName' -o tsv).Split('@')[1]
+# Create a service principal for the application
+$sp = az ad sp create --id $AppId | ConvertFrom-Json
+Write-Host "Service principal created."
 
-Write-Host "Azure AD application $AppName created with AppId: $AppId and ObjectId: $ObjectId."
+# Set the executing user as the owner of the App Registration
+$userId = az ad signed-in-user show --query "id" -o tsv
+az ad app owner add --id $ObjectId --owner-object-id $userId
+Write-Host "Executing user set as Owner of the App Registration."
 
-# Update the web section with redirect URIs
+Write-Host "Setting web redirect URIs..."
 $webRedirectUris = @(
     "https://localhost/signin-oidc"
 )
-
-Write-Host "Updating web redirect URIs..."
 az ad app update --id $ObjectId `
     --web-redirect-uris $webRedirectUris
-Write-Host "Web redirect URIs updated."
+Write-Host "Web redirect URIs set."
 
-# Construct the App Roles JSON and write it to a file
-Write-Host "Creating App Roles JSON file..."
+Write-Host "Setting application roles..."
 $appRoles = @'
 [
   {
@@ -77,21 +110,15 @@ $appRoles = @'
 '@
 $appRolesFile = Join-Path $tempDir "appRoles.json"
 $appRoles | Out-File -FilePath $appRolesFile -Encoding utf8
-Write-Host "App Roles JSON file created at: $appRolesFile."
-
-# Update App Roles using the JSON file
-Write-Host "Updating App Roles..."
 az ad app update --id $ObjectId --app-roles @$appRolesFile
-Write-Host "App Roles updated."
+Write-Host "Application roles set."
 
-# Expose an API and set the Application ID URI
+Write-Host "Setting Application ID URI..."
 $identifierUri = "api://$AppId"
-Write-Host "Setting Application ID URI to $identifierUri..."
 az ad app update --id $ObjectId --identifier-uris "$identifierUri"
 Write-Host "Application ID URI set."
 
-# Add the `access_as_user` scope to the application's API permissions using the string method
-Write-Host "Creating API Scopes JSON file..."
+Write-Host "Setting API scopes..."
 $apiScopeId = [guid]::NewGuid().Guid
 $apiScopeJson = @"
 {
@@ -112,15 +139,10 @@ $apiScopeJson = @"
 "@
 $apiScopesFile = Join-Path $tempDir "apiScopes.json"
 $apiScopeJson | Out-File -FilePath $apiScopesFile -Encoding utf8
-Write-Host "API Scopes JSON file created at: $apiScopesFile."
-
-# Update API scopes using the JSON file
-Write-Host "Updating API scopes..."
 az ad app update --id $ObjectId --set api=@$apiScopesFile
-Write-Host "API scopes updated."
+Write-Host "API scopes set."
 
-# Add Required Resource Access for your own API using a temp file
-Write-Host "Creating Required Resource Access JSON file..."
+Write-Host "Setting required resource access..."
 $requiredResourceAccessJson = @"
 [
   {
@@ -134,19 +156,12 @@ $requiredResourceAccessJson = @"
   }
 ]
 "@
-
 $requiredResourceAccessJson = $requiredResourceAccessJson -replace '\$AppId', $AppId -replace '\$apiScopeId', $apiScopeId
-
 $requiredResourceAccessFile = Join-Path $tempDir "requiredResourceAccess.json"
 $requiredResourceAccessJson | Out-File -FilePath $requiredResourceAccessFile -Encoding utf8
-Write-Host "Required Resource Access JSON file created at: $requiredResourceAccessFile."
-
-# Update the application to include this required resource access
-Write-Host "Updating Required Resource Access..."
 az ad app update --id $ObjectId --required-resource-accesses @$requiredResourceAccessFile
-Write-Host "Required Resource Access updated."
+Write-Host "Required resource access set."
 
-# Generate Client Secret using `az ad app credential reset`
 Write-Host "Generating client secret..."
 $clientSecret = az ad app credential reset `
     --id $AppId `
@@ -154,17 +169,15 @@ $clientSecret = az ad app credential reset `
     --display-name "Default" `
     --end-date (Get-Date).AddYears(2).ToString("yyyy-MM-dd") `
     | ConvertFrom-Json
-
-# Extract the secret from the correct property in the output
 $ClientSecret = $clientSecret.password
-Write-Host "Client Secret generated."
+Write-Host "Client secret generated."
 
 # Cleanup temporary files
-Write-Host "Cleaning up temporary files..."
 Remove-Item $appRolesFile -Force
 Remove-Item $apiScopesFile -Force
 Remove-Item $requiredResourceAccessFile -Force
-Write-Host "Temporary files removed. Script execution completed."
+
+Write-Host "Script execution completed."
 
 # Output the relevant settings in the requested format
 $outputJson = @{
