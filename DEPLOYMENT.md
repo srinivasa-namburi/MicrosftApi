@@ -17,35 +17,35 @@
 3. Create the following pre-req resources in Azure Portal. These can be in any Resource Group:
     1. Azure OpenAI service
     2. Azure Maps
-      - ![image](https://github.com/user-attachments/assets/36341022-c7ed-4411-886b-554a9593b453)
+      * ![image](https://github.com/user-attachments/assets/36341022-c7ed-4411-886b-554a9593b453)
 
 
-  4. If using private networking:
-        - Create or select a VNET in the Azure Portal in the same subscription of the deployment
-        - Create or select a VNET for services
-        - Create a VNET for Container Apps Environment for GenAI for Industry Permitting
+4. If using private networking:
+    * Create or select a VNET in the Azure Portal in the same subscription of the deployment
+    * Create or select a VNET for services
+    * Create a VNET for Container Apps Environment for GenAI for Industry Permitting
       - This must use Subnet Delegation - delegate to Microsoft.App.Environments. Take note of the Subnet ID for both of these subnets, it is needed for later
   
 5. Add the following deployment variables to the Secrets and Variables section of the repository:   
     - Secrets:
-        - AZURE_CREDENTIALS
-        - PVICO_AZUREMAPS_KEY
-        - PVICO_ENTRA_CREDENTIALS
-        - PVICO_OPENAI_CONNECTIONSTRING 
+        - AZURE_CREDENTIALS : { The output of the creation command for the deployment service principal in Step 2 above }
+        - PVICO_AZUREMAPS_KEY : { The Key to the Azure Maps instance you created in Step 3 }
+        - PVICO_ENTRA_CREDENTIALS : { This is the output of the .\sp-create.ps1 script run above }
+        - PVICO_OPENAI_CONNECTIONSTRING : { Use the following format : Endpoint=\<endpoint of Azure Openai Instance\>;Key=\<key of Azure OpenAI instance\> }
     - Variables:
-        - AZURE_CLOUD: {AzureUSGovernment | } 
-        - AZURE_ENV_NAME: {Whatever you’d like the Resource Group to be named}
+        - AZURE_CLOUD: {AzureUSGovernment | AzureCloud} 
+        - AZURE_ENV_NAME: {Whatever you’d like the Resource Group to be named. It will be prefixed with "rg-" automatically.}
         - AZURE_LOCATION : {usgovvirginia | swedencentral}
-        - AZURE_SUBNET_CAE
-        - AZURE_SUBNET_PE
+        - AZURE_SUBNET_CAE : {This is the Subnet ID of the Container Apps Environment subnet created above - find it in the portal}
+        - AZURE_SUBNET_PE : {This is the Subnet ID of the Container Apps Environment subnet created above - find it in the portal}
         - AZURE_SUBSCRIPTION_ID: {Your Subscription ID}
         - DEPLOYMENT_MODEL: {private | public}
       - <img width="394" alt="image" src="https://github.com/user-attachments/assets/8d473af4-1551-49da-9a5a-9e75bbd4ab5f">
 
-6. If you are running the "load-trainingdata" process to bring in the sample training data to the solution, add the following deployment variables to the Secrets and Variables section of the repository:
+6. If you are running the "load-trainingdata" process to bring in the sample training data to the solution, add the following deployment variables to the Secrets and Variables section of the repository. These will only be available after the solution is fully deployed.
     - Secrets:
         - PVICO_AISEARCH_KEY
-        - PVICO_TRAININGDATA_DOWNLOAD_TOKEN
+        - PVICO_TRAININGDATA_DOWNLOAD_TOKEN : { Request MS assistance in getting this token for your deployment. }
     - Variables:
         - PVICO_AISEARCH_HOST
         - PVICO_INDEXES_TO_POPULATE
