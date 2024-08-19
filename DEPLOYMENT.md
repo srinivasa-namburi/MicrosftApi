@@ -16,7 +16,14 @@
  ```
 3. Create the following pre-req resources in Azure Portal. These can be in any Resource Group:
     1. Azure OpenAI service
-    2. Azure Maps
+       * Create a deployment for EITHER GPT-4o (highly recommended) or GPT-4 v 1106-preview. 
+           - For GPT-4o - it needs to be called "gpt-4o"
+           - For GPT-4-128K/Turbo - it needs to be called "gpt-4-128k"
+           - We recommend a 150,000 tokens per minute (TPM) limit as a minimum.
+       * Create a deploymend for text-embedding-ada-002.
+           - Call it "text-embedding-ada-002" and select v2 (should be the default).
+           - We recommend a 300,000 tokens per minute (TPM) limit as a minimum
+    3. Azure Maps
       * ![image](https://github.com/user-attachments/assets/36341022-c7ed-4411-886b-554a9593b453)
 
 
