@@ -1,26 +1,57 @@
+param(
+    [string]$AppName = "sp-ms-industrypermitting"
+)
+
+# Check if the Azure AD Application already exists
+Write-Host "Checking if Azure AD application $AppName already exists..."
+$existingApp = az ad app list --display-name $AppName | ConvertFrom-Json
+
+if ($existingApp.Count -gt 0) {
+    $existingAppId = $existingApp[0].appId
+    $existingObjectId = $existingApp[0].id
+
+    Write-Host "Azure AD application $AppName already exists with AppId: $existingAppId and ObjectId: $existingObjectId."
+    Write-Host "To delete the existing app registration, use the following commands:"
+    Write-Host ""
+    Write-Host "az ad app delete --id $existingObjectId"
+    Write-Host ""
+    Write-Host "Exiting script."
+    exit
+}
+
 # Create Azure AD Application
 $tempDir = [System.IO.Path]::GetTempPath()
 
+# Determine the cloud environment
+$cloud = az cloud show | ConvertFrom-Json
+$cloudName = $cloud.name
+$instance = if ($cloudName -eq "AzureUSGovernment") {
+    "https://login.microsoftonline.us/"
+} else {
+    "https://login.microsoftonline.com/"
+}
+
+# Get the tenant ID directly from the signed-in user's context
+$TenantId = az account show --query 'tenantId' -o tsv
+
 Write-Host "Creating Azure AD application..."
 $App = az ad app create `
-  --display-name "sp-ms-industrypermitting" `
+  --display-name $AppName `
   --enable-access-token-issuance false `
   --enable-id-token-issuance true `
  | ConvertFrom-Json
 
 $AppId = $App.appId
 $ObjectId = $App.id
-Write-Host "Azure AD application sp-ms-industrypermitting created with AppId: $AppId and ObjectId: $ObjectId."
+
+# Get the domain name
+$Domain = (az ad signed-in-user show --query 'userPrincipalName' -o tsv).Split('@')[1]
+
+Write-Host "Azure AD application $AppName created with AppId: $AppId and ObjectId: $ObjectId."
 
 # Update the web section with redirect URIs
 $webRedirectUris = @(
-    "https://web-docgen.gentleocean-b691954e.swedencentral.azurecontainerapps.io/signin-oidc",
-    "https://web-docgen.whiterock-3640a90e.canadaeast.azurecontainerapps.io/signin-oidc",
-    "https://web-docgen.delightfulpebble-84e9ecca.swedencentral.azurecontainerapps.io/signin-oidc",
-    "https://web-docgen.mangograss-3c31f8cb.swedencentral.azurecontainerapps.io/signin-oidc",
-    "https://localhost:62472/signin-oidc",
-    "http://localhost:5266/signin-oidc",
-    "http://localhost:5285/signin-oidc"
+    "https://localhost/signin-oidc"
 )
 
 Write-Host "Updating web redirect URIs..."
@@ -124,9 +155,9 @@ $clientSecret = az ad app credential reset `
     --end-date (Get-Date).AddYears(2).ToString("yyyy-MM-dd") `
     | ConvertFrom-Json
 
-# Output the generated client secret
-Write-Host "Client Secret:"
-$clientSecret
+# Extract the secret from the correct property in the output
+$ClientSecret = $clientSecret.password
+Write-Host "Client Secret generated."
 
 # Cleanup temporary files
 Write-Host "Cleaning up temporary files..."
@@ -134,3 +165,21 @@ Remove-Item $appRolesFile -Force
 Remove-Item $apiScopesFile -Force
 Remove-Item $requiredResourceAccessFile -Force
 Write-Host "Temporary files removed. Script execution completed."
+
+# Output the relevant settings in the requested format
+$outputJson = @{
+    Instance = $instance
+    Domain = $Domain
+    TenantId = $TenantId
+    ClientId = $AppId
+    ClientSecret = $ClientSecret
+    CallbackPath = "/signin-oidc"
+    Scopes = "api://$AppId/access_as_user"
+} | ConvertTo-Json -Compress
+
+Write-Host "Set the GitHub secret PVICO_ENTRA_CREDENTIALS in your fork of the repo to the following JSON:"
+Write-Host "This is not possible to retrieve at a later stage, so please save it now."
+Write-Host "The GitHub secret is also not possible to retrieve after you've set it, so take note of it somewhere else as well, if you need to."
+Write-Host "***************************************************************************"
+Write-Host $outputJson
+Write-Host "***************************************************************************"
