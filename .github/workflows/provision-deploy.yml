@@ -28,10 +28,15 @@ jobs:
       - name: Use DotNet SDK 8.0.x
         uses: actions/setup-dotnet@v1
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 8.0.304
 
       - name: Install .Net Aspire workload
         run: dotnet workload install aspire
+
+      - name: Install AZD
+        uses: Azure/setup-azd@v1.0.0
+        with:
+          version: "1.9.5"
 
       - name: Rewrite Azure Credentials to old format if necessary
         run: |
@@ -75,11 +80,6 @@ jobs:
         run: |
           rm -f azure.yaml
           cp azure-ci.yaml azure.yaml
-
-      - name: Install AZD
-        uses: Azure/setup-azd@v1.0.0
-        with:
-          version: "1.9.5"
 
       - name: Install text-based browsers for AZD authentication
         run: |
@@ -144,6 +144,12 @@ jobs:
 
       - name: Add AzureAd configuration to appsettings.Production.json
         run: |
+          # Check if the secret exists and is not empty
+          if [ -z "${PVICO_ENTRA_CREDENTIALS}" ]; then
+            echo "PVICO_ENTRA_CREDENTIALS is not set or is empty. Skipping AzureAd configuration."
+            exit 0
+          fi
+
           # Load the existing appsettings.Production.json into a variable
           appsettings=$(cat ProjectVico.V2.AppHost/appsettings.Production.json)
 
@@ -164,6 +170,6 @@ jobs:
           PVICO_ENTRA_CREDENTIALS: ${{ secrets.PVICO_ENTRA_CREDENTIALS }}
 
       - name: Deploy Application
-        run: azd deploy --no-prompt --debug
+        run: azd deploy --no-prompt
         env:
           AZURE_RESOURCE_GROUP: rg-${{ env.AZURE_ENV_NAME }}

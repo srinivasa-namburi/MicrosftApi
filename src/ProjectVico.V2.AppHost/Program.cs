@@ -146,14 +146,15 @@ var docGenFrontend = builder
 apiMain.WithReference(docGenFrontend); // Neccessary for CORS policy creation
 
 var setupManager = builder
-        .AddProject<Projects.ProjectVico_V2_SetupManager>("worker-setupmanager")
-        .WithReplicas(1) // There can only be one Setup Manager
-        .WithConfigSection(envServiceConfigurationConfigurationSection)
-        .WithConfigSection(envConnectionStringsConfigurationSection)
-        .WithReference(azureAiSearch)
-        .WithReference(queueService)
-        .WithReference(docGenSql)
-        .WithReference(redis)
+    .AddProject<Projects.ProjectVico_V2_SetupManager>("worker-setupmanager")
+    .WithReplicas(1) // There can only be one Setup Manager
+    .WithConfigSection(envServiceConfigurationConfigurationSection)
+    .WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithReference(azureAiSearch)
+    .WithReference(blobStorage)
+    .WithReference(queueService)
+    .WithReference(docGenSql)
+    .WithReference(redis)
     ;
 
     

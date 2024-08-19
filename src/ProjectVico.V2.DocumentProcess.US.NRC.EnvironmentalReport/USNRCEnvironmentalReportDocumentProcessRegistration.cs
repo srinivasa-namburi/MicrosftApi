@@ -2,8 +2,10 @@
 using Microsoft.Extensions.Hosting;
 using ProjectVico.V2.DocumentProcess.Shared;
 using ProjectVico.V2.DocumentProcess.Shared.Generation;
+using ProjectVico.V2.DocumentProcess.Shared.Prompts;
 using ProjectVico.V2.DocumentProcess.Shared.Search;
 using ProjectVico.V2.DocumentProcess.US.NRC.EnvironmentalReport.Generation;
+using ProjectVico.V2.DocumentProcess.US.NRC.EnvironmentalReport.Prompts;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Extensions;
 
@@ -23,6 +25,7 @@ public class USNRCEnvironmentalReportDocumentProcessRegistration : IDocumentProc
         // Shared Services
         builder.AddKeyedKernelMemoryForDocumentProcess(options, process);
         builder.Services.AddKeyedSingleton<IKernelMemoryRepository, KernelMemoryRepository>(ProcessName + "-IKernelMemoryRepository");
+        builder.Services.AddKeyedSingleton<IPromptCatalogTypes, USNRCEnvironmentalReportPromptCatalogTypes>(ProcessName+"-IPromptCatalogTypes");
         // END Shared Services
 
         // Generation services

@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using System.Net;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.KernelMemory;
@@ -35,6 +36,12 @@ public class KernelMemoryRepository : IKernelMemoryRepository
             throw new Exception("Kernel Memory service not found for Document Process " + documentProcessName);
         }
 
+        // URL encode the documentUrl if it is not null
+        if (documentUrl != null)
+        {
+            documentUrl = WebUtility.UrlEncode(documentUrl);
+        }
+
         var documentRequest = new DocumentUploadRequest()
         {
             DocumentId = fileName,
@@ -49,6 +56,19 @@ public class KernelMemoryRepository : IKernelMemoryRepository
         };
 
         await _memory.ImportDocumentAsync(documentRequest);
+    }
+
+    public async Task DeleteContentAsync(string documentProcessName, string indexName, string fileName)
+    {
+        GetKernelMemoryForDocumentProcess(documentProcessName);
+
+        if (_memory == null)
+        {
+            _logger.LogError("Kernel Memory service not found for Document Process {DocumentProcessName}", documentProcessName);
+            throw new Exception("Kernel Memory service not found for Document Process " + documentProcessName);
+        }
+
+        await _memory.DeleteDocumentAsync(fileName, indexName);
     }
 
     public async Task<List<SortedDictionary<int, Citation.Partition>>> SearchAsync(DocumentProcessOptions documentProcessOptions, string searchText, int top = 12, double minRelevance = 0.7)
@@ -73,8 +93,6 @@ public class KernelMemoryRepository : IKernelMemoryRepository
             _logger.LogError("Document Process {DocumentProcessName} not found in configuration", documentProcessName);
             throw new Exception("Document Process " + documentProcessName + " not found in configuration");
         }
-
-        // Search the kernel memory for the given searchText.
 
         var results = await _memory.SearchAsync(searchText,
             index: documentProcess.Repositories[0],

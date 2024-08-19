@@ -4,11 +4,14 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Identity.Web;
 using ProjectVico.V2.API.Main.Hubs;
+using ProjectVico.V2.DocumentProcess.Shared;
+using ProjectVico.V2.Plugins.Shared;
 using ProjectVico.V2.Shared;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Extensions;
 using ProjectVico.V2.Shared.Mappings;
 using ProjectVico.V2.Shared.Services;
+using ProjectVico.V2.Shared.Services.Search;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,30 +22,37 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.AddServiceDefaults();
 
+// Set Configuration ServiceConfigurationOptions:CognitiveServices:Endpoint to the correct value
+// Read the values from the azureAiSearch Connection String
+// Build an IConfigurationSection from ServiceConfigurationOptions, but set the ConnectionString to the azureAiSearch Connection String
+builder.AddAzureSearchClient("aiSearch");
 builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
+builder.Services.AddSingleton<SearchClientFactory>();
+
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
 
 await builder.DelayStartup(serviceConfigurationOptions.ProjectVicoServices.DocumentGeneration.DurableDevelopmentServices);
+
+builder.AddAzureServiceBusClient("sbus");
+builder.AddRabbitMQClient("rabbitmqdocgen");
+builder.AddKeyedAzureOpenAIClient("openai-planner");
+builder.AddAzureBlobClient("blob-docing");
+builder.AddRedisClient("redis");
+
+
+builder.AddDocGenDbContext(serviceConfigurationOptions);
+
+builder.Services.AddAutoMapper(typeof(ChatMessageProfile));
+
+builder.DynamicallyRegisterPlugins(serviceConfigurationOptions);
+builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
+builder.AddSemanticKernelServices(serviceConfigurationOptions);
 
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
-
-builder.AddAzureServiceBusClient("sbus");
-builder.AddRabbitMQClient("rabbitmqdocgen");
-builder.AddAzureBlobClient("blob-docing");
-builder.AddRedisClient("redis");
-
-builder.AddDocGenDbContext(serviceConfigurationOptions);
-
-builder.Services.AddAutoMapper(typeof(ChatMessageProfile));
-builder.Services.AddAutoMapper(typeof(DocumentProcessInfoProfile));
-
-builder.Services.AddScoped<IDocumentProcessInfoService, DocumentProcessInfoService>();
-builder.Services.AddScoped<IPromptInfoService, PromptInfoService>();
-
 
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {

@@ -10,4 +10,8 @@
     <ProjectReference Include="..\ProjectVico.V2.DocumentProcess.Shared\ProjectVico.V2.DocumentProcess.Shared.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Prompts\" />
+  </ItemGroup>
+
 </Project>

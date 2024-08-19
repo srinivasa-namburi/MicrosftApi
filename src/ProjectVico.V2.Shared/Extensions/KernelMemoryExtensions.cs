@@ -139,7 +139,7 @@ public static class KernelMemoryExtensions
         });
        
         var kernelMemory = kernelMemoryBuilder.Build();
-        
+
         builder.Services.AddKeyedSingleton<IKernelMemory>(documentProcessOptions.Name+"-IKernelMemory", kernelMemory);
         
         return builder;
