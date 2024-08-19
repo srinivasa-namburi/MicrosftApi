@@ -1,17 +1,17 @@
 <#
 .SYNOPSIS
 This script creates an Azure AD Application (App Registration) with an associated Service Principal,
-sets up API scopes, roles, and generates a client secret.
+sets up API scopes, roles, assigns the executing user to a specific role, and generates a client secret.
 
 .DESCRIPTION
 - The script first checks if an Azure AD Application with the specified name already exists.
 - If the application already exists, the script outputs instructions on how to delete the existing 
   App Registration using its ID, then exits without making any changes.
 - If the application does not exist, the script creates the Azure AD Application and the corresponding 
-  Service Principal, sets up API scopes and roles, and generates a client secret.
+  Service Principal, sets up API scopes and roles, assigns the executing user to a specific role, and generates a client secret.
 - The final output includes the necessary configuration details (Client ID, Client Secret, Tenant ID, etc.) 
   in JSON format, which is intended for use as a GitHub secret or similar secure storage.
-- The script also assigns the executing user as the Owner of the Service Principal.
+- The script also assigns the executing user as the Owner of the App Registration.
 
 .PARAMETER AppName
 The display name of the Azure AD Application to create or check for existence. 
@@ -78,6 +78,7 @@ $ObjectId = $App.id
 
 # Create a service principal for the application
 $sp = az ad sp create --id $AppId | ConvertFrom-Json
+$spObjectId = $sp.id
 Write-Host "Service principal created."
 
 # Set the executing user as the owner of the App Registration
@@ -112,6 +113,28 @@ $appRolesFile = Join-Path $tempDir "appRoles.json"
 $appRoles | Out-File -FilePath $appRolesFile -Encoding utf8
 az ad app update --id $ObjectId --app-roles @$appRolesFile
 Write-Host "Application roles set."
+
+Write-Host "Assigning DocumentGeneration role to the executing user..."
+$roleAssignmentId = az ad sp show --id $spObjectId | ConvertFrom-Json |
+                    Select-Object -ExpandProperty appRoles | 
+                    Where-Object { $_.value -eq 'DocumentGeneration' } | 
+                    Select-Object -ExpandProperty id
+
+# Create JSON payload for app role assignment
+$assignmentPayload = @"
+{
+    "principalId": "$userId",
+    "resourceId": "$spObjectId",
+    "appRoleId": "$roleAssignmentId"
+}
+"@
+$assignmentPayloadFile = Join-Path $tempDir "assignmentPayload.json"
+$assignmentPayload | Out-File -FilePath $assignmentPayloadFile -Encoding utf8
+
+az rest --method POST --uri "https://graph.microsoft.com/v1.0/users/$userId/appRoleAssignments" `
+        --headers "Content-Type=application/json" `
+        --body @$assignmentPayloadFile > $null
+Write-Host "DocumentGeneration role assigned to the executing user."
 
 Write-Host "Setting Application ID URI..."
 $identifierUri = "api://$AppId"
@@ -176,6 +199,7 @@ Write-Host "Client secret generated."
 Remove-Item $appRolesFile -Force
 Remove-Item $apiScopesFile -Force
 Remove-Item $requiredResourceAccessFile -Force
+Remove-Item $assignmentPayloadFile -Force
 
 Write-Host "Script execution completed."
 
