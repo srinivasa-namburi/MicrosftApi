@@ -7,7 +7,7 @@
     ```
       -  ![image](https://github.com/user-attachments/assets/556c6ac0-7354-447b-8c91-1a15469aee8f)
     
-2. Create a Service Principle with either  (1) Cloud Application Administrator or (2) Application Developer permission on the tenant (Microsoft Entra). Application Developer is normally sufficient - and both Cloud Application Administrator and Application Developer supersede it. To do this, run this command (you must have the Azure CLI installed and be logged on to the tenant using "az login" first - you can download the Azure CLI here if you don't have it : https://learn.microsoft.com/en-us/cli/azure/install-azure-cli). Substitute <subscriptionId> with your actual subscription id:
+2. Create a Service Principal for GitHub Actions to utilize for deployment. Either (1) Cloud Application Administrator or (2) Application Developer permission on the tenant (Microsoft Entra) is required to perform this step. Application Developer is normally sufficient - and both Cloud Application Administrator and Application Developer supersede it. To do this, run this command (you must have the Azure CLI installed and be logged on to the tenant using "az login" first - you can download the Azure CLI here if you don't have it : https://learn.microsoft.com/en-us/cli/azure/install-azure-cli). Substitute <subscriptionId> with your actual subscription id:
   ```
     az ad sp create-for-rbac
             --name "sp-ms-industrypermitting-deploy"
