@@ -2,10 +2,12 @@
 param location string = resourceGroup().location
 @description('Id of the user or app to assign application roles')
 param principalId string = ''
-
-
 @description('Tags that will be applied to all resources')
 param tags object = {}
+
+// Custom parameter not created by AZD/Aspire
+@description('The type of workload profile to use (D4, D8, D16, D32 or consumption)')
+param workloadProfileType string = 'D4'
 
 var resourceToken = uniqueString(resourceGroup().id)
 
@@ -52,14 +54,15 @@ resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2023-05-01' 
   name: 'cae-${resourceToken}'
   location: location
   properties: {
-    workloadProfiles: [
+    // Conditional inclusion of workloadProfiles based on workloadProfileType
+    workloadProfiles: workloadProfileType != 'consumption' ? [
       {
         maximumCount: 10
         minimumCount: 3
         name: 'dedicated'
-        workloadProfileType: 'D4'
+        workloadProfileType: workloadProfileType
       }
-    ]
+    ] : null
     appLogsConfiguration: {
       destination: 'log-analytics'
       logAnalyticsConfiguration: {

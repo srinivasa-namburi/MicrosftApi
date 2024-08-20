@@ -12,6 +12,9 @@ param containerAppEnvSubnet string
 @description('The subnet of the private endpoints environment - must have aligned private DNS zones / custom DNS for resolution')
 param peSubnet string
 
+@description('The type of workload profile to use (D4, D8, D16, D32 or consumption)')
+param workloadProfileType string = 'D4'
+
 var resourceToken = uniqueString(resourceGroup().id)
 
 resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
@@ -79,12 +82,15 @@ resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2024-02-02-p
   name: 'cae-${resourceToken}'
   location: location
   properties: {
-    workloadProfiles: [{
+     // Conditional inclusion of workloadProfiles based on workloadProfileType
+     workloadProfiles: workloadProfileType != 'consumption' ? [
+      {
         maximumCount: 10
         minimumCount: 3
         name: 'dedicated'
-        workloadProfileType: 'D4'
-      }]
+        workloadProfileType: workloadProfileType
+      }
+    ] : null
     appLogsConfiguration: {
       destination: 'log-analytics'
       logAnalyticsConfiguration: {

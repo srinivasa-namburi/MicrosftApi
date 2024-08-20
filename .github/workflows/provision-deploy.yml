@@ -113,10 +113,30 @@ jobs:
           AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
           AZURE_CLOUD: ${{ vars.AZURE_CLOUD }}
 
+      - name: Update Bicep file for workload profile type
+        run: |
+          WORKLOAD_TYPE="${{ env.AZURE_CAE_WORKLOAD_TYPE }}"
+
+          # If the workload type is not set or empty, default to 'D4'
+          if [ -z "$WORKLOAD_TYPE" ]; then
+            WORKLOAD_TYPE="D4"
+          fi
+
+          # Replace the workload profile type in the Bicep file
+          sed -i "s/param workloadProfileType string = 'D4'/param workloadProfileType string = '$WORKLOAD_TYPE'/" infra/resources.bicep
+
+          echo "Updated resources.bicep with workload profile type: $WORKLOAD_TYPE"
+          echo "DEBUG : Updated resources.bicep file:"
+          cat infra/resources.bicep
+
+        env:
+          AZURE_CAE_WORKLOAD_TYPE: ${{ vars.AZURE_CAE_WORKLOAD_TYPE }}
+
       - name: Provision Infrastructure
         run: azd provision --no-prompt
         env:
           AZD_INITIAL_ENVIRONMENT_CONFIG: ${{ secrets.AZD_INITIAL_ENVIRONMENT_CONFIG }}
+          AZURE_CAE_WORKLOAD_TYPE: ${{ vars.AZURE_CAE_WORKLOAD_TYPE }}
 
       - name: Create appsettings.Production.json file
         run: |
@@ -173,3 +193,4 @@ jobs:
         run: azd deploy --no-prompt
         env:
           AZURE_RESOURCE_GROUP: rg-${{ env.AZURE_ENV_NAME }}
+          AZURE_CAE_WORKLOAD_TYPE: ${{ vars.AZURE_CAE_WORKLOAD_TYPE }}
