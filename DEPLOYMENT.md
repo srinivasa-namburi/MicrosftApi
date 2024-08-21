@@ -47,6 +47,7 @@
         - AZURE_SUBNET_PE : {This is the Subnet ID of the Container Apps Environment subnet created above - find it in the portal}
         - AZURE_SUBSCRIPTION_ID: {Your Subscription ID}
         - DEPLOYMENT_MODEL: {private | public}
+        - PVICO_OPENAI_RESOURCEGROUP : {The name of the Resource Group where your Azure OpenAI instance has been deployed}
       - <img width="394" alt="image" src="https://github.com/user-attachments/assets/8d473af4-1551-49da-9a5a-9e75bbd4ab5f">
 
 6. If you are running the "load-trainingdata" process to bring in the sample training data to the solution, add the following deployment variables to the Secrets and Variables section of the repository. These will only be available after the solution is fully deployed.
