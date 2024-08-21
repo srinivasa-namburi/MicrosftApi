@@ -15,8 +15,9 @@ if [ -z "$PVICO_OPENAI_CONNECTIONSTRING" ]; then
     use_default_workers=true
 else
     # Parse the OpenAI connection string
-    openai_endpoint=$(echo $PVICO_OPENAI_CONNECTIONSTRING | sed 's/.*Endpoint=\([^;]*\);.*/\1/')
+    openai_endpoint=$(echo $PVICO_OPENAI_CONNECTIONSTRING | sed 's/.*Endpoint=\([^;]*\);.*/\1/' | sed 's#https://##')
     openai_key=$(echo $PVICO_OPENAI_CONNECTIONSTRING | sed 's/.*Key=\([^;]*\);.*/\1/')
+    openai_instance_name=$(echo $openai_endpoint | cut -d'.' -f1)
 fi
 
 # Check if PVICO_OPENAI_RESOURCEGROUP is set
@@ -41,7 +42,7 @@ declare -A containerApps=(
 # Function to get the TPM for a specific deployment
 get_tpm() {
     local deploymentName=$1
-    local url="https://management.azure.com/subscriptions/$openai_subscription_id/resourceGroups/$openaiResourceGroup/providers/Microsoft.CognitiveServices/accounts/oai-projectvico-eastus2/deployments/$deploymentName?api-version=2023-10-01-preview"
+    local url="https://management.azure.com/subscriptions/$openai_subscription_id/resourceGroups/$openaiResourceGroup/providers/Microsoft.CognitiveServices/accounts/$openai_instance_name/deployments/$deploymentName?api-version=2023-10-01-preview"
     
     echo "Calling URL: $url" >&2
     
