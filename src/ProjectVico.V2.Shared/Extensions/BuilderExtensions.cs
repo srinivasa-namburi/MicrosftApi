@@ -1,12 +1,50 @@
-﻿using Microsoft.AspNetCore.Builder;
+﻿using Aspire.Azure.Messaging.ServiceBus;
+using Aspire.Azure.Search.Documents;
+using Aspire.Azure.Storage.Blobs;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using ProjectVico.V2.Shared.Configuration;
+using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Shared.Interfaces;
+using ProjectVico.V2.Shared.Services.Search;
 
 namespace ProjectVico.V2.Shared.Extensions;
 
 public static class BuilderExtensions
 {
+
+    public static IHostApplicationBuilder AddProjectVicoServices(this IHostApplicationBuilder builder, AzureCredentialHelper credentialHelper, ServiceConfigurationOptions serviceConfigurationOptions)
+    {
+        // Common services and dependencies
+        builder.AddAzureServiceBusClient("sbus", configureSettings: delegate (AzureMessagingServiceBusSettings settings)
+        {
+            settings.Credential = credentialHelper.GetAzureCredential();
+        });
+
+        builder.AddAzureSearchClient("aiSearch", configureSettings: delegate(AzureSearchSettings settings)
+        {
+            settings.Credential = credentialHelper.GetAzureCredential();
+        });
+
+        builder.AddAzureBlobClient("blob-docing", configureSettings: delegate (AzureStorageBlobsSettings settings)
+        {
+            settings.Credential = credentialHelper.GetAzureCredential();
+        });
+
+        // These services use key-based authentication and don't need to use the AzureCredentialHelper.
+        builder.AddKeyedAzureOpenAIClient("openai-planner");
+        builder.AddRabbitMQClient("rabbitmqdocgen");
+        builder.AddRedisClient("redis");
+
+        builder.Services.AddScoped<AzureFileHelper>();
+        builder.Services.AddSingleton<SearchClientFactory>();
+
+        builder.AddDocGenDbContext(serviceConfigurationOptions);
+        return builder;
+
+    }
+
     public static IHostApplicationBuilder AddPluggableEndpointDefinitions(this IHostApplicationBuilder builder)
     {
         var endpointTypes = GetEndpointTypes();

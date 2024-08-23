@@ -2,6 +2,7 @@ using Aspire.Hosting.Azure;
 using Azure.ResourceManager.Redis.Models;
 using Azure.ResourceManager.Search.Models;
 using Azure.ResourceManager.ServiceBus.Models;
+using Azure.ResourceManager.SignalR;
 using Azure.ResourceManager.SignalR.Models;
 using Microsoft.Extensions.Configuration;
 using ProjectVico.V2.AppHost;
@@ -16,6 +17,7 @@ AppHostConfigurationSetup(builder);
 var envServiceConfigurationConfigurationSection = builder.Configuration.GetSection("ServiceConfiguration");
 var envAzureAdConfigurationSection = builder.Configuration.GetSection("AzureAd");
 var envConnectionStringsConfigurationSection = builder.Configuration.GetSection("ConnectionStrings");
+var envAzureConfigurationSection = builder.Configuration.GetSection("Azure");
 
 // Used to determine service configuration.
 var durableDevelopment = Convert.ToBoolean(builder.Configuration["ServiceConfiguration:ProjectVicoServices:DocumentGeneration:DurableDevelopmentServices"]);
@@ -28,45 +30,13 @@ var sqlPassword = builder.AddParameter("sqlPassword", true);
 var sqlDatabaseName = builder.Configuration["ServiceConfiguration:SQL:DatabaseName"];
 
 IResourceBuilder<SqlServerDatabaseResource> docGenSql;
-IResourceBuilder<AzureServiceBusResource>? sbus;
+IResourceBuilder<IResourceWithConnectionString> sbus;
 IResourceBuilder<IResourceWithConnectionString> queueService;
 IResourceBuilder<RedisResource> redis;
 IResourceBuilder<IResourceWithConnectionString> openAi;
-
- // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
-var signalr = builder.AddAzureSignalR("signalr", configureResource: (resourceBuilder, construct, options) =>
-{
-    if(builder.ExecutionContext.IsRunMode)
-    {
-        options.Properties.Sku.Tier = SignalRSkuTier.Standard;
-        options.Properties.Sku.Name = "Standard_S1";
-        options.Properties.Sku.Capacity = 1;
-    }
-    else
-    {
-        options.Properties.Sku.Tier = SignalRSkuTier.Premium;
-        options.Properties.Sku.Name = "Premium_P1";
-        options.Properties.Sku.Capacity = 3;
-    }
-});
-
-var blobStorage = builder
-    .AddAzureStorage("docing")
-    .AddBlobs("blob-docing");
-
-var azureAiSearch = builder.AddAzureSearch("aiSearch", (resourceBuilder, construct, options) =>
-{
-    if (builder.ExecutionContext.IsRunMode)
-    {
-        options.Properties.SkuName = SearchSkuName.Basic;
-    }
-    else
-    {
-        options.Properties.SkuName = SearchSkuName.Standard;
-        options.Properties.ReplicaCount = 2;
-        options.Properties.PartitionCount = 2;
-    }
-});
+IResourceBuilder<IResourceWithConnectionString> signalr;
+IResourceBuilder<IResourceWithConnectionString> azureAiSearch;
+IResourceBuilder<IResourceWithConnectionString> blobStorage;
 
 if (builder.ExecutionContext.IsRunMode) // For local development
 {
@@ -89,10 +59,38 @@ if (builder.ExecutionContext.IsRunMode) // For local development
             .AddDatabase(sqlDatabaseName);
 
         redis = builder.AddRedis("redis", 16379);
-       
     }
 
-    sbus = builder.AddAzureServiceBus("sbus");
+    // The following resources are either deployed through the Aspire Azure Resource Manager or connected via connection string.
+    // Use the connection string to connect to the resources is the configuration key "Azure:SubscriptionId" is not set.
+
+    if (string.IsNullOrEmpty(builder.Configuration["Azure:SubscriptionId"]))
+    {
+        signalr = builder.AddConnectionString("signalr");
+        sbus = builder.AddConnectionString("sbus");
+        azureAiSearch = builder.AddConnectionString("aiSearch");
+        blobStorage = builder.AddConnectionString("blob-docing");
+    }
+    else
+    {
+        signalr = builder.AddAzureSignalR("signalr", configureResource: (resourceBuilder, construct, options) =>
+        {
+            options.Properties.Sku.Tier = SignalRSkuTier.Standard;
+            options.Properties.Sku.Name = "Standard_S1";
+            options.Properties.Sku.Capacity = 1;
+        });
+
+        sbus = builder.AddAzureServiceBus("sbus");
+
+        azureAiSearch = builder.AddAzureSearch("aiSearch", (resourceBuilder, construct, options) =>
+        {
+            options.Properties.SkuName = SearchSkuName.Basic;
+        });
+
+        blobStorage = builder
+            .AddAzureStorage("docing")
+            .AddBlobs("blob-docing");
+    }
 }
 else // For production/Azure deployment
 {
@@ -117,6 +115,25 @@ else // For production/Azure deployment
         options.Properties.Sku.Capacity = 1;
     });
 
+    azureAiSearch = builder.AddAzureSearch("aiSearch", (resourceBuilder, construct, options) =>
+    {
+        options.Properties.SkuName = SearchSkuName.Standard;
+        options.Properties.ReplicaCount = 2;
+        options.Properties.PartitionCount = 2;
+    });
+
+    signalr = builder.AddAzureSignalR("signalr", configureResource: (resourceBuilder, construct, options) =>
+    {
+
+        options.Properties.Sku.Tier = SignalRSkuTier.Premium;
+        options.Properties.Sku.Name = "Premium_P1";
+        options.Properties.Sku.Capacity = 3;
+    });
+
+    blobStorage = builder
+        .AddAzureStorage("docing")
+        .AddBlobs("blob-docing");
+
 }
 
 queueService = sbus;
@@ -127,6 +144,7 @@ var apiMain = builder
     .WithConfigSection(envAzureAdConfigurationSection)
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithConfigSection(envAzureConfigurationSection)
     .WithReference(blobStorage)
     .WithReference(signalr)
     .WithReference(redis)
@@ -139,6 +157,7 @@ var docGenFrontend = builder
     .WithConfigSection(envAzureAdConfigurationSection)
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithConfigSection(envAzureConfigurationSection)
     .WithReference(signalr)
     .WithReference(redis)
     .WithReference(apiMain);
@@ -150,6 +169,7 @@ var setupManager = builder
     .WithReplicas(1) // There can only be one Setup Manager
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithConfigSection(envAzureConfigurationSection)
     .WithReference(azureAiSearch)
     .WithReference(blobStorage)
     .WithReference(queueService)
@@ -164,6 +184,7 @@ var workerScheduler = builder
     .WithReplicas(1) // There can only be one Scheduler
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithConfigSection(envAzureConfigurationSection)
     .WithReference(blobStorage)
     .WithReference(docGenSql)
     .WithReference(queueService)
@@ -176,6 +197,7 @@ var workerDocumentGeneration = builder
         builder.Configuration["ServiceConfiguration:ProjectVicoServices:DocumentGeneration:NumberOfGenerationWorkers"]))
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithConfigSection(envAzureConfigurationSection)
     .WithReference(azureAiSearch)
     .WithReference(blobStorage)
     .WithReference(docGenSql)
@@ -190,6 +212,7 @@ var workerDocumentIngestion = builder
         builder.Configuration["ServiceConfiguration:ProjectVicoServices:DocumentIngestion:NumberOfIngestionWorkers"]))
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithConfigSection(envAzureConfigurationSection)
     .WithReference(azureAiSearch)
     .WithReference(blobStorage)
     .WithReference(docGenSql)
@@ -200,6 +223,7 @@ var workerDocumentIngestion = builder
 var workerChat = builder.AddProject<Projects.ProjectVico_V2_Worker_Chat>("worker-chat")
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithConfigSection(envAzureConfigurationSection)
     .WithReference(azureAiSearch)
     .WithReference(blobStorage)
     .WithReference(docGenSql)

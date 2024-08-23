@@ -6,6 +6,7 @@ using Microsoft.Extensions.Azure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using ProjectVico.V2.Shared.Configuration;
+using ProjectVico.V2.Shared.Helpers;
 
 namespace ProjectVico.V2.Shared.Services.Search;
 
@@ -13,6 +14,7 @@ public class SearchClientFactory
 {
     private readonly IConfiguration _configuration;
     private readonly SearchIndexClient _baseSearchIndexClient;
+    private readonly AzureCredentialHelper _azureCredentialHelper;
     private ServiceConfigurationOptions _serviceConfigurationOptions;
 
     private Dictionary<string, SearchClient>? searchClients;
@@ -21,11 +23,13 @@ public class SearchClientFactory
     public SearchClientFactory(
         IConfiguration configuration,
         SearchIndexClient baseSearchIndexClient,
-        IOptions<ServiceConfigurationOptions> serviceConfigurationOptions
+        IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
+        AzureCredentialHelper azureCredentialHelper
         )
     {
         _configuration = configuration;
         _baseSearchIndexClient = baseSearchIndexClient;
+        _azureCredentialHelper = azureCredentialHelper;
         _serviceConfigurationOptions = serviceConfigurationOptions.Value;
     }
 
@@ -37,7 +41,7 @@ public class SearchClientFactory
         {
             var searchIndexClient = new SearchIndexClient(
                 new Uri(_baseSearchIndexClient.Endpoint.AbsoluteUri),
-                new DefaultAzureCredential()
+                _azureCredentialHelper.GetAzureCredential()
             );
 
             searchIndexClients.Add(indexName, searchIndexClient);
@@ -55,7 +59,7 @@ public class SearchClientFactory
             var searchClient = new SearchClient(
                 new Uri(_baseSearchIndexClient.Endpoint.AbsoluteUri),
                 indexName,
-                new DefaultAzureCredential()
+                _azureCredentialHelper.GetAzureCredential()
             );
 
             searchClients.Add(indexName, searchClient);

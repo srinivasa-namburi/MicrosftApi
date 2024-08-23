@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.KernelMemory;
 using Microsoft.KernelMemory.Configuration;
 using ProjectVico.V2.Shared.Configuration;
+using ProjectVico.V2.Shared.Helpers;
 
 namespace ProjectVico.V2.Shared.Extensions;
 
@@ -26,6 +27,8 @@ public static class KernelMemoryExtensions
     {
         var sp = builder.Services.BuildServiceProvider();
         var openAi = sp.GetKeyedService<OpenAIClient>("openai-planner");
+        var azureCredentialHelper = sp.GetRequiredService<AzureCredentialHelper>();
+
         var baseSearchClient = sp.GetService<SearchIndexClient>();
 
         var configuration = builder.Configuration;
@@ -71,7 +74,7 @@ public static class KernelMemoryExtensions
            Auth = AzureAISearchConfig.AuthTypes.ManualTokenCredential
         };
 
-        azureAiSearchConfig.SetCredential(new DefaultAzureCredential());
+        azureAiSearchConfig.SetCredential(azureCredentialHelper.GetAzureCredential());
         
         // Blob Connection String
         var blobConnection = configuration.GetConnectionString("blob-docing");
@@ -93,7 +96,7 @@ public static class KernelMemoryExtensions
             Auth = AzureBlobsConfig.AuthTypes.ManualTokenCredential
         };
 
-        azureBlobsConfig.SetCredential(new DefaultAzureCredential());
+        azureBlobsConfig.SetCredential(azureCredentialHelper.GetAzureCredential());
         
         var textPartitioningOptions = new TextPartitioningOptions
         {

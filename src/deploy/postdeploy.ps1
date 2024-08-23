@@ -1,5 +1,5 @@
 # Configuration variables
-$TOKENS_PER_WORKER = 30000
+$TOKENS_PER_WORKER = 50000
 
 # Read the environment and resource group names from environment variables
 $envName = ($Env:AZURE_CONTAINER_REGISTRY_ENDPOINT -split '\.')[0]

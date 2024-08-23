@@ -5,27 +5,20 @@ using ProjectVico.V2.Plugins.Shared;
 using ProjectVico.V2.Shared;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Extensions;
+using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Shared.Services.Search;
 
 var builder = Host.CreateApplicationBuilder(args);
 
 builder.AddServiceDefaults();
+builder.Services.AddSingleton<AzureCredentialHelper>();
+var credentialHelper = new AzureCredentialHelper(builder.Configuration);
 
-builder.AddAzureSearchClient("aiSearch");
 builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
-builder.Services.AddSingleton<SearchClientFactory>();
-
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
-
 await builder.DelayStartup(serviceConfigurationOptions.ProjectVicoServices.DocumentGeneration.DurableDevelopmentServices);
 
-builder.AddAzureServiceBusClient("sbus");
-builder.AddRabbitMQClient("rabbitmqdocgen");
-builder.AddKeyedAzureOpenAIClient("openai-planner");
-builder.AddAzureBlobClient("blob-docing");
-builder.AddRedisClient("redis");
-
-builder.AddDocGenDbContext(serviceConfigurationOptions);
+builder.AddProjectVicoServices(credentialHelper, serviceConfigurationOptions);
 
 builder.DynamicallyRegisterPlugins(serviceConfigurationOptions);
 builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
@@ -46,7 +39,7 @@ if (!string.IsNullOrWhiteSpace(serviceBusConnectionString))
          {
              cfg.Host(serviceBusConnectionString, configure: config =>
              {
-                 config.TokenCredential = new DefaultAzureCredential();
+                 config.TokenCredential = credentialHelper.GetAzureCredential();
              });
              cfg.LockDuration = TimeSpan.FromMinutes(5);
              cfg.MaxAutoRenewDuration = TimeSpan.FromMinutes(60);

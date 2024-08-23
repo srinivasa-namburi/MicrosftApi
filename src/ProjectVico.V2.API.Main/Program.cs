@@ -1,4 +1,3 @@
-using Azure.Identity;
 using MassTransit;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -9,8 +8,8 @@ using ProjectVico.V2.Plugins.Shared;
 using ProjectVico.V2.Shared;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Extensions;
+using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Shared.Mappings;
-using ProjectVico.V2.Shared.Services;
 using ProjectVico.V2.Shared.Services.Search;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -21,26 +20,15 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .EnableTokenAcquisitionToCallDownstreamApi().AddInMemoryTokenCaches();
 
 builder.AddServiceDefaults();
+builder.Services.AddSingleton<AzureCredentialHelper>();
+var credentialHelper = new AzureCredentialHelper(builder.Configuration);
 
-// Set Configuration ServiceConfigurationOptions:CognitiveServices:Endpoint to the correct value
-// Read the values from the azureAiSearch Connection String
-// Build an IConfigurationSection from ServiceConfigurationOptions, but set the ConnectionString to the azureAiSearch Connection String
-builder.AddAzureSearchClient("aiSearch");
 builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
-builder.Services.AddSingleton<SearchClientFactory>();
-
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
 
 await builder.DelayStartup(serviceConfigurationOptions.ProjectVicoServices.DocumentGeneration.DurableDevelopmentServices);
 
-builder.AddAzureServiceBusClient("sbus");
-builder.AddRabbitMQClient("rabbitmqdocgen");
-builder.AddKeyedAzureOpenAIClient("openai-planner");
-builder.AddAzureBlobClient("blob-docing");
-builder.AddRedisClient("redis");
-
-
-builder.AddDocGenDbContext(serviceConfigurationOptions);
+builder.AddProjectVicoServices(credentialHelper, serviceConfigurationOptions);
 
 builder.Services.AddAutoMapper(typeof(ChatMessageProfile));
 
@@ -76,7 +64,7 @@ if (!string.IsNullOrWhiteSpace(serviceBusConnectionString)) // Use Azure Service
         {
             cfg.Host(serviceBusConnectionString, configure: config =>
             {
-                config.TokenCredential = new DefaultAzureCredential();
+                config.TokenCredential = credentialHelper.GetAzureCredential();
             });
             cfg.ConfigureEndpoints(context);
 
