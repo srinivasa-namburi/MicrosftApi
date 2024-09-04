@@ -27,11 +27,11 @@ jobs:
 
       - name: Use DotNet SDK 8.0.x
         uses: actions/setup-dotnet@v1
-        with:
-          dotnet-version: 8.0.304
+        #with:
+        #  dotnet-version: 8.0.304
 
       - name: Install .Net Aspire workload
-        run: dotnet workload install aspire --version 8.0.2
+        run: dotnet workload install aspire
 
       - name: Install AZD
         uses: Azure/setup-azd@v1.0.0
