@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using ProjectVico.V2.DocumentProcess.Belgium.NuclearLicensing.DSAR.Generation;
 using ProjectVico.V2.DocumentProcess.Shared;
 using ProjectVico.V2.DocumentProcess.Shared.Generation;
@@ -22,20 +23,22 @@ public class BelgiumNuclearLicensingDSARDocumentProcessRegistration : IDocumentP
         
         // Shared Services
         builder.AddKeyedKernelMemoryForDocumentProcess(options, process);
-        builder.Services.AddKeyedSingleton<IKernelMemoryRepository, KernelMemoryRepository>(ProcessName + "-IKernelMemoryRepository");
+        builder.Services.AddKeyedScoped<IKernelMemoryRepository, KernelMemoryRepository>(ProcessName + "-IKernelMemoryRepository");
         // END Shared Services
 
-        // Ingestion services
-        // No Classification service for Belgium.NuclearLicensing.DSAR
-        // No Pipeline service for Belgium.NuclearLicensing.DSAR as this is a Kernel Memory only process
-        // END Ingestion services
-
         // Generation services
+        builder.Services.AddKeyedScoped<IAiCompletionService, BelgiumNuclearLicensingDSARAiCompletionService>(ProcessName + "-IAiCompletionService");
+
         if (options.ProjectVicoServices.DocumentGeneration.CreateBodyTextNodes)
         {
-            builder.Services.AddKeyedScoped<IBodyTextGenerator, BelgiumNuclearLicensingDSARBodyTextGenerator>(ProcessName + "-IBodyTextGenerator");
+            builder.Services.AddKeyedScoped<IBodyTextGenerator>(ProcessName + "-IBodyTextGenerator", (sp, a) =>
+                new KernelMemoryBodyTextGenerator(
+                    sp.GetRequiredKeyedService<IAiCompletionService>(ProcessName + "-IAiCompletionService"),
+                    sp.GetRequiredService<ILogger<KernelMemoryBodyTextGenerator>>(),
+                    sp.GetRequiredService<IServiceProvider>()
+                ));
         }
-        builder.Services.AddKeyedScoped<IAiCompletionService, BelgiumNuclearLicensingDSARAiCompletionService>(ProcessName + "-IAiCompletionService");
+        
         builder.Services.AddKeyedScoped<IDocumentOutlineService, BelgiumNuclearLicensingDSARDocumentOutlineService>(ProcessName + "-IDocumentOutlineService");
         // END Generation services
         return builder;

@@ -1,0 +1,155 @@
+﻿@page "/reviews"
+
+@inject IReviewApiClient ReviewApiClient
+@inject NavigationManager Navigation
+@inject IDialogService DialogService
+
+<PageTitle>Generated Documents List</PageTitle>
+
+@if (_reviews is null)
+{
+    <MudPaper Class="pa-4">
+        <MudSkeleton />
+    </MudPaper>
+}
+else
+{
+    <MudExpansionPanels>
+        <MudExpansionPanel>
+            <TitleContent>
+                <MudText Typo="Typo.h4">Review Definitions</MudText>
+            </TitleContent>
+            <ChildContent>
+                <MudDataGrid Items="@_reviews.OrderByDescending(x => x.Title)"
+                             T="ReviewDefinitionInfo"
+                             Hover="true"
+                             Filterable="false"
+                             SortMode="@SortMode.Single"
+                             Groupable="false"
+                             MultiSelection="true"
+                             RowClick="@RowClicked"
+                             SelectOnRowClick="false"
+                             @bind-SelectedItems="_selectedReviews">
+                    <ToolBarContent>
+                        <MudButton OnClick="AddReview" Variant="Variant.Filled" Color="Color.Primary" Class="float-right">Add Review Definition</MudButton>
+                        @if (_selectedReviews.Count > 0)
+                        {
+                            <MudButton OnClick="@DeletedSelectedReviews" Variant="Variant.Filled" Color="Color.Error" Class="float-right">Delete Selected</MudButton>
+                        }
+                    </ToolBarContent>
+                    <Columns>
+                        <SelectColumn T="ReviewDefinitionInfo" ShowInFooter="false" ShowInHeader="true" />
+                        <PropertyColumn Property="x => x.Title" />
+                        <TemplateColumn CellClass="d-flex justify-end">
+                            <CellTemplate>
+                                <MudStack Row="true" Spacing="3">
+                                    <MudTooltip Delay="400" Text="Execute Review">
+                                        <MudIconButton OnClick="@(async () => await ExecuteReview(context.Item))" Size="@Size.Small" Icon="@Icons.Material.Filled.Lightbulb"></MudIconButton>
+                                    </MudTooltip>
+                                    <MudTooltip Delay="400" Text="View Review Definition">
+                                        <MudIconButton OnClick="@(() => ViewReview(context.Item))" Size="@Size.Small" Icon="@Icons.Material.Filled.StickyNote2"></MudIconButton>
+                                    </MudTooltip>
+                                    <MudTooltip Delay="400" Text="Delete (you will be asked to confirm)">
+                                        <MudIconButton OnClick="@(async () => await DeleteReview(context.Item))" Size="@Size.Small" Icon="@Icons.Material.Filled.Delete"></MudIconButton>
+                                    </MudTooltip>
+                                </MudStack>
+                            </CellTemplate>
+                        </TemplateColumn>
+                    </Columns>
+                </MudDataGrid>
+            </ChildContent>
+        </MudExpansionPanel>
+    </MudExpansionPanels>
+
+
+}
+
+@code {
+    private List<ReviewDefinitionInfo>? _reviews;
+    private HashSet<ReviewDefinitionInfo> _selectedReviews = [];
+
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        _reviews = await ReviewApiClient.GetAllReviews();
+    }
+
+    private void ViewReview(ReviewDefinitionInfo review)
+    {
+        Navigation.NavigateTo($"/reviews/{review.Id}/view");
+    }
+
+    private void AddReview()
+    {
+        Navigation.NavigateTo("/reviews/add");
+    }
+
+    private void RowClicked(DataGridRowClickEventArgs<ReviewDefinitionInfo> obj)
+    {
+        var review = obj.Item;
+        ViewReview(review);
+    }
+
+    private async Task DeleteReview(ReviewDefinitionInfo review)
+    {
+        var parameters = new DialogParameters
+        {
+            { "ContentText", $"Are you sure you want to delete the Review Definition '{review.Title}'?" },
+            { "ButtonText", "Delete" },
+            { "DialogColor", Color.Error }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<ConfirmationDialog>("Delete Review Definition", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            var deleteResult = await ReviewApiClient.DeleteReview(review.Id);
+            if (deleteResult is true)
+            {
+                _reviews!.Remove(review);
+                await InvokeAsync(StateHasChanged);
+            }
+
+        }
+    }
+
+    private async Task DeletedSelectedReviews()
+    {
+        var parameters = new DialogParameters
+        {
+            { "ContentText", $"Are you sure you want to delete {_selectedReviews.Count} Review Definitions?" },
+            { "ButtonText", "Delete" },
+            { "DialogColor", Color.Error }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<ConfirmationDialog>("Delete (Multiple) Review Definitions", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            foreach (var review in _selectedReviews)
+            {
+                var deleteResult = await ReviewApiClient.DeleteReview(review.Id);
+                if (deleteResult is true)
+                {
+                    _reviews!.Remove(review);
+                }
+            }
+
+            _selectedReviews.Clear();
+            await InvokeAsync(StateHasChanged);
+        }
+
+    }
+
+
+    private async Task ExecuteReview(ReviewDefinitionInfo contextItem)
+    {
+        Navigation.NavigateTo($"/review-instances/new/definition/{contextItem.Id}");
+    }
+
+}

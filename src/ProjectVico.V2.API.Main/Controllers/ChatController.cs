@@ -2,12 +2,13 @@
 using MassTransit;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using ProjectVico.V2.DocumentProcess.Shared;
 using ProjectVico.V2.DocumentProcess.Shared.Prompts;
 using ProjectVico.V2.Shared.Contracts.Chat;
 using ProjectVico.V2.Shared.Contracts.Messages.Chat.Commands;
 using ProjectVico.V2.Shared.Data.Sql;
+using ProjectVico.V2.Shared.Extensions;
 using ProjectVico.V2.Shared.Models;
+using ProjectVico.V2.Shared.Prompts;
 
 namespace ProjectVico.V2.API.Main.Controllers;
 

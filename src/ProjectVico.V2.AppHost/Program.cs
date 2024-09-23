@@ -18,6 +18,7 @@ var envServiceConfigurationConfigurationSection = builder.Configuration.GetSecti
 var envAzureAdConfigurationSection = builder.Configuration.GetSection("AzureAd");
 var envConnectionStringsConfigurationSection = builder.Configuration.GetSection("ConnectionStrings");
 var envAzureConfigurationSection = builder.Configuration.GetSection("Azure");
+var envKestrelConfigurationSection = builder.Configuration.GetSection("Kestrel");
 
 // Used to determine service configuration.
 var durableDevelopment = Convert.ToBoolean(builder.Configuration["ServiceConfiguration:ProjectVicoServices:DocumentGeneration:DurableDevelopmentServices"]);
@@ -63,7 +64,6 @@ if (builder.ExecutionContext.IsRunMode) // For local development
 
     // The following resources are either deployed through the Aspire Azure Resource Manager or connected via connection string.
     // Use the connection string to connect to the resources is the configuration key "Azure:SubscriptionId" is not set.
-
     if (string.IsNullOrEmpty(builder.Configuration["Azure:SubscriptionId"]))
     {
         signalr = builder.AddConnectionString("signalr");
@@ -145,6 +145,7 @@ var apiMain = builder
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
     .WithConfigSection(envAzureConfigurationSection)
+    .WithConfigSection(envKestrelConfigurationSection)
     .WithReference(blobStorage)
     .WithReference(signalr)
     .WithReference(redis)
@@ -158,6 +159,7 @@ var docGenFrontend = builder
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
     .WithConfigSection(envAzureConfigurationSection)
+    .WithConfigSection(envKestrelConfigurationSection)
     .WithReference(signalr)
     .WithReference(redis)
     .WithReference(apiMain);

@@ -1,14 +1,16 @@
 ﻿using Azure.AI.OpenAI;
+using DocumentFormat.OpenXml.Office2016.Drawing.ChartDrawing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 using Microsoft.SemanticKernel.Embeddings;
 using Microsoft.SemanticKernel.TextGeneration;
-using ProjectVico.V2.Plugins.Shared;
 using ProjectVico.V2.Shared.Configuration;
+using ProjectVico.V2.Shared.Contracts.DTO;
 
 namespace ProjectVico.V2.Shared.Extensions;
 #pragma warning disable SKEXP0011
@@ -17,7 +19,7 @@ namespace ProjectVico.V2.Shared.Extensions;
 
 public static class SemanticKernelExtensions
 {
-    public static IHostApplicationBuilder AddSemanticKernelServices(this IHostApplicationBuilder builder, ServiceConfigurationOptions serviceConfigurationOptions)
+    public static IHostApplicationBuilder AddSemanticKernelServicesForStaticDocumentProcesses(this IHostApplicationBuilder builder, ServiceConfigurationOptions serviceConfigurationOptions)
     {
         builder.AddCompletionServices();
 
@@ -33,7 +35,7 @@ public static class SemanticKernelExtensions
             return kernel;
         });
 
-        // Keyed Kernel per Document Process Type
+        // Keyed Kernel per Static Document Process Type
         var documentProcesses = serviceConfigurationOptions.ProjectVicoServices.DocumentProcesses;
         foreach (var documentProcess in documentProcesses)
         {
@@ -47,6 +49,22 @@ public static class SemanticKernelExtensions
                 return kernel;
             });
         }
+
+        return builder;
+    }
+
+    public static IHostApplicationBuilder AddSemanticKernelServicesForDynamicDocumentProcess (this IHostApplicationBuilder builder, DocumentProcessInfo documentProcess)
+    {
+        var sp = builder.Services.BuildServiceProvider();
+
+        builder.Services.AddKeyedScoped<Kernel>(documentProcess.ShortName + "-Kernel", (provider, o) =>
+        {
+            KernelPluginCollection plugins = [];
+            plugins.AddSharedAndDocumentProcessPluginsToPluginCollection(provider, documentProcess);
+
+            var kernel = new Kernel(provider, plugins);
+            return kernel;
+        });
 
         return builder;
     }

@@ -12,5 +12,5 @@ public class GeneratedDocument : EntityBase
     public Guid? MetadataId { get; set; }
     public DocumentMetadata? Metadata { get; set; } = new DocumentMetadata();
 
-
+    public List<ExportedDocumentLink> ExportedDocumentLinks { get; set; } = new List<ExportedDocumentLink>();
 }

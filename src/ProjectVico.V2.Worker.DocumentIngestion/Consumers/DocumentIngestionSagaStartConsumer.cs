@@ -1,32 +1,29 @@
 ﻿using HandlebarsDotNet;
 using MassTransit;
-using Microsoft.Extensions.Options;
-using ProjectVico.V2.Shared.Configuration;
+using ProjectVico.V2.Shared.Contracts;
 using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentIngestion.Commands;
+using ProjectVico.V2.Shared.Enums;
+using ProjectVico.V2.Shared.Services;
 
 namespace ProjectVico.V2.Worker.DocumentIngestion.Consumers;
 
 public class DocumentIngestionSagaStartConsumer : IConsumer<DocumentIngestionRequest>
 {
     private readonly ILogger<DocumentIngestionSagaStartConsumer> _logger;
-    private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
+    private readonly IDocumentProcessInfoService _documentProcessInfoService;
 
-    public DocumentIngestionSagaStartConsumer(
-        IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
-        ILogger<DocumentIngestionSagaStartConsumer> logger)
+    public DocumentIngestionSagaStartConsumer(ILogger<DocumentIngestionSagaStartConsumer> logger,
+        IDocumentProcessInfoService documentProcessInfoService)
     {
         _logger = logger;
-        _serviceConfigurationOptions = serviceConfigurationOptions.Value;
+        _documentProcessInfoService = documentProcessInfoService;
     }
 
     public async Task Consume(ConsumeContext<DocumentIngestionRequest> context)
     {
-
-        var documentProcess = _serviceConfigurationOptions
-            .ProjectVicoServices
-            .DocumentProcesses
-            .FirstOrDefault(x => x.Name == context.Message.DocumentProcessName);
+        var documentProcess =
+            await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(context.Message.DocumentProcessName);
 
         if (documentProcess == null)
         {
@@ -34,7 +31,7 @@ public class DocumentIngestionSagaStartConsumer : IConsumer<DocumentIngestionReq
             return;
         }
 
-        if (documentProcess.IngestionMethod == "KernelMemory")
+        if (documentProcess.LogicType == DocumentProcessLogicType.KernelMemory)
         {
             _logger.LogInformation("DocumentIngestionSagaStartConsumer : Received KernelMemory message with ID : {CorrelationID} for Document Process {DocumentProcessName}", context.Message.Id, context.Message.DocumentProcessName);
             await context.Publish(new KernelMemoryDocumentIngestionRequest(context.Message.Id)

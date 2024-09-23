@@ -42,6 +42,22 @@ internal sealed class DocumentGenerationApiClient : BaseServiceClient<DocumentGe
         return response?.StatusCode == HttpStatusCode.NoContent;
     }
 
+    public async Task<Stream> ExportDocumentAsync(string documentId)
+    {
+        var response = await SendGetRequestMessage($"/api/documents/{documentId}/word-export");
+        response?.EnsureSuccessStatusCode();
+
+        return await response?.Content.ReadAsStreamAsync()!;
+    }
+
+    public async Task<string> ExportDocumentLinkAsync(string documentId)
+    {
+        var response = await SendGetRequestMessage($"/api/documents/{documentId}/word-export/permalink");
+        response?.EnsureSuccessStatusCode();
+
+        return await response?.Content.ReadAsStringAsync()!;
+    }
+
     public async Task<List<GeneratedDocumentListItem>> GetGeneratedDocumentsAsync()
     {
         var response = await SendGetRequestMessage($"/api/documents");
@@ -51,6 +67,17 @@ internal sealed class DocumentGenerationApiClient : BaseServiceClient<DocumentGe
                throw new IOException("No documents!");
     }
 
+    public async Task<string> GetExportDocumentLinkAsync(string documentId)
+    {
+        var response = await SendGetRequestMessage($"/api/documents/{documentId}/export-link");
 
-    
+        if (response.IsSuccessStatusCode)
+        {
+            return await response.Content.ReadAsStringAsync()!;
+        }
+        else
+        {
+            return string.Empty;
+        }
+    }
 }

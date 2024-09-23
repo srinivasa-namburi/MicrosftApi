@@ -3,11 +3,11 @@ using Azure;
 using Humanizer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using ProjectVico.V2.DocumentProcess.Shared;
 using ProjectVico.V2.DocumentProcess.Shared.Search;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Enums;
+using ProjectVico.V2.Shared.Extensions;
 using ProjectVico.V2.Shared.Services;
 using ProjectVico.V2.Shared.Services.Search;
 

@@ -10,6 +10,9 @@
 
 
 @code {
+
+    [Parameter] public string? DocumentProcessName { get; set; } = "US.NRC.EnvironmentalReport";
+
     private readonly DocumentGenerationRequestUsNrcEnvironmentalReport documentGenerationRequest = new DocumentGenerationRequestUsNrcEnvironmentalReport
     {
         Location = new LocationInformation

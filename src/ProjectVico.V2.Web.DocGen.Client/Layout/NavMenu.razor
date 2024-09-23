@@ -1,18 +1,58 @@
-﻿@using ProjectVico.V2.Web.DocGen.Components.Layout
+﻿@using MassTransit.Configuration
+@using ProjectVico.V2.Shared.Configuration
+@using ProjectVico.V2.Web.DocGen.Components.Layout
+
+@inject IDocumentProcessApiClient DocumentProcessApiClient
+@inject IConfigurationApiClient ConfigurationApiClient
+
 <MudNavMenu>
     <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">Home</MudNavLink>
     <MudNavLink Href="/docs" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ViewList">All Documents</MudNavLink>
     <MudNavGroup Title="New Document" Icon="@Icons.Material.Filled.Description">
-        <MudNavLink Href="/US.NRC.EnvironmentalReport/generate">US NRC Environmental Report (KM)</MudNavLink>
-        <MudNavLink Href="/US.NuclearLicensing/generate">US NRC Environmental Report (DI)</MudNavLink>
-        <MudNavLink Href="/Belgium.NuclearLicensing.DSAR/generate">Belgium DSAR Report</MudNavLink>
+        @foreach (var dp in _documentProcesses)
+        {
+            var url = $"/{dp.ShortName}/generate";
+            var description = !string.IsNullOrEmpty(dp.Description) ? dp.Description : dp.ShortName ;
+            <MudNavLink Href="@url">@description</MudNavLink>
+        }
     </MudNavGroup>
     <MudNavGroup Title="Nuclear Copilot" Icon="@Icons.Material.Filled.AssistantDirection">
-        <MudNavLink Href="/copilot/US.NRC.EnvironmentalReport" Match="NavLinkMatch.Prefix">US NRC Environmental Report (KM)</MudNavLink>
-        <MudNavLink Href="/copilot/US.NuclearLicensing" Match="NavLinkMatch.Prefix">US NRC Environmental Report (DI)</MudNavLink>
-        <MudNavLink Href="/copilot/Belgium.NuclearLicensing.DSAR" Match="NavLinkMatch.Prefix">Belgium Nuclear Licensing</MudNavLink>
+        @foreach (var dp in _documentProcesses)
+        {
+            var url = $"/copilot/{dp.ShortName}";
+            var description = !string.IsNullOrEmpty(dp.Description) ? dp.Description : dp.ShortName;
+            <MudNavLink Href="@url" Match="NavLinkMatch.Prefix">@description</MudNavLink>
+        }
     </MudNavGroup>
     <MudNavLink Href="/document-processes" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Build">Document Process Manager</MudNavLink>
-    <LogInOrOut />
+    
+    @if (_featureFlags?.EnableReviews == true)
+    {
+        <MudNavLink Href="/reviews" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Reviews">Reviews</MudNavLink>
+    }
+    @if (_featureFlags?.EnableMassDocumentProduction == true)
+    {
+        <MudNavLink Href="/mass-document-creation" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Receipt">Mass Document Creation</MudNavLink>
+    }
 
+    <LogInOrOut />
 </MudNavMenu>
+
+@code
+{
+    private List<DocumentProcessInfo> _documentProcesses = new List<DocumentProcessInfo>();
+    private ServiceConfigurationOptions.ProjectVicoServicesOptions.FeatureFlagsOptions _featureFlags;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _documentProcesses = await DocumentProcessApiClient.GetAllDocumentProcessInfoAsync();
+            _featureFlags = await ConfigurationApiClient.GetFeatureFlagsAsync();
+        }
+        catch
+        {
+            return;
+        }
+    }
+}

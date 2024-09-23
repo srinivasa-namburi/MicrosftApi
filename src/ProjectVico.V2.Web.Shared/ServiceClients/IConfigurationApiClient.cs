@@ -6,4 +6,6 @@ public interface IConfigurationApiClient : IServiceClient
 {
     Task<string?> GetAzureMapsKeyAsync();
     Task<List<DocumentProcessOptions?>> GetDocumentProcessesAsync();
+
+    Task<ServiceConfigurationOptions.ProjectVicoServicesOptions.FeatureFlagsOptions> GetFeatureFlagsAsync();
 }

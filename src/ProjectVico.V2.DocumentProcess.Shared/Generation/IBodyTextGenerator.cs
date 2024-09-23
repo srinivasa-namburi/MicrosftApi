@@ -4,6 +4,6 @@ namespace ProjectVico.V2.DocumentProcess.Shared.Generation;
 
 public interface IBodyTextGenerator
 {
-    Task<List<ContentNode>> GenerateBodyText(string contentNodeTypeString, string sectionNumber, string sectionTitle,
-        string tableOfContentsString, Guid? metadataId = null);
+   Task<List<ContentNode>> GenerateBodyText(string contentNodeTypeString, string sectionNumber,
+        string sectionTitle, string tableOfContentsString, string documentProcessName, Guid? metadataId);
 }

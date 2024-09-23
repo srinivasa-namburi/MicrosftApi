@@ -7,11 +7,11 @@ using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 using ProjectVico.V2.DocumentProcess.Shared.Generation;
 using ProjectVico.V2.DocumentProcess.Shared.Plugins.KmDocs;
-using ProjectVico.V2.Plugins.Shared;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Contracts;
 using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Enums;
+using ProjectVico.V2.Shared.Extensions;
 using ProjectVico.V2.Shared.Models;
 
 namespace ProjectVico.V2.DocumentProcess.Belgium.NuclearLicensing.DSAR.Generation;

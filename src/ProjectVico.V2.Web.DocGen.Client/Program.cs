@@ -51,6 +51,16 @@ builder.Services.AddHttpClient<IDocumentProcessApiClient, DocumentProcessApiClie
     client.BaseAddress = serverBaseAddress;
 });
 
+builder.Services.AddHttpClient<IDocumentOutlineApiClient, DocumentOutlineApiClient>(client =>
+{
+    client.BaseAddress = serverBaseAddress;
+});
+
+builder.Services.AddHttpClient<IReviewApiClient, ReviewApiClient>(client =>
+{
+    client.BaseAddress = serverBaseAddress;
+});
+
 
 
 await builder.Build().RunAsync();

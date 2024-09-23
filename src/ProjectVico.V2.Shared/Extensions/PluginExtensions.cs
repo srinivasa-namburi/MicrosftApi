@@ -3,21 +3,16 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.SemanticKernel;
 using ProjectVico.V2.Shared.Configuration;
+using ProjectVico.V2.Shared.Contracts.DTO;
+using ProjectVico.V2.Shared.Enums;
 using ProjectVico.V2.Shared.Interfaces;
-using ProjectVico.V2.Shared.Mappings;
-using ProjectVico.V2.Shared.Services;
 
-namespace ProjectVico.V2.Plugins.Shared
+namespace ProjectVico.V2.Shared.Extensions
 {
     public static class HostApplicationBuilderExtensions
     {
         public static IHostApplicationBuilder DynamicallyRegisterPlugins(this IHostApplicationBuilder builder, ServiceConfigurationOptions options)
         {
-
-            // Document Info Service and associated mappings
-            builder.Services.AddAutoMapper(typeof(DocumentProcessInfoProfile));
-            builder.Services.AddScoped<IDocumentProcessInfoService, DocumentProcessInfoService>();
-            builder.Services.AddScoped<IPromptInfoService, PromptInfoService>();
 
             // Define the base directory - assuming it's the current directory for simplicity
             string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
@@ -123,13 +118,33 @@ namespace ProjectVico.V2.Plugins.Shared
             DocumentProcessOptions documentProcess,
             List<Type>? excludedPluginTypes = null)
         {
-            var basePlugins = GetPluginsByAssemblyPrefix("ProjectVico.V2.Plugins");
-            var documentProcessPlugins = GetPluginsByAssemblyPrefix("ProjectVico.V2.DocumentProcess." + documentProcess.Name);
-            var sharedDocumentProcessPlugins = GetPluginsByAssemblyPrefix("ProjectVico.V2.DocumentProcess.Shared");
+            AddSharedAndStaticDocumentProcessPluginsToPluginCollection(kernelPlugins, serviceProvider, documentProcess.Name, excludedPluginTypes);
+        }
 
-            var allPlugins = basePlugins.Concat(documentProcessPlugins).Concat(sharedDocumentProcessPlugins).ToList();
+        public static void AddSharedAndDocumentProcessPluginsToPluginCollection(
+            this KernelPluginCollection kernelPlugins,
+            IServiceProvider serviceProvider,
+            DocumentProcessInfo documentProcess,
+            List<Type>? excludedPluginTypes = null)
+        {
+            if (documentProcess.Source == ProcessSource.Static)
+            {
+                AddSharedAndStaticDocumentProcessPluginsToPluginCollection(kernelPlugins, serviceProvider, documentProcess.ShortName, excludedPluginTypes);
+            }
+            else
+            {
+                AddSharedAndDynamicDocumentProcessPluginsToPluginCollection(kernelPlugins, serviceProvider, documentProcess, excludedPluginTypes);
+            }
+            
+        }
 
-            foreach (var pluginType in allPlugins)
+        private static void AddSharedAndDynamicDocumentProcessPluginsToPluginCollection(KernelPluginCollection kernelPlugins, IServiceProvider serviceProvider, DocumentProcessInfo documentProcess, List<Type> excludedPluginTypes)
+        {
+            AddSharedPluginsToPluginCollection(kernelPlugins, serviceProvider, excludedPluginTypes);
+
+            var documentProcessPlugins = GetPluginsByAssemblyPrefix("ProjectVico.V2.DocumentProcess.Shared");
+
+            foreach (var pluginType in documentProcessPlugins)
             {
                 if (excludedPluginTypes != null && excludedPluginTypes.Contains(pluginType))
                 {
@@ -141,8 +156,70 @@ namespace ProjectVico.V2.Plugins.Shared
                     var pluginInstance =
                         serviceProvider.GetService(pluginType) ??
                         serviceProvider.GetRequiredKeyedService(pluginType,
-                            documentProcess.Name + "-" + pluginType.Name);
+                            documentProcess.ShortName + "-" + pluginType.Name);
 
+                    kernelPlugins.AddFromObject(pluginInstance, "native_" + pluginType.Name);
+                }
+                catch (Exception ex)
+                {
+                    // Handle or log exceptions as appropriate
+                    Console.WriteLine($"Error loading assembly or registering plugins: {ex.Message}");
+                }
+            }
+        }
+
+        private static void AddSharedAndStaticDocumentProcessPluginsToPluginCollection(
+            this KernelPluginCollection kernelPlugins,
+            IServiceProvider serviceProvider,
+            string documentProcessName,
+            List<Type>? excludedPluginTypes = null)
+        {
+            AddSharedPluginsToPluginCollection(kernelPlugins, serviceProvider, excludedPluginTypes);
+            var documentProcessPlugins = GetPluginsByAssemblyPrefix("ProjectVico.V2.DocumentProcess." + documentProcessName);
+            
+            foreach (var pluginType in documentProcessPlugins)
+            {
+                if (excludedPluginTypes != null && excludedPluginTypes.Contains(pluginType))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var pluginInstance =
+                        serviceProvider.GetService(pluginType) ??
+                        serviceProvider.GetRequiredKeyedService(pluginType,
+                            documentProcessName + "-" + pluginType.Name);
+
+                    kernelPlugins.AddFromObject(pluginInstance, "native_" + pluginType.Name);
+                }
+                catch (Exception ex)
+                {
+                    // Handle or log exceptions as appropriate
+                    Console.WriteLine($"Error loading assembly or registering plugins: {ex.Message}");
+                }
+            }
+        }
+
+        private static void AddSharedPluginsToPluginCollection(KernelPluginCollection kernelPlugins, IServiceProvider serviceProvider, List<Type> excludedPluginTypes)
+        {
+            var basePlugins = GetPluginsByAssemblyPrefix("ProjectVico.V2.Plugins");
+            var sharedDocumentProcessPlugins = GetPluginsByAssemblyPrefix("ProjectVico.V2.DocumentProcess.Shared");
+            
+            var allPlugins = basePlugins.Concat(sharedDocumentProcessPlugins).ToList();
+
+            foreach (var pluginType in allPlugins)
+            {
+                if (excludedPluginTypes != null && excludedPluginTypes.Contains(pluginType))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var pluginInstance =
+                        serviceProvider.GetService(pluginType);
+                      
                     kernelPlugins.AddFromObject(pluginInstance, "native_" + pluginType.Name);
                 }
                 catch (Exception ex)

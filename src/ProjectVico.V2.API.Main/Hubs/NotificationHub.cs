@@ -1,44 +1,50 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
-using ProjectVico.V2.Shared.Contracts.Chat;
 using ProjectVico.V2.Shared.Contracts.Messages;
 using ProjectVico.V2.Shared.Contracts.Messages.Chat.Commands;
 using ProjectVico.V2.Shared.Contracts.Messages.Chat.Events;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentGeneration.Events;
+using ProjectVico.V2.Shared.Contracts.Messages.Review.Events;
+using ProjectVico.V2.Shared.Hubs;
 
 namespace ProjectVico.V2.API.Main.Hubs;
 
 [Authorize]
-public class NotificationHub : Hub
+public class NotificationHub : Hub<INotificationHubClient>
 {
     public async Task SendDocumentOutlineNotification(string userId, Guid correlationId)
     {
-        await Clients.User(userId).SendAsync("ReceiveDocumentOutlineNotification", correlationId);
+        await Clients.User(userId).ReceiveDocumentOutlineNotification(correlationId);
     }
 
     public async Task SendContentNodeGenerationStateChangedNotification(string userId, ContentNodeGenerationStateChanged contentNodeGenerationStateMessage)
     {
-        await Clients.User(userId).SendAsync("ReceiveContentNodeGenerationStateChangedNotification", contentNodeGenerationStateMessage);
+        await Clients.User(userId).ReceiveContentNodeGenerationStateChangedNotification(contentNodeGenerationStateMessage);
     }
 
     public async Task SendContentNodeNotification(string userId, ContentNodeGenerated contentNodeGenerated)
     {
-        await Clients.User(userId).SendAsync("ReceiveContentNodeNotification", contentNodeGenerated);
+        await Clients.User(userId).ReceiveContentNodeNotification(contentNodeGenerated);
     }
 
     public async Task SendChatMessageResponseReceivedNotification(string groupId, ChatMessageResponseReceived chatMessageResponseReceived)
     {
-        await Clients.Groups(groupId).SendAsync("ReceiveChatMessageResponseReceivedNotification", chatMessageResponseReceived);
+        await Clients.Groups(groupId).ReceiveChatMessageResponseReceivedNotification(chatMessageResponseReceived);
     }
 
     public async Task SendProcessChatMessageReceivedNotification(string groupId, ProcessChatMessage message)
     {
-        await Clients.Groups(groupId).SendAsync("ReceiveProcessChatMessageReceivedNotification", message);
+        await Clients.Groups(groupId).ReceiveProcessChatMessageReceivedNotification(message);
     }
 
-    public async Task SendSignalRKeepAliveNotification(SignalRKeepAlive message)
+    public async Task SendReviewQuestionAnsweredNotification(string groupId, ReviewQuestionAnswered message)
     {
-        await Clients.All.SendAsync("ReceiveSignalRKeepAliveReceivedNotification", message);
+        await Clients.Group(groupId).ReceiveReviewQuestionAnsweredNotification(message);
+    }
+
+    public async Task SendBackendProcessingMessageGeneratedNotification(string groupId, BackendProcessingMessageGenerated message)
+    {
+        await Clients.Group(groupId).ReceiveBackendProcessingMessageGeneratedNotification(message);
     }
 
     public async Task AddToGroup(string groupName)

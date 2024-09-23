@@ -1,7 +1,6 @@
 ﻿using System.ComponentModel;
 using System.Globalization;
 using Microsoft.SemanticKernel;
-using ProjectVico.V2.Plugins.Shared;
 using ProjectVico.V2.Shared.Interfaces;
 
 namespace ProjectVico.V2.Plugins.Default.Utility;

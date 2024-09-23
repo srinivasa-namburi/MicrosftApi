@@ -1,7 +1,10 @@
-﻿using AutoMapper;
+﻿using System.Text.Json;
+using AutoMapper;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Shared.Data.Sql;
+using ProjectVico.V2.Shared.Models.DocumentProcess;
 using ProjectVico.V2.Shared.Repositories;
 using ProjectVico.V2.Shared.Services;
 
@@ -13,13 +16,14 @@ public class DocumentProcessController : BaseController
 {
     private readonly DocGenerationDbContext _dbContext;
     private readonly DynamicDocumentProcessDefinitionRepository _repository;
+
     private readonly IDocumentProcessInfoService _documentProcessInfoService;
     private readonly IMapper _mapper;
 
     public DocumentProcessController(
         DocGenerationDbContext dbContext,
         IDocumentProcessInfoService documentProcessInfoService,
-        IMapper mapper, 
+        IMapper mapper,
         DynamicDocumentProcessDefinitionRepository repository)
     {
         _dbContext = dbContext;
@@ -36,7 +40,7 @@ public class DocumentProcessController : BaseController
     public async Task<ActionResult<List<DocumentProcessInfo>>> GetAllDocumentProcesses()
     {
         var documentProcesses = await _documentProcessInfoService.GetCombinedDocumentProcessInfoListAsync();
-        if (documentProcesses.Count <1)
+        if (documentProcesses.Count < 1)
         {
             return NotFound();
         }
@@ -75,7 +79,7 @@ public class DocumentProcessController : BaseController
 
         return Ok(documentProcess);
     }
-    
+
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -85,9 +89,76 @@ public class DocumentProcessController : BaseController
     public async Task<ActionResult<DocumentProcessInfo>> CreateDocumentProcess([FromBody] DocumentProcessInfo documentProcessInfo)
     {
         var createdDocumentProcessInfo = await _documentProcessInfoService.CreateDocumentProcessInfoAsync(documentProcessInfo);
-        var action = CreatedAtAction(nameof(GetDocumentProcessByShortName), new { shortName = createdDocumentProcessInfo.ShortName }, createdDocumentProcessInfo);
-        return action;
+
+        return Created($"/api/document-process/{createdDocumentProcessInfo.Id}", createdDocumentProcessInfo);
     }
 
-    
+    [HttpPut("{id:guid}")]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [Produces("application/json")]
+    [Produces<DocumentProcessInfo>]
+    public async Task<ActionResult<DocumentProcessInfo>> UpdateDocumentProcess(Guid id, [FromBody] DocumentProcessInfo documentProcessInfo)
+    {
+        var existingDocumentProcess = await _dbContext.DynamicDocumentProcessDefinitions.FindAsync(id);
+        if (existingDocumentProcess == null)
+        {
+            return BadRequest();
+        }
+
+        _mapper.Map(documentProcessInfo, existingDocumentProcess);
+        _dbContext.DynamicDocumentProcessDefinitions.Update(existingDocumentProcess);
+        await _dbContext.SaveChangesAsync();
+        
+        return Accepted($"/api/document-process/{documentProcessInfo.Id}", documentProcessInfo);
+    }
+
+    [HttpDelete("{id:guid}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [Produces("application/json")]
+    [Produces<bool>]
+    public async Task<ActionResult<bool>> DeleteDocumentProcess(Guid id)
+    {
+        var result = await _documentProcessInfoService.DeleteDocumentProcessInfoAsync(id);
+        var resultJson = JsonSerializer.Serialize(result);
+        return Ok(resultJson);
+    }
+
+    [HttpGet("{id:guid}/export")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [Produces("application/json")]
+    public async Task<ActionResult<string>> ExportDocumentProcess(Guid id)
+    {
+
+        var documentProcessModel = await _dbContext.DynamicDocumentProcessDefinitions
+                .Include(x => x.DocumentOutline)
+                .Include(x => x.Prompts)
+                .ThenInclude(pi => pi.PromptDefinition)
+                .ThenInclude(pd => pd.Variables)
+                .FirstOrDefaultAsync(x => x.Id == id)
+            ;
+
+        var promptDefinitions = documentProcessModel.Prompts.Select(x => x.PromptDefinition).DistinctBy(x=>x.ShortCode).ToList();
+
+        if (documentProcessModel == null)
+        {
+            return NotFound();
+        }
+
+        var documentProcessInfo = _mapper.Map<DynamicDocumentProcessDefinition, DocumentProcessInfo>(documentProcessModel);
+
+        var exportModel = new DocumentProcessExportInfo()
+        {
+            DocumentProcessShortName = documentProcessInfo.ShortName,
+            DocumentProcessDescription = documentProcessInfo.Description,
+            Prompts = JsonSerializer.Serialize(documentProcessModel.Prompts),
+            PromptDefinitions = JsonSerializer.Serialize(promptDefinitions)
+        };
+
+        var exportJson = JsonSerializer.Serialize(exportModel);
+        return Ok(exportJson);
+
+    }
 }

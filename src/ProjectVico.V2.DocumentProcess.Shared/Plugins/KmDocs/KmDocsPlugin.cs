@@ -5,6 +5,7 @@ using Microsoft.SemanticKernel;
 using ProjectVico.V2.DocumentProcess.Shared.Search;
 using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Shared.Interfaces;
+using ProjectVico.V2.Shared.Services;
 
 namespace ProjectVico.V2.DocumentProcess.Shared.Plugins.KmDocs;
 
@@ -12,6 +13,7 @@ public class KmDocsPlugin : IPluginImplementation
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly DocumentProcessInfo _documentProcess;
+    private IDocumentProcessInfoService? _documentProcessInfoService;
     private IKernelMemoryRepository? _kernelMemoryRepository;
     private IKernelMemory? _kernelMemory;
 
@@ -25,6 +27,17 @@ public class KmDocsPlugin : IPluginImplementation
         _serviceProvider = serviceProvider;
         _documentProcess = documentProcess;
         Initialize();
+    }
+
+    public KmDocsPlugin(IServiceProvider serviceProvider, string documentProcessName)
+    {
+        _serviceProvider = serviceProvider;
+        _documentProcessInfoService = _serviceProvider.GetRequiredService<IDocumentProcessInfoService>();
+        _documentProcess = _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentProcessName).GetAwaiter().GetResult()!;
+        if (_documentProcess == null)
+        {
+            throw new InvalidOperationException("Document Process not found");
+        }
     }
 
     private void Initialize()

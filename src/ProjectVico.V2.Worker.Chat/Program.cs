@@ -1,7 +1,6 @@
 using Azure.Identity;
 using MassTransit;
 using ProjectVico.V2.DocumentProcess.Shared;
-using ProjectVico.V2.Plugins.Shared;
 using ProjectVico.V2.Shared;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Extensions;
@@ -22,7 +21,7 @@ builder.AddProjectVicoServices(credentialHelper, serviceConfigurationOptions);
 
 builder.DynamicallyRegisterPlugins(serviceConfigurationOptions);
 builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
-builder.AddSemanticKernelServices(serviceConfigurationOptions);
+builder.AddSemanticKernelServicesForStaticDocumentProcesses(serviceConfigurationOptions);
 
 var serviceBusConnectionString = builder.Configuration.GetConnectionString("sbus");
 serviceBusConnectionString = serviceBusConnectionString?.Replace("https://", "sb://").Replace(":443/", "/");

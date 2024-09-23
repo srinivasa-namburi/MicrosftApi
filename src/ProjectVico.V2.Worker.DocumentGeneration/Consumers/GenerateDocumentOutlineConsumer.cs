@@ -8,6 +8,7 @@ using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentGeneration.Commands;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentGeneration.Events;
 using ProjectVico.V2.Shared.Data.Sql;
+using ProjectVico.V2.Shared.Extensions;
 
 namespace ProjectVico.V2.Worker.DocumentGeneration.Consumers;
 
@@ -18,9 +19,8 @@ public class GenerateDocumentOutlineConsumer : IConsumer<GenerateDocumentOutline
     private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
     private readonly ILogger<GenerateDocumentOutlineConsumer> _logger;
     private readonly Kernel _sk;
-    
+
     private IDocumentOutlineService _documentOutlineService;
-    private DocumentProcessOptions? _documentProcessOptions;
 
     public GenerateDocumentOutlineConsumer(
         ILogger<GenerateDocumentOutlineConsumer> logger,
@@ -40,24 +40,26 @@ public class GenerateDocumentOutlineConsumer : IConsumer<GenerateDocumentOutline
     public async Task Consume(ConsumeContext<GenerateDocumentOutline> context)
     {
         var message = context.Message;
+
+        var documentProcessName = message.DocumentProcess;
+
         _logger.LogInformation("Received GenerateDocumentOutline event: {DocumentID}", message.CorrelationId);
 
-        _documentProcessOptions = _serviceConfigurationOptions.ProjectVicoServices.DocumentProcesses.Single(x => x!.Name == message.DocumentProcess);
-        if (_documentProcessOptions == null)
+        if (documentProcessName != null)
         {
-           _logger.LogWarning("GenerateDocumentOutlineConsumer: Document process options not found for {ProcessName}. Stopping process for Document {DocumentId}", message.DocumentProcess, message.CorrelationId);
-           await context.Publish(new DocumentOutlineGenerationFailed(message.CorrelationId));
+            _documentOutlineService =
+                _sp.GetRequiredServiceForDocumentProcess<IDocumentOutlineService>(documentProcessName);
         }
-        
-        var scope = _sp.CreateScope();
-
-        
-        _documentOutlineService =
-            scope.ServiceProvider.GetKeyedService<IDocumentOutlineService>(_documentProcessOptions.Name + "-IDocumentOutlineService");
+        else
+        {
+            _logger.LogWarning("GenerateDocumentOutlineConsumer: Received message for blank document process. Stopping process for Document {DocumentId}", message.CorrelationId);
+            await context.Publish(new DocumentOutlineGenerationFailed(message.CorrelationId));
+            return;
+        }
 
         // Find the document in the database
         var generatedDocument = await _dbContext.GeneratedDocuments.FindAsync(message.CorrelationId);
-        
+
         await _documentOutlineService.GenerateDocumentOutlineForDocument(generatedDocument);
 
         var jsonOutputGeneratedDocument = JsonSerializer.Serialize(generatedDocument);

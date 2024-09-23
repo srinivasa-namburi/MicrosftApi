@@ -11,29 +11,35 @@ using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Enums;
 using ProjectVico.V2.Shared.Models;
 using Microsoft.Data.SqlClient;
-using ProjectVico.V2.DocumentProcess.Shared;
-using ProjectVico.V2.DocumentProcess.Shared.Prompts;
+using ProjectVico.V2.Shared.Extensions;
+using ProjectVico.V2.Shared.Prompts;
+using ProjectVico.V2.Shared.Services;
 using Scriban;
 
 namespace ProjectVico.V2.Worker.Chat.Consumers;
 
 public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
 {
-    private Kernel _kernel;
-    private IPromptCatalogTypes _promptCatalogTypes;
+    private Kernel? _kernel;
     private readonly DocGenerationDbContext _dbContext;
     private readonly IMapper _mapper;
     private readonly IServiceProvider _sp;
-    
+    private readonly IPromptInfoService _promptInfoService;
+    private readonly IDocumentProcessInfoService _documentProcessInfoService;
+
     public ProcessChatMessageConsumer(
         DocGenerationDbContext dbContext,
         IMapper mapper,
-        IServiceProvider sp
+        IServiceProvider sp,
+        IPromptInfoService promptInfoService,
+        IDocumentProcessInfoService documentProcessInfoService
         )
     {
         _dbContext = dbContext;
         _mapper = mapper;
         _sp = sp;
+        _promptInfoService = promptInfoService;
+        _documentProcessInfoService = documentProcessInfoService;
     }
 
     public async Task Consume(ConsumeContext<ProcessChatMessage> context)
@@ -106,16 +112,17 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
         var conversation = await _dbContext.ChatConversations
             .FirstOrDefaultAsync(x => x.Id == userMessageDto.ConversationId);
 
+        var documentProcessInfo = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(conversation.DocumentProcessName);
+
         // Set up Semantic Kernel for the right Document Process
-        using var scope = _sp.CreateScope();
 
-        //_kernel = scope.ServiceProvider.GetRequiredKeyedService<Kernel>(conversation.DocumentProcessName + "-Kernel");
-        _kernel = scope.ServiceProvider.GetRequiredServiceForDocumentProcess<Kernel>(conversation.DocumentProcessName)!;
+        _kernel ??= _sp.GetRequiredServiceForDocumentProcess<Kernel>(conversation.DocumentProcessName);
+        _kernel.Plugins.AddSharedAndDocumentProcessPluginsToPluginCollection(_sp, documentProcessInfo);
+        
+        var systemPrompt =
+            await _promptInfoService.GetPromptTextByShortCodeAndProcessNameAsync(PromptNames.ChatSystemPrompt,
+                conversation.DocumentProcessName);
 
-        _promptCatalogTypes =
-            scope.ServiceProvider.GetRequiredServiceForDocumentProcess<IPromptCatalogTypes>(conversation.DocumentProcessName)!;
-
-        var systemPrompt = _promptCatalogTypes.ChatSystemPrompt;
 
         var openAiSettings = new OpenAIPromptExecutionSettings()
         {
@@ -130,11 +137,12 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
         var chatHistoryString = await CreateChatHistoryString(context, userMessageDto, 10);
         var previousSummariesForConversationString = await GetSummariesConversationString(userMessageDto);
 
-        var userPrompt = BuildUserPrompt(
-            chatHistoryString, 
+        var userPrompt = await BuildUserPromptAsync(
+            chatHistoryString,
             previousSummariesForConversationString,
-            userMessageDto.Message);
-        
+            userMessageDto.Message,
+            conversation.DocumentProcessName);
+
         var kernelArguments = new KernelArguments(openAiSettings);
 
         var updateBlock = "";
@@ -152,8 +160,10 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
                     assistantMessageDto.State = ChatMessageCreationState.InProgress;
                     responseDateSet = true;
                 }
+
                 assistantMessageDto.Message += updateBlock;
-                await context.Publish<ChatMessageResponseReceived>(new ChatMessageResponseReceived(userMessageDto.ConversationId, assistantMessageDto, updateBlock));
+                await context.Publish<ChatMessageResponseReceived>(
+                    new ChatMessageResponseReceived(userMessageDto.ConversationId, assistantMessageDto, updateBlock));
                 updateBlock = "";
             }
         }
@@ -169,26 +179,28 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
 
         await context.Publish<ChatMessageResponseReceived>(new ChatMessageResponseReceived(userMessageDto.ConversationId, assistantMessageDto, updateBlock));
 
+
+
         // Save Response Message to database
         await StoreChatMessage(assistantMessageDto);
     }
 
-    private string BuildUserPrompt(string chatHistoryString, string previousSummariesForConversationString, string userMessage)
+    private async Task<string> BuildUserPromptAsync(string chatHistoryString, string previousSummariesForConversationString, string userMessage, string documentProcessName)
     {
-        var initialUserPrompt = _promptCatalogTypes.ChatSinglePassUserPrompt;
+        var initialUserPrompt = await _promptInfoService.GetPromptTextByShortCodeAndProcessNameAsync(PromptNames.ChatSinglePassUserPrompt, documentProcessName);
         var template = Template.Parse(initialUserPrompt);
 
-        var result = template.Render(new
+        var result = await template.RenderAsync(new
         {
             chatHistoryString,
             previousSummariesForConversationString,
             userMessage
-            
+
         }, member => member.Name);
 
         return result;
     }
-    
+
     private async Task<string> GetSummariesConversationString(ChatMessageDTO userMessageDto)
     {
         // Get all summaries for the conversation

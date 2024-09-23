@@ -1,10 +1,8 @@
-﻿
-@implements IAsyncDisposable
+﻿@implements IAsyncDisposable
 @using Microsoft.AspNetCore.SignalR.Client
 @using ProjectVico.V2.Shared.Contracts.Messages.DocumentGeneration.Events
 @using ProjectVico.V2.Shared.Enums
 @using ProjectVico.V2.Shared.Models
-@using ProjectVico.V2.Web.DocGen.Client.ServiceClients
 @using ProjectVico.V2.Web.Shared.Helpers
 
 @inject IDocumentGenerationApiClient DocumentGenerationApiClient
@@ -21,21 +19,33 @@
     [CascadingParameter] public HubConnection? HubConnection { get; set; }
 
     private bool receivedMessagesVisible = false;
-    
+    private bool areNodesGenerated = false;
+
     private List<string> messages = new List<string>();
 }
 
 @if (Document != null)
 {
     <MudPaper Class="pa-4">
-        <MudText Typo="Typo.h4" GutterBottom="true">@Document.Title</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="9">
+                <MudText Typo="Typo.h4" GutterBottom="true">@Document.Title</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="3" Class="d-flex justify-end align-center">
+                @if (areNodesGenerated)
+                {
+                    <DocumentDownloadLink DocumentId=@DocumentId.ToString() ExportDocumentDelegate=@(()=>ExportDocumentLink()) />
+                }
+            </MudItem>
+        </MudGrid>
+
         <MudText Typo="Typo.body1" GutterBottom="true">Document ID: @Document.Id</MudText>
         <MudPaper Outlined="true" Class="border-dashed">
             @if (Document.ContentNodes.Any())
             {
                 @foreach (var contentNode in Document.ContentNodes)
                 {
-                    <ContentNodeDisplay Node="@contentNode" Recursive="true"/>
+                    <ContentNodeDisplay Node="@contentNode" Recursive="true" />
                 }
             }
         </MudPaper>
@@ -49,12 +59,14 @@ else
     </MudPaper>
 }
 
+
 @code {
     protected override async Task OnInitializedAsync()
     {
         var token = await DocumentGenerationApiClient.GetAccessTokenAsync();
         Document = await GetDocumentAsync(DocumentId);
         ContentNodeSorter.SortContentNodes(Document.ContentNodes);
+        areNodesGenerated = AllNodesGenerated(Document.ContentNodes);
 
         await StartHubConnections();
     }
@@ -113,11 +125,30 @@ else
             var contentNode = await ContentNodeApiClient.GetContentNodeAsync(message.ContentNodeId.ToString());
             if (contentNode is not null)
             {
-                UpdateContentNodeState(Document?.ContentNodes, contentNode);
+                await UpdateContentNodeState(Document?.ContentNodes, contentNode);
+                areNodesGenerated = AllNodesGenerated(Document.ContentNodes);
             }
         }
     }
-    
+
+    private async Task ExportDocument()
+    {
+        var stream = await DocumentGenerationApiClient.ExportDocumentAsync(DocumentId.ToString());
+        using var memoryStream = new MemoryStream();
+        await stream.CopyToAsync(memoryStream);
+        var byteArray = memoryStream.ToArray();
+        var base64 = Convert.ToBase64String(byteArray);
+        var fileName = "exported_document.docx";
+        var fileType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        var fileUrl = $"data:{fileType};base64,{base64}";
+        Navigation.NavigateTo(fileUrl, true);
+    }
+
+    private async Task<string> ExportDocumentLink()
+    {
+        return await DocumentGenerationApiClient.ExportDocumentLinkAsync(DocumentId.ToString());
+    }
+
     private async Task UpdateContentNodeState(List<ContentNode>? documentContentNodes, ContentNode updatedNodeFromEvent)
     {
         if (documentContentNodes is null || !documentContentNodes.Any()) return;
@@ -133,7 +164,7 @@ else
             {
                 if (nodes[i].Id == updatedNode.Id)
                 {
-                    
+
                     // Replace the node.
                     nodes[i] = updatedNode;
                     return nodes; // Return immediately since the node has been replaced.
@@ -151,7 +182,7 @@ else
 
 
     }
-    
+
     private async Task HubReceiveDocumentOutlineNotificationHandler(string correlationId)
     {
         string encodedMsg;
@@ -241,6 +272,29 @@ else
     {
         if (documentId == null) return null;
         return await DocumentGenerationApiClient.GetDocumentAsync(documentId.ToString());
+    }
+
+    private bool AllNodesGenerated(List<ContentNode> contentNodes)
+    {
+        if (contentNodes is null || !contentNodes.Any()) return false;
+
+        foreach (var contentNode in contentNodes)
+        {
+            if (contentNode.GenerationState != ContentNodeGenerationState.Completed && contentNode.GenerationState != ContentNodeGenerationState.Failed)
+            {
+                return false;
+            }
+
+            if (contentNode.Children != null && contentNode.Children.Any())
+            {
+                if (!AllNodesGenerated(contentNode.Children))
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     public async ValueTask DisposeAsync()

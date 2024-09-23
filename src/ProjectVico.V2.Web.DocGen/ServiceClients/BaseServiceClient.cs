@@ -44,7 +44,27 @@ public abstract class BaseServiceClient<T> where T : IServiceClient
     }
     
 
-    protected async Task<HttpResponseMessage?> SendPostRequestMessage(string requestUri, object? pocoPayload, bool authorize = true)
+    //protected async Task<HttpResponseMessage?> SendPostRequestMessage(string requestUri, object? pocoPayload, bool authorize = true)
+    //{
+    //    using var requestMessage = new HttpRequestMessage(HttpMethod.Post, requestUri);
+    //    if (authorize)
+    //    {
+    //        requestMessage.Headers.Authorization = new("Bearer", this.AccessToken);
+    //    }
+
+    //    if (pocoPayload == null)
+    //    {
+    //        Logger.LogWarning("Sending POST request to {RequestUri} with empty payload", requestUri);
+
+    //    }
+    //    requestMessage.Content = new StringContent(JsonSerializer.Serialize(pocoPayload), Encoding.UTF8, "application/json");
+    //    Logger.LogInformation("Sending POST request to {RequestUri}", requestUri);
+        
+    //    var response = await HttpClient.SendAsync(requestMessage);
+    //    return response;
+    //}
+
+    protected async Task<HttpResponseMessage?> SendPostRequestMessage(string requestUri, object? payload, bool authorize = true)
     {
         using var requestMessage = new HttpRequestMessage(HttpMethod.Post, requestUri);
         if (authorize)
@@ -52,17 +72,25 @@ public abstract class BaseServiceClient<T> where T : IServiceClient
             requestMessage.Headers.Authorization = new("Bearer", this.AccessToken);
         }
 
-        if (pocoPayload == null)
+        if (payload is IFormFile file)
+        {
+            var content = new MultipartFormDataContent();
+            var streamContent = new StreamContent(file.OpenReadStream());
+            content.Add(streamContent, "file", file.FileName);
+            requestMessage.Content = content;
+        }
+        else if (payload != null)
+        {
+            requestMessage.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+        }
+        else
         {
             Logger.LogWarning("Sending POST request to {RequestUri} with empty payload", requestUri);
-
         }
-        requestMessage.Content = new StringContent(JsonSerializer.Serialize(pocoPayload), Encoding.UTF8, "application/json");
 
         Logger.LogInformation("Sending POST request to {RequestUri}", requestUri);
-        
-        var response = await HttpClient.SendAsync(requestMessage);
-        return response;
+    
+        return await HttpClient.SendAsync(requestMessage);
     }
 
     protected async Task<HttpResponseMessage?> SendPutRequestMessage(string requestUri, object? pocoPayload, bool authorize = false)

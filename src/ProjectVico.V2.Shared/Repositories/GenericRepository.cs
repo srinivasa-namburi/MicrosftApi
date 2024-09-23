@@ -9,9 +9,9 @@ namespace ProjectVico.V2.Shared.Repositories;
 
 public class GenericRepository<T> where T : EntityBase
 {
-    private readonly DocGenerationDbContext _dbContext;
+    protected readonly DocGenerationDbContext _dbContext;
     protected readonly IDatabase Cache;
-    protected TimeSpan CacheDuration = TimeSpan.FromMinutes(0);
+    protected TimeSpan CacheDuration = TimeSpan.FromMinutes(5);
 
     public GenericRepository(
         DocGenerationDbContext dbContext,
@@ -28,10 +28,10 @@ public class GenericRepository<T> where T : EntityBase
 
     public virtual IQueryable<T> AllRecords()
     {
-        return _dbContext.Set<T>().AsQueryable();
+        return _dbContext.Set<T>().AsNoTracking().AsQueryable();
     }
 
-    public async Task<List<T>> GetAllAsync(bool useCache = true)
+    public async Task<List<T>> GetAllAsync(bool useCache = false)
     {
         if (useCache)
         {
@@ -41,7 +41,7 @@ public class GenericRepository<T> where T : EntityBase
                 return JsonSerializer.Deserialize<List<T>>(cachedData);
             }
 
-            var entities = await _dbContext.Set<T>().ToListAsync();
+            var entities = await _dbContext.Set<T>().AsNoTracking().ToListAsync();
             await Cache.StringSetAsync(typeof(T).Name, JsonSerializer.Serialize(entities), CacheDuration);
             return entities;
         }
@@ -114,6 +114,7 @@ public class GenericRepository<T> where T : EntityBase
         var cacheKey = $"{typeof(T).Name}_{entity.Id}";
 
         _dbContext.Set<T>().Remove(entity);
+
         if (saveChanges)
         {
             await SaveChangesAsync();

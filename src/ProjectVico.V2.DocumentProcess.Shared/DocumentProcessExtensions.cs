@@ -1,16 +1,17 @@
 ﻿using System.Reflection;
 using Azure;
 using Azure.AI.FormRecognizer.DocumentAnalysis;
-using Markdig.Extensions.Tables;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using ProjectVico.V2.DocumentProcess.Shared.Generation;
 using ProjectVico.V2.DocumentProcess.Shared.Prompts;
+using ProjectVico.V2.DocumentProcess.Shared.Search;
 using ProjectVico.V2.Shared.Configuration;
-using ProjectVico.V2.Shared.Contracts.DTO;
+using ProjectVico.V2.Shared.Extensions;
 using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Shared.Interfaces;
 using ProjectVico.V2.Shared.Mappings;
+using ProjectVico.V2.Shared.Prompts;
 using ProjectVico.V2.Shared.Services;
 using ProjectVico.V2.Shared.Services.Search;
 using TableHelper = ProjectVico.V2.Shared.Helpers.TableHelper;
@@ -21,7 +22,7 @@ public static class DocumentProcessExtensions
 {
 
     /// <summary>
-    /// Registers all Document Processes defined in the ServiceConfigurationOptions.DocumentProcesses property ("US.NuclearLicensing" only by default)
+    /// Registers all static Document Processes defined in the ServiceConfigurationOptions.DocumentProcesses property ("US.NuclearLicensing" only by default)
     /// </summary>
     /// <param name="builder"></param>
     /// <param name="serviceConfigurationOptions"></param>
@@ -52,26 +53,35 @@ public static class DocumentProcessExtensions
     private static IHostApplicationBuilder AddCommonDocumentProcessServices(this IHostApplicationBuilder builder,
         ServiceConfigurationOptions options)
     {
-        // DocumentAnalysisClient, TableProfile, AzureFileHelper and IContentTreeProcessor
+        // Document Info Service and associated mappings
+        builder.Services.AddScoped<IDocumentProcessInfoService, DocumentProcessInfoService>();
+        builder.Services.AddScoped<IPromptInfoService, PromptInfoService>();
         builder.Services.AddScoped<DocumentAnalysisClient>((serviceProvider) => new DocumentAnalysisClient(
             new Uri(options.DocumentIntelligence.Endpoint),
             new AzureKeyCredential(options.DocumentIntelligence.Key)));
-
-        // Table mapping to and from Document Intelligence
-        builder.Services.AddAutoMapper(typeof(TableProfile));
 
         // Ingestion specific custom dependencies
         builder.Services.AddScoped<TableHelper>();
         builder.Services.AddScoped<AzureFileHelper>();
 
+        // Services included for backwards compatibility with older Document Processes ("Classic" Document Processes)
         builder.Services.AddSingleton<IContentTreeProcessor, ContentTreeProcessor>();
         builder.Services.AddSingleton<IIndexingProcessor, SearchIndexingProcessor>();
 
         // Default Prompt Catalog Types that will resolve all prompts if they haven't been defined
         // in a DP-specific IPromptCatalogTypes implementation
+        // They're also the source of new prompts in the database.
         builder.Services.AddKeyedSingleton<IPromptCatalogTypes, DefaultPromptCatalogTypes>(
             "Default-IPromptCatalogTypes");
 
+        // Register the Generic implementation of the AiCompletionServiceParameters class
+        builder.Services.AddSingleton(typeof(AiCompletionServiceParameters<>));
+
+        // Register the ReviewKernelMemoryRepository
+        builder.AddKernelMemoryForReviews(options);
+        builder.Services.AddKeyedScoped<IKernelMemoryRepository,KernelMemoryRepository>("Reviews-IKernelMemoryRepository");
+        builder.Services.AddScoped<IReviewKernelMemoryRepository, ReviewKernelMemoryRepository>();
+        
         return builder;
     }
 
@@ -136,48 +146,5 @@ public static class DocumentProcessExtensions
         return builder;
     }
 
-    public static T? GetServiceForDocumentProcess<T>(this IServiceProvider sp, DocumentProcessInfo documentProcessInfo)
-    {
-        var service = sp.GetServiceForDocumentProcess<T>(documentProcessInfo.ShortName);
-        return service;
-    }
-
-    public static T GetRequiredServiceForDocumentProcess<T>(this IServiceProvider sp, DocumentProcessInfo documentProcessInfo)
-    {
-        var service = sp.GetRequiredServiceForDocumentProcess<T>(documentProcessInfo.ShortName);
-        return service;
-    }
-
-    public static T GetRequiredServiceForDocumentProcess<T>(this IServiceProvider sp, string documentProcessName)
-    {
-        var service = sp.GetServiceForDocumentProcess<T>(documentProcessName);
-        if (service == null)
-        {
-            throw new InvalidOperationException($"Service of type {typeof(T).Name} not found for document process {documentProcessName}");
-        }
-        return service;
-    }
-    public static T? GetServiceForDocumentProcess<T>(this IServiceProvider sp, string documentProcessName)
-    {
-        T? service = default;
-
-        var scope = sp.CreateScope();
-
-        // Try to get a scoped service for the specific document process, then the default service, then finally a service with no key.
-        // This allows for a service to be registered for a specific document process, or a default service to be registered for all document processes,
-        // or a service to be registered with no key for use outside of the document process context.
-        service = scope.ServiceProvider.GetKeyedService<T>($"{documentProcessName}-{typeof(T).Name}") ??
-                  scope.ServiceProvider.GetKeyedService<T>($"Default-{typeof(T).Name}") ??
-                  scope.ServiceProvider.GetService<T>();
-
-        // If the service is still null - it may not be scoped but exists as a singleton. Try to get the singleton service.
-        if (service == null)
-        {
-            service = sp.GetKeyedService<T>($"{documentProcessName}-{typeof(T).Name}") ??
-                      sp.GetKeyedService<T>($"Default-{typeof(T).Name}") ??
-                      sp.GetService<T>();
-        }
-
-        return service;
-    }
+   
 }

@@ -9,13 +9,13 @@ using Microsoft.Extensions.Logging;
 using Microsoft.KernelMemory;
 using Microsoft.KernelMemory.Configuration;
 using ProjectVico.V2.Shared.Configuration;
+using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Shared.Helpers;
 
 namespace ProjectVico.V2.Shared.Extensions;
 
 public static class KernelMemoryExtensions
 {
-
     private const int PartitionSize = 1200;
     private const int MaxTokensPerLine = 100;
 
@@ -23,19 +23,37 @@ public static class KernelMemoryExtensions
         this IHostApplicationBuilder builder, 
         ServiceConfigurationOptions serviceConfigurationOptions, 
         DocumentProcessOptions documentProcessOptions, 
-        string key = null)
+        string? key = null)
+    {
+        var documentProcessName = documentProcessOptions.Name;
+        return AddKeyedKernelMemoryForDocumentProcess(builder, serviceConfigurationOptions, documentProcessName, key);
+    }
+
+    public static IHostApplicationBuilder AddKeyedKernelMemoryForDocumentProcess(
+        this IHostApplicationBuilder builder,
+        ServiceConfigurationOptions serviceConfigurationOptions,
+        DocumentProcessInfo documentProcessInfo,
+        string? key = null
+    )
+    {
+        var documentProcessName = documentProcessInfo.ShortName;
+        return AddKeyedKernelMemoryForDocumentProcess(builder, serviceConfigurationOptions, documentProcessName, key);
+    }
+
+    public static IHostApplicationBuilder AddKeyedKernelMemoryForDocumentProcess(
+        this IHostApplicationBuilder builder,
+        ServiceConfigurationOptions serviceConfigurationOptions,
+        string documentProcessName,
+        string? key = null)
     {
         var sp = builder.Services.BuildServiceProvider();
-        var openAi = sp.GetKeyedService<OpenAIClient>("openai-planner");
         var azureCredentialHelper = sp.GetRequiredService<AzureCredentialHelper>();
-
         var baseSearchClient = sp.GetService<SearchIndexClient>();
-
         var configuration = builder.Configuration;
 
-        if (string.IsNullOrEmpty(key) && !string.IsNullOrEmpty(documentProcessOptions.Name))
+        if (string.IsNullOrEmpty(key) && !string.IsNullOrEmpty(documentProcessName))
         {
-            key = documentProcessOptions.Name;
+            key = documentProcessName;
         }
 
         if (string.IsNullOrEmpty(key))
@@ -86,7 +104,7 @@ public static class KernelMemoryExtensions
 
         // The connection string is just a URL. The account name is the first part after https:// and before the first period.
         var blobAccountName = blobConnection.Split(".")[0].Split("//")[1];
-        var documentProcessContainerName = documentProcessOptions.Name.ToLower().Replace(" ", "-").Replace(".", "-")+"-km-blobs";
+        var documentProcessContainerName = documentProcessName.ToLower().Replace(" ", "-").Replace(".", "-")+"-km-blobs";
 
         var azureBlobsConfig = new AzureBlobsConfig()
         {
@@ -143,8 +161,18 @@ public static class KernelMemoryExtensions
        
         var kernelMemory = kernelMemoryBuilder.Build();
 
-        builder.Services.AddKeyedSingleton<IKernelMemory>(documentProcessOptions.Name+"-IKernelMemory", kernelMemory);
+        builder.Services.AddKeyedSingleton<IKernelMemory>(documentProcessName +"-IKernelMemory", kernelMemory);
         
+        return builder;
+    }
+
+    public static IHostApplicationBuilder AddKernelMemoryForReviews(
+        this IHostApplicationBuilder builder,
+        ServiceConfigurationOptions serviceConfigurationOptions
+        
+    )
+    {
+        builder.AddKeyedKernelMemoryForDocumentProcess(serviceConfigurationOptions, "Reviews");
         return builder;
     }
 }

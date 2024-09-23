@@ -1,0 +1,16 @@
+﻿.exported-link-container {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.download-link {
+    display: block;
+    text-transform: uppercase;
+    --bs-btn-bg: var(--mud-palette-primary) !important;
+    background-color: var(--mud-palette-primary) !important;
+}
+
+a:hover {
+    background-color: var(--mud-palette-primary-darken) !important;
+}

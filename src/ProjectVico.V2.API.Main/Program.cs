@@ -1,10 +1,11 @@
+using DocumentFormat.OpenXml.Office2016.Drawing.ChartDrawing;
 using MassTransit;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Identity.Web;
+using Microsoft.OpenApi.Models;
 using ProjectVico.V2.API.Main.Hubs;
 using ProjectVico.V2.DocumentProcess.Shared;
-using ProjectVico.V2.Plugins.Shared;
 using ProjectVico.V2.Shared;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Extensions;
@@ -29,18 +30,54 @@ var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfig
 await builder.DelayStartup(serviceConfigurationOptions.ProjectVicoServices.DocumentGeneration.DurableDevelopmentServices);
 
 builder.AddProjectVicoServices(credentialHelper, serviceConfigurationOptions);
-
 builder.Services.AddAutoMapper(typeof(ChatMessageProfile));
 
 builder.DynamicallyRegisterPlugins(serviceConfigurationOptions);
 builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
-builder.AddSemanticKernelServices(serviceConfigurationOptions);
+builder.AddSemanticKernelServicesForStaticDocumentProcesses(serviceConfigurationOptions);
 
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
 
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+
+var entraTenantId = builder.Configuration["AzureAd:TenantId"];
+var entraScopes = builder.Configuration["AzureAd:Scopes"];
+var entraClientId = builder.Configuration["AzureAd:ClientId"];
+
+// Also look in the app.SwaggerUI() call at the bottom of this file
+builder.Services.AddSwaggerGen(c =>
+{
+    c.AddSecurityDefinition("ms-entra", new OpenApiSecurityScheme
+    {
+        Description = "OAuth2.0 Auth Code with PKCE",
+        Name = "oauth2",
+        Type = SecuritySchemeType.OAuth2,
+        Flows = new OpenApiOAuthFlows
+        {
+            AuthorizationCode = new OpenApiOAuthFlow
+            {
+                AuthorizationUrl = new Uri($"https://login.microsoftonline.com/{entraTenantId}/oauth2/v2.0/authorize"),
+                TokenUrl = new Uri($"https://login.microsoftonline.com/{entraTenantId}/oauth2/v2.0/token"),
+                Scopes = new Dictionary<string, string>
+                {
+                    { entraScopes!, "Access the API" },
+                }
+            }
+        } 
+    });
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "ms-entra" }
+            },
+            new[] { entraScopes! }
+        }
+    });
+    
+});
 
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
@@ -49,6 +86,32 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.KnownNetworks.Clear();
     options.KnownProxies.Clear();
 });
+
+
+var frontEndUrl = builder.Configuration["services:web-docgen:https:0"];
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("CorsPolicy", builder => builder.WithOrigins(frontEndUrl)
+        .AllowAnyHeader()
+        .AllowAnyMethod()
+        .AllowCredentials()
+        .SetIsOriginAllowed((host) => true));
+});
+
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddSignalR();
+}
+else
+{
+    builder.Services.AddSignalR().AddAzureSignalR(options =>
+    {
+        options.ConnectionString = builder.Configuration.GetConnectionString("signalr");
+    });
+}
+
+builder.Services.AddHttpContextAccessor();
 
 var serviceBusConnectionString = builder.Configuration.GetConnectionString("sbus");
 serviceBusConnectionString = serviceBusConnectionString?.Replace("https://", "sb://").Replace(":443/", "/");
@@ -86,31 +149,6 @@ else // Use RabbitMQ for local development
     });
 }
 
-var frontEndUrl = builder.Configuration["services:web-docgen:https:0"];
-
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("CorsPolicy", builder => builder.WithOrigins(frontEndUrl)
-        .AllowAnyHeader()
-        .AllowAnyMethod()
-        .AllowCredentials()
-        .SetIsOriginAllowed((host) => true));
-});
-
-if (builder.Environment.IsDevelopment())
-{
-    builder.Services.AddSignalR();
-}
-else
-{
-    builder.Services.AddSignalR().AddAzureSignalR(options =>
-    {
-        options.ConnectionString = builder.Configuration.GetConnectionString("signalr");
-    });
-}
-
-builder.Services.AddHttpContextAccessor();
-
 var app = builder.Build();
 
 var webSocketOptions = new WebSocketOptions()
@@ -137,7 +175,13 @@ app.MapDefaultEndpoints();
 
 // Configure the HTTP request pipeline.
 app.UseSwagger();
-app.UseSwaggerUI();
+app.UseSwaggerUI(c =>
+{
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Project Vico API");
+    c.OAuthClientId(entraClientId);
+    c.OAuthUsePkce();
+    c.OAuthScopeSeparator(" ");
+});
 app.MapControllers();
 
 app.Run();

@@ -66,6 +66,31 @@ public class DocumentProcessApiClient : WebAssemblyBaseServiceClient<DocumentPro
         return result;
     }
 
+    public async Task<bool> DeleteDocumentProcessAsync(Guid processId)
+    {
+        var url = $"/api/document-processes/{processId}";
+        var response = await SendDeleteRequestMessage(url);
+
+        response?.EnsureSuccessStatusCode();
+        var result = await response?.Content.ReadFromJsonAsync<bool>()!;
+        return result;
+    }
+
+    public async Task<DocumentProcessExportInfo?> ExportDocumentProcessByIdAsync(Guid processId)
+    {
+        var url = $"/api/document-process/{processId}/export";
+        var response = await SendGetRequestMessage(url);
+        
+        if (response?.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response?.EnsureSuccessStatusCode();
+        var result = await response?.Content.ReadFromJsonAsync<DocumentProcessExportInfo>()! ?? null;
+        return result;
+    }
+
     public async Task<DocumentProcessInfo?> CreateDynamicDocumentProcessDefinitionAsync(DocumentProcessInfo? documentProcessInfo)
     {
         var url = "/api/document-processes";
@@ -88,7 +113,7 @@ public class DocumentProcessApiClient : WebAssemblyBaseServiceClient<DocumentPro
 
     public async Task<List<PromptInfo>> GetPromptsByProcessIdAsync(Guid processId)
     {
-        var url = $"/api/prompts/by-processes/{processId}";
+        var url = $"/api/prompts/by-process/{processId}";
         var response = await SendGetRequestMessage(url);
 
         if (response?.StatusCode == HttpStatusCode.NotFound)
@@ -124,6 +149,7 @@ public class DocumentProcessApiClient : WebAssemblyBaseServiceClient<DocumentPro
     public async Task UpdatePromptAsync(PromptInfo promptInfo)
     {
         var url = $"/api/prompts/{promptInfo.Id}";
+        // PUT generates a 400 error when proxied through YARP, so we use POST instead
         var response = await SendPutRequestMessage(url, promptInfo);
         response?.EnsureSuccessStatusCode();
     }

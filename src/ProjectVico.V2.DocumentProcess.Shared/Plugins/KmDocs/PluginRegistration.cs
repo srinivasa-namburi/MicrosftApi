@@ -1,8 +1,10 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using AutoMapper;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using ProjectVico.V2.Shared.Contracts.DTO;
+using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Enums;
 using ProjectVico.V2.Shared.Interfaces;
-using ProjectVico.V2.Shared.Services;
 
 namespace ProjectVico.V2.DocumentProcess.Shared.Plugins.KmDocs;
 
@@ -10,20 +12,19 @@ public class PluginRegistration : IPluginRegistration
 {
     public IHostApplicationBuilder RegisterPlugin(IHostApplicationBuilder builder)
     {
-
         var serviceProvider = builder.Services.BuildServiceProvider();
 
-        var documentProcessService = serviceProvider.GetService<IDocumentProcessInfoService>();
-        if (documentProcessService == null)
-        {
-            throw new InvalidOperationException("Document process info service not found");
-        }
+        var docDbContext = serviceProvider.GetRequiredService<DocGenerationDbContext>();
 
-        var processes = documentProcessService.GetCombinedDocumentProcessInfoListAsync().GetAwaiter().GetResult();
+        var processes = docDbContext.DynamicDocumentProcessDefinitions.Where(x => x.LogicType == DocumentProcessLogicType.KernelMemory).ToList();
 
-        foreach (var documentProcess in processes.Where(documentProcess => documentProcess.LogicType == DocumentProcessLogicType.KernelMemory))
+        var mapper = serviceProvider.GetService<IMapper>();
+
+        foreach (var documentProcess in processes)
         {
-            builder.Services.AddKeyedSingleton<KmDocsPlugin>(documentProcess.ShortName+"-KmDocsPlugin", (provider, o) => new KmDocsPlugin(provider, documentProcess));
+            var documentProcessInfo = mapper.Map<DocumentProcessInfo>(documentProcess);
+            builder.Services.AddKeyedSingleton<KmDocsPlugin>(documentProcess.ShortName + "-KmDocsPlugin",
+                (provider, o) => new KmDocsPlugin(provider, documentProcessInfo));
         }
 
         return builder;

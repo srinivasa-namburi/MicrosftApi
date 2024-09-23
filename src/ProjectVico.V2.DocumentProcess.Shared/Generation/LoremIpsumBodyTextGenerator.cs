@@ -6,8 +6,8 @@ namespace ProjectVico.V2.DocumentProcess.Shared.Generation;
 
 public class LoremIpsumBodyTextGenerator : IBodyTextGenerator
 {
-    public async Task<List<ContentNode>> GenerateBodyText(string contentNodeTypeString, string sectionNumber,
-        string sectionTitle, string tableOfContentsString, Guid? metadataId = null)
+    public async Task<List<ContentNode>> GenerateBodyText(string contentNodeTypeString, string sectionNumber, string sectionTitle,
+        string tableOfContentsString, string documentProcessName = null, Guid? metadataId = null)
     {
         var minNumberOfParagraphs = 4;
         var maxNumberOfParagraphs = 16;
@@ -31,6 +31,5 @@ public class LoremIpsumBodyTextGenerator : IBodyTextGenerator
 
         var bodyTextContentNodes = new List<ContentNode> { bodyTextContentNode };
         return bodyTextContentNodes;
-
     }
 }

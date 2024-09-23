@@ -20,5 +20,6 @@ public class DocumentProcessInfo : IDocumentProcessInfo
 
     public ProcessSource Source => Id == Guid.Empty ? ProcessSource.Static : ProcessSource.Dynamic;
 
+    public Guid? DocumentOutlineId { get; set; }
     public string? OutlineText { get; set; }
 }

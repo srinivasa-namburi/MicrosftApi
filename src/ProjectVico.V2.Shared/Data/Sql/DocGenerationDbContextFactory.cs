@@ -8,7 +8,7 @@ public class DocGenerationDbContextFactory : IDesignTimeDbContextFactory<DocGene
     public DocGenerationDbContext CreateDbContext(string[] args)
     {
         var optionsBuilder = new DbContextOptionsBuilder<DocGenerationDbContext>();
-        optionsBuilder.UseSqlServer("Server=localhost;Database=ProjectVICO;User Id=sa;Password=5YCzxi!B6xM4HJFp?;");
+        optionsBuilder.UseSqlServer("Server=localhost;Database=ProjectVICODb;");
         return new DocGenerationDbContext(optionsBuilder.Options);
     }
 }

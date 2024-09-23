@@ -1,7 +1,10 @@
 ﻿using System.Net;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Components.Forms;
+using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Web.Shared.ServiceClients;
 
 namespace ProjectVico.V2.Web.DocGen.Client.ServiceClients;
@@ -47,7 +50,28 @@ public abstract class WebAssemblyBaseServiceClient<T> where T : IServiceClient
         return response;
     }
     
-    protected async Task<HttpResponseMessage?> SendPostRequestMessage(string requestUri, object? pocoPayload, bool authorize = false)
+    //protected async Task<HttpResponseMessage?> SendPostRequestMessage(string requestUri, object? pocoPayload, bool authorize = false)
+    //{
+    //    using var requestMessage = new HttpRequestMessage(HttpMethod.Post, requestUri);
+    //    if (authorize)
+    //    {
+    //        requestMessage.Headers.Authorization = new("Bearer", this.AccessToken);
+    //    }
+
+    //    if (pocoPayload == null)
+    //    {
+    //        Logger.LogWarning("Sending POST request to {RequestUri} with empty payload", requestUri);
+
+    //    }
+    //    requestMessage.Content = new StringContent(JsonSerializer.Serialize(pocoPayload), Encoding.UTF8, "application/json");
+
+    //    Logger.LogInformation("Sending POST request to {RequestUri}", requestUri);
+        
+    //    var response = await HttpClient.SendAsync(requestMessage);
+    //    return response;
+    //}
+
+    protected async Task<HttpResponseMessage?> SendPostRequestMessage(string requestUri, object? payload, bool authorize = false)
     {
         using var requestMessage = new HttpRequestMessage(HttpMethod.Post, requestUri);
         if (authorize)
@@ -55,18 +79,27 @@ public abstract class WebAssemblyBaseServiceClient<T> where T : IServiceClient
             requestMessage.Headers.Authorization = new("Bearer", this.AccessToken);
         }
 
-        if (pocoPayload == null)
+        if (payload is IBrowserFile file)
+        {
+            var content = new MultipartFormDataContent();
+            var streamContent = new StreamContent(file.OpenReadStream(file.Size));
+            content.Add(streamContent, "file", file.Name);
+            requestMessage.Content = content;
+        }
+        else if (payload != null)
+        {
+            requestMessage.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+        }
+        else
         {
             Logger.LogWarning("Sending POST request to {RequestUri} with empty payload", requestUri);
-
         }
-        requestMessage.Content = new StringContent(JsonSerializer.Serialize(pocoPayload), Encoding.UTF8, "application/json");
 
         Logger.LogInformation("Sending POST request to {RequestUri}", requestUri);
-        
-        var response = await HttpClient.SendAsync(requestMessage);
-        return response;
+    
+        return await HttpClient.SendAsync(requestMessage);
     }
+
 
     protected async Task<HttpResponseMessage?> SendPutRequestMessage(string requestUri, object? pocoPayload, bool authorize = false)
     {
@@ -108,6 +141,33 @@ public abstract class WebAssemblyBaseServiceClient<T> where T : IServiceClient
         }
 
         return resultString;
+    }
+
+    public async Task<ExportedDocumentLinkInfo> UploadDocumentForReviewInstance(IBrowserFile file)
+    {
+        var fileName = file.Name;
+        var url = $"/api/file/upload/reviews/{fileName}";
+
+        var response = await SendPostRequestMessage(url, file);
+
+        response?.EnsureSuccessStatusCode();
+
+        // Execute a GET request to get the ExportedDocumentLinkInfo
+        var fileAccessUrl = await response?.Content.ReadAsStringAsync();
+
+        // Encode the fileAccessUrl
+        fileAccessUrl = WebUtility.UrlEncode(fileAccessUrl);
+
+        url = $"/api/file/file-info/{fileAccessUrl}";
+        response = await SendGetRequestMessage(url);
+
+        if (response?.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response?.EnsureSuccessStatusCode();
+        return await response?.Content.ReadFromJsonAsync<ExportedDocumentLinkInfo>()!;
     }
 }
 

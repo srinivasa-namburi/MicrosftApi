@@ -18,21 +18,29 @@ public class ServiceConfigurationOptions
     
     public class ProjectVicoServicesOptions
     {
+        public FeatureFlagsOptions FeatureFlags { get; set; } = new FeatureFlagsOptions(); 
         public DocumentGenerationOptions DocumentGeneration { get; set; } = new DocumentGenerationOptions();
         public DocumentIngestionOptions DocumentIngestion { get; set; } = new DocumentIngestionOptions();
         public List<DocumentProcessOptions?> DocumentProcesses { get; set; } = new List<DocumentProcessOptions?>();
-       
+
+        public class FeatureFlagsOptions
+        {
+            public bool EnableMassDocumentProduction { get; set; }
+            public bool EnableReviews { get; set; }
+        }
+
         public class DocumentIngestionOptions
         {
             public ushort NumberOfIngestionWorkers { get; set; }
             public bool ProcessTables { get; set; }
+            public bool ScheduledIngestion { get; set; }
         }
 
         public class DocumentGenerationOptions
         {
             public bool DurableDevelopmentServices { get; set; }
             public bool CreateBodyTextNodes { get; set; }
-            public bool UseFullDocumentOutlineGeneration { get; set; }
+            public bool UseFullDocumentOutlineGeneration { get; set; } = false;
             public ushort NumberOfGenerationWorkers { get; set; }
 
         }

@@ -8,7 +8,14 @@
     <DialogContent>
         <MudTextField @bind-Value="Prompt.ShortCode" Label="Short Code" Disabled="true" />
         <MudTextField @bind-Value="Prompt.Description" Label="Description" Disabled="true" />
-        <MudTextField @bind-Value="Prompt.Text" Label="Text" />
+        <MudTextField @bind-Value="Prompt.Text" Label="Text" T="string"
+                      Immediate="true"
+                      DebounceInterval="100"
+                      Lines="8"
+                      MaxLines="25"
+                      AutoGrow="true"
+                      AutoFocus="true" FullWidth="true" 
+                      />
     </DialogContent>
     <DialogActions>
         <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SavePrompt">Save</MudButton>
@@ -18,8 +25,8 @@
 
 @code {
     [CascadingParameter] MudDialogInstance MudDialog { get; set; } = default!;
-    [Parameter] public EventCallback OnPromptSaved { get; set; }
-    [Parameter] public PromptInfo Prompt { get; set; } = new();
+    [Parameter] public EventCallback<Guid> OnPromptSaved { get; set; }
+    [Parameter] public PromptInfo? Prompt { get; set; }
     [Parameter] public bool IsEditMode { get; set; }
 
     protected override void OnParametersSet()
@@ -42,7 +49,7 @@
             await DocumentProcessApiClient.CreatePromptAsync(Prompt);
         }
 
-        await OnPromptSaved.InvokeAsync();
+        await OnPromptSaved.InvokeAsync((Guid)Prompt.Id!);
         MudDialog.Close();
     }
 

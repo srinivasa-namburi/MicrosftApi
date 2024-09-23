@@ -1,4 +1,5 @@
 using MassTransit;
+using ProjectVico.V2.DocumentProcess.Shared;
 using ProjectVico.V2.Shared;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Extensions;
@@ -17,6 +18,13 @@ var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfig
 await builder.DelayStartup(serviceConfigurationOptions.ProjectVicoServices.DocumentGeneration.DurableDevelopmentServices);
 
 builder.AddProjectVicoServices(credentialHelper, serviceConfigurationOptions);
+builder.DynamicallyRegisterPlugins(serviceConfigurationOptions);
+builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
+builder.AddSemanticKernelServicesForStaticDocumentProcesses(serviceConfigurationOptions);
+
+builder.Services.AddHostedService<ScheduledBlobAutoImportWorker>();
+builder.Services.AddHostedService<DynamicDocumentProcessMaintenanceWorker>();
+builder.Services.AddHostedService<ScheduledExportedDocumentCleanupWorker>();
 
 // Add Service Bus Connection string. Replace https:// with sb:// and replace :443/ with / at the end of the connection string
 var serviceBusConnectionString = builder.Configuration.GetConnectionString("sbus");
@@ -60,8 +68,7 @@ else
     });
 }
 
-builder.Services.AddHostedService<ScheduledBlobAutoImportWorker>();
-builder.Services.AddHostedService<ScheduledSignalRKeepAliveWorker>();
+
 
 var host = builder.Build();
 host.Run();

@@ -13,8 +13,6 @@ public static class DbContextExtensions
 {
     public static IHostApplicationBuilder AddDocGenDbContext(this IHostApplicationBuilder builder, ServiceConfigurationOptions serviceConfigurationOptions)
     {
-        builder.Services.AddSingleton<SoftDeleteInterceptor>();
-
         var sp = builder.Services.BuildServiceProvider();
 
         builder.Services.AddDbContext<DocGenerationDbContext>(options =>
@@ -25,8 +23,6 @@ public static class DbContextExtensions
                 {
                     sqlServerBuilder.MigrationsAssembly(typeof(DocGenerationDbContext).Assembly.FullName);
                 });
-
-            options.AddInterceptors(sp.GetRequiredService<SoftDeleteInterceptor>());
         });
 
         builder.EnrichSqlServerDbContext<DocGenerationDbContext>(settings =>
@@ -52,7 +48,7 @@ public static class DbContextExtensions
         // Register all classes in the specified namespace that inherit from GenericRepository<T>
         foreach (var type in repositoryAssembly.GetTypes())
         {
-            if (type.IsClass && !type.IsAbstract && type.Namespace == "ProjectVico.V2.Shared.Repositories")
+            if (type is { IsClass: true, IsAbstract: false, Namespace: "ProjectVico.V2.Shared.Repositories" })
             {
                 var baseType = type.BaseType;
                 while (baseType != null && baseType != typeof(object))

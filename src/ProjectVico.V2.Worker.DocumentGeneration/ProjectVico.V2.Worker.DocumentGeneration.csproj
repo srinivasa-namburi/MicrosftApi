@@ -36,6 +36,8 @@
     <ProjectReference Include="..\ProjectVico.V2.Shared\ProjectVico.V2.Shared.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <Folder Include="Consumers\DocumentProcesses\" />
+    <Folder Include="Consumers\Review\" />
     <Folder Include="manifests\" />
     <Folder Include="Properties\" />
   </ItemGroup>

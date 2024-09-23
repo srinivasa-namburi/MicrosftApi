@@ -11,37 +11,42 @@
     <RowTemplate>
         <MudTd>@context.ShortCode</MudTd>
         <MudTd>@context.Description</MudTd>
-        <MudTd>@context.Text</MudTd>
+        <MudTd>
+            @if (context.Text.Length > 350)
+            {
+                @context.Text.Substring(0, 350)
+                <span>...</span>
+            }
+            else
+            {
+                @context.Text
+
+            }
+        </MudTd>
         <MudTd>
             <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="() => EditPrompt(context)">Edit</MudButton>
-            <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="() => DeletePrompt(context)">Delete</MudButton>
         </MudTd>
     </RowTemplate>
 </MudTable>
-
-<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddPrompt">Add New Prompt</MudButton>
 
 @code {
     [Parameter] public List<PromptInfo> Prompts { get; set; } = new();
     [Parameter] public EventCallback OnPromptEdited { get; set; }
     [Parameter] public Guid ProcessId { get; set; }
 
-    private async Task AddPrompt()
+
+    protected override async Task OnInitializedAsync()
     {
-        var newPrompt = new PromptInfo { DocumentProcessId = ProcessId };
-        await ShowEditPromptDialog(newPrompt, false);
+        if (Prompts.Count == 0 && ProcessId != Guid.Empty)
+        {
+            Prompts = await DocumentProcessApiClient.GetPromptsByProcessIdAsync(ProcessId);
+        }
     }
 
     private async Task EditPrompt(PromptInfo prompt)
     {
-        var promptInfo = await DocumentProcessApiClient.GetPromptByIdAsync(prompt.Id);
+        var promptInfo = await DocumentProcessApiClient.GetPromptByIdAsync((Guid)prompt.Id!);
         await ShowEditPromptDialog(promptInfo, true);
-    }
-
-    private async Task DeletePrompt(PromptInfo prompt)
-    {
-        await DocumentProcessApiClient.DeletePromptAsync(prompt.Id);
-        await OnPromptEdited.InvokeAsync();
     }
 
     private async Task ShowEditPromptDialog(PromptInfo prompt, bool isEditMode)
@@ -50,7 +55,7 @@
         {
             { nameof(EditPromptDialog.Prompt), prompt },
             { nameof(EditPromptDialog.IsEditMode), isEditMode },
-            { nameof(EditPromptDialog.OnPromptSaved), EventCallback.Factory.Create(this, OnPromptEdited) }
+            { nameof(EditPromptDialog.OnPromptSaved), EventCallback.Factory.Create<Guid>(this, OnPromptSaved) }
         };
 
         var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
@@ -58,8 +63,17 @@
         DialogService.Show<EditPromptDialog>(isEditMode ? "Edit Prompt" : "Add Prompt", parameters, options);
     }
 
-    private async Task OnPromptSaved()
+    private async void OnPromptSaved(Guid promptId)
     {
-        await OnPromptEdited.InvokeAsync();
+        var updatedPrompt = await DocumentProcessApiClient.GetPromptByIdAsync(promptId);
+
+        if (Prompts.Count == 0)
+        {
+            Prompts = await DocumentProcessApiClient.GetPromptsByProcessIdAsync(ProcessId);
+        }
+
+        var index = Prompts.FindIndex(p => p.Id == updatedPrompt.Id);
+        Prompts[index] = updatedPrompt;
+        await InvokeAsync(StateHasChanged);
     }
 }

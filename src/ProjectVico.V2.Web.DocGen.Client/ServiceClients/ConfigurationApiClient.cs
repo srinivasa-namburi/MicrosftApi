@@ -36,4 +36,13 @@ public class ConfigurationApiClient : WebAssemblyBaseServiceClient<Configuration
         return await response?.Content.ReadFromJsonAsync<List<DocumentProcessOptions>>()! ??
                throw new IOException("No document processes available!");
     }
+
+    public async Task<ServiceConfigurationOptions.ProjectVicoServicesOptions.FeatureFlagsOptions> GetFeatureFlagsAsync()
+    {
+        var response = await SendGetRequestMessage($"/api/configuration/feature-flags");
+        response?.EnsureSuccessStatusCode();
+
+        return await response?.Content.ReadFromJsonAsync<ServiceConfigurationOptions.ProjectVicoServicesOptions.FeatureFlagsOptions>()! ??
+               throw new IOException("No feature flags available!");
+    }
 }

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentIngestion.Commands;
+using ProjectVico.V2.Shared.Services;
 
 namespace ProjectVico.V2.Worker.DocumentIngestion.Consumers;
 
@@ -12,15 +13,18 @@ public class IngestDocumentsFromAutoImportPathConsumer : IConsumer<IngestDocumen
 {
     private readonly BlobServiceClient _blobServiceClient;
     private readonly ILogger<IngestDocumentsFromAutoImportPathConsumer> _logger;
+    private readonly IDocumentProcessInfoService _documentProcessInfoService;
     private readonly ServiceConfigurationOptions _options;
 
     public IngestDocumentsFromAutoImportPathConsumer(
         BlobServiceClient blobServiceClient,
         IOptions<ServiceConfigurationOptions> options,
-        ILogger<IngestDocumentsFromAutoImportPathConsumer> logger)
+        ILogger<IngestDocumentsFromAutoImportPathConsumer> logger,
+        IDocumentProcessInfoService documentProcessInfoService)
     {
         _blobServiceClient = blobServiceClient;
         _logger = logger;
+        _documentProcessInfoService = documentProcessInfoService;
         _options = options.Value;
     }
     public async Task Consume(ConsumeContext<IngestDocumentsFromAutoImportPath> context)
@@ -28,14 +32,13 @@ public class IngestDocumentsFromAutoImportPathConsumer : IConsumer<IngestDocumen
         var ingestPath = "ingest";
         var message = context.Message;
 
-        var documentProcess = _options.ProjectVicoServices.DocumentProcesses.FirstOrDefault(x => x.Name == message.DocumentProcess);
+        var documentProcess = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(message.DocumentProcess);
         if (documentProcess == null)
         {
             _logger.LogError("IngestDocumentsFromAutoImportPathConsumer: Encountered auto-import message with unknown document process - aborting import");
             return;
         }
         var targetContainerClient = _blobServiceClient.GetBlobContainerClient(documentProcess.BlobStorageContainerName);
-
         var blobsPageable = _blobServiceClient.GetBlobContainerClient(context.Message.ContainerName).GetBlobsAsync(prefix: context.Message.FolderPath);
 
         await foreach (var blobPage in blobsPageable.AsPages())

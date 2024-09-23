@@ -1,5 +1,6 @@
 ﻿using Azure;
 using Azure.Core.GeoJson;
+using Azure.Maps.Rendering;
 using Azure.Maps.Search;
 using Azure.Maps.Search.Models;
 using Microsoft.Extensions.Configuration;
@@ -19,20 +20,26 @@ public interface IMappingConnector
     Task<List<FacilityDetail>> GetDetailedFacilitiesForCategoryName(double latitude, double longitude,
         int radiusInMeters,
         int maxResults, string categoryName);
+
+    Stream GetMapImageStream(double longitude, double latitude, int zoom);
 }
 
 public class AzureMapsConnector : IMappingConnector
 {
     private readonly MapsSearchClient _mapsSearchClient;
+    private readonly MapsRenderingClient _mapsRenderingClient;
 
     public AzureMapsConnector(string apiKey)
     {
-        this._mapsSearchClient = new MapsSearchClient(new AzureKeyCredential(apiKey));
+        var credentials = new AzureKeyCredential(apiKey);
+        this._mapsSearchClient = new MapsSearchClient(credentials);
+        this._mapsRenderingClient = new MapsRenderingClient(credentials);
     }
 
     public AzureMapsConnector(IConfiguration configuration)
     {
         this._mapsSearchClient = new MapsSearchClient(new AzureKeyCredential(configuration["ServiceConfiguration:AzureMaps:Key"]));
+        this._mapsRenderingClient = new MapsRenderingClient(new AzureKeyCredential(configuration["ServiceConfiguration:AzureMaps:Key"]));
     }
 
     public async Task<List<int>> GetCategoryIdsForCategoryName(string categoryName)
@@ -149,6 +156,22 @@ public class AzureMapsConnector : IMappingConnector
         };
 
         return result;
+    }
+
+    public Stream GetMapImageStream(double latitude, double longitude, int zoom)
+    {
+        // Fetch imagery map tiles
+        GetMapStaticImageOptions GetMapTileOptions = new GetMapStaticImageOptions(
+            new GeoPosition(longitude, latitude),
+            512,
+            512
+        )
+        { 
+            Language = RenderingLanguage.EnglishUsa, // This is marked as optional but is actually mandatory for the API
+            ZoomLevel = zoom
+        };
+
+        return this._mapsRenderingClient.GetMapStaticImage(GetMapTileOptions);
     }
 
     private async Task<List<string>> GetSearchAddressResultAsStringAsync(SearchAddressResult addressResult)

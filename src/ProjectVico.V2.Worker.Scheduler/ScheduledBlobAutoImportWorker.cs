@@ -3,6 +3,7 @@ using MassTransit;
 using Microsoft.Extensions.Options;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentIngestion.Commands;
+using ProjectVico.V2.Shared.Services;
 
 namespace ProjectVico.V2.Worker.Scheduler;
 
@@ -11,25 +12,33 @@ public class ScheduledBlobAutoImportWorker : BackgroundService
     private readonly ILogger<ScheduledBlobAutoImportWorker> _logger;
     private readonly BlobServiceClient _blobServiceClient;
     private readonly IServiceProvider _sp;
+    private readonly IDocumentProcessInfoService _documentProcessInfoService;
     private readonly ServiceConfigurationOptions _options;
 
 
     public ScheduledBlobAutoImportWorker(
         ILogger<ScheduledBlobAutoImportWorker> logger,
         IOptions<ServiceConfigurationOptions> options,
-        
         BlobServiceClient blobServiceClient,
-        IServiceProvider sp
+        IServiceProvider sp,
+        IDocumentProcessInfoService documentProcessInfoService
+        
        )
     {
         _logger = logger;
         _blobServiceClient = blobServiceClient;
         _sp = sp;
+        _documentProcessInfoService = documentProcessInfoService;
         _options = options.Value;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        if (_options.ProjectVicoServices.DocumentIngestion.ScheduledIngestion == false)
+        {
+            _logger.LogWarning("ScheduledBlobAutoImportWorker: Scheduled ingestion is disabled in configuration. Exiting worker.");
+            return;
+        }
         var scope = _sp.CreateScope();
         var publishEndpoint = scope.ServiceProvider.GetRequiredService<IPublishEndpoint>();
 
@@ -45,34 +54,36 @@ public class ScheduledBlobAutoImportWorker : BackgroundService
                 _logger.LogDebug("ScheduledBlobAutoImportWorker ping: {time}", DateTimeOffset.Now);
             }
 
-            foreach (var documentProcess in _options.ProjectVicoServices.DocumentProcesses)
-            {
-                if (documentProcess == null)
-                {
-                    _logger.LogWarning("ScheduledBlobAutoImportWorker: No Document Processes exist - delaying execution for 5 minutes");
-                    taskDelay = taskDelayAfterNullDocumentProcessFound;
-                    break;  
-                }
+            var documentProcesses = await _documentProcessInfoService.GetCombinedDocumentProcessInfoListAsync();
 
+            if (documentProcesses.Count == 0)
+            {
+                _logger.LogWarning("ScheduledBlobAutoImportWorker: No Document Processes exist - delaying execution for 5 minutes");
+                taskDelay = taskDelayAfterNullDocumentProcessFound;
+                break;  
+            }
+
+            foreach (var documentProcess in documentProcesses)
+            {
                 var container = documentProcess.BlobStorageContainerName;
                 var folder = documentProcess.BlobStorageAutoImportFolderName;
 
                 if (folder == null || container == null)
                 {
-                    _logger.LogWarning("ScheduledBlobAutoImportWorker: Skipping document process {documentProcessName} as it has no auto-import folder or container configured", documentProcess.Name);
+                    _logger.LogWarning("ScheduledBlobAutoImportWorker: Skipping document process {documentProcessName} as it has no auto-import folder or container configured", documentProcess.ShortName);
                     continue;
                 }
 
                 if (NewFilesInContainerPath(container, folder))
                 {
                     taskDelay = taskDelayAfterImportMilliseconds;
-                    _logger.LogWarning("ScheduleBlobAutoImportWorker: New files found for document process {documentProcessName}. Delaying next run for {taskDelay}ms after submission", documentProcess.Name, taskDelay);
+                    _logger.LogWarning("ScheduleBlobAutoImportWorker: New files found for document process {documentProcessName}. Delaying next run for {taskDelay}ms after submission", documentProcess.ShortName, taskDelay);
             
                     await publishEndpoint.Publish(new IngestDocumentsFromAutoImportPath(Guid.NewGuid())
                     {
                         ContainerName = container,
                         FolderPath = folder,
-                        DocumentProcess = documentProcess.Name,
+                        DocumentProcess = documentProcess.ShortName,
 
                     }, stoppingToken);
                 }

@@ -17,7 +17,7 @@ namespace ProjectVico.V2.Shared.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.4")
+                .HasAnnotation("ProductVersion", "8.0.8")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -30,14 +30,6 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.Property<Guid>("BoundingRegionId")
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
 
                     b.Property<bool>("IsEmpty")
                         .HasColumnType("bit");
@@ -60,10 +52,6 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.HasIndex("BoundingRegionId");
 
-                    b.HasIndex("IsActive");
-
-                    b.HasIndex("DeletedAt", "IsActive");
-
                     b.HasIndex("X", "Y");
 
                     b.ToTable("BoundingPolygons");
@@ -77,14 +65,6 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.Property<Guid?>("ContentNodeId")
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
 
                     b.Property<int>("Page")
                         .HasColumnType("int");
@@ -102,13 +82,9 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.HasIndex("ContentNodeId");
 
-                    b.HasIndex("IsActive");
-
                     b.HasIndex("Page");
 
                     b.HasIndex("TableId");
-
-                    b.HasIndex("DeletedAt", "IsActive");
 
                     b.ToTable("BoundingRegions");
                 });
@@ -122,17 +98,9 @@ namespace ProjectVico.V2.Shared.Migrations
                     b.Property<DateTime?>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("datetimeoffset");
-
                     b.Property<string>("DocumentProcessName")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -145,10 +113,6 @@ namespace ProjectVico.V2.Shared.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("IsActive");
-
-                    b.HasIndex("DeletedAt", "IsActive");
 
                     b.ToTable("ChatConversations", (string)null);
                 });
@@ -170,14 +134,6 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
-
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
 
                     b.Property<string>("Message")
                         .IsRequired()
@@ -206,13 +162,9 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.HasIndex("CreatedAt");
 
-                    b.HasIndex("IsActive");
-
                     b.HasIndex("ReplyToChatMessageId");
 
                     b.HasIndex("SummarizedByConversationSummaryId");
-
-                    b.HasIndex("DeletedAt", "IsActive");
 
                     b.ToTable("ChatMessages");
                 });
@@ -223,9 +175,6 @@ namespace ProjectVico.V2.Shared.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("datetimeoffset");
-
                     b.Property<Guid?>("GeneratedDocumentId")
                         .HasColumnType("uniqueidentifier");
 
@@ -234,11 +183,6 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.Property<Guid?>("IngestedDocumentId")
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
 
                     b.Property<Guid?>("ParentId")
                         .HasColumnType("uniqueidentifier");
@@ -262,11 +206,7 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.HasIndex("IngestedDocumentId");
 
-                    b.HasIndex("IsActive");
-
                     b.HasIndex("ParentId");
-
-                    b.HasIndex("DeletedAt", "IsActive");
 
                     b.ToTable("ContentNodes");
                 });
@@ -283,14 +223,6 @@ namespace ProjectVico.V2.Shared.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
-
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -306,10 +238,6 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.HasIndex("CreatedAt");
 
-                    b.HasIndex("IsActive");
-
-                    b.HasIndex("DeletedAt", "IsActive");
-
                     b.ToTable("ConversationSummaries");
                 });
 
@@ -319,16 +247,8 @@ namespace ProjectVico.V2.Shared.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("datetimeoffset");
-
                     b.Property<Guid>("GeneratedDocumentId")
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
 
                     b.Property<string>("MetadataJson")
                         .HasColumnType("nvarchar(max)");
@@ -344,10 +264,6 @@ namespace ProjectVico.V2.Shared.Migrations
                     b.HasIndex("GeneratedDocumentId")
                         .IsUnique();
 
-                    b.HasIndex("IsActive");
-
-                    b.HasIndex("DeletedAt", "IsActive");
-
                     b.ToTable("DocumentMetadata");
                 });
 
@@ -357,20 +273,8 @@ namespace ProjectVico.V2.Shared.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("datetimeoffset");
-
                     b.Property<Guid>("DocumentProcessDefinitionId")
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("FullText")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -383,11 +287,52 @@ namespace ProjectVico.V2.Shared.Migrations
                     b.HasIndex("DocumentProcessDefinitionId")
                         .IsUnique();
 
-                    b.HasIndex("IsActive");
-
-                    b.HasIndex("DeletedAt", "IsActive");
-
                     b.ToTable("DocumentOutlines", (string)null);
+                });
+
+            modelBuilder.Entity("ProjectVico.V2.Shared.Models.DocumentProcess.DocumentOutlineItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("DocumentOutlineId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Level")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("OrderIndex")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("ParentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PromptInstructions")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SectionNumber")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("SectionTitle")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentOutlineId");
+
+                    b.HasIndex("ParentId");
+
+                    b.HasIndex("SectionNumber");
+
+                    b.ToTable("DocumentOutlineItems", (string)null);
                 });
 
             modelBuilder.Entity("ProjectVico.V2.Shared.Models.DocumentProcess.DynamicDocumentProcessDefinition", b =>
@@ -410,19 +355,11 @@ namespace ProjectVico.V2.Shared.Migrations
                     b.Property<bool>("ClassifyDocuments")
                         .HasColumnType("bit");
 
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("datetimeoffset");
-
                     b.Property<string>("Description")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<Guid?>("DocumentOutlineId")
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
 
                     b.Property<int>("LogicType")
                         .HasColumnType("int");
@@ -441,16 +378,15 @@ namespace ProjectVico.V2.Shared.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
 
-                    b.HasKey("Id");
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
 
-                    b.HasIndex("IsActive");
+                    b.HasKey("Id");
 
                     b.HasIndex("LogicType");
 
                     b.HasIndex("ShortName")
                         .IsUnique();
-
-                    b.HasIndex("DeletedAt", "IsActive");
 
                     b.ToTable("DynamicDocumentProcessDefinitions", (string)null);
                 });
@@ -461,16 +397,8 @@ namespace ProjectVico.V2.Shared.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("datetimeoffset");
-
                     b.Property<string>("Description")
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -484,12 +412,8 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("IsActive");
-
                     b.HasIndex("ShortCode")
                         .IsUnique();
-
-                    b.HasIndex("DeletedAt", "IsActive");
 
                     b.ToTable("PromptDefinitions", (string)null);
                 });
@@ -500,16 +424,9 @@ namespace ProjectVico.V2.Shared.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<Guid>("DocumentProcessDefinitionId")
+                    b.Property<Guid?>("DocumentProcessDefinitionId")
+                        .IsRequired()
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
 
                     b.Property<Guid>("PromptDefinitionId")
                         .HasColumnType("uniqueidentifier");
@@ -520,6 +437,9 @@ namespace ProjectVico.V2.Shared.Migrations
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
 
+                    b.Property<string>("StaticDocumentProcessShortCode")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("Text")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -528,14 +448,86 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.HasIndex("DocumentProcessDefinitionId");
 
-                    b.HasIndex("IsActive");
-
-                    b.HasIndex("DeletedAt", "IsActive");
-
                     b.HasIndex("PromptDefinitionId", "DocumentProcessDefinitionId")
                         .IsUnique();
 
                     b.ToTable("PromptImplementations", (string)null);
+                });
+
+            modelBuilder.Entity("ProjectVico.V2.Shared.Models.DocumentProcess.PromptVariableDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("PromptDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("VariableName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PromptDefinitionId");
+
+                    b.HasIndex("PromptDefinitionId", "VariableName")
+                        .IsUnique();
+
+                    b.ToTable("PromptVariableDefinitions", (string)null);
+                });
+
+            modelBuilder.Entity("ProjectVico.V2.Shared.Models.ExportedDocumentLink", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AbsoluteUrl")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("BlobContainer")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("Created")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("GeneratedDocumentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("MimeType")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GeneratedDocumentId");
+
+                    b.ToTable("ExportedDocumentLinks");
                 });
 
             modelBuilder.Entity("ProjectVico.V2.Shared.Models.GeneratedDocument", b =>
@@ -544,19 +536,11 @@ namespace ProjectVico.V2.Shared.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("datetimeoffset");
-
                     b.Property<string>("DocumentProcess")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("GeneratedDate")
                         .HasColumnType("datetime2");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
 
                     b.Property<Guid?>("MetadataId")
                         .HasColumnType("uniqueidentifier");
@@ -576,10 +560,6 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("IsActive");
-
-                    b.HasIndex("DeletedAt", "IsActive");
-
                     b.ToTable("GeneratedDocuments");
                 });
 
@@ -594,9 +574,6 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.Property<int?>("ClassificationType")
                         .HasColumnType("int");
-
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("datetimeoffset");
 
                     b.Property<string>("DocumentProcess")
                         .HasColumnType("nvarchar(450)");
@@ -613,11 +590,6 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.Property<int>("IngestionState")
                         .HasColumnType("int");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
 
                     b.Property<string>("OriginalDocumentUrl")
                         .IsRequired()
@@ -641,11 +613,176 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.HasIndex("FileHash");
 
+                    b.ToTable("IngestedDocuments");
+                });
+
+            modelBuilder.Entity("ProjectVico.V2.Shared.Models.Review.ReviewDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ReviewDefinitions", (string)null);
+                });
+
+            modelBuilder.Entity("ProjectVico.V2.Shared.Models.Review.ReviewDefinitionDocumentProcessDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("DocumentProcessDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("ReviewId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentProcessDefinitionId");
+
                     b.HasIndex("IsActive");
 
-                    b.HasIndex("DeletedAt", "IsActive");
+                    b.HasIndex("ReviewId");
 
-                    b.ToTable("IngestedDocuments");
+                    b.HasIndex("ReviewId", "DocumentProcessDefinitionId")
+                        .IsUnique();
+
+                    b.ToTable("ReviewDefinitionDocumentProcessDefinition", (string)null);
+                });
+
+            modelBuilder.Entity("ProjectVico.V2.Shared.Models.Review.ReviewInstance", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ExportedLinkId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ReviewDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ReviewDefinitionStateWhenSubmitted")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExportedLinkId");
+
+                    b.HasIndex("ReviewDefinitionId");
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("ReviewInstances", (string)null);
+                });
+
+            modelBuilder.Entity("ProjectVico.V2.Shared.Models.Review.ReviewQuestion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Question")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("QuestionType")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Rationale")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("ReviewId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReviewId");
+
+                    b.ToTable("ReviewQuestions", (string)null);
+                });
+
+            modelBuilder.Entity("ProjectVico.V2.Shared.Models.Review.ReviewQuestionAnswer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("AiSentiment")
+                        .HasColumnType("int");
+
+                    b.Property<string>("AiSentimentReasoning")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("FullAiAnswer")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("OriginalReviewQuestionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("OriginalReviewQuestionText")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("OriginalReviewQuestionType")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("ReviewInstanceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OriginalReviewQuestionId");
+
+                    b.HasIndex("ReviewInstanceId");
+
+                    b.ToTable("ReviewQuestionAnswers", (string)null);
                 });
 
             modelBuilder.Entity("ProjectVico.V2.Shared.Models.Table", b =>
@@ -657,16 +794,8 @@ namespace ProjectVico.V2.Shared.Migrations
                     b.Property<int>("ColumnCount")
                         .HasColumnType("int");
 
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("datetimeoffset");
-
                     b.Property<Guid?>("IngestedDocumentId")
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
 
                     b.Property<int>("RowCount")
                         .HasColumnType("int");
@@ -680,10 +809,6 @@ namespace ProjectVico.V2.Shared.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("IngestedDocumentId");
-
-                    b.HasIndex("IsActive");
-
-                    b.HasIndex("DeletedAt", "IsActive");
 
                     b.ToTable("Tables");
                 });
@@ -699,14 +824,6 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.Property<int?>("ColumnSpan")
                         .HasColumnType("int");
-
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
 
                     b.Property<int>("RowIndex")
                         .HasColumnType("int");
@@ -729,11 +846,7 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("IsActive");
-
                     b.HasIndex("TableId");
-
-                    b.HasIndex("DeletedAt", "IsActive");
 
                     b.ToTable("TableCells");
                 });
@@ -744,20 +857,12 @@ namespace ProjectVico.V2.Shared.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("datetimeoffset");
-
                     b.Property<string>("Email")
                         .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("FullName")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
 
                     b.Property<int>("Provider")
                         .HasColumnType("int");
@@ -776,12 +881,8 @@ namespace ProjectVico.V2.Shared.Migrations
 
                     b.HasIndex("Email");
 
-                    b.HasIndex("IsActive");
-
                     b.HasIndex("ProviderSubjectId")
                         .IsUnique();
-
-                    b.HasIndex("DeletedAt", "IsActive");
 
                     b.ToTable("UserInformations");
                 });
@@ -978,9 +1079,26 @@ namespace ProjectVico.V2.Shared.Migrations
                     b.HasOne("ProjectVico.V2.Shared.Models.DocumentProcess.DynamicDocumentProcessDefinition", "DocumentProcessDefinition")
                         .WithOne("DocumentOutline")
                         .HasForeignKey("ProjectVico.V2.Shared.Models.DocumentProcess.DocumentOutline", "DocumentProcessDefinitionId")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .OnDelete(DeleteBehavior.Cascade);
 
                     b.Navigation("DocumentProcessDefinition");
+                });
+
+            modelBuilder.Entity("ProjectVico.V2.Shared.Models.DocumentProcess.DocumentOutlineItem", b =>
+                {
+                    b.HasOne("ProjectVico.V2.Shared.Models.DocumentProcess.DocumentOutline", "DocumentOutline")
+                        .WithMany("OutlineItems")
+                        .HasForeignKey("DocumentOutlineId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("ProjectVico.V2.Shared.Models.DocumentProcess.DocumentOutlineItem", "Parent")
+                        .WithMany("Children")
+                        .HasForeignKey("ParentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("DocumentOutline");
+
+                    b.Navigation("Parent");
                 });
 
             modelBuilder.Entity("ProjectVico.V2.Shared.Models.DocumentProcess.PromptImplementation", b =>
@@ -1000,6 +1118,93 @@ namespace ProjectVico.V2.Shared.Migrations
                     b.Navigation("DocumentProcessDefinition");
 
                     b.Navigation("PromptDefinition");
+                });
+
+            modelBuilder.Entity("ProjectVico.V2.Shared.Models.DocumentProcess.PromptVariableDefinition", b =>
+                {
+                    b.HasOne("ProjectVico.V2.Shared.Models.DocumentProcess.PromptDefinition", "PromptDefinition")
+                        .WithMany("Variables")
+                        .HasForeignKey("PromptDefinitionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PromptDefinition");
+                });
+
+            modelBuilder.Entity("ProjectVico.V2.Shared.Models.ExportedDocumentLink", b =>
+                {
+                    b.HasOne("ProjectVico.V2.Shared.Models.GeneratedDocument", "GeneratedDocument")
+                        .WithMany("ExportedDocumentLinks")
+                        .HasForeignKey("GeneratedDocumentId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("GeneratedDocument");
+                });
+
+            modelBuilder.Entity("ProjectVico.V2.Shared.Models.Review.ReviewDefinitionDocumentProcessDefinition", b =>
+                {
+                    b.HasOne("ProjectVico.V2.Shared.Models.DocumentProcess.DynamicDocumentProcessDefinition", "DocumentProcessDefinition")
+                        .WithMany()
+                        .HasForeignKey("DocumentProcessDefinitionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ProjectVico.V2.Shared.Models.Review.ReviewDefinition", "Review")
+                        .WithMany("DocumentProcessDefinitionConnections")
+                        .HasForeignKey("ReviewId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("DocumentProcessDefinition");
+
+                    b.Navigation("Review");
+                });
+
+            modelBuilder.Entity("ProjectVico.V2.Shared.Models.Review.ReviewInstance", b =>
+                {
+                    b.HasOne("ProjectVico.V2.Shared.Models.ExportedDocumentLink", "ExportedDocumentLink")
+                        .WithMany()
+                        .HasForeignKey("ExportedLinkId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ProjectVico.V2.Shared.Models.Review.ReviewDefinition", "ReviewDefinition")
+                        .WithMany("ReviewInstances")
+                        .HasForeignKey("ReviewDefinitionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ExportedDocumentLink");
+
+                    b.Navigation("ReviewDefinition");
+                });
+
+            modelBuilder.Entity("ProjectVico.V2.Shared.Models.Review.ReviewQuestion", b =>
+                {
+                    b.HasOne("ProjectVico.V2.Shared.Models.Review.ReviewDefinition", "Review")
+                        .WithMany("ReviewQuestions")
+                        .HasForeignKey("ReviewId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Review");
+                });
+
+            modelBuilder.Entity("ProjectVico.V2.Shared.Models.Review.ReviewQuestionAnswer", b =>
+                {
+                    b.HasOne("ProjectVico.V2.Shared.Models.Review.ReviewQuestion", "OriginalReviewQuestion")
+                        .WithMany()
+                        .HasForeignKey("OriginalReviewQuestionId");
+
+                    b.HasOne("ProjectVico.V2.Shared.Models.Review.ReviewInstance", "ReviewInstance")
+                        .WithMany("ReviewQuestionAnswers")
+                        .HasForeignKey("ReviewInstanceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("OriginalReviewQuestion");
+
+                    b.Navigation("ReviewInstance");
                 });
 
             modelBuilder.Entity("ProjectVico.V2.Shared.Models.Table", b =>
@@ -1045,6 +1250,16 @@ namespace ProjectVico.V2.Shared.Migrations
                     b.Navigation("SummarizedChatMessages");
                 });
 
+            modelBuilder.Entity("ProjectVico.V2.Shared.Models.DocumentProcess.DocumentOutline", b =>
+                {
+                    b.Navigation("OutlineItems");
+                });
+
+            modelBuilder.Entity("ProjectVico.V2.Shared.Models.DocumentProcess.DocumentOutlineItem", b =>
+                {
+                    b.Navigation("Children");
+                });
+
             modelBuilder.Entity("ProjectVico.V2.Shared.Models.DocumentProcess.DynamicDocumentProcessDefinition", b =>
                 {
                     b.Navigation("DocumentOutline");
@@ -1055,11 +1270,15 @@ namespace ProjectVico.V2.Shared.Migrations
             modelBuilder.Entity("ProjectVico.V2.Shared.Models.DocumentProcess.PromptDefinition", b =>
                 {
                     b.Navigation("Implementations");
+
+                    b.Navigation("Variables");
                 });
 
             modelBuilder.Entity("ProjectVico.V2.Shared.Models.GeneratedDocument", b =>
                 {
                     b.Navigation("ContentNodes");
+
+                    b.Navigation("ExportedDocumentLinks");
 
                     b.Navigation("Metadata");
                 });
@@ -1069,6 +1288,20 @@ namespace ProjectVico.V2.Shared.Migrations
                     b.Navigation("ContentNodes");
 
                     b.Navigation("Tables");
+                });
+
+            modelBuilder.Entity("ProjectVico.V2.Shared.Models.Review.ReviewDefinition", b =>
+                {
+                    b.Navigation("DocumentProcessDefinitionConnections");
+
+                    b.Navigation("ReviewInstances");
+
+                    b.Navigation("ReviewQuestions");
+                });
+
+            modelBuilder.Entity("ProjectVico.V2.Shared.Models.Review.ReviewInstance", b =>
+                {
+                    b.Navigation("ReviewQuestionAnswers");
                 });
 
             modelBuilder.Entity("ProjectVico.V2.Shared.Models.Table", b =>

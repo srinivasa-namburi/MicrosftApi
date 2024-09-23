@@ -55,11 +55,11 @@ public class PromptsController : BaseController
     public async Task<ActionResult<PromptInfo>> CreatePrompt([FromBody] PromptInfo promptInfo)
     {
         await _promptInfoService.AddPromptAsync(promptInfo);
-        return CreatedAtAction(nameof(GetPromptById), new { promptId = promptInfo.Id }, promptInfo);
+        return Created();
     }
 
     [HttpPut("{id:guid}")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [Consumes("application/json")]
     public async Task<IActionResult> UpdatePrompt(Guid id, [FromBody] PromptInfo promptInfo)
@@ -70,7 +70,7 @@ public class PromptsController : BaseController
         }
 
         await _promptInfoService.UpdatePromptAsync(promptInfo);
-        return AcceptedAtAction(nameof(GetPromptById), new { promptId = promptInfo.Id }, promptInfo);
+        return Accepted();
     }
 
     [HttpDelete("{id:guid}")]

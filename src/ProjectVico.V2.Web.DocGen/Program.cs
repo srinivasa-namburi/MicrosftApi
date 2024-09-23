@@ -10,9 +10,7 @@ using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using MudBlazor.Services;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Contracts.DTO;
-using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Web.DocGen.Auth;
-using ProjectVico.V2.Web.DocGen.Client.Layout;
 using ProjectVico.V2.Web.DocGen.Components;
 using ProjectVico.V2.Web.DocGen.ServiceClients;
 using ProjectVico.V2.Web.Shared;
@@ -59,6 +57,15 @@ builder.Services.AddHttpClient<IConfigurationApiClient, ConfigurationApiClient>(
     httpClient.BaseAddress = new("https+http://api-main");
 });
 builder.Services.AddHttpClient<IDocumentProcessApiClient, DocumentProcessApiClient>(httpClient =>
+{
+    httpClient.BaseAddress = new("https+http://api-main");
+});
+builder.Services.AddHttpClient<IDocumentOutlineApiClient, DocumentOutlineApiClient>(httpClient =>
+{
+    httpClient.BaseAddress = new("https+http://api-main");
+});
+
+builder.Services.AddHttpClient<IReviewApiClient, ReviewApiClient>(httpClient =>
 {
     httpClient.BaseAddress = new("https+http://api-main");
 });
@@ -164,8 +171,6 @@ builder.AddRedisClient("redis");
 var redisConnection = ConnectionMultiplexer.Connect(builder.Configuration.GetConnectionString("redis"));
 builder.Services.AddDataProtection()
     .PersistKeysToStackExchangeRedis(redisConnection, "DataProtection-Keys");
-
-builder.Services.AddScoped<AzureFileHelper>();
 
 builder.Services.AddSingleton<IUserIdProvider, SignalRCustomUserIdProvider>();
 

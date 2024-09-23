@@ -10,6 +10,9 @@
 
 
 @code {
+    [Parameter]
+    public string? DocumentProcessName { get; set; }
+
     private readonly DocumentGenerationRequestUSNuclearLicensing documentGenerationRequest = new DocumentGenerationRequestUSNuclearLicensing
     {
         Location = new LocationInformation

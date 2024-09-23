@@ -1,8 +1,11 @@
 ﻿using AutoMapper;
-using Humanizer;
+using MassTransit;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Contracts.DTO;
+using ProjectVico.V2.Shared.Contracts.Messages.DocumentProcesses;
+using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Models.DocumentProcess;
 using ProjectVico.V2.Shared.Repositories;
 
@@ -12,18 +15,20 @@ namespace ProjectVico.V2.Shared.Services
     {
         private readonly IMapper _mapper;
         private readonly DynamicDocumentProcessDefinitionRepository _documentProcessRepository;
-        private readonly DocumentOutlineRepository _documentOutlineRepository;
+        private readonly IPublishEndpoint _publishEndpoint;
         private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
+        private readonly DocGenerationDbContext _dbContext;
 
         public DocumentProcessInfoService(
             IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
             IMapper mapper,
             DynamicDocumentProcessDefinitionRepository documentProcessRepository,
-           DocumentOutlineRepository documentOutlineRepository)
+            IPublishEndpoint publishEndpoint, DocGenerationDbContext dbContext)
         {
             _mapper = mapper;
             _documentProcessRepository = documentProcessRepository;
-            _documentOutlineRepository = documentOutlineRepository;
+            _publishEndpoint = publishEndpoint;
+            _dbContext = dbContext;
             _serviceConfigurationOptions = serviceConfigurationOptions.Value;
         }
 
@@ -65,7 +70,14 @@ namespace ProjectVico.V2.Shared.Services
 
         public async Task<DocumentProcessInfo?> GetDocumentProcessInfoByIdAsync(Guid id)
         {
-            var dynamicDocumentProcess = await _documentProcessRepository.GetByIdAsync(id);
+            // If we're looking for a Document Process by ID, we should only look in the dynamic definitions, as 
+            // static definitions do not have an ID.
+
+            var dynamicDocumentProcess = await _dbContext.DynamicDocumentProcessDefinitions
+                .Include(x => x.DocumentOutline)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == id);
+
             if (dynamicDocumentProcess == null) return null;
 
             var result = _mapper.Map<DocumentProcessInfo>(dynamicDocumentProcess);
@@ -75,31 +87,75 @@ namespace ProjectVico.V2.Shared.Services
         public async Task<DocumentProcessInfo> CreateDocumentProcessInfoAsync(DocumentProcessInfo documentProcessInfo)
         {
             var dynamicDocumentProcess = _mapper.Map<DynamicDocumentProcessDefinition>(documentProcessInfo);
-
             if (dynamicDocumentProcess.Id == Guid.Empty)
             {
                 dynamicDocumentProcess.Id = Guid.NewGuid();
             }
 
-            // DUMMY DATA
+            var documentOutlineId = Guid.NewGuid();
             var outline = new DocumentOutline
             {
-                Id = Guid.NewGuid(),
-                FullText = """
-                           1 Chapter 1
-                           2 Chapter 2
-                           2.1 Section 2.1
-                           2.1.1 Section 2.1.1
-                           2.2 Section 2.2
-                           3 Chapter 3
-                           3.1 Section 3.1
-                           """
+                Id = documentOutlineId,
+                OutlineItems =
+                [
+                    new DocumentOutlineItem()
+                    {
+                        SectionNumber = "1",
+                        SectionTitle = "Chapter 1",
+                        Level = 0
+                    },
+                    new DocumentOutlineItem()
+                    {
+                        SectionNumber = "2",
+                        SectionTitle = "Chapter 2",
+                        Level = 0,
+                        Children =
+                        [
+                            new DocumentOutlineItem()
+                            {
+                                SectionNumber = "2.1",
+                                SectionTitle = "Section 2.1",
+                                Level = 1,
+                                Children =
+                                [
+                                    new DocumentOutlineItem()
+                                    {
+                                        SectionNumber = "2.1.1",
+                                        SectionTitle = "Section 2.1.1",
+                                        Level = 2
+                                    }
+                                ]
+                            },
+                            new DocumentOutlineItem()
+                            {
+                                SectionNumber = "2.2",
+                                SectionTitle = "Section 2.2",
+                                Level = 1
+                            }
+                        ]
+                    },
+                    new DocumentOutlineItem()
+                    {
+                        SectionNumber = "3",
+                        SectionTitle = "Chapter 3",
+                        Level = 0,
+                        Children =
+                        [
+                            new DocumentOutlineItem()
+                            {
+                                SectionNumber = "3.1",
+                                SectionTitle = "Section 3.1",
+                                Level = 1
+                            }
+                        ]
+                    }
+                ]
             };
+
             // END DUMMY DATA
 
             dynamicDocumentProcess.DocumentOutline = outline;
             await _documentProcessRepository.AddAsync(dynamicDocumentProcess);
-
 
             var createdDocumentProcess = await _documentProcessRepository.GetByShortNameAsync(dynamicDocumentProcess.ShortName);
 
@@ -108,10 +164,20 @@ namespace ProjectVico.V2.Shared.Services
                 throw new Exception("Document process could not be created.");
             }
 
+            await _publishEndpoint.Publish(new CreateDynamicDocumentProcessPrompts(createdDocumentProcess.Id));
             var createdDocumentProcessInfo = _mapper.Map<DocumentProcessInfo>(createdDocumentProcess);
             return createdDocumentProcessInfo;
         }
 
-
+        public async Task<bool> DeleteDocumentProcessInfoAsync(Guid processId)
+        {
+            var documentProcess = await _documentProcessRepository.GetByIdAsync(processId, false);
+            if (documentProcess != null)
+            {
+                await _documentProcessRepository.DeleteAsync(documentProcess);
+                return true;
+            }
+            else return false;
+        }
     }
 }

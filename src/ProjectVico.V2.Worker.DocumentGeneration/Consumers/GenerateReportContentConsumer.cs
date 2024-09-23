@@ -1,9 +1,6 @@
 ﻿using System.Text;
 using System.Text.Json;
 using MassTransit;
-using Microsoft.Extensions.Options;
-using Microsoft.SemanticKernel;
-using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentGeneration.Commands;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentGeneration.Events;
 using ProjectVico.V2.Shared.Models;
@@ -12,18 +9,13 @@ namespace ProjectVico.V2.Worker.DocumentGeneration.Consumers;
 
 public class GenerateReportContentConsumer : IConsumer<GenerateReportContent>
 {
-    private readonly Kernel _sk;
     private readonly ILogger<GenerateReportContentConsumer> _logger;
     private int _titleCount;
-    private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
 
-    public GenerateReportContentConsumer(Kernel sk, 
-        IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
+    public GenerateReportContentConsumer(
         ILogger<GenerateReportContentConsumer> logger)
     {
-        _sk = sk;
         _logger = logger;
-        _serviceConfigurationOptions = serviceConfigurationOptions.Value;
     }
 
     public async Task Consume(ConsumeContext<GenerateReportContent> context)
@@ -45,7 +37,6 @@ public class GenerateReportContentConsumer : IConsumer<GenerateReportContent>
         {
             NumberOfContentNodesToGenerate = _titleCount,
             AuthorOid = message.AuthorOid!
-            
         });
     }
 

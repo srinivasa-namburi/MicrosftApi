@@ -1,0 +1,310 @@
+﻿@page "/reviews/{ReviewIdString}/view"
+@page "/reviews/{ReviewIdString}/edit"
+@page "/reviews/{ReviewIdString}"
+@page "/reviews/add"
+
+@using System.Text.Json
+@using ProjectVico.V2.Shared.Enums
+@inject IReviewApiClient ReviewApiClient
+@inject NavigationManager Navigation
+@inject IDialogService DialogService
+
+@code {
+    [Parameter] public string? ReviewIdString { get; set; }
+    [Parameter] public bool EditMode { get; set; } = false;
+    private ReviewDefinitionInfo? OriginalReviewDefinitionInfo { get; set; }
+    private ReviewDefinitionInfo? CurrentReviewDefinitionInfo { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Guid.Parse(ReviewIdString) != Guid.Empty)
+        {
+            OriginalReviewDefinitionInfo = await ReviewApiClient.GetReviewById(Guid.Parse(ReviewIdString));
+            CurrentReviewDefinitionInfo = CloneReviewDefinition(OriginalReviewDefinitionInfo);
+        }
+    }
+
+    private ReviewDefinitionInfo? CloneReviewDefinition(ReviewDefinitionInfo? reviewDefinition)
+    {
+        return reviewDefinition != null ? JsonSerializer.Deserialize<ReviewDefinitionInfo>(JsonSerializer.Serialize(reviewDefinition)) : null;
+    }
+
+}
+
+<MudPaper class="pa-4">
+    @if (!EditMode)
+    {
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudText Typo="Typo.h4">@CurrentReviewDefinitionInfo?.Title</MudText>
+                <MudText Typo="Typo.body1">@CurrentReviewDefinitionInfo?.Description</MudText>
+            </CardHeaderContent>
+            <CardHeaderActions>
+                <MudTooltip Text="Edit">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                   OnClick="EnableEditing" />
+                </MudTooltip>
+            </CardHeaderActions>
+        </MudCardHeader>
+
+        @if (CurrentReviewDefinitionInfo?.ReviewQuestions.Count > 0)
+        {
+            <MudExpansionPanels>
+                @for (int i = 0; i < CurrentReviewDefinitionInfo?.ReviewQuestions.Count(); i++)
+                {
+                    ReviewQuestionInfo reviewQuestionInfo = CurrentReviewDefinitionInfo?.ReviewQuestions[i];
+                    <MudExpansionPanel>
+                        <TitleContent>
+                            <MudText Typo="Typo.h6">@reviewQuestionInfo.Question</MudText>
+                        </TitleContent>
+                        <ChildContent>
+                            <MudCardContent Class="mb-4">
+                                <MudTextField @bind-Value="@reviewQuestionInfo.Question"
+                                              Lines="3"
+                                              MaxLines="10"
+                                              AutoGrow="true"
+                                              Adornment="Adornment.Start"
+                                              AdornmentText="@((CurrentReviewDefinitionInfo.ReviewQuestions.IndexOf(reviewQuestionInfo) + 1) + ".")"
+                                              Label="@reviewQuestionInfo.QuestionType.ToString()"
+                                              Variant="Variant.Outlined"
+                                              Margin="Margin.Normal"
+                                              ReadOnly />
+                                <MudTextField @bind-Value="@reviewQuestionInfo.Rationale"
+                                              Label="@("Rationale")"
+                                              Lines="3"
+                                              MaxLines="10"
+                                              AutoGrow="true"
+                                              Variant="Variant.Outlined"
+                                              Margin="Margin.Normal"
+                                              ReadOnly />
+                            </MudCardContent>
+                        </ChildContent>
+                    </MudExpansionPanel>
+                }
+            </MudExpansionPanels>
+        }
+    }
+    else
+    {
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudTextField Margin="Margin.Normal" Label="Title" @bind-Value="@CurrentReviewDefinitionInfo.Title" />
+                <MudTextField Margin="Margin.Normal" Label="Description" @bind-Value="@CurrentReviewDefinitionInfo.Description" />
+            </CardHeaderContent>
+        </MudCardHeader>
+
+        @if (CurrentReviewDefinitionInfo?.ReviewQuestions?.Count > 0)
+        {
+            <MudExpansionPanels>
+                @for (int i = 0; i < CurrentReviewDefinitionInfo?.ReviewQuestions.Count(); i++)
+                {
+                    ReviewQuestionInfo reviewQuestionInfo = CurrentReviewDefinitionInfo?.ReviewQuestions[i];
+                    <MudExpansionPanel>
+                        <TitleContent>
+                            <MudText Typo="Typo.h6">@reviewQuestionInfo.Question</MudText>
+                        </TitleContent>
+                        <ChildContent>
+                            <MudCard Class="mb-4">
+                                <MudCardContent>
+                                    <MudStack Row>
+                                        <MudItem Style="justify-self: start">
+                                            <MudRadioGroup @bind-Value="reviewQuestionInfo.QuestionType" T="ReviewQuestionType">
+                                                <MudRadio Value="@ReviewQuestionType.Requirement" Color="Color.Primary" UnCheckedColor="Color.Default">Requirement</MudRadio>
+                                                <MudRadio Value="@ReviewQuestionType.Question" Color="Color.Primary" UnCheckedColor="Color.Default">Question</MudRadio>
+                                            </MudRadioGroup>
+                                        </MudItem>
+                                        <MudItem Class="ml-auto">
+                                            <MudTooltip Text="Delete Review Item">
+                                                <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                               OnClick="() => DeleteReviewItem(reviewQuestionInfo)" />
+                                            </MudTooltip>
+                                        </MudItem>
+                                    </MudStack>
+                                    <MudTextField @bind-Value="@reviewQuestionInfo.Question"
+                                                  Adornment="Adornment.Start"
+                                                  AdornmentText="@((CurrentReviewDefinitionInfo?.ReviewQuestions.IndexOf(reviewQuestionInfo) + 1) + ".")"
+                                                  Lines="3"
+                                                  MaxLines="10"
+                                                  AutoGrow="true"
+                                                  Label="@reviewQuestionInfo.QuestionType.ToString()"
+                                                  Variant="Variant.Filled"
+                                                  Margin="Margin.Normal" />
+                                    <MudTextField @bind-Value="@reviewQuestionInfo.Rationale"
+                                                  Label="@("Rationale")"
+                                                  Lines="3"
+                                                  MaxLines="10"
+                                                  AutoGrow="true"
+                                                  Variant="Variant.Filled"
+                                                  Margin="Margin.Normal" />
+                                </MudCardContent>
+                            </MudCard>
+                        </ChildContent>
+                    </MudExpansionPanel>
+                }
+            </MudExpansionPanels>
+        }
+        <MudCardActions>
+            <MudButton StartIcon="@Icons.Material.Filled.Add"
+                       Variant="Variant.Outlined"
+                       Color="Color.Primary"
+                       OnClick="() => AddNewReviewItem()"
+                       Class="ml-auto">Add New Review Item</MudButton>
+        </MudCardActions>
+        <MudCardActions>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveReviewDefinition">Save</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="Cancel">Cancel</MudButton>
+        </MudCardActions>
+    }
+</MudPaper>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        // Add new review definition set up
+        if (Navigation.Uri.Contains("/reviews/add"))
+        {
+            Guid reviewId = Guid.NewGuid();
+            CurrentReviewDefinitionInfo = new ReviewDefinitionInfo
+                {
+                    Id = reviewId,
+                    Title = ""
+                };
+            AddNewReviewItem();
+            EditMode = true;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        // Existing review definition set up
+        if (!string.IsNullOrEmpty(ReviewIdString))
+        {
+            // OriginalReviewDefinitionInfo = await ReviewApiClient.GetReviewById(Guid.Parse(ReviewIdString));
+            // CurrentReviewDefinitionInfo = await ReviewApiClient.GetReviewById(Guid.Parse(ReviewIdString));
+            // if we are in edit more for an existing review definition
+            if (Navigation.Uri.Contains("/edit"))
+            {
+                EditMode = true;
+            }
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+    }
+
+    private async Task SaveReviewDefinition()
+    {
+        if (CurrentReviewDefinitionInfo != null)
+        {
+            if (Navigation.Uri.Contains("/add"))
+            {
+                ReviewDefinitionInfo? savedReviewDefinitionInfo = await ReviewApiClient.CreateReview(CurrentReviewDefinitionInfo);
+                if (savedReviewDefinitionInfo is not null)
+                {
+                    Navigation.NavigateTo($"/reviews/{savedReviewDefinitionInfo.Id}/view");
+                    EditMode = false;
+                    await InvokeAsync(StateHasChanged);
+                }
+                else
+                {
+                    // error
+                }
+            }
+            else if (Navigation.Uri.Contains("/edit") && ReviewIdString is not null)
+            {
+                var changeRequest = CreateChangeRequest(OriginalReviewDefinitionInfo, CurrentReviewDefinitionInfo);
+
+                OriginalReviewDefinitionInfo = await ReviewApiClient.UpdateReview(Guid.Parse(ReviewIdString), changeRequest);
+                CurrentReviewDefinitionInfo = CloneReviewDefinition(OriginalReviewDefinitionInfo);
+
+                Navigation.NavigateTo($"/reviews/{ReviewIdString}/view");
+                EditMode = false;
+
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private ReviewChangeRequest CreateChangeRequest(ReviewDefinitionInfo? originalReviewDefinitionInfo, ReviewDefinitionInfo? currentReviewDefinitionInfo)
+    {
+        var changeRequest = new ReviewChangeRequest
+            {
+                ReviewDefinition = currentReviewDefinitionInfo!
+            };
+
+        if (originalReviewDefinitionInfo == null || currentReviewDefinitionInfo == null)
+        {
+            changeRequest.ReviewDefinition = currentReviewDefinitionInfo!;
+            return changeRequest;
+        }
+
+        if (!originalReviewDefinitionInfo.Equals(currentReviewDefinitionInfo))
+        {
+            changeRequest.ReviewDefinition = currentReviewDefinitionInfo;
+        }
+
+        var changedItems = new List<ReviewQuestionInfo>();
+        var deletedItems = new List<ReviewQuestionInfo>();
+
+        CompareItems(originalReviewDefinitionInfo.ReviewQuestions, currentReviewDefinitionInfo.ReviewQuestions, changedItems, deletedItems);
+
+        changeRequest.ChangedOrAddedQuestions = changedItems;
+        changeRequest.DeletedQuestions = deletedItems;
+
+        return changeRequest;
+    }
+
+    private void CompareItems(List<ReviewQuestionInfo> originalItems, List<ReviewQuestionInfo> currentItems, List<ReviewQuestionInfo> changedItems, List<ReviewQuestionInfo> deletedItems)
+    {
+        var originalItemIds = originalItems.Select(o => o.Id).ToHashSet();
+        var currentItemIds = currentItems.Select(c => c.Id).ToHashSet();
+
+        foreach (var currentItem in currentItems)
+        {
+            var originalItem = originalItems.FirstOrDefault(o => o.Id == currentItem.Id);
+            if (originalItem == null || !currentItem.Equals(originalItem))
+            {
+                changedItems.Add(currentItem);
+            }
+        }
+
+        foreach (var originalItem in originalItems)
+        {
+            if (!currentItemIds.Contains(originalItem.Id))
+            {
+                deletedItems.Add(originalItem);
+            }
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo($"/reviews");
+        StateHasChanged();
+    }
+}
+
+
+
+@code {
+    private void EnableEditing()
+    {
+        Navigation.NavigateTo($"/reviews/{ReviewIdString}/edit");
+        EditMode = true;
+        StateHasChanged();
+    }
+
+    private void AddNewReviewItem()
+    {
+        CurrentReviewDefinitionInfo!.ReviewQuestions.Add(new ReviewQuestionInfo()
+            {
+                Id = Guid.NewGuid(),
+                Question = "",
+                ReviewId = CurrentReviewDefinitionInfo.Id,
+                QuestionType = ReviewQuestionType.Requirement
+            });
+    }
+
+    private void DeleteReviewItem(ReviewQuestionInfo item)
+    {
+        CurrentReviewDefinitionInfo!.ReviewQuestions.Remove(item);
+    }
+}

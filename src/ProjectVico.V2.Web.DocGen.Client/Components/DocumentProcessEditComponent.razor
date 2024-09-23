@@ -1,6 +1,6 @@
-﻿@using ProjectVico.V2.Shared.Enums
-@inject IDocumentProcessApiClient DocumentProcessApiClient
+﻿@inject IDocumentProcessApiClient DocumentProcessApiClient
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
     <MudPaper Class="pa-4">
@@ -19,19 +19,29 @@
         <MudDivider />
 
         <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveProcess">Save</MudButton>
-        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="Cancel">Cancel</MudButton>
-
-        @if (_isEditMode && _process.Source == ProcessSource.Dynamic)
+     
+        @if (ProcessId != null)
         {
-            <MudDivider Class="my-4" />
-
-            <MudExpansionPanels>
-                <MudExpansionPanel Text="Prompts">
-                    <PromptList Prompts="_prompts" OnPromptEdited="ReloadPrompts" ProcessId="@_process.Id" />
-                </MudExpansionPanel>
-            </MudExpansionPanels>
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="OpenDocumentOutlineEditor">Document Outline Editor</MudButton>
         }
+        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="Cancel">Cancel</MudButton>
     </MudPaper>
+
+    @if (_isEditMode && _showPrompts)
+    {
+        <MudDivider Class="my-4" />
+
+        <MudExpansionPanels>
+            <MudExpansionPanel Text="Prompts">
+                <PromptList Prompts="_prompts" />
+            </MudExpansionPanel>
+        </MudExpansionPanels>
+    }
+    else if (_isEditMode && !_showPrompts)
+    {
+        <MudProgressCircular Indeterminate="true" />
+    }
+
 </MudContainer>
 
 @code {
@@ -40,42 +50,42 @@
     [Parameter] public EventCallback OnCancel { get; set; }
 
     private DocumentProcessInfo? _process = new();
-    private bool _isEditMode => ProcessId != null;
+    private bool _isEditMode;
+    private bool _showPrompts;
     private List<PromptInfo> _prompts = new();
+
     private string _indexName = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
-        if (_isEditMode)
+        if (ProcessId.HasValue)
         {
-            if (ProcessId != null)
-            {
-                _process = await DocumentProcessApiClient.GetDocumentProcessInfoByIdAsync(ProcessId);
-
-                if (_process.Source == ProcessSource.Dynamic)
-                {
-                    _prompts = await DocumentProcessApiClient.GetPromptsByProcessIdAsync(_process.Id);
-                }
-
-                if (_process.Repositories.Any())
-                {
-                    _indexName = _process.Repositories.First();
-                }
-            }
+            _isEditMode = true;
+            _process = await DocumentProcessApiClient.GetDocumentProcessInfoByIdAsync(ProcessId.Value) ?? new DocumentProcessInfo();
+            _prompts = await DocumentProcessApiClient.GetPromptsByProcessIdAsync(ProcessId.Value);
+            _showPrompts = true;
         }
     }
 
     private async Task SaveProcess()
     {
-        UpdateRepositories();
         if (_isEditMode)
         {
             await DocumentProcessApiClient.UpdateDynamicDocumentProcessDefinitionAsync(_process);
         }
         else
         {
-            await DocumentProcessApiClient.CreateDynamicDocumentProcessDefinitionAsync(_process);
+            var createdProcess = await DocumentProcessApiClient.CreateDynamicDocumentProcessDefinitionAsync(_process);
+            if (createdProcess != null)
+            {
+                _process = createdProcess;
+                _isEditMode = true;
+                await Task.Delay(10000); // Wait for 10 seconds before showing prompts
+                _prompts = await DocumentProcessApiClient.GetPromptsByProcessIdAsync(_process.Id);
+                _showPrompts = true;
+            }
         }
+
         await OnProcessSaved.InvokeAsync();
     }
 
@@ -84,13 +94,15 @@
         await OnCancel.InvokeAsync();
     }
 
-    private async Task ReloadPrompts()
+    private async Task OpenDocumentOutlineEditor()
     {
-        if (_isEditMode && _process.Source == ProcessSource.Dynamic)
+        var parameters = new DialogParameters
         {
-            _prompts = await DocumentProcessApiClient.GetPromptsByProcessIdAsync(_process.Id);
-            StateHasChanged();
-        }
+            { "DocumentOutlineId", _process.DocumentOutlineId }
+        };
+
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+        DialogService.Show<EditDocumentOutlineDialog>("Document Outline Editor", parameters, options);
     }
 
     private void ComputeIndexName()

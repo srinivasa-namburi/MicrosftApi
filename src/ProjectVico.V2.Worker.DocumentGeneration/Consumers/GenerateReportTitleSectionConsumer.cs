@@ -8,6 +8,7 @@ using ProjectVico.V2.Shared.Contracts.Messages.DocumentGeneration.Commands;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentGeneration.Events;
 using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Enums;
+using ProjectVico.V2.Shared.Extensions;
 using ProjectVico.V2.Shared.Models;
 
 namespace ProjectVico.V2.Worker.DocumentGeneration.Consumers;
@@ -21,7 +22,6 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
     private IBodyTextGenerator? _bodyTextGenerator;
 
     public GenerateReportTitleSectionConsumer(
-        Kernel kernel,
         DocGenerationDbContext dbContext,
         ILogger<GenerateReportTitleSectionConsumer> logger,
         IPublishEndpoint publishEndpoint,
@@ -138,15 +138,10 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
     }
 
     private async Task<List<ContentNode>> GenerateBodyText(string contentNodeType, string sectionNumber,
-        string sectionTitle, string tableOfContentsString, string documentProcessName, Guid? metadataId = null)
+            string sectionTitle, string tableOfContentsString, string documentProcessName, Guid? metadataId = null)
     {
-        // Resolve the IBodyTextGenerator to be used. If a Keyed service is found that corresponds to the documentProcessName, use that.
-        // Otherwise, resolve to the default IBodyTextGenerator.
-
-        using var scope = _sp.CreateScope();
-        _bodyTextGenerator = scope.ServiceProvider.GetKeyedService<IBodyTextGenerator>(documentProcessName+"-IBodyTextGenerator") ??
-                             _sp.GetService<IBodyTextGenerator>();
-
+        // Resolve the IBodyTextGenerator to be used using the GetRequiredServiceForDocumentProcess method.
+        _bodyTextGenerator = _sp.GetRequiredServiceForDocumentProcess<IBodyTextGenerator>(documentProcessName);
 
         if (_bodyTextGenerator == null)
         {
@@ -155,7 +150,7 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
 
         // This method is a wrapper around the streaming output of the AI Completion Service.
         var result = await _bodyTextGenerator.GenerateBodyText(contentNodeType, sectionNumber, sectionTitle,
-            tableOfContentsString, metadataId);
+            tableOfContentsString, documentProcessName, metadataId);
         return result;
     }
 

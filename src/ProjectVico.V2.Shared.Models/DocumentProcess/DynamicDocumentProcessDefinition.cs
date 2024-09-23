@@ -9,6 +9,7 @@ public class DynamicDocumentProcessDefinition : EntityBase, IDocumentProcessInfo
     public string? Description { get; set; }
     public List<string> Repositories { get; set; } = [];
     public DocumentProcessLogicType LogicType { get; set; }
+    public DocumentProcessStatus Status { get; set; } = DocumentProcessStatus.Created;
     public required string BlobStorageContainerName { get; set; }
     public required string BlobStorageAutoImportFolderName { get; set; } = "ingest-auto";
     public bool ClassifyDocuments { get; set; }

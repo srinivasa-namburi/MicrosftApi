@@ -24,7 +24,7 @@ public class DocumentProcessInfoProfile : Profile
             .ForMember(x => x.LogicType, y => y.MapFrom(source => source.LogicType.ToString()));
 
         CreateMap<DynamicDocumentProcessDefinition, DocumentProcessInfo>()
-            .ForMember(x => x.OutlineText, y => y.MapFrom(source => source.DocumentOutline!.FullText ?? string.Empty));
-
+            .ForMember(x => x.OutlineText, y => y.MapFrom(source => source.DocumentOutline!.FullText ?? string.Empty))
+            .ForMember(x => x.DocumentOutlineId, y => y.MapFrom(source => source.DocumentOutline.Id));
     }
 }

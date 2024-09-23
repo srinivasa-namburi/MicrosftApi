@@ -26,6 +26,10 @@
 		<PackageReference Include="Humanizer.Core" Version="2.14.1" />
 		<PackageReference Include="Markdig" Version="0.37.0" />
 		<PackageReference Include="MassTransit.Abstractions" Version="8.2.1" />
+		<PackageReference Include="MassTransit.Azure.ServiceBus.Core" Version="8.2.1" />
+		<PackageReference Include="MassTransit.EntityFrameworkCore" Version="8.2.1" />
+		<PackageReference Include="MassTransit.Quartz" Version="8.2.1" />
+		<PackageReference Include="MassTransit.RabbitMQ" Version="8.2.1" />
 		<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.8" />
 		<PackageReference Include="Microsoft.KernelMemory.Core" Version="0.70.240803.1" />
 		<PackageReference Include="Microsoft.KernelMemory.DataFormats.AzureAIDocIntel" Version="0.70.240803.1" />
@@ -48,7 +52,6 @@
 		<PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.0" />
 		<PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.8" />
 		<PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.8" />
-		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
 		<PackageReference Include="NLipsum" Version="1.1.0" />
 		<PackageReference Include="Scriban" Version="5.10.0" />
 		<PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.8">
@@ -67,6 +70,7 @@
 		<ProjectReference Include="..\ProjectVico.V2.Shared.Contracts\ProjectVico.V2.Shared.Contracts.csproj" />
 		<ProjectReference Include="..\ProjectVico.V2.Shared.Enums\ProjectVico.V2.Shared.Enums.csproj" />
 		<ProjectReference Include="..\ProjectVico.V2.Shared.Models\ProjectVico.V2.Shared.Models.csproj" />
+		<ProjectReference Include="..\ProjectVico.V2.Web.Shared\ProjectVico.V2.Web.Shared.csproj" />
 	</ItemGroup>
 
 </Project>

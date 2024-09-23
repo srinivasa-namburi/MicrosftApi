@@ -2,16 +2,18 @@
 using Microsoft.AspNetCore.SignalR;
 using ProjectVico.V2.API.Main.Hubs;
 using ProjectVico.V2.Shared.Contracts.Messages.DocumentGeneration.Events;
+using ProjectVico.V2.Shared.Hubs;
 
 namespace ProjectVico.V2.API.Main.Consumers;
 
 public class DocumentOutlineGeneratedNotificationConsumer : IConsumer<DocumentOutlineGenerated>
 {
-    private readonly IHubContext<NotificationHub> _hubContext;
+    private readonly IHubContext<NotificationHub, INotificationHubClient> _hubContext;
 
-    public DocumentOutlineGeneratedNotificationConsumer(IHubContext<NotificationHub> hubContext)
+    public DocumentOutlineGeneratedNotificationConsumer(IHubContext<NotificationHub, INotificationHubClient> hubContext)
     {
         _hubContext = hubContext;
+
     }
     public async Task Consume(ConsumeContext<DocumentOutlineGenerated> context)
     {
@@ -24,13 +26,6 @@ public class DocumentOutlineGeneratedNotificationConsumer : IConsumer<DocumentOu
 
         var userId = documentOutlineGenerated.AuthorOid;
 
-        await _hubContext.Clients.All.SendAsync("ReceiveDocumentOutlineNotification", correlationId);
-
-        //await _hubContext.Clients.User(userId).SendAsync(
-        //    "ReceiveDocumentOutlineNotification", correlationId);
-
-
+        await _hubContext.Clients.All.ReceiveDocumentOutlineNotification(correlationId);
     }
-
-   
 }

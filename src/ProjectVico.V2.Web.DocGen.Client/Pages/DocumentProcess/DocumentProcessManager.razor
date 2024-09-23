@@ -1,8 +1,11 @@
 ﻿@page "/document-processes"
+@using System.Text.Json
 @using ProjectVico.V2.Shared.Enums
 
-@inject ISnackbar Snackbar
 @inject IDocumentProcessApiClient DocumentProcessApiClient
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager Navigation
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
     <MudPaper Class="pa-4">
@@ -18,10 +21,17 @@
                 <MudTd>@context.Description</MudTd>
                 <MudTd>@context.LogicType</MudTd>
                 <MudTd>
-                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Disabled="@IsStaticProcess(context)" OnClick="() => CanEditProcess(context)">Edit</MudButton>
-                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@IsStaticProcess(context)" OnClick="() => CanToggleProcess(context)">
-                        @((context.Source == ProcessSource.Dynamic) ? "Disable" : "Enable")
-                    </MudButton>
+                    <MudStack Row="true" Spacing="3">
+                        <MudTooltip Delay="400" Text="Edit Document Process">
+                            <MudIconButton Disabled="@IsStaticProcess(context)" OnClick="() => EditProcess(context.Id)" Size="@Size.Small" Icon="@Icons.Material.Filled.StickyNote2"></MudIconButton>
+                        </MudTooltip>
+                        <MudTooltip Delay="400" Text="Delete Document Process (you will be asked to confirm)">
+                            <MudIconButton Disabled="@IsStaticProcess(context)" OnClick="() => ShowDeleteConfirmation(context.Id)" Size="@Size.Small" Icon="@Icons.Material.Filled.Delete"></MudIconButton>
+                        </MudTooltip>
+                        <MudTooltip Delay="400" Text="Export Document Process as Json (you will be asked to confirm)">
+                            <MudIconButton Disabled="@IsStaticProcess(context)" OnClick="() => ExportProcess(context.Id)" Size="@Size.Small" Icon="@Icons.Material.Filled.ArrowDownward"></MudIconButton>
+                        </MudTooltip>
+                    </MudStack>
                 </MudTd>
             </RowTemplate>
         </MudTable>
@@ -29,11 +39,6 @@
         <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddProcess">Add New Process</MudButton>
     </MudPaper>
 </MudContainer>
-
-@if (IsEditComponentVisible)
-{
-    <DocumentProcessEditComponent ProcessId="SelectedProcessId" OnProcessSaved="OnProcessSaved" OnCancel="OnCancel" />
-}
 
 @code {
     private List<DocumentProcessInfo> _documentProcesses = new();
@@ -45,17 +50,24 @@
         _documentProcesses = await DocumentProcessApiClient.GetAllDocumentProcessInfoAsync();
     }
 
-    private async Task OnProcessSaved()
-    {
-        _documentProcesses = await DocumentProcessApiClient.GetAllDocumentProcessInfoAsync();
-        IsEditComponentVisible = false;
-    }
-
     private void AddProcess()
     {
-        SelectedProcessId = null;
-        IsEditComponentVisible = true;
+        Navigation.NavigateTo("/document-processes/edit");
     }
+
+    private void EditProcess(Guid processId)
+    {
+        Navigation.NavigateTo($"/document-processes/edit/{processId}");
+    }
+
+    private async Task ExportProcess(Guid processId)
+    {
+        var documentProcess = await DocumentProcessApiClient.ExportDocumentProcessByIdAsync(processId);
+        var json = JsonSerializer.Serialize(documentProcess, new JsonSerializerOptions { WriteIndented = true });   
+        //var fileName = $"{documentProcess.ShortName}.json";
+        //await JSRuntime.InvokeVoidAsync("downloadFile", fileName, json);
+    }
+
 
     private void CanEditProcess(DocumentProcessInfo process)
     {
@@ -66,6 +78,45 @@
     private async Task CanToggleProcess(DocumentProcessInfo process)
     {
         Snackbar.Add("Toggle process functionality is not available yet.", Severity.Info);
+    }
+
+    private async Task ShowDeleteConfirmation(Guid contextId)
+    {
+        var parameters = new DialogParameters
+        {
+            { "ContentText", "Are you sure you want to delete this document process?" },
+            { "ButtonText", "Delete" },
+            { "DialogColor", Color.Error }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<ConfirmationDialog>("Delete Document Process", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            await DeleteDocumentProcess(contextId);
+        }
+    }
+
+    private async Task DeleteDocumentProcess(Guid processId)
+    {
+        if (processId != Guid.Empty)
+        {
+            var deleteResult = await DocumentProcessApiClient.DeleteDocumentProcessAsync(processId);
+            if (deleteResult)
+            {
+                _documentProcesses = await DocumentProcessApiClient.GetAllDocumentProcessInfoAsync();
+                Snackbar.Add("Document process deleted successfully.", Severity.Success);
+                await InvokeAsync(StateHasChanged);
+            }
+            else
+            {
+                Snackbar.Add("Document process NOT deleted due to an error", Severity.Error);
+            }
+            
+            // Navigate to another page or update the UI as needed
+        }
     }
 
     private void RowClicked(TableRowClickEventArgs<DocumentProcessInfo> args)

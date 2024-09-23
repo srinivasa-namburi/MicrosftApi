@@ -2,7 +2,6 @@ using MassTransit;
 using MassTransit.EntityFrameworkCoreIntegration;
 using ProjectVico.V2.DocumentProcess.Shared;
 using ProjectVico.V2.DocumentProcess.Shared.Generation;
-using ProjectVico.V2.Plugins.Shared;
 using ProjectVico.V2.Shared;
 using ProjectVico.V2.Shared.Configuration;
 using ProjectVico.V2.Shared.Data.Sql;
@@ -32,7 +31,8 @@ if (!serviceConfigurationOptions.ProjectVicoServices.DocumentGeneration.CreateBo
 builder.DynamicallyRegisterPlugins(serviceConfigurationOptions);
 builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
 
-builder.AddSemanticKernelServices(serviceConfigurationOptions);
+builder.AddSemanticKernelServicesForStaticDocumentProcesses(serviceConfigurationOptions);
+
 
 var serviceBusConnectionString = builder.Configuration.GetConnectionString("sbus");
 serviceBusConnectionString = serviceBusConnectionString?.Replace("https://", "sb://").Replace(":443/", "/");
@@ -102,6 +102,7 @@ else
         });
     });
 }
+
 
 var host = builder.Build();
 host.Run();

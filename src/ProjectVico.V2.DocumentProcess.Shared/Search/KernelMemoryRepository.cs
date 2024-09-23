@@ -1,9 +1,12 @@
 ﻿using System.Net;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using Microsoft.KernelMemory;
+using Microsoft.KernelMemory.Context;
 using ProjectVico.V2.Shared.Configuration;
+using ProjectVico.V2.Shared.Contracts.DTO;
+using ProjectVico.V2.Shared.Extensions;
+using ProjectVico.V2.Shared.Services;
 
 namespace ProjectVico.V2.DocumentProcess.Shared.Search;
 
@@ -12,21 +15,21 @@ public class KernelMemoryRepository : IKernelMemoryRepository
     private IKernelMemory? _memory;
     private readonly IServiceProvider _sp;
     private readonly ILogger<KernelMemoryRepository> _logger;
-    private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
+    private readonly IDocumentProcessInfoService _documentProcessInfoService;
+
 
     public KernelMemoryRepository(
         IServiceProvider sp,
-        IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
-        ILogger<KernelMemoryRepository> logger)
+        ILogger<KernelMemoryRepository> logger,
+        IDocumentProcessInfoService documentProcessInfoService)
     {
-        _serviceConfigurationOptions = serviceConfigurationOptions.Value;
         _sp = sp;
         _logger = logger;
+        _documentProcessInfoService = documentProcessInfoService;
     }
 
-
     public async Task StoreContentAsync(string documentProcessName, string indexName, Stream fileStream,
-        string fileName, string? documentUrl, string? userId = null)
+        string fileName, string? documentUrl, string? userId = null, Dictionary<string, string>? additionalTags = null)
     {
         GetKernelMemoryForDocumentProcess(documentProcessName);
 
@@ -54,6 +57,24 @@ public class KernelMemoryRepository : IKernelMemoryRepository
             },
             Index = indexName
         };
+        
+        if (additionalTags != null)
+        {
+            // Check the keys in the additionalParameters dictionary. If any of them look like URLs (if they start with https: or http:, URL encode the value
+            foreach (var (key, value) in additionalTags)
+            {
+                if (key.StartsWith("http:") || key.StartsWith("https:"))
+                {
+                    additionalTags[key] = WebUtility.UrlEncode(value);
+                }
+            }
+
+
+            foreach (var (key, value) in additionalTags)
+            {
+                documentRequest.Tags.Add(key, value);
+            }
+        }
 
         await _memory.ImportDocumentAsync(documentRequest);
     }
@@ -71,6 +92,12 @@ public class KernelMemoryRepository : IKernelMemoryRepository
         await _memory.DeleteDocumentAsync(fileName, indexName);
     }
 
+    public async Task<List<SortedDictionary<int, Citation.Partition>>> SearchAsync(DocumentProcessInfo documentProcessInfo, string searchText, int top = 12, double minRelevance = 0.7)
+    {
+        var documentProcessName = documentProcessInfo.ShortName;
+        return await SearchAsync(documentProcessName, searchText, top, minRelevance);
+    }
+
     public async Task<List<SortedDictionary<int, Citation.Partition>>> SearchAsync(DocumentProcessOptions documentProcessOptions, string searchText, int top = 12, double minRelevance = 0.7)
     {
         var documentProcessName = documentProcessOptions.Name;
@@ -78,6 +105,24 @@ public class KernelMemoryRepository : IKernelMemoryRepository
     }
 
     public async Task<List<SortedDictionary<int, Citation.Partition>>> SearchAsync(string documentProcessName, string searchText, int top = 12, double minRelevance = 0.7)
+    {
+        var documentProcess =
+            await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentProcessName);
+
+        if (documentProcess == null)
+        {
+            _logger.LogError("Document Process {DocumentProcessName} not found in configuration", documentProcessName);
+            throw new Exception("Document Process " + documentProcessName + " not found in configuration");
+        }
+
+        var indexName = documentProcess.Repositories[0];
+        var searchResults = await SearchAsync(documentProcessName, indexName, searchText, top, minRelevance);
+
+        return searchResults;
+    }
+
+    public async Task<List<SortedDictionary<int, Citation.Partition>>> SearchAsync(string documentProcessName,
+        string indexName, string searchText, int top = 12, double minRelevance = 0.7)
     {
         GetKernelMemoryForDocumentProcess(documentProcessName);
 
@@ -87,15 +132,8 @@ public class KernelMemoryRepository : IKernelMemoryRepository
             throw new Exception("Kernel Memory service not found for Document Process " + documentProcessName);
         }
 
-        var documentProcess = _serviceConfigurationOptions.ProjectVicoServices.DocumentProcesses.FirstOrDefault(x => x.Name == documentProcessName);
-        if (documentProcess == null)
-        {
-            _logger.LogError("Document Process {DocumentProcessName} not found in configuration", documentProcessName);
-            throw new Exception("Document Process " + documentProcessName + " not found in configuration");
-        }
-
         var results = await _memory.SearchAsync(searchText,
-            index: documentProcess.Repositories[0],
+            index: indexName,
             minRelevance: minRelevance,
             limit: top);
 
@@ -108,6 +146,7 @@ public class KernelMemoryRepository : IKernelMemoryRepository
                 // Collect partitions in a sorted collection
                 var partitions = new SortedDictionary<int, Citation.Partition> { [partition.PartitionNumber] = partition };
 
+                #region Adjacent partition fetching - currently inactive
                 //TODO:Get adjacent partitions. The below code isn't operational because it sometimes fails as there is no previous or next partition. Needs to be more resilient to that.
 
                 // //Filters to fetch adjacent partitions
@@ -129,19 +168,76 @@ public class KernelMemoryRepository : IKernelMemoryRepository
                 //     partitions[adjacent.PartitionNumber] = adjacent;
                 // }
 
-                // Adds the sorted dictionary of partitions for this result to the sortedPartitions list
+                #endregion
 
+                // Adds the sorted dictionary of partitions for this result to the sortedPartitions list
                 sortedPartitions.Add(partitions);
             }
         }
         return sortedPartitions;
     }
 
+    public async Task<List<SortedDictionary<int, Citation.Partition>>> SearchAsync(string documentProcessName, string indexName, Dictionary<string, string> parametersExactMatch, string searchText, int top = 12,
+        double minRelevance = 0.7)
+    {
+        GetKernelMemoryForDocumentProcess(documentProcessName);
+
+        if (_memory == null)
+        {
+            _logger.LogError("Kernel Memory service not found for Document Process {DocumentProcessName}", documentProcessName);
+            throw new Exception("Kernel Memory service not found for Document Process " + documentProcessName);
+        }
+
+        var tagFilter = new List<MemoryFilter>();
+        foreach (var parameter in parametersExactMatch)
+        {
+            tagFilter.Add(new MemoryFilter().ByTag(parameter.Key, parameter.Value));
+        }
+
+        var searchResult = await _memory.SearchAsync(searchText,
+            index: indexName,
+            filters: tagFilter, 
+            limit: top, 
+            minRelevance: minRelevance);
+
+        var sortedPartitions = new List<SortedDictionary<int, Citation.Partition>>();
+
+        foreach (var citation in searchResult.Results)
+        {
+            foreach (var partition in citation.Partitions)
+            {
+                // Collect partitions in a sorted collection
+                var partitions = new SortedDictionary<int, Citation.Partition> { [partition.PartitionNumber] = partition };
+                // Adds the sorted dictionary of partitions for this result to the sortedPartitions list
+                sortedPartitions.Add(partitions);
+            }
+        }
+        return sortedPartitions;
+    }
+
+    public async Task<MemoryAnswer?> AskAsync(string documentProcessName, string indexName, Dictionary<string, string> parametersExactMatch, string question)
+    {
+        GetKernelMemoryForDocumentProcess(documentProcessName);
+
+        if (_memory == null)
+        {
+            _logger.LogError("Kernel Memory service not found for Document Process {DocumentProcessName}", documentProcessName);
+            throw new Exception("Kernel Memory service not found for Document Process " + documentProcessName);
+        }
+
+        var tagFilter = new List<MemoryFilter>();
+        foreach (var parameter in parametersExactMatch)
+        {
+            tagFilter.Add(new MemoryFilter().ByTag(parameter.Key, parameter.Value));
+        }
+
+        var result = await _memory.AskAsync(question, indexName, filters: tagFilter, minRelevance:0.7D);
+        return result;
+    }
+
     private void GetKernelMemoryForDocumentProcess(string documentProcessName)
     {
         if (_memory != null) return;
-
-        var scope = _sp.CreateScope();
-        _memory = scope.ServiceProvider.GetKeyedService<IKernelMemory>(documentProcessName + "-IKernelMemory");
+        _memory = _sp.GetRequiredServiceForDocumentProcess<IKernelMemory>(documentProcessName);
     }
 }

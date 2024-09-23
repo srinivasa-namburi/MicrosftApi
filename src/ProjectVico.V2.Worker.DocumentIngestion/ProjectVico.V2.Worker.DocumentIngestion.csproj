@@ -36,7 +36,6 @@
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Consumers\KernelMemoryDocumentIngestionSaga\" />
-    <Folder Include="manifests\" />
     <Folder Include="Properties\" />
     <Folder Include="Sagas\" />
   </ItemGroup>

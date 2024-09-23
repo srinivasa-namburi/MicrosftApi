@@ -22,6 +22,7 @@
     <ProjectReference Include="..\ProjectVico.V2.DocumentProcesses\ProjectVico.V2.DocumentProcesses.csproj" />
     <ProjectReference Include="..\ProjectVico.V2.ServiceDefaults\ProjectVico.V2.ServiceDefaults.csproj" />
     <ProjectReference Include="..\ProjectVico.V2.Shared\ProjectVico.V2.Shared.csproj" />
+    <ProjectReference Include="..\ProjectVico.V2.Worker.DocumentGeneration\ProjectVico.V2.Worker.DocumentGeneration.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Update="appsettings.Development.json">

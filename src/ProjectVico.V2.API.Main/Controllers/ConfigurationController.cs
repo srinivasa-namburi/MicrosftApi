@@ -30,4 +30,14 @@ public class ConfigurationController : BaseController
         var documentProcesses = _serviceConfigurationOptions.ProjectVicoServices.DocumentProcesses;
         return Ok(documentProcesses);
     }
+
+    [HttpGet("feature-flags")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [Produces("application/json")]
+    [Produces<ServiceConfigurationOptions.ProjectVicoServicesOptions.FeatureFlagsOptions>]
+    public ActionResult<ServiceConfigurationOptions.ProjectVicoServicesOptions.FeatureFlagsOptions> GetFeatureFlags()
+    {
+        var featureFlags = _serviceConfigurationOptions.ProjectVicoServices.FeatureFlags;
+        return Ok(featureFlags);
+    }
 }

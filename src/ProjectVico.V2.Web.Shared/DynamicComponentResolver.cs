@@ -6,14 +6,37 @@ public class DynamicComponentResolver
 {
     public Type? GetDynamicComponent(string assemblyName, string namespaceName, string componentName)
     {
-        var type = Type.GetType($"@namespaceName.{componentName}, assemblyName");
+
+
+        // First, try to get the type from the provided assembly and namespace
+        var type = TryGetType(assemblyName, namespaceName, componentName);
+
+        // If the type is not found, fallback to the default assembly and namespace
         if (type == null)
         {
-            var assembly = Assembly.Load(assemblyName);
-            type = assembly.GetType($"{namespaceName}.{componentName}");
+            const string defaultAssemblyName = "ProjectVico.V2.UI.Default";
+            namespaceName = defaultAssemblyName;
+            type = TryGetType(defaultAssemblyName, namespaceName, componentName);
         }
 
         return type;
+    }
 
+    private Type? TryGetType(string asmName, string nsName, string compName)
+    {
+        var type = Type.GetType($"{nsName}.{compName}, {asmName}");
+        if (type == null)
+        {
+            try
+            {
+                var assembly = Assembly.Load(asmName);
+                type = assembly.GetType($"{nsName}.{compName}");
+            }
+            catch(FileNotFoundException ex)
+            {
+                return null;
+            }
+        }
+        return type;
     }
 }

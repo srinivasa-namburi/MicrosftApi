@@ -26,4 +26,9 @@ public class ConfigurationApiClient : BaseServiceClient<ConfigurationApiClient>,
        var documentProcesses = _serviceConfigurationOptions.ProjectVicoServices.DocumentProcesses;
        return documentProcesses;
     }
+
+    public async Task<ServiceConfigurationOptions.ProjectVicoServicesOptions.FeatureFlagsOptions> GetFeatureFlagsAsync()
+    {
+        return _serviceConfigurationOptions.ProjectVicoServices.FeatureFlags;
+    }
 }

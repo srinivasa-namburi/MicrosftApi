@@ -14,4 +14,8 @@
     <ProjectReference Include="..\ProjectVico.V2.Shared.Enums\ProjectVico.V2.Shared.Enums.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Messages\Review\Commands\" />
+  </ItemGroup>
+
 </Project>

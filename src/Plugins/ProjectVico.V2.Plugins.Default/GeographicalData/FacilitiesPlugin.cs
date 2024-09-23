@@ -2,6 +2,7 @@
 using Microsoft.SemanticKernel;
 using ProjectVico.V2.Plugins.Default.GeographicalData.Connectors;
 using ProjectVico.V2.Plugins.Default.GeographicalData.Models;
+using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Shared.Interfaces;
 
 namespace ProjectVico.V2.Plugins.Default.GeographicalData;
@@ -9,10 +10,12 @@ namespace ProjectVico.V2.Plugins.Default.GeographicalData;
 public class FacilitiesPlugin : IPluginImplementation
 {
     private readonly IMappingConnector _mappingConnector;
+    private readonly AzureFileHelper _fileHelper;
 
-    public FacilitiesPlugin(IMappingConnector mappingConnector)
+    public FacilitiesPlugin(IMappingConnector mappingConnector, AzureFileHelper fileHelper)
     {
         _mappingConnector = mappingConnector;
+        _fileHelper = fileHelper;
     }
 
     // This method fetches latitude and longitude for a given address.
@@ -111,6 +114,37 @@ public class FacilitiesPlugin : IPluginImplementation
 
         return await GetDetailedFacilitiesForLatLongAsync(latLongResponse.Latitude, latLongResponse.Longitude,
             radius, maxResults, categorySearchTerm);
+    }
+
+    // This method generates an image of a map with given latitude and longitude. The image is stored in blob storage and a link to the image is returned.
+    [KernelFunction("GetMapImageLinkForLatLongAsync")]
+    [Description("Gets the relative url path of a map image based on latitude and longitude. Do not attempt to translate/edit it. Must be used as is.")]
+    public async Task<string> GetMapImageLinkForLatLongAsync(
+
+        [Description("The latitude of the location to search for facilities. Must be a float. Decimal from -90 to 90 degrees.")]
+        double latitude,
+        [Description("The longitude of the location to search for facilities. Must be a float. Decimal from -180 to 180 degrees.")]
+        double longitude,
+        [Description("The zoom used when generating the map, determining how zoomed in on the latitude and logitude provided. There are 3 options: Close, Normal and Far. The default is Normal. \"Close\" option should be used when details are needed, while \"Far\" option should be used when an overview is needed")]
+        ZoomLevel zoomLevel = ZoomLevel.Normal)
+    {
+        ValidateCoordinates(latitude, longitude);
+
+        var mapStream = _mappingConnector.GetMapImageStream(latitude, longitude, ((int)zoomLevel));
+        string fileName = $"map-{Guid.NewGuid()}.png";
+        var mapLink = await _fileHelper.UploadFileToBlobAsync(mapStream, fileName, "document-assets", true);
+
+        var assetId = await _fileHelper.SaveFileInfoAsync(mapLink, "document-assets", fileName);
+
+        var proxiedMapLink = _fileHelper.GetProxiedAssetBlobUrl(assetId.ToString());
+        return proxiedMapLink;
+    }
+
+    public enum ZoomLevel
+    {
+        Close = 5,
+        Normal = 12,
+        Far = 17
     }
 
     // Helper method to validate latitude and longitude.
