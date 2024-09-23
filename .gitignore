@@ -1,6 +1,7 @@
 .azure
 dotnet/.config
 src/infra
+**/.vs
 
 
 ## Ignore Visual Studio temporary files, build results, and
