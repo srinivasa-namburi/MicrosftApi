@@ -150,7 +150,8 @@ var apiMain = builder
     .WithReference(signalr)
     .WithReference(redis)
     .WithReference(docGenSql)
-    .WithReference(queueService);
+    .WithReference(queueService)
+    .WithReference(azureAiSearch);
 
 var docGenFrontend = builder
     .AddProject<Projects.ProjectVico_V2_Web_DocGen>("web-docgen")
@@ -191,7 +192,9 @@ var workerScheduler = builder
     .WithReference(docGenSql)
     .WithReference(queueService)
     .WithReference(redis)
-    .WithReference(apiMain);
+    .WithReference(apiMain)
+    .WithReference(azureAiSearch)
+    ;
 
 var workerDocumentGeneration = builder
     .AddProject<Projects.ProjectVico_V2_Worker_DocumentGeneration>("worker-documentgeneration")
