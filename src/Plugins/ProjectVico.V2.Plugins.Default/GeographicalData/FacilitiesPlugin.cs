@@ -118,7 +118,7 @@ public class FacilitiesPlugin : IPluginImplementation
 
     // This method generates an image of a map with given latitude and longitude. The image is stored in blob storage and a link to the image is returned.
     [KernelFunction("GetMapImageLinkForLatLongAsync")]
-    [Description("Gets the relative url path of a map image based on latitude and longitude. Do not attempt to translate/edit it. Must be used as is.")]
+    [Description("Gets the relative url path of a map image based on latitude and longitude. Do not add a host, http or https protocols or anything else to the path. Use as returned. ")]
     public async Task<string> GetMapImageLinkForLatLongAsync(
 
         [Description("The latitude of the location to search for facilities. Must be a float. Decimal from -90 to 90 degrees.")]

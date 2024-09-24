@@ -31,8 +31,8 @@ $containerApps = @{
     "worker-documentgeneration" = 8
     "worker-chat" = 4
     "worker-documentingestion" = 4
-    "web-docgen" = 2
-    "api-main" = 2
+    "web-docgen" = 1
+    "api-main" = 1
     "worker-scheduler" = 1
     "worker-setupmanager" = 1
 }

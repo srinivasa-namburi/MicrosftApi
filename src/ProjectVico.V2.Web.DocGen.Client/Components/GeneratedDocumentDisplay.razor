@@ -4,6 +4,7 @@
 @using ProjectVico.V2.Shared.Enums
 @using ProjectVico.V2.Shared.Models
 @using ProjectVico.V2.Web.Shared.Helpers
+@using System.Timers;
 
 @inject IDocumentGenerationApiClient DocumentGenerationApiClient
 @inject IContentNodeApiClient ContentNodeApiClient
@@ -20,6 +21,8 @@
 
     private bool receivedMessagesVisible = false;
     private bool areNodesGenerated = false;
+    private bool isDocumentExportable = false;
+    private Timer? stateCheckTimer;
 
     private List<string> messages = new List<string>();
 }
@@ -69,6 +72,38 @@ else
         areNodesGenerated = AllNodesGenerated(Document.ContentNodes);
 
         await StartHubConnections();
+        StartStateCheckTimer();
+    }
+
+    private void StartStateCheckTimer()
+    {
+        stateCheckTimer = new Timer(5000); // Check every 5 seconds
+        stateCheckTimer.Elapsed += async (sender, e) => await CheckDocumentState();
+        stateCheckTimer.Start();
+    }
+
+    private async Task CheckDocumentState()
+    {
+        if (Document != null)
+        {
+            areNodesGenerated = AllNodesGenerated(Document.ContentNodes);
+            isDocumentExportable = await IsDocumentExportable();
+
+            if (isDocumentExportable)
+            {
+                // Stop the timer if all nodes are generated so we don't keep checking
+                stateCheckTimer?.Stop();
+                stateCheckTimer?.Dispose();
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task<bool> IsDocumentExportable()
+    {
+        // You might want to add additional checks here, e.g., minimum number of nodes
+        return areNodesGenerated;
     }
 
     private async Task StartHubConnections()
@@ -156,7 +191,9 @@ else
         // Apply the updates.
         documentContentNodes = UpdateNodes(documentContentNodes, updatedNodeFromEvent);
         ContentNodeSorter.SortContentNodes(documentContentNodes);
+        await CheckDocumentState();
         await InvokeAsync(StateHasChanged);
+
         // Recursive method to search and update the node in the tree.
         List<ContentNode> UpdateNodes(List<ContentNode> nodes, ContentNode updatedNode)
         {
@@ -209,6 +246,7 @@ else
         else return;
 
         messages.Add(encodedMsg);
+
         await InvokeAsync(StateHasChanged);
     }
 
@@ -264,6 +302,8 @@ else
         else return;
 
         messages.Add(encodedMsg);
+
+        await CheckDocumentState();
         await InvokeAsync(StateHasChanged);
 
     }
@@ -303,6 +343,9 @@ else
         {
             await StopHubConnections();
         }
+
+        stateCheckTimer?.Stop();
+        stateCheckTimer?.Dispose();
     }
 
 }

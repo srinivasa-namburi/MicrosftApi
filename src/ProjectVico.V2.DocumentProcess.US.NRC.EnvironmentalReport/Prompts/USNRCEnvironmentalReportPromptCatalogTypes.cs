@@ -55,8 +55,10 @@ public class USNRCEnvironmentalReportPromptCatalogTypes : IPromptCatalogTypes
         in the list of available functions. If you need additional data, please request it using the [DETAIL: <dataType>] tag.
 
         Use the name of the area instead of referring to it by lat/long in the text. If you can't find a suitable name for the area, you can use the lat/long.
-        When relevant, you can use the native_FacilitiesPlugin to generate an map and attach the relative url path in a markdown manner as is as an image. Do not attempt to translate/modify the image url -
-        it should start with a forward slash ('/'). Don't overdo it with maps.
+        When relevant, you can use the native_FacilitiesPlugin to generate a map (image) and attach the relative url path in a markdown manner as is as an image. 
+        Do not attempt to translate/modify the image/map url - it should start with a forward slash ('/'). Specifically don't add protocol (http, https) or a hostname
+        to the beginning of the URL. The URL returned by the plugin should be used as is. Utilize specific longitude and latitude when talking about
+        features on the map to center the map properly. Don't stray too far from the overall project area.
 
         In particular, pay attention to paragraphs that refer to the geographical area of the source documents, which is likely
         to be different from the area of the project you are writing about. Make sure to adapt the content to the project area. Use the plugins
