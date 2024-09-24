@@ -86,7 +86,7 @@ public class ExecuteReviewInstanceConsumer : IConsumer<ExecuteReviewInstance>
             await context.Publish(
                 new BackendProcessingMessageGenerated(
                     trackedReviewInstance.Id,
-                    $"SYSTEM:ProcessingQuestionNumber={answerCount}"
+                    $"SYSTEM:ProcessingQuestionNumber={answerCount+1}"
                 ));
             var memoryAnswer = await _reviewKmRepository.AskInDocument(reviewInstance.Id, reviewQuestion);
             var answer = new ReviewQuestionAnswer(reviewQuestion)

@@ -51,7 +51,7 @@ public class FileController : BaseController
         {
             return NotFound();
         }
-
+        
         var decodedFileUrl = Uri.UnescapeDataString(file.AbsoluteUrl);
 
         var stream = await _fileHelper.GetFileAsStreamFromFullBlobUrlAsync(decodedFileUrl);

@@ -8,7 +8,11 @@
         <MudTextField @bind-Value="_process.Description" Label="Description" />
         <MudTextField @bind-Value="_process.BlobStorageContainerName" Label="Blob Storage Container Name" />
         <MudTextField @bind-Value="_process.BlobStorageAutoImportFolderName" Label="Auto Import Folder Name" />
-        <MudTextField @bind-Value="_indexName" Label="Repository Index Name" Disabled="_isEditMode" OnBlur="UpdateRepositories" />
+        <MudTextField @bind-Value="_indexName" 
+                      Label="Repository Index Name" 
+                      Disabled="_isEditMode"
+                      OnInternalInputChanged="UpdateRepositories" 
+                      OnBlur="UpdateRepositories" />
         <MudCheckBox T="bool" Label="Classify Documents" ValueChanged="@(e => OnClassifyDocumentsCheckboxChanged(e))" />
 
         @if (_process.ClassifyDocuments)

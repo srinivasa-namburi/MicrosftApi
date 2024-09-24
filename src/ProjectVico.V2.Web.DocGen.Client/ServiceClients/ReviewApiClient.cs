@@ -198,7 +198,7 @@ public class ReviewApiClient : WebAssemblyBaseServiceClient<ReviewApiClient>, IR
         response?.EnsureSuccessStatusCode();
 
         var fileAccessUrl = await response?.Content.ReadAsStringAsync();
-        fileAccessUrl = WebUtility.UrlEncode(fileAccessUrl);
+        fileAccessUrl = Uri.EscapeDataString(fileAccessUrl);
 
         url = $"/api/file/file-info/{fileAccessUrl}";
         response = await SendGetRequestMessage(url);
