@@ -191,25 +191,21 @@ public class ReviewApiClient : WebAssemblyBaseServiceClient<ReviewApiClient>, IR
     public async Task<ExportedDocumentLinkInfo> UploadDocumentForReviewInstanceAsync(IBrowserFile file)
     {
         var fileName = file.Name;
-        var url = $"/api/file/upload/reviews/{fileName}";
+        var url = $"/api/file/upload/reviews/{fileName}/file-info";
 
         var response = await SendPostRequestMessage(url, file);
 
         response?.EnsureSuccessStatusCode();
 
-        var fileAccessUrl = await response?.Content.ReadAsStringAsync();
-        fileAccessUrl = Uri.EscapeDataString(fileAccessUrl);
-
-        url = $"/api/file/file-info/{fileAccessUrl}";
-        response = await SendGetRequestMessage(url);
-
+        // Execute a GET request to get the ExportedDocumentLinkInfo
         if (response?.StatusCode == HttpStatusCode.NotFound)
         {
             return null;
         }
 
         response?.EnsureSuccessStatusCode();
-        var exportedDocumentLinkInfo = await response?.Content.ReadFromJsonAsync<ExportedDocumentLinkInfo>();
-        return exportedDocumentLinkInfo;
+        var fileInfo = await response?.Content.ReadFromJsonAsync<ExportedDocumentLinkInfo>()!;
+        return fileInfo;
+        
     }
 }

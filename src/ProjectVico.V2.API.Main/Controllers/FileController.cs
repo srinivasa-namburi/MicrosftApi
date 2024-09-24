@@ -112,6 +112,49 @@ public class FileController : BaseController
         }
     }
 
+    [HttpPost("upload/{containerName}/{fileName}/file-info")]
+    [RequestSizeLimit(512 * 1024 * 1024)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [Produces(typeof(ExportedDocumentLinkInfo))]
+    public async Task<IActionResult> UploadFileReturnFileInfo(string containerName, string fileName, [FromForm] IFormFile file)
+    {
+        // Check if the file is provided
+        if (file == null || file.Length == 0)
+        {
+            return BadRequest("No file uploaded.");
+        }
+
+        // Validate containerName
+        if (containerName != "document-export" && containerName != "document-assets" && containerName != "reviews")
+        {
+            return BadRequest("Invalid container name. Must be one of 'document-export', 'document-assets', or 'reviews'.");
+        }
+
+        // Validate fileName
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return BadRequest("Invalid file name.");
+        }
+
+        // Read the file stream
+        await using (var stream = file.OpenReadStream())
+        {
+            // Generate a random file name for the backend in blob storage
+            var blobFileName = Guid.NewGuid() + Path.GetExtension(fileName);
+
+            // Upload the file to the blob storage
+            var blobUrl = await _fileHelper.UploadFileToBlobAsync(stream, blobFileName, containerName, true);
+
+            // Save the file information in the database
+            var exportedDocumentLink = await _fileHelper.SaveFileInfoAsync(blobUrl, containerName, fileName);
+            
+            var fileInfo = _mapper.Map<ExportedDocumentLinkInfo>(exportedDocumentLink);
+
+            return Ok(fileInfo);
+        }
+    }
+
     [HttpGet("file-info/{fileAccessUrl}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -120,6 +163,7 @@ public class FileController : BaseController
     {
         //The asset id is the last part of the URL. It's a Guid. The string may be URL encoded.
 
+        
         var decodedFileUrl = Uri.UnescapeDataString(fileAccessUrl);
         var assetId = decodedFileUrl.Substring(decodedFileUrl.LastIndexOf('/') + 1);
         

@@ -143,31 +143,6 @@ public abstract class WebAssemblyBaseServiceClient<T> where T : IServiceClient
         return resultString;
     }
 
-    public async Task<ExportedDocumentLinkInfo> UploadDocumentForReviewInstance(IBrowserFile file)
-    {
-        var fileName = file.Name;
-        var url = $"/api/file/upload/reviews/{fileName}";
-
-        var response = await SendPostRequestMessage(url, file);
-
-        response?.EnsureSuccessStatusCode();
-
-        // Execute a GET request to get the ExportedDocumentLinkInfo
-        var fileAccessUrl = await response?.Content.ReadAsStringAsync();
-
-        // Encode the fileAccessUrl
-        fileAccessUrl = WebUtility.UrlEncode(fileAccessUrl);
-
-        url = $"/api/file/file-info/{fileAccessUrl}";
-        response = await SendGetRequestMessage(url);
-
-        if (response?.StatusCode == HttpStatusCode.NotFound)
-        {
-            return null;
-        }
-
-        response?.EnsureSuccessStatusCode();
-        return await response?.Content.ReadFromJsonAsync<ExportedDocumentLinkInfo>()!;
-    }
+    
 }
 
