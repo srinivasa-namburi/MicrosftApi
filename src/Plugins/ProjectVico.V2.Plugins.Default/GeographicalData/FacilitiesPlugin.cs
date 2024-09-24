@@ -126,21 +126,26 @@ public class FacilitiesPlugin : IPluginImplementation
         [Description("The longitude of the location to search for facilities. Must be a float. Decimal from -180 to 180 degrees.")]
         double longitude,
         [Description("The zoom used when generating the map, determining how zoomed in on the latitude and logitude provided. There are 3 options: Close, Normal and Far. The default is Normal. \"Close\" option should be used when details are needed, while \"Far\" option should be used when an overview is needed")]
-        ZoomLevel zoomLevel = ZoomLevel.Normal)
+        MapZoomLevel mapZoomLevel = MapZoomLevel.Normal,
+        [Description("The required width of the resulting map image in pixels. The default is 768 pixels wide.")]
+        int imageWidth = 768,
+        [Description("The required height of the image in pixels. The default is 512 pixels tall.")]
+        int imageHeight = 512
+        )
     {
         ValidateCoordinates(latitude, longitude);
 
-        var mapStream = _mappingConnector.GetMapImageStream(latitude, longitude, ((int)zoomLevel));
-        string fileName = $"map-{Guid.NewGuid()}.png";
+        var mapStream = _mappingConnector.GetMapImageStream(latitude, longitude, ((int)mapZoomLevel), imageWidth, imageHeight);
+        var fileName = $"map-{Guid.NewGuid()}.png";
         var mapLink = await _fileHelper.UploadFileToBlobAsync(mapStream, fileName, "document-assets", true);
 
-        var assetId = await _fileHelper.SaveFileInfoAsync(mapLink, "document-assets", fileName);
-
-        var proxiedMapLink = _fileHelper.GetProxiedAssetBlobUrl(assetId.ToString());
+        var asset = await _fileHelper.SaveFileInfoAsync(mapLink, "document-assets", fileName);
+        
+        var proxiedMapLink = _fileHelper.GetProxiedAssetBlobUrl(asset.Id.ToString());
         return proxiedMapLink;
     }
 
-    public enum ZoomLevel
+    public enum MapZoomLevel
     {
         Close = 5,
         Normal = 12,

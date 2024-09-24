@@ -135,7 +135,7 @@ public class FacilitiesEndpoint: IEndpointDefinition
                 }
             });
 
-        app.MapGet("/getmapimagelinkforlatlong/{latitude}/{longitude}/{zoomLevel}", async (double latitude, double longitude, FacilitiesPlugin.ZoomLevel zoom) =>
+        app.MapGet("/getmapimagelinkforlatlong/{latitude}/{longitude}/{zoomLevel}", async (double latitude, double longitude, FacilitiesPlugin.MapZoomLevel zoom) =>
         {
             return app.Urls.First() + await _plugin.GetMapImageLinkForLatLongAsync(latitude, longitude);
             })

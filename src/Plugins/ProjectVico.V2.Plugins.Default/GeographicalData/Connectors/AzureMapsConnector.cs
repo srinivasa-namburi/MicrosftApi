@@ -21,7 +21,7 @@ public interface IMappingConnector
         int radiusInMeters,
         int maxResults, string categoryName);
 
-    Stream GetMapImageStream(double longitude, double latitude, int zoom);
+    Stream GetMapImageStream(double longitude, double latitude, int zoom, int widthInPixels = 768, int heightInPixels = 512);
 }
 
 public class AzureMapsConnector : IMappingConnector
@@ -158,13 +158,13 @@ public class AzureMapsConnector : IMappingConnector
         return result;
     }
 
-    public Stream GetMapImageStream(double latitude, double longitude, int zoom)
+    public Stream GetMapImageStream(double latitude, double longitude, int zoom, int widthInPixels = 768, int heightInPixels = 512)
     {
         // Fetch imagery map tiles
         GetMapStaticImageOptions GetMapTileOptions = new GetMapStaticImageOptions(
             new GeoPosition(longitude, latitude),
-            512,
-            512
+            widthInPixels,
+            heightInPixels
         )
         { 
             Language = RenderingLanguage.EnglishUsa, // This is marked as optional but is actually mandatory for the API

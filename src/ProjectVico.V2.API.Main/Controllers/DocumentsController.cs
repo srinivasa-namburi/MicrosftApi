@@ -16,7 +16,7 @@ namespace ProjectVico.V2.API.Main.Controllers;
 [Route("/api/documents")]
 public class DocumentsController : BaseController
 {
-    
+
     private readonly IPublishEndpoint _publishEndpoint;
     private readonly DocGenerationDbContext _dbContext;
     private readonly IDocumentExporter _wordDocumentExporter;
@@ -25,7 +25,7 @@ public class DocumentsController : BaseController
     public DocumentsController(
         IPublishEndpoint publishEndpoint,
         DocGenerationDbContext dbContext,
-        [FromKeyedServices("IDocumentExporter-Word")] 
+        [FromKeyedServices("IDocumentExporter-Word")]
         IDocumentExporter wordDocumentExporter,
         AzureFileHelper fileHelper
         )
@@ -57,13 +57,13 @@ public class DocumentsController : BaseController
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [Consumes("application/json")]
-    public async Task<IActionResult> GenerateDocument([FromBody]GenerateDocumentDTO generateDocumentDto)
+    public async Task<IActionResult> GenerateDocument([FromBody] GenerateDocumentDTO generateDocumentDto)
     {
         var claimsPrincipal = HttpContext.User;
         generateDocumentDto.AuthorOid = claimsPrincipal.GetObjectId();
-        
+
         await _publishEndpoint.Publish<GenerateDocumentDTO>(generateDocumentDto);
-        
+
         return Accepted();
     }
 
@@ -82,7 +82,7 @@ public class DocumentsController : BaseController
 
         documentIngestionRequest.UploadedByUserOid = claimsPrincipal.GetObjectId();
         await _publishEndpoint.Publish<DocumentIngestionRequest>(documentIngestionRequest);
-        
+
         return Accepted();
     }
 
@@ -105,16 +105,16 @@ public class DocumentsController : BaseController
         var documentGuid = Guid.Parse(documentId);
         var document = await _dbContext.GeneratedDocuments
             .Include(w => w.ContentNodes)
-            .ThenInclude(r=>r.Children)
-                .ThenInclude(s=>s.Children)
-                    .ThenInclude(t=>t.Children)
-                        .ThenInclude(u=>u.Children)
-                            .ThenInclude(v=>v.Children)
-                               .ThenInclude(w=>w.Children)
+            .ThenInclude(r => r.Children)
+                .ThenInclude(s => s.Children)
+                    .ThenInclude(t => t.Children)
+                        .ThenInclude(u => u.Children)
+                            .ThenInclude(v => v.Children)
+                               .ThenInclude(w => w.Children)
             .AsNoTracking()
             .AsSplitQuery()
             .FirstOrDefaultAsync(d => d.Id == documentGuid);
-        
+
         if (document == null)
         {
             return NotFound();
@@ -187,7 +187,7 @@ public class DocumentsController : BaseController
             .All(cn => titleNumberingRegex.IsMatch(cn.Text));
 
         var exportStream = await exporter.ExportDocumentAsync(document, documentHasNumbering);
-        
+
 
         return File(exportStream, "application/octet-stream", $"{document.Title}.docx");
     }
@@ -259,14 +259,16 @@ public class DocumentsController : BaseController
             _dbContext.ContentNodes.Remove(contentNode);
         }
 
-        // Delete the document after all nodes are deleted
-        if (document != null)
+        var documentMetaData = await _dbContext.DocumentMetadata
+            .FirstOrDefaultAsync(m => m.GeneratedDocumentId == documentGuid);
+
+        if (documentMetaData != null)
         {
-            _dbContext.GeneratedDocuments.Remove(document);
+            _dbContext.DocumentMetadata.Remove(documentMetaData);
         }
 
+        _dbContext.GeneratedDocuments.Remove(document);
         await _dbContext.SaveChangesAsync();
-
         return NoContent();
     }
 
