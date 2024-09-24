@@ -59,7 +59,7 @@ resource sqlDatabase_RnsdBrRX2 'Microsoft.Sql/servers/databases@2020-11-01-previ
   name: 'ProjectVicoDB'
   location: location
   sku: {
-    name: 'HS_Gen5_6'
+    name: 'HS_Gen5_2'
   }
   properties: {
   }
