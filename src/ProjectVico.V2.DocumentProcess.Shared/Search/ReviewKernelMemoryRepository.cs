@@ -1,9 +1,11 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using AutoMapper;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.KernelMemory;
-using Microsoft.SemanticKernel.Memory;
+using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Shared.Data.Sql;
+using ProjectVico.V2.Shared.Enums;
 using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Shared.Models.Review;
 
@@ -15,19 +17,22 @@ public class ReviewKernelMemoryRepository : IReviewKernelMemoryRepository
     private readonly DocGenerationDbContext _dbContext;
     private readonly ILogger<ReviewKernelMemoryRepository> _logger;
     private readonly AzureFileHelper _fileHelper;
+    private readonly IMapper _mapper;
 
     public ReviewKernelMemoryRepository(
         [FromKeyedServices("Reviews-IKernelMemoryRepository")]
         IKernelMemoryRepository kernelMemoryRepository, 
         DocGenerationDbContext dbContext, 
         ILogger<ReviewKernelMemoryRepository> logger,
-        AzureFileHelper fileHelper
+        AzureFileHelper fileHelper,
+        IMapper mapper
     )
     {
         _kernelMemoryRepository = kernelMemoryRepository;
         _dbContext = dbContext;
         _logger = logger;
         _fileHelper = fileHelper;
+        _mapper = mapper;
     }
 
     public async Task StoreDocumentForReview(Guid reviewRequestId, Stream fileStream, string fileName, string documentUrl,
@@ -88,7 +93,7 @@ public class ReviewKernelMemoryRepository : IReviewKernelMemoryRepository
         return searchResults;
     }
 
-    public async Task<MemoryAnswer> AskInDocument(Guid reviewRequestId, ReviewQuestion reviewQuestion)
+    public async Task<MemoryAnswer> AskInDocument(Guid reviewRequestId, ReviewQuestionInfo reviewQuestion)
     {
         var searchTags = new Dictionary<string, string>
         {
@@ -112,7 +117,7 @@ public class ReviewKernelMemoryRepository : IReviewKernelMemoryRepository
         {
             var prompt = $"""
                           Please formulate the following text as a question:
-                          
+
                           {reviewQuestion.Question}
                           """;
 
@@ -132,5 +137,12 @@ public class ReviewKernelMemoryRepository : IReviewKernelMemoryRepository
 
         _logger.LogInformation("Answer found for ReviewRequestId: {ReviewRequestId}, Question: {Question}, Answer: {Answer}", reviewRequestId, reviewQuestion.Question, memoryResult.Result);
         return memoryResult;
+    }
+
+    public async Task<MemoryAnswer> AskInDocument(Guid reviewRequestId, ReviewQuestion reviewQuestion)
+    {
+        var reviewQuestionInfo = _mapper.Map<ReviewQuestionInfo>(reviewQuestion);
+        var result = await AskInDocument(reviewRequestId, reviewQuestionInfo);
+        return result;
     }
 }

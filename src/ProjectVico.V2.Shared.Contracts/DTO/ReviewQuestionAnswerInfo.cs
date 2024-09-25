@@ -9,8 +9,8 @@ public record ReviewQuestionAnswerInfo
     public Guid ReviewInstanceId { get; set; }
     public string Question { get; set; }
     public string AiAnswer { get; set; }
-    public ReviewQuestionAnswerSentiment AiSentiment { get; set; }
-    public string AiSentimentReasoning { get; set; }
+    public ReviewQuestionAnswerSentiment? AiSentiment { get; set; }
+    public string? AiSentimentReasoning { get; set; }
     public ReviewQuestionType QuestionType { get; set; }
 
 

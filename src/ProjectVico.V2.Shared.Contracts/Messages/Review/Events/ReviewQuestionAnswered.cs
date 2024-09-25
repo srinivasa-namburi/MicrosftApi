@@ -1,4 +1,5 @@
 ﻿using MassTransit;
+using ProjectVico.V2.Shared.Contracts.DTO;
 
 namespace ProjectVico.V2.Shared.Contracts.Messages.Review.Events;
 
@@ -8,5 +9,6 @@ namespace ProjectVico.V2.Shared.Contracts.Messages.Review.Events;
 /// <param name="CorrelationId"></param>
 public record ReviewQuestionAnswered(Guid CorrelationId) : CorrelatedBy<Guid>
 {
-    public Guid ReviewQuestionAnswerId { get; set; }
+    public required Guid ReviewQuestionAnswerId { get; init; }
+    public required ReviewQuestionAnswerInfo Answer { get; set; }
 }

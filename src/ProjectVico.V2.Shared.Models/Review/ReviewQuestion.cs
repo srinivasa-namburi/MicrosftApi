@@ -1,4 +1,5 @@
 ﻿using System.Text.Json.Serialization;
+using ProjectVico.V2.Shared.Enums;
 
 namespace ProjectVico.V2.Shared.Models.Review;
 
@@ -11,10 +12,4 @@ public class ReviewQuestion : EntityBase
     [JsonIgnore]
     public ReviewDefinition? Review { get; set; }
 
-}
-
-public enum ReviewQuestionType  
-{
-    Question = 100,
-    Requirement = 500
 }

@@ -53,6 +53,14 @@ if (!string.IsNullOrWhiteSpace(serviceBusConnectionString))
                      new SqlLockStatementProvider("dbo", new SqlServerLockStatementFormatter(true));
              });
 
+         x.AddSagaStateMachine<ReviewExecutionSaga, ReviewExecutionSagaState>()
+             .EntityFrameworkRepository(cfg =>
+             {
+                 cfg.ExistingDbContext<DocGenerationDbContext>();
+                 cfg.LockStatementProvider =
+                     new SqlLockStatementProvider("dbo", new SqlServerLockStatementFormatter(true));
+             });
+
          x.UsingAzureServiceBus((context, cfg) =>
          {
              cfg.Host(serviceBusConnectionString, configure: config =>

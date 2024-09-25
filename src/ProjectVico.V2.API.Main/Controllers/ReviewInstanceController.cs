@@ -3,7 +3,7 @@ using MassTransit;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ProjectVico.V2.Shared.Contracts.DTO;
-using ProjectVico.V2.Shared.Contracts.Messages.Review;
+using ProjectVico.V2.Shared.Contracts.Messages.Review.Commands;
 using ProjectVico.V2.Shared.Data.Sql;
 using ProjectVico.V2.Shared.Helpers;
 using ProjectVico.V2.Shared.Models.Review;
@@ -145,8 +145,7 @@ public class ReviewInstanceController : BaseController
         }
 
         // TODO : Validation of the review instance state before submitting the execution request
-
-        await _publishEndpoint.Publish(new ExecuteReviewInstance(CorrelationId: reviewInstance.Id));
+        await _publishEndpoint.Publish(new ExecuteReviewRequest(CorrelationId: reviewInstance.Id));
         var reviewInstanceInfo = _mapper.Map<ReviewInstanceInfo>(reviewInstance);
 
         // Submit the execution request

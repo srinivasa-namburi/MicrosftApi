@@ -1,4 +1,5 @@
 ﻿using Microsoft.KernelMemory;
+using ProjectVico.V2.Shared.Contracts.DTO;
 using ProjectVico.V2.Shared.Models.Review;
 
 namespace ProjectVico.V2.DocumentProcess.Shared.Search;
@@ -12,4 +13,5 @@ public interface IReviewKernelMemoryRepository
 
 
     Task<MemoryAnswer> AskInDocument(Guid reviewRequestId, ReviewQuestion reviewQuestion);
+    Task<MemoryAnswer> AskInDocument(Guid reviewRequestId, ReviewQuestionInfo reviewQuestion);
 }

@@ -7,7 +7,7 @@ using ProjectVico.V2.Shared.Hubs;
 
 namespace ProjectVico.V2.API.Main.Consumers;
 
-public class ReviewQuestionAnsweredNotificationConsumer : IConsumer<ReviewQuestionAnswered>
+public class ReviewQuestionAnsweredNotificationConsumer : IConsumer<ReviewQuestionAnsweredNotification>
 {
     private readonly IHubContext<NotificationHub, INotificationHubClient> _hubContext;
     public ReviewQuestionAnsweredNotificationConsumer(IHubContext<NotificationHub, INotificationHubClient> hubContext)
@@ -15,7 +15,7 @@ public class ReviewQuestionAnsweredNotificationConsumer : IConsumer<ReviewQuesti
         _hubContext = hubContext;
     }
 
-    public Task Consume(ConsumeContext<ReviewQuestionAnswered> context)
+    public Task Consume(ConsumeContext<ReviewQuestionAnsweredNotification> context)
     {
         var message = context.Message;
         var groupId = context.Message.CorrelationId.ToString(); // ReviewInstanceId

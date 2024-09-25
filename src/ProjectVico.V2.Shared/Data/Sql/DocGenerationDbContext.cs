@@ -77,7 +77,7 @@ public class DocGenerationDbContext : DbContext
             .HasForeignKey(x => x.OriginalReviewQuestionId)
             .IsRequired(false)
             .OnDelete(DeleteBehavior.ClientSetNull);
-        
+
         modelBuilder.Entity<ReviewInstance>()
             .ToTable("ReviewInstances");
 
@@ -90,7 +90,7 @@ public class DocGenerationDbContext : DbContext
 
         modelBuilder.Entity<ReviewInstance>()
             .HasOne(x => x.ExportedDocumentLink)
-            .WithMany() 
+            .WithMany()
             .HasForeignKey(x => x.ExportedLinkId)
             .IsRequired(true)
             .OnDelete(DeleteBehavior.Cascade);
@@ -116,14 +116,14 @@ public class DocGenerationDbContext : DbContext
             .HasForeignKey(x => x.ReviewId)
             .IsRequired(true)
             .OnDelete(DeleteBehavior.Cascade);
-        
+
         modelBuilder.Entity<ReviewDefinition>()
-            .HasMany(x=>x.ReviewInstances)
+            .HasMany(x => x.ReviewInstances)
             .WithOne(x => x.ReviewDefinition)
             .HasForeignKey(x => x.ReviewDefinitionId)
             .IsRequired(true)
             .OnDelete(DeleteBehavior.Cascade);
-        
+
         modelBuilder.Entity<ReviewDefinition>()
             .HasMany(x => x.DocumentProcessDefinitionConnections)
             .WithOne(x => x.Review)
@@ -247,7 +247,7 @@ public class DocGenerationDbContext : DbContext
             .HasForeignKey<DocumentOutline>(x => x.DocumentProcessDefinitionId)
             .IsRequired(false)
             .OnDelete(DeleteBehavior.Cascade);
-        
+
         modelBuilder.Entity<PromptDefinition>()
             .ToTable("PromptDefinitions");
 
@@ -264,7 +264,7 @@ public class DocGenerationDbContext : DbContext
 
 
         modelBuilder.Entity<PromptDefinition>()
-            .HasMany(x=>x.Variables)
+            .HasMany(x => x.Variables)
             .WithOne(x => x.PromptDefinition)
             .HasForeignKey(x => x.PromptDefinitionId)
             .IsRequired(true)
@@ -279,10 +279,10 @@ public class DocGenerationDbContext : DbContext
             .HasIndex(nameof(PromptImplementation.PromptDefinitionId), nameof(PromptImplementation.DocumentProcessDefinitionId))
             .IsUnique();
 
-        
+
         modelBuilder.Entity<PromptImplementation>()
             .HasOne(x => x.DocumentProcessDefinition)
-            .WithMany(x=>x.Prompts)
+            .WithMany(x => x.Prompts)
             .HasForeignKey(x => x.DocumentProcessDefinitionId)
             .IsRequired(true)
             .OnDelete(DeleteBehavior.Cascade);
@@ -297,7 +297,7 @@ public class DocGenerationDbContext : DbContext
         modelBuilder.Entity<PromptVariableDefinition>()
             .HasIndex(nameof(PromptVariableDefinition.PromptDefinitionId))
             .IsUnique(false);
-        
+
         modelBuilder.Entity<PromptVariableDefinition>()
             .HasOne(x => x.PromptDefinition)
             .WithMany(x => x.Variables)
@@ -542,6 +542,8 @@ public class DocGenerationDbContext : DbContext
 
         // Mass Transit SAGA for Document Generation
         modelBuilder.Entity<DocumentGenerationSagaState>()
+            .ToTable("DocumentGenerationSagaStates");
+        modelBuilder.Entity<DocumentGenerationSagaState>()
             .HasKey(x => x.CorrelationId);
 
         // Table per hierarchy for Document Ingestion SAGA
@@ -554,8 +556,18 @@ public class DocGenerationDbContext : DbContext
             .Property("Discriminator")
             .HasMaxLength(100);
 
-
+        // Mass Transit SAGA for Review Execution
+        modelBuilder.Entity<ReviewExecutionSagaState>()
+            .ToTable("ReviewExecutionSagaStates");
+        modelBuilder.Entity<ReviewExecutionSagaState>()
+            .HasKey(x => x.CorrelationId);
+        modelBuilder.Entity<ReviewExecutionSagaState>()
+            .HasIndex(x => x.ExportedDocumentLinkId)
+            .IsUnique(false);
+        
         // Mass Transit SAGA for Document Ingestion
+        modelBuilder.Entity<DocumentIngestionSagaState>()
+            .ToTable("DocumentIngestionSagaStates");
         modelBuilder.Entity<DocumentIngestionSagaState>()
             .HasKey(x => x.CorrelationId);
         modelBuilder.Entity<DocumentIngestionSagaState>()
@@ -567,7 +579,6 @@ public class DocGenerationDbContext : DbContext
 
         // Mass Transit SAGA for Kernel Memory Document Ingestion
         // The Key is the same as the base class - this is an EF Core requirement for Table per hierarchy
-
         modelBuilder.Entity<KernelMemoryDocumentIngestionSagaState>()
             .HasIndex(x => x.FileHash)
             .IsUnique(false);
@@ -577,18 +588,14 @@ public class DocGenerationDbContext : DbContext
 
     }
 
-    public DbSet<DocumentGenerationSagaState> DocumentGenerationSagaStates { get; set; } = null!;
-    public DbSet<DocumentIngestionSagaState> DocumentIngestionSagaStates { get; set; } = null!;
-    public DbSet<KernelMemoryDocumentIngestionSagaState> KernelMemoryDocumentIngestionSagaStates { get; set; } = null!;
-
     public DbSet<GeneratedDocument> GeneratedDocuments { get; set; }
     public DbSet<ExportedDocumentLink> ExportedDocumentLinks { get; set; }
 
     public DbSet<DocumentMetadata> DocumentMetadata { get; set; }
     public DbSet<ContentNode> ContentNodes { get; set; }
-    
+
     public DbSet<IngestedDocument> IngestedDocuments { get; set; }
-    
+
     public DbSet<Table> Tables { get; set; }
     public DbSet<TableCell> TableCells { get; set; }
     public DbSet<BoundingRegion> BoundingRegions { get; set; }
@@ -599,15 +606,15 @@ public class DocGenerationDbContext : DbContext
     public DbSet<ConversationSummary> ConversationSummaries { get; set; }
 
     public DbSet<UserInformation> UserInformations { get; set; }
-    
+
     public DbSet<DynamicDocumentProcessDefinition> DynamicDocumentProcessDefinitions { get; set; }
-    
+
     public DbSet<DocumentOutline> DocumentOutlines { get; set; }
     public DbSet<DocumentOutlineItem> DocumentOutlineItems { get; set; }
-    
+
     public DbSet<PromptDefinition> PromptDefinitions { get; set; }
     public DbSet<PromptVariableDefinition> PromptVariableDefinitions { get; set; }
-    
+
     public DbSet<PromptImplementation> PromptImplementations { get; set; }
     public DbSet<ReviewDefinition> ReviewDefinitions { get; set; }
     public DbSet<ReviewQuestion> ReviewQuestions { get; set; }

@@ -75,3 +75,15 @@ table th{
     text-align:left;
     border-bottom:2px solid;
 }
+
+.sentiment-reasoning-tooltip {
+    max-width: 225px !important;
+    white-space: normal !important;
+    height: auto !important;
+    line-height: 1.5 !important;
+}
+
+    .sentiment-reasoning-tooltip .mud-tooltip-root {
+        font-size: 16px !important;
+        padding: 8px !important;
+    }

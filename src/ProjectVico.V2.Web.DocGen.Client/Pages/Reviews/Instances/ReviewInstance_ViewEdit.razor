@@ -81,6 +81,7 @@
                 {
                     <MudSpacer />
                     <MudText Class="ms-2">@ReviewExecutionMessage</MudText>
+                    <MudText Class="ms-2">Question/requirement answers are analyzed for positive, neutral or negative sentiment. Mouse over the sentiment icon to view the reasoning for the decision.</MudText>
                 }
             }
         }
@@ -102,7 +103,36 @@
                             <MudIcon Icon="@Icons.Material.Filled.QuestionAnswer" Color="Color.Default" />
                         </CardHeaderAvatar>
                         <CardHeaderContent>
-                            <MudText Typo="Typo.h6" Color="Color.Default">Question @(questionCount + 1)</MudText>
+                            <MudGrid>
+                                <MudItem xs="6">
+                                    <MudText Typo="Typo.h6" Color="Color.Default">Question @(questionCount + 1)</MudText>
+                                </MudItem>
+                                @if (reviewQuestionAnswerInfo.AiSentiment != null)
+                                {
+                                    <MudItem xs="6" Class="d-flex justify-end">
+                                        <MudStack AlignItems="AlignItems.End" Spacing="0">
+                                            @{
+                                                var icon = reviewQuestionAnswerInfo.AiSentiment switch
+                                                {
+                                                    ReviewQuestionAnswerSentiment.Positive => Icons.Material.Filled.ThumbUp,
+                                                    ReviewQuestionAnswerSentiment.Negative => Icons.Material.Filled.ThumbDown,
+                                                    ReviewQuestionAnswerSentiment.Neutral => Icons.Material.Filled.Help,
+                                                    _ => Icons.Material.Filled.Help
+                                                };
+                                            }
+                                            <MudTooltip Text="@reviewQuestionAnswerInfo.AiSentimentReasoning"
+                                                        Class="sentiment-reasoning-tooltip"
+                                                        Arrow="true"
+                                                        Inline="false"
+                                                        Placement="Placement.Right">
+                                                        
+                                                <MudIcon Icon="@icon" Color="Color.Default" />
+                                            </MudTooltip>
+                                            <MudText Typo="Typo.body2">Sentiment: @reviewQuestionAnswerInfo.AiSentiment.ToString()</MudText>
+                                        </MudStack>
+                                    </MudItem>
+                                }
+                            </MudGrid>
                         </CardHeaderContent>
                     </MudCardHeader>
                     <MudCardContent>
@@ -117,19 +147,6 @@
         }
     </MudGrid>
 }
-
-<!-- Debug Information -->
-@* <MudExpansionPanel>
-    <TitleContent>
-        <MudText>Debug Information</MudText>
-    </TitleContent>
-    <ChildContent>
-        <MudText>IsNewReview: @IsNewReview</MudText>
-        <MudText>SelectedReviewDefinition: @(SelectedReviewDefinition?.Title ?? "None")</MudText>
-        <MudText>UploadFileExportDocumentLinkInfo: @(UploadFileExportDocumentLinkInfo != null ? "Uploaded" : "Not Uploaded")</MudText>
-        <MudText>ReviewInstance: @(ReviewInstance?.Id.ToString() ?? "None")</MudText>
-    </ChildContent>
-</MudExpansionPanel> *@
 
 @code {
     [CascadingParameter] public HubConnection? HubConnection { get; set; }
@@ -168,7 +185,7 @@
                 .Build();
         }
 
-        HubConnection.On<ReviewQuestionAnswered>( // CorrelationId
+        HubConnection.On<ReviewQuestionAnsweredNotification>( // CorrelationId
             "ReceiveReviewQuestionAnsweredNotification",
             HubReceiveReviewQuestionAnsweredNotificationHandler);
 
@@ -221,7 +238,7 @@
     }
 
 
-    private async Task HubReceiveReviewQuestionAnsweredNotificationHandler(ReviewQuestionAnswered arg)
+    private async Task HubReceiveReviewQuestionAnsweredNotificationHandler(ReviewQuestionAnsweredNotification arg)
     {
         // Get all the review question answers for the review instance
         // Temporary until we have a better way to update the UI

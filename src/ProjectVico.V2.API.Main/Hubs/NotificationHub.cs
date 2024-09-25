@@ -37,7 +37,7 @@ public class NotificationHub : Hub<INotificationHubClient>
         await Clients.Groups(groupId).ReceiveProcessChatMessageReceivedNotification(message);
     }
 
-    public async Task SendReviewQuestionAnsweredNotification(string groupId, ReviewQuestionAnswered message)
+    public async Task SendReviewQuestionAnsweredNotification(string groupId, ReviewQuestionAnsweredNotification message)
     {
         await Clients.Group(groupId).ReceiveReviewQuestionAnsweredNotification(message);
     }

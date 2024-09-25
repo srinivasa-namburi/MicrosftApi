@@ -13,6 +13,6 @@ public interface INotificationHubClient
     Task ReceiveContentNodeNotification(ContentNodeGenerated contentNodeGenerated);
     Task ReceiveChatMessageResponseReceivedNotification(ChatMessageResponseReceived chatMessageResponseReceived);
     Task ReceiveProcessChatMessageReceivedNotification(ProcessChatMessage message);
-    Task ReceiveReviewQuestionAnsweredNotification(ReviewQuestionAnswered message);
+    Task ReceiveReviewQuestionAnsweredNotification(ReviewQuestionAnsweredNotification message);
     Task ReceiveBackendProcessingMessageGeneratedNotification(BackendProcessingMessageGenerated message);
 }
