@@ -69,7 +69,7 @@ public class FileController : BaseController
     }
 
     [HttpPost("upload/{containerName}/{fileName}")]
-    [RequestSizeLimit(512 * 1024 * 1024)]
+    [DisableRequestSizeLimit]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [Produces(typeof(string))]
@@ -113,7 +113,7 @@ public class FileController : BaseController
     }
 
     [HttpPost("upload/{containerName}/{fileName}/file-info")]
-    [RequestSizeLimit(512 * 1024 * 1024)]
+    [DisableRequestSizeLimit]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [Produces(typeof(ExportedDocumentLinkInfo))]
