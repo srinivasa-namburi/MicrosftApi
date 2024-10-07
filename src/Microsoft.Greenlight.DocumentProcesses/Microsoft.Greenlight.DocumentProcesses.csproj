@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Microsoft.Greenlight.DocumentProcess.Belgium.NuclearLicensing.DSAR\Microsoft.Greenlight.DocumentProcess.Belgium.NuclearLicensing.DSAR.csproj" />
+    <ProjectReference Include="..\Microsoft.Greenlight.DocumentProcess.Dynamic\Microsoft.Greenlight.DocumentProcess.Dynamic.csproj" />
+    <ProjectReference Include="..\Microsoft.Greenlight.DocumentProcess.Shared\Microsoft.Greenlight.DocumentProcess.Shared.csproj" />
+    <ProjectReference Include="..\Microsoft.Greenlight.DocumentProcess.US.NRC.EnvironmentalReport\Microsoft.Greenlight.DocumentProcess.US.NRC.EnvironmentalReport.csproj" />
+  </ItemGroup>
+
+</Project>

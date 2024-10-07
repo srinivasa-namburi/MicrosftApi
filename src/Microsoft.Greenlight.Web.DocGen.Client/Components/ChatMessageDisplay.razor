@@ -1,0 +1,110 @@
+@using Microsoft.Greenlight.Shared.Contracts.Chat
+@using System.Timers
+
+@code {
+    [Parameter] public ChatMessageDTO ChatMessage { get; set; }
+    [Parameter] public UserInfoDTO CurrentUser { get; set; }
+
+    private Timer? _timer;
+    private bool _showProgressCircular = true;
+
+    protected override void OnInitialized()
+    {
+        // The timer is used to hide the progress circular after 5 seconds
+        // This call in OnInitialized is necessary to ensure the timer is started when the component is first rendered
+        InitializeOrRestartTimer();
+    }
+
+    protected override void OnParametersSet()
+    {
+        // The timer is used to hide the progress circular after 5 seconds
+        // This call in OnParametersSet is necessary to ensure the timer is restarted when the component is re-rendered due
+        // to updates in the ChatMessage (which is streamed from the server)
+        InitializeOrRestartTimer();
+    }
+
+    private void InitializeOrRestartTimer()
+    {
+        if (ChatMessage.Source == ChatMessageSource.Assistant &&
+            ChatMessage.State == ChatMessageCreationState.InProgress)
+        {
+            _timer?.Dispose();
+
+            _timer = new Timer(5000); // 5 seconds
+            _timer.Elapsed += HideProgressCircular;
+            _timer.AutoReset = false;
+            _timer.Start();
+        }
+    }
+
+    private void HideProgressCircular(object? sender, ElapsedEventArgs e)
+    {
+        _showProgressCircular = false;
+        InvokeAsync(StateHasChanged);
+        _timer?.Dispose();
+    }
+
+    public void Dispose()
+    {
+        _timer?.Dispose();
+    }
+}
+
+
+@{
+    // Align the chat message based on the source of the message
+    // If the message is from the current user, align it to the right
+    // Otherwise, align it to the left
+
+    var align = ChatMessage.Source == ChatMessageSource.User
+        ? (ChatMessage.UserId == CurrentUser?.ProviderSubjectId ? Align.Right : Align.Left)
+        : Align.Left;
+
+    // Apply a style based on alignment
+    var cardAlignmentStyle = align == Align.Right ?
+        "margin-left: auto; width: fit-content; max-width:75%;" :
+        "margin-right: auto; width: fit-content; max-width:75%;";
+
+    if (ChatMessage.Source == ChatMessageSource.Assistant)
+    {
+        ChatMessage.UserFullName = "Permitting Copilot";
+    }
+}
+<style>
+    .message-content a:visited {
+        color: mediumpurple !important;
+    }
+
+    .message-content a {
+        color: cornflowerblue !important;
+    }
+</style>
+
+<MudCard Elevation="2" Style="@cardAlignmentStyle">
+    <MudCardHeader>
+        <CardHeaderAvatar>
+            <MudAvatar Size="Size.Small" Color="@Color.Info">
+                @ChatMessage.UserFullName[..1]
+            </MudAvatar>
+        </CardHeaderAvatar>
+        <CardHeaderContent>
+            <MudText Typo="Typo.body2" Class="my-0" Align="@align" Color="@Color.Info">
+                @ChatMessage.UserFullName
+            </MudText>
+            <MudText Typo="Typo.body2" Class="my-0" Align="@align" Color="@Color.Info">
+                @ChatMessage.CreatedAt.ToString("MM/dd/yyyy HH:mm:ss")
+            </MudText>
+        </CardHeaderContent>
+    </MudCardHeader>
+    <MudCardContent Class="message-content">
+        <MudText Typo="Typo.body1" Class="my-0 mb-n1" Align="@align">
+            <RenderMultilineText Value="@ChatMessage.Message" />
+        </MudText>
+    </MudCardContent>
+    @if (ChatMessage is { Source: ChatMessageSource.Assistant, State: ChatMessageCreationState.InProgress } && _showProgressCircular)
+    {
+        <MudCardActions>
+            <MudProgressCircular Indeterminate="true" Size="Size.Small" />
+        </MudCardActions>
+    }
+</MudCard>

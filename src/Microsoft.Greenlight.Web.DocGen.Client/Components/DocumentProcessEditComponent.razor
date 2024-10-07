@@ -1,0 +1,137 @@
+@inject IDocumentProcessApiClient DocumentProcessApiClient
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudPaper Class="pa-4">
+        <MudTextField @bind-Value="_process.ShortName" Label="Short Name" Disabled="_isEditMode" OnBlur="ComputeIndexName" />
+        <MudTextField @bind-Value="_process.Description" Label="Description" />
+        <MudTextField @bind-Value="_process.BlobStorageContainerName" Label="Blob Storage Container Name" />
+        <MudTextField @bind-Value="_process.BlobStorageAutoImportFolderName" Label="Auto Import Folder Name" />
+        <MudTextField @bind-Value="_indexName" 
+                      Label="Repository Index Name" 
+                      Disabled="_isEditMode"
+                      OnInternalInputChanged="UpdateRepositories" 
+                      OnBlur="UpdateRepositories" />
+        <MudCheckBox T="bool" Label="Classify Documents" ValueChanged="@(e => OnClassifyDocumentsCheckboxChanged(e))" />
+
+        @if (_process.ClassifyDocuments)
+        {
+            <MudTextField @bind-Value="_process.ClassificationModelName" Label="Classification Model Name" />
+        }
+
+        <MudDivider />
+
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveProcess">Save</MudButton>
+     
+        @if (ProcessId != null)
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="OpenDocumentOutlineEditor">Document Outline Editor</MudButton>
+        }
+        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="Cancel">Cancel</MudButton>
+    </MudPaper>
+
+    @if (_isEditMode && _showPrompts)
+    {
+        <MudDivider Class="my-4" />
+
+        <MudExpansionPanels>
+            <MudExpansionPanel Text="Prompts">
+                <PromptList Prompts="_prompts" />
+            </MudExpansionPanel>
+        </MudExpansionPanels>
+    }
+    else if (_isEditMode && !_showPrompts)
+    {
+        <MudProgressCircular Indeterminate="true" />
+    }
+
+</MudContainer>
+
+@code {
+    [Parameter] public Guid? ProcessId { get; set; }
+    [Parameter] public EventCallback OnProcessSaved { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private DocumentProcessInfo? _process = new();
+    private bool _isEditMode;
+    private bool _showPrompts;
+    private List<PromptInfo> _prompts = new();
+
+    private string _indexName = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (ProcessId.HasValue)
+        {
+            _isEditMode = true;
+            _process = await DocumentProcessApiClient.GetDocumentProcessInfoByIdAsync(ProcessId.Value) ?? new DocumentProcessInfo();
+            _prompts = await DocumentProcessApiClient.GetPromptsByProcessIdAsync(ProcessId.Value);
+            _showPrompts = true;
+        }
+    }
+
+    private async Task SaveProcess()
+    {
+        if (_isEditMode)
+        {
+            await DocumentProcessApiClient.UpdateDynamicDocumentProcessDefinitionAsync(_process);
+        }
+        else
+        {
+            var createdProcess = await DocumentProcessApiClient.CreateDynamicDocumentProcessDefinitionAsync(_process);
+            if (createdProcess != null)
+            {
+                _process = createdProcess;
+                _isEditMode = true;
+                await Task.Delay(10000); // Wait for 10 seconds before showing prompts
+                _prompts = await DocumentProcessApiClient.GetPromptsByProcessIdAsync(_process.Id);
+                _showPrompts = true;
+            }
+        }
+
+        await OnProcessSaved.InvokeAsync();
+    }
+
+    private async Task Cancel()
+    {
+        await OnCancel.InvokeAsync();
+    }
+
+    private async Task OpenDocumentOutlineEditor()
+    {
+        var parameters = new DialogParameters
+        {
+            { "DocumentOutlineId", _process.DocumentOutlineId }
+        };
+
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+        DialogService.Show<EditDocumentOutlineDialog>("Document Outline Editor", parameters, options);
+    }
+
+    private void ComputeIndexName()
+    {
+        if (!_isEditMode && string.IsNullOrWhiteSpace(_indexName))
+        {
+            _indexName = "index-" + _process.ShortName.ToLower()
+                                            .Replace(" ", "-")
+                                            .Replace(".", "-");
+        }
+    }
+
+    private void UpdateRepositories()
+    {
+        _process.Repositories.Clear();
+        _process.Repositories.Add(_indexName);
+    }
+
+    private void OnClassifyDocumentsCheckboxChanged(bool value)
+    {
+        _process.ClassifyDocuments = value;
+        if (!value)
+        {
+            _process.ClassificationModelName = string.Empty;
+        }
+    }
+
+}

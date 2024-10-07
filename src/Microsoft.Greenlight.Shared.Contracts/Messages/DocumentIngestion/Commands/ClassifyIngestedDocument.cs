@@ -1,0 +1,14 @@
+using MassTransit;
+using Microsoft.Greenlight.Shared.Enums;
+
+namespace Microsoft.Greenlight.Shared.Contracts.Messages.DocumentIngestion.Commands;
+
+public record ClassifyIngestedDocument(Guid CorrelationId) : CorrelatedBy<Guid>
+{
+    public string DocumentProcessName { get; set; }
+    public string FileName { get; set; }
+    public string OriginalDocumentUrl { get; set; }
+    public string? UploadedByUserOid { get; set; }
+    public IngestionType IngestionType { get; set; }
+    public string? Plugin { get; set; }
+}

@@ -1,0 +1,83 @@
+@using Microsoft.Greenlight.Shared.Models
+
+@code {
+    [Parameter] public ContentNode? Node { get; set; }
+    [Parameter] public bool Recursive { get; set; } = false;
+
+    private string GetPanelClass(ContentNodeType nodeType)
+    {
+        return nodeType switch
+        {
+            ContentNodeType.Title => "mt-2",
+            ContentNodeType.Heading => "mt-2",
+            ContentNodeType.BodyText => "mt-2",
+            _ => "", // Default class, BodyText nodes might not need extra padding here.
+        };
+    }
+}
+
+<style>
+    .section-content a:visited {
+        color: mediumpurple !important;
+    }
+
+    .section-content a {
+        color: cornflowerblue !important;
+    }
+</style>
+
+@if (Node != null)
+{
+    if (Node.Type == ContentNodeType.Title || Node.Type == ContentNodeType.Heading)
+    {
+        <MudExpansionPanels>
+            <MudExpansionPanel Class="@GetPanelClass(Node.Type)">
+                <TitleContent>
+                    <MudGrid>
+                        <MudItem xs="1">
+                            @if (Node.GenerationState == ContentNodeGenerationState.OutlineOnly)
+                            {
+                                <MudIcon Icon="@Icons.Material.Rounded.List" Color="Color.Info" Size="Size.Medium" />
+                            }
+                            else if (Node.GenerationState == ContentNodeGenerationState.InProgress)
+                            {
+                                <MudProgressCircular Indeterminate="true" Size="Size.Small" Color="Color.Info" />
+                            }
+                            else if (Node.GenerationState == ContentNodeGenerationState.Completed)
+                            {
+                                <MudIcon Icon="@Icons.Material.Rounded.CheckCircle" Color="Color.Success" Size="Size.Medium" />
+                            }
+                            else if (Node.GenerationState == ContentNodeGenerationState.Failed)
+                            {
+                                <MudIcon Icon="@Icons.Material.Rounded.Error" Color="Color.Error" Size="Size.Medium" />
+                            }
+                        </MudItem>
+                        <MudItem xs="11">
+                            @Node.Text
+                        </MudItem>
+                    </MudGrid>
+                </TitleContent>
+                <ChildContent>
+
+                    @if (Node.Children != null && Node.Children.Any() && Recursive)
+                    {
+                        <div class="section-content">
+                            @foreach (var childNode in Node.Children)
+                            {
+                                <ContentNodeDisplay Node="childNode" Recursive="true" />
+                            }
+                        </div>
+                    }
+
+                </ChildContent>
+            </MudExpansionPanel>
+        </MudExpansionPanels>
+    }
+
+    else if (Node.Type == ContentNodeType.BodyText)
+    {
+        <MudText Class="@GetPanelClass(Node.Type)" Style="padding-left: 20px;">
+            <RenderMultilineText Value="@Node.Text" />
+        </MudText>
+    }
+}

@@ -1,0 +1,382 @@
+@page "/review-instances/new/definition/{ReviewDefinitionIdString}"
+@page "/review-instances/{ReviewInstanceString}"
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.Greenlight.Shared.Contracts.Messages
+@using Microsoft.Greenlight.Shared.Contracts.Messages.Review.Events
+
+@inject IReviewApiClient ReviewApiClient
+@inject IAuthorizationApiClient AuthorizationApiClient
+@inject IConfigurationApiClient ConfigurationApiClient
+@inject NavigationManager Navigation
+@inject IDialogService DialogService
+
+@* DisposeAsync - used to clean up HubConnection for SignalR *@
+@implements IAsyncDisposable
+
+<MudCard class="pa-4" Elevation="2">
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudText Typo="Typo.h2">@(IsNewReview ? "New Review" : "Executed Review")</MudText>
+            @if (SelectedReviewDefinition != null)
+            {
+                <MudText Typo="Typo.h4">@SelectedReviewDefinition.Title</MudText>
+            }
+        </CardHeaderContent>
+    </MudCardHeader>
+    <MudCardContent>
+        @if (IsNewReview)
+        {
+            @if (AvailableReviewDefinitions != null && AvailableReviewDefinitions.Count != 0)
+            {
+                <MudSelect T="ReviewDefinitionInfo"
+                           @bind-Value="SelectedReviewDefinition"
+                           Label="Review Definition"
+                           SelectedValuesChanged="ReviewDefinitionSelectionChanged"
+                           MultiSelection="false">
+                    @foreach (var reviewDefinition in AvailableReviewDefinitions)
+                    {
+                        <MudSelectItem T="ReviewDefinitionInfo" Value="reviewDefinition">
+                            @reviewDefinition.Title
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+            }
+
+            <MudFileUpload T="IBrowserFile" OnFilesChanged="DocumentFileUploaded">
+                <ButtonTemplate>
+                    <MudButton HtmlTag="label"
+                               Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.CloudUpload"
+                               for="@context">
+                        Upload File
+                    </MudButton>
+                </ButtonTemplate>
+            </MudFileUpload>
+
+            @if (UploadFileExportDocumentLinkInfo != null)
+            {
+                <MudText Typo="Typo.body1" Class="mt-2">Document uploaded successfully</MudText>
+            }
+
+            @if (UploadFileExportDocumentLinkInfo != null && SelectedReviewDefinition != null)
+            {
+                <MudButton OnClick="ExecuteReview"
+                           Color="Color.Primary"
+                           Variant="Variant.Filled"
+                           Class="mt-4"
+                           Disabled="@IsExecuting">
+
+                    @if (IsExecuting)
+                    {
+                        <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                        <MudText Class="ms-2">Executing Review...</MudText>
+                    }
+                    else
+                    {
+                        @:Execute Review
+                    }
+                </MudButton>
+                @if (IsExecuting)
+                {
+                    <MudSpacer />
+                    <MudText Class="ms-2">@ReviewExecutionMessage</MudText>
+                    <MudText Class="ms-2">Question/requirement answers are analyzed for positive, neutral or negative sentiment. Mouse over the sentiment icon to view the reasoning for the decision.</MudText>
+                }
+            }
+        }
+    </MudCardContent>
+</MudCard>
+
+@if (ReviewQuestionAnswers.Count > 0)
+{
+    <MudGrid Spacing="2" Class="mt-4">
+        @for (int i = 0; i < ReviewQuestionAnswers.Count(); i++)
+        {
+            var questionCount = i;
+            ReviewQuestionAnswerInfo reviewQuestionAnswerInfo = ReviewQuestionAnswers[i];
+
+            <MudItem xs="12" sm="6">
+                <MudCard Elevation="3" Class="rounded-lg" Style="height: 100%;">
+                    <MudCardHeader Style="background-color: var(--mud-palette-primary-lighten);">
+                        <CardHeaderAvatar>
+                            <MudIcon Icon="@Icons.Material.Filled.QuestionAnswer" Color="Color.Default" />
+                        </CardHeaderAvatar>
+                        <CardHeaderContent>
+                            <MudGrid>
+                                <MudItem xs="6">
+                                    <MudText Typo="Typo.h6" Color="Color.Default">Question @(questionCount + 1)</MudText>
+                                </MudItem>
+                                @if (reviewQuestionAnswerInfo.AiSentiment != null)
+                                {
+                                    <MudItem xs="6" Class="d-flex justify-end">
+                                        <MudStack AlignItems="AlignItems.End" Spacing="0">
+                                            @{
+                                                var icon = reviewQuestionAnswerInfo.AiSentiment switch
+                                                {
+                                                    ReviewQuestionAnswerSentiment.Positive => Icons.Material.Filled.ThumbUp,
+                                                    ReviewQuestionAnswerSentiment.Negative => Icons.Material.Filled.ThumbDown,
+                                                    ReviewQuestionAnswerSentiment.Neutral => Icons.Material.Filled.Help,
+                                                    _ => Icons.Material.Filled.Help
+                                                };
+                                            }
+                                            <MudTooltip Text="@reviewQuestionAnswerInfo.AiSentimentReasoning"
+                                                        Class="sentiment-reasoning-tooltip"
+                                                        Arrow="true"
+                                                        Inline="false"
+                                                        Placement="Placement.Right">
+                                                        
+                                                <MudIcon Icon="@icon" Color="Color.Default" />
+                                            </MudTooltip>
+                                            <MudText Typo="Typo.body2">Sentiment: @reviewQuestionAnswerInfo.AiSentiment.ToString()</MudText>
+                                        </MudStack>
+                                    </MudItem>
+                                }
+                            </MudGrid>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudText Typo="Typo.body1" Class="mb-2"><strong>@reviewQuestionAnswerInfo.Question</strong></MudText>
+                        <MudDivider Class="my-2" />
+                        <MudText Typo="Typo.body2">
+                            <RenderMultilineText Value="@reviewQuestionAnswerInfo.AiAnswer" />
+                        </MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    [CascadingParameter] public HubConnection? HubConnection { get; set; }
+    [Parameter] public string? ReviewInstanceString { get; set; }
+    [Parameter] public string? ReviewDefinitionIdString { get; set; }
+    private ReviewInstanceInfo? ReviewInstance { get; set; }
+    private ReviewDefinitionInfo? SelectedReviewDefinition { get; set; }
+    private ExportedDocumentLinkInfo? UploadFileExportDocumentLinkInfo { get; set; }
+    private List<ReviewDefinitionInfo>? AvailableReviewDefinitions { get; set; }
+    private List<ReviewQuestionAnswerInfo> ReviewQuestionAnswers { get; set; } = [];
+    private List<ReviewQuestionInfo> AllReviewQuestions { get; set; } = [];
+    private MudList? ReviewQuestionAnswersMudList { get; set; }
+    private bool IsExecuting { get; set; } = false;
+    private bool IsNewReview { get; set; } = false;
+    private string ReviewExecutionMessage { get; set; } = "Please wait...";
+    private int TotalReviewQuestions = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await InitializeReviewInstance();
+        await StartHubConnections();
+    }
+
+    private async Task StartHubConnections()
+    {
+        if (HubConnection == null)
+        {
+            var apiAddress = await AuthorizationApiClient.GetApiAddressAsync();
+            HubConnection = new HubConnectionBuilder()
+                .WithUrl($"{apiAddress}/hubs/notification-hub", options =>
+                {
+                    options.AccessTokenProvider = async () => await ConfigurationApiClient.GetAccessTokenAsync();
+                })
+                .WithStatefulReconnect()
+                .WithAutomaticReconnect()
+                .Build();
+        }
+
+        HubConnection.On<ReviewQuestionAnsweredNotification>( // CorrelationId
+            "ReceiveReviewQuestionAnsweredNotification",
+            HubReceiveReviewQuestionAnsweredNotificationHandler);
+
+        HubConnection.On<BackendProcessingMessageGenerated>(
+            "ReceiveBackendProcessingMessageGeneratedNotification",
+            HubReceiveBackendProcessingMessageGeneratedNotificationHandler);
+
+        if (HubConnection.State == HubConnectionState.Disconnected)
+        {
+            await HubConnection.StartAsync();
+        }
+
+        // Add this Hub Connection to a group matching the Review Instance ID
+        await HubConnection.SendAsync("AddToGroup", ReviewInstanceString);
+    }
+
+    private async Task HubReceiveBackendProcessingMessageGeneratedNotificationHandler(BackendProcessingMessageGenerated arg)
+    {
+        var messageText = arg.Message;
+
+        if (messageText.StartsWith("SYSTEM:"))
+        {
+            if (messageText.Contains("TotalNumberOfQuestions"))
+            {
+                TotalReviewQuestions = int.Parse(messageText.Split("=")[1]);
+                ReviewExecutionMessage = $"Answering {TotalReviewQuestions} questions...";
+            }
+            else if (messageText.Contains("ProcessingQuestionNumber"))
+            {
+                var questionNumber = int.Parse(messageText.Split("=")[1]);
+                ReviewExecutionMessage = $"Processing question number {questionNumber} of {TotalReviewQuestions}";
+            }
+            else if (messageText.Contains("NumberOfQuestionsProcessed"))
+            {
+                var questionsProcessed = int.Parse(messageText.Split("=")[1]);
+                ReviewExecutionMessage = $"Processed {questionsProcessed} of {TotalReviewQuestions} questions";
+            }
+            else if (messageText.Contains("ReviewInstanceCompleted"))
+            {
+                ReviewExecutionMessage = $"Review Execution complete for {TotalReviewQuestions} questions";
+                IsExecuting = false;
+            }
+        }
+        else
+        {
+            ReviewExecutionMessage = messageText;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+
+    private async Task HubReceiveReviewQuestionAnsweredNotificationHandler(ReviewQuestionAnsweredNotification arg)
+    {
+        // Get all the review question answers for the review instance
+        // Temporary until we have a better way to update the UI
+        if (ReviewInstance != null)
+        {
+            var reviewQuestionAnswers = await ReviewApiClient.GetReviewQuestionAnswersByReviewInstanceId(ReviewInstance.Id);
+            ReviewQuestionAnswers = reviewQuestionAnswers;
+            await InvokeAsync(StateHasChanged);
+        }
+
+    }
+
+    // Called on component disposal
+    private async Task StopHubConnections()
+    {
+        if (HubConnection == null) return;
+
+        HubConnection.Remove("ReceiveReviewQuestionAnsweredNotification");
+        await HubConnection.SendAsync("RemoveFromGroup", ReviewInstanceString);
+    }
+
+    private async Task InitializeReviewInstance()
+    {
+        IsNewReview = Navigation.Uri.Contains("/review-instances/new");
+
+        if (IsNewReview)
+        {
+            Guid reviewId = Guid.NewGuid();
+
+            ReviewInstanceString = reviewId.ToString();
+            ReviewInstance = new ReviewInstanceInfo
+                {
+                    Id = reviewId,
+                };
+
+            if (ReviewDefinitionIdString is not null)
+            {
+                SelectedReviewDefinition = await ReviewApiClient.GetReviewById(Guid.Parse(ReviewDefinitionIdString));
+                if (SelectedReviewDefinition is not null)
+                {
+                    ReviewInstance.ReviewDefinitionId = SelectedReviewDefinition.Id;
+                }
+            }
+
+            AvailableReviewDefinitions = await ReviewApiClient.GetAllReviews();
+        }
+        else if (!string.IsNullOrEmpty(ReviewInstanceString))
+        {
+            ReviewInstance = await ReviewApiClient.GetReviewInstanceById(Guid.Parse(ReviewInstanceString));
+            if (ReviewInstance is not null)
+            {
+                SelectedReviewDefinition = await ReviewApiClient.GetReviewById(ReviewInstance.ReviewDefinitionId);
+                ReviewQuestionAnswers = await ReviewApiClient.GetReviewQuestionAnswersByReviewInstanceId(ReviewInstance.Id);
+            }
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task ExecuteReview()
+    {
+        if (ReviewInstance == null || SelectedReviewDefinition == null || UploadFileExportDocumentLinkInfo == null)
+        {
+            await DialogService.ShowMessageBox("Error", "Please select a review definition and upload a file before executing the review.");
+            return;
+        }
+
+        IsExecuting = true;
+        StateHasChanged();
+
+        try
+        {
+            var result = await ReviewApiClient.ExecuteReview(ReviewInstance);
+            if (result != null)
+            {
+                ReviewInstance = result;
+                ReviewQuestionAnswers = await ReviewApiClient.GetReviewQuestionAnswersByReviewInstanceId(ReviewInstance.Id);
+                await DialogService.ShowMessageBox(
+                    "Success", "Review queued for execution. This page will be live-updated with results.");
+            }
+            else
+            {
+                await DialogService.ShowMessageBox(
+                    "Error", "Failed to execute review. Please try again.");
+            }
+        }
+        catch (Exception ex)
+        {
+            await DialogService.ShowMessageBox("Error", $"Failed to execute review: {ex.Message}");
+        }
+        finally
+        {
+            //IsExecuting = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ReviewDefinitionSelectionChanged(IEnumerable<ReviewDefinitionInfo>
+    obj)
+    {
+        SelectedReviewDefinition = obj.FirstOrDefault();
+        if (SelectedReviewDefinition != null && ReviewInstance != null)
+        {
+            ReviewInstance.ReviewDefinitionId = SelectedReviewDefinition.Id;
+        }
+        StateHasChanged();
+    }
+
+    private async Task DocumentFileUploaded(InputFileChangeEventArgs? arg)
+    {
+        if (arg?.File != null && IsNewReview)
+        {
+            try
+            {
+                UploadFileExportDocumentLinkInfo = await ReviewApiClient.UploadDocumentForReviewInstanceAsync(arg.File);
+                if (UploadFileExportDocumentLinkInfo != null && ReviewInstance != null)
+                {
+                    ReviewInstance.ExportedLinkId = UploadFileExportDocumentLinkInfo.Id;
+                }
+                else if (ReviewInstance == null)
+                {
+                    await DialogService.ShowMessageBox("Error", "Review instance is not initialized.");
+                }
+            }
+            catch (Exception ex)
+            {
+                await DialogService.ShowMessageBox("Error", $"Failed to upload file: {ex.Message}");
+            }
+
+            StateHasChanged();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (HubConnection != null)
+        {
+            await StopHubConnections();
+        }
+    }
+}

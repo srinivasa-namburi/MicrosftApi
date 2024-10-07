@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<ErrorOnDuplicatePublishOutputFiles>false</ErrorOnDuplicatePublishOutputFiles>
+		<UserSecretsId>dotnet-Microsoft.Greenlight.Worker.DocumentGeneration-d4fac41c-3efc-47df-b3c5-2ac571a8e763</UserSecretsId>
+	</PropertyGroup>
+	<PropertyGroup>
+		<NoWarn>SKEXP0060;SKEXP0061;SKEXP0042;SKEXP0011;SKEXP0001</NoWarn>
+	</PropertyGroup>
+	<ItemGroup>
+		<Compile Remove="Services\**" />
+		<Content Remove="Services\**" />
+		<EmbeddedResource Remove="Services\**" />
+		<None Remove="Services\**" />
+	</ItemGroup>
+	<ItemGroup>
+		<None Remove="Plans\DocumentOutlineGeneration.txt" />
+	</ItemGroup>
+	<ItemGroup>
+		<Content Include="Plans\DocumentOutlineGeneration.txt">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+	</ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="MassTransit.Azure.ServiceBus.Core" Version="8.2.1" />
+		<PackageReference Include="MassTransit.EntityFrameworkCore" Version="8.2.1" />
+		<PackageReference Include="MassTransit.Quartz" Version="8.2.1" />
+		<PackageReference Include="MassTransit.RabbitMQ" Version="8.2.1" />
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+	</ItemGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\Plugins\Microsoft.Greenlight.Plugins.Default\Microsoft.Greenlight.Plugins.Default.csproj" />
+		<ProjectReference Include="..\Microsoft.Greenlight.DocumentProcesses\Microsoft.Greenlight.DocumentProcesses.csproj" />
+		<ProjectReference Include="..\Microsoft.Greenlight.ServiceDefaults\Microsoft.Greenlight.ServiceDefaults.csproj" />
+		<ProjectReference Include="..\Microsoft.Greenlight.Shared\Microsoft.Greenlight.Shared.csproj" />
+	</ItemGroup>
+	<ItemGroup>
+		<Folder Include="Consumers\DocumentProcesses\" />
+		<Folder Include="manifests\" />
+		<Folder Include="Properties\" />
+	</ItemGroup>
+</Project>

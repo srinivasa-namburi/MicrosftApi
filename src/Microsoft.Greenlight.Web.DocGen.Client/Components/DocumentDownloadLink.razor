@@ -1,0 +1,41 @@
+@inject IDocumentGenerationApiClient DocumentGenerationApiClient
+
+<div class="exported-link-container">
+    @if (string.IsNullOrEmpty(Data))
+    {
+        if (InProgress)
+        {
+            <MudProgressCircular Color="Color.Secondary" Size="Size.Small" Indeterminate="true" />
+        }
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OnLinkPreparationClicked">Prepare export to Word</MudButton>
+    }
+    else
+    {
+        <a href="@Data" class="mud-button mud-button-filled mud-button-filled-primary mud-button-filled-size-medium download-link" target="blank">Export to Word</a>
+    }
+</div>
+
+@code {
+    [Parameter] public Func<Task<string>> ExportDocumentDelegate { get; set; }
+    [Parameter] public string DocumentId { get; set; }
+}
+
+@code {
+    string Data;
+    bool InProgress = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Data = await DocumentGenerationApiClient.GetExportDocumentLinkAsync(DocumentId);
+        StateHasChanged();
+    }
+
+    private async Task OnLinkPreparationClicked()
+    {
+        InProgress = true;
+        StateHasChanged();
+        Data = (await ExportDocumentDelegate()).Replace("\"", "");
+        InProgress = false;
+        StateHasChanged();
+    }
+}

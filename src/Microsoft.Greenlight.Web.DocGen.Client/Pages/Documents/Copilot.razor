@@ -1,0 +1,68 @@
+@page "/copilot/{DocumentProcessName}/{ConversationIdString}"
+@page "/copilot/{DocumentProcessName}"
+
+@inject NavigationManager Navigation
+@inject IDocumentProcessApiClient DocumentProcessApiClient
+
+@code {
+    [Parameter] public string? ConversationIdString { get; set; }
+    [Parameter] public string? DocumentProcessName { get; set; }
+    [Parameter] public Guid? ConversationId { get; set; }
+
+    private bool _dpError = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrEmpty(ConversationIdString))
+        {
+            ConversationId = Guid.Parse(ConversationIdString);
+        }
+        else
+        {
+            if (string.IsNullOrEmpty(DocumentProcessName))
+            {
+                _dpError = true;
+            }
+            else
+            {
+
+                var documentProcess = await DocumentProcessApiClient.GetDocumentProcessInfoByShortNameAsync(DocumentProcessName);
+                if (documentProcess == null)
+                {
+                    _dpError = true;
+                }
+                else
+                {
+                    ConversationId = Guid.NewGuid();
+                    Navigation.NavigateTo($"/copilot/{documentProcess.ShortName}/{ConversationId.ToString()}");
+                    _dpError = false;
+                    await InvokeAsync(StateHasChanged);
+
+                }
+            }
+            
+        }
+
+        if (ConversationId.HasValue)
+        {
+            ConversationIdString = ConversationId.ToString();
+        }
+    }
+}
+
+@if (_dpError)
+{
+    <div class="alert alert-danger" role="alert">
+        <strong>Loading</strong>
+        @if (string.IsNullOrEmpty(DocumentProcessName))
+        {
+            <span>Document Process not found</span>
+        }
+    </div>
+}
+else
+{
+    <CoPilotComponent ConversationId="@ConversationId" 
+                      DocumentProcessName="@DocumentProcessName" 
+                      InternalConversationIdCreate="false"/>
+}

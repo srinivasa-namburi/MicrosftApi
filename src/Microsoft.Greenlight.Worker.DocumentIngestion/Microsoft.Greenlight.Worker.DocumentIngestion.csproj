@@ -1,0 +1,36 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Worker">
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>true</ImplicitUsings>
+		<ErrorOnDuplicatePublishOutputFiles>false</ErrorOnDuplicatePublishOutputFiles>
+		<UserSecretsId>dotnet-Microsoft.Greenlight.Worker.DocumentIngestion-932692d6-6396-4f71-a544-a8ad4a38f52d</UserSecretsId>
+	</PropertyGroup>
+	<PropertyGroup>
+		<NoWarn>SKEXP0060;SKEXP0061;SKEXP0042;SKEXP0011;SKEXP0001</NoWarn>
+	</PropertyGroup>
+	<ItemGroup>
+		<Compile Remove="s\**" />
+		<Content Remove="s\**" />
+		<EmbeddedResource Remove="s\**" />
+		<None Remove="s\**" />
+	</ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="Humanizer.Core" Version="2.14.1" />
+		<PackageReference Include="MassTransit.Azure.ServiceBus.Core" Version="8.2.1" />
+		<PackageReference Include="MassTransit.EntityFrameworkCore" Version="8.2.1" />
+		<PackageReference Include="MassTransit.Quartz" Version="8.2.1" />
+		<PackageReference Include="MassTransit.RabbitMQ" Version="8.2.1" />
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+	</ItemGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\Microsoft.Greenlight.DocumentProcesses\Microsoft.Greenlight.DocumentProcesses.csproj" />
+		<ProjectReference Include="..\Microsoft.Greenlight.ServiceDefaults\Microsoft.Greenlight.ServiceDefaults.csproj" />
+		<ProjectReference Include="..\Microsoft.Greenlight.Shared\Microsoft.Greenlight.Shared.csproj" />
+	</ItemGroup>
+	<ItemGroup>
+		<Folder Include="Consumers\KernelMemoryDocumentIngestionSaga\" />
+		<Folder Include="Properties\" />
+		<Folder Include="Sagas\" />
+	</ItemGroup>
+</Project>
