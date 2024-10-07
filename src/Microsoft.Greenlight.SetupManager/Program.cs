@@ -21,7 +21,7 @@ builder.Services.AddSingleton<SetupDataInitializerService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<SetupDataInitializerService>());
 
 builder.AddGreenlightServices(credentialHelper, serviceConfigurationOptions);
-builder.DynamicallyRegisterPlugins(serviceConfigurationOptions);
+//builder.DynamicallyRegisterPlugins(serviceConfigurationOptions);
 builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
 
 if (!serviceConfigurationOptions.GreenlightServices.DocumentGeneration.CreateBodyTextNodes)

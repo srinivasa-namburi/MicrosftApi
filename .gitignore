@@ -11,7 +11,8 @@ src/infra
 
 # Local Build/Publish definitions
 
-**/Properties/**/*.json
+# We want to include the launchsettings.json files as they define endpoints for the application
+# **/Properties/**/*.json
 
 # Yarn Build Output
 **/webapp/build

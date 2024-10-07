@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Microsoft.Greenlight.Worker.DocumentIngestion": {
+      "commandName": "Project"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker"
+    }
+  }
+}

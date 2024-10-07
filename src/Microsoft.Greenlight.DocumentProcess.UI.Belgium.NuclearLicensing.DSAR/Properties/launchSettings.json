@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "ProjectVico.V2.DocumentProcess.UI.Belgium.NuclearLicensing.DSAR": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "https://localhost:57081;http://localhost:57082"
+    }
+  }
+}
