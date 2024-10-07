@@ -140,8 +140,8 @@ jobs:
 
       - name: Create appsettings.Production.json file
         run: |
-          # Copy appsettings.json to appsettings.Production.json (in the ProjectVico.V2.AppHost directory)
-          cp ProjectVico.V2.AppHost/appsettings.json ProjectVico.V2.AppHost/appsettings.Production.json
+          # Copy appsettings.json to appsettings.Production.json (in the Microsoft.Greenlight.AppHost directory)
+          cp Microsoft.Greenlight.AppHost/appsettings.json Microsoft.Greenlight.AppHost/appsettings.Production.json
 
           # Ensure ConnectionStrings and ServiceConfiguration.AzureMaps objects exist and add respective fields
           jq --arg openai_planner "${openai_planner}" --arg azure_maps_key "${ServiceConfiguration__AzureMaps__Key}" '
@@ -149,14 +149,14 @@ jobs:
             .ConnectionStrings["openai-planner"] = $openai_planner |
             .ServiceConfiguration.AzureMaps = (.ServiceConfiguration.AzureMaps // {}) |
             .ServiceConfiguration.AzureMaps.Key = $azure_maps_key' \
-            ProjectVico.V2.AppHost/appsettings.Production.json > ProjectVico.V2.AppHost/appsettings.Production.json.tmp
+            Microsoft.Greenlight.AppHost/appsettings.Production.json > Microsoft.Greenlight.AppHost/appsettings.Production.json.tmp
 
           # Move the temporary file to the final appsettings.Production.json
-          mv ProjectVico.V2.AppHost/appsettings.Production.json.tmp ProjectVico.V2.AppHost/appsettings.Production.json
+          mv Microsoft.Greenlight.AppHost/appsettings.Production.json.tmp Microsoft.Greenlight.AppHost/appsettings.Production.json
 
           # Display the full appsettings.Production.json file
           echo "*****************************************************************************************"
-          cat ProjectVico.V2.AppHost/appsettings.Production.json
+          cat Microsoft.Greenlight.AppHost/appsettings.Production.json
           echo "*****************************************************************************************"
         env:
           openai_planner: ${{ secrets.PVICO_OPENAI_CONNECTIONSTRING }}
@@ -171,7 +171,7 @@ jobs:
           fi
 
           # Load the existing appsettings.Production.json into a variable
-          appsettings=$(cat ProjectVico.V2.AppHost/appsettings.Production.json)
+          appsettings=$(cat Microsoft.Greenlight.AppHost/appsettings.Production.json)
 
           # Load the AzureAd configuration from the secret
           azureAdConfig=$(echo "${PVICO_ENTRA_CREDENTIALS}")
@@ -180,11 +180,11 @@ jobs:
           merged=$(echo "${appsettings}" | jq --argjson azureAdConfig "${azureAdConfig}" '. + {AzureAd: $azureAdConfig}')
 
           # Write the merged configuration back to the appsettings.Production.json file
-          echo "${merged}" > ProjectVico.V2.AppHost/appsettings.Production.json
+          echo "${merged}" > Microsoft.Greenlight.AppHost/appsettings.Production.json
 
           # Display the full appsettings.Production.json file
           echo "*****************************************************************************************"
-          cat ProjectVico.V2.AppHost/appsettings.Production.json
+          cat Microsoft.Greenlight.AppHost/appsettings.Production.json
           echo "*****************************************************************************************"
         env:
           PVICO_ENTRA_CREDENTIALS: ${{ secrets.PVICO_ENTRA_CREDENTIALS }}

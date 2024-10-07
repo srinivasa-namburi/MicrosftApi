@@ -5,7 +5,7 @@ name: pvico
 services:
   app:
     language: dotnet
-    project: .\ProjectVico.V2.AppHost\ProjectVico.V2.AppHost.csproj
+    project: .\Microsoft.Greenlight.AppHost\Microsoft.Greenlight.AppHost.csproj
     host: containerapp
 
 hooks:

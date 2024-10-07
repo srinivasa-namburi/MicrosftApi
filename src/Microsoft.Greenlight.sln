@@ -80,6 +80,12 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Microsoft.Greenlight.Extens
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Microsoft.Greenlight.Extensions.Plugins", "Extensibility\Microsoft.Greenlight.Extensions.Plugins\Microsoft.Greenlight.Extensions.Plugins.csproj", "{3A3FB919-C0DC-46D7-903F-DC4B502107CE}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Build", "Build", "{CD951DF2-ECE1-4749-B970-4045FC83DBFC}"
+	ProjectSection(SolutionItems) = preProject
+		..\.github\workflows\load-trainingdata.yml = ..\.github\workflows\load-trainingdata.yml
+		..\.github\workflows\provision-deploy.yml = ..\.github\workflows\provision-deploy.yml
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -289,6 +295,7 @@ Global
 		{B45CE441-4266-4571-AAFB-31DB5FD0118C} = {EA6467CC-7141-4DF4-A64B-B570D12CC9A9}
 		{68936B34-3A20-4FB9-B41E-9EA1AA53BE3D} = {E3971949-16AA-4C9B-BD65-62E0BE6EEAFE}
 		{3A3FB919-C0DC-46D7-903F-DC4B502107CE} = {E3971949-16AA-4C9B-BD65-62E0BE6EEAFE}
+		{CD951DF2-ECE1-4749-B970-4045FC83DBFC} = {0CED2165-8D86-45D8-8D0D-359FB0D0AC32}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {8B68A6F2-AE7F-4585-941D-282839D6E440}
