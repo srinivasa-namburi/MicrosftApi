@@ -189,6 +189,57 @@ jobs:
         env:
           PVICO_ENTRA_CREDENTIALS: ${{ secrets.PVICO_ENTRA_CREDENTIALS }}
 
+      - name: Retrieve Managed Identity Client ID
+        id: get_mi_client_id
+        run: |
+          RG_NAME="rg-${{ env.AZURE_ENV_NAME }}"
+          # Get managed identity details
+          MI_CLIENT_ID=$(az identity list -g "$RG_NAME" --query "[?starts_with(name, 'mi-')].clientId" -o tsv)
+
+          # Fail if no managed identity is found
+          if [ -z "$MI_CLIENT_ID" ]; then
+            echo "Managed Identity not found in the resource group $RG_NAME."
+            exit 1
+          fi
+
+          echo "MI_CLIENT_ID=$MI_CLIENT_ID" >> $GITHUB_ENV
+
+      - name: Retrieve SQL Database Name from appsettings.Production.json
+        id: get_db_name
+        run: |
+          # Extract SQL Database Name from appsettings.Production.json
+          DB_NAME=$(jq -r '.ServiceConfiguration.SQL.DatabaseName' Microsoft.Greenlight.AppHost/appsettings.Production.json)
+
+          # Fail if database name is not found
+          if [ -z "$DB_NAME" ]; then
+            echo "Database name not found in appsettings.Production.json."
+            exit 1
+          fi
+
+          echo "DB_NAME=$DB_NAME" >> $GITHUB_ENV
+
+      - name: Construct Connection String
+        id: create_conn_string
+        run: |
+          # Get the SQL Server name (assuming it's the only SQL server in the resource group)
+          RG_NAME="rg-${{ env.AZURE_ENV_NAME }}"
+          SQL_SERVER_NAME=$(az sql server list -g "$RG_NAME" --query "[0].fullyQualifiedDomainName" -o tsv)
+
+          # Check if SQL Server name is retrieved
+          if [ -z "$SQL_SERVER_NAME" ]; then
+            echo "SQL Server not found in the resource group $RG_NAME."
+            exit 1
+          fi
+
+          # Construct the connection string
+          CONNECTION_STRING="Server=tcp:$SQL_SERVER_NAME,1433;Database=$DB_NAME;Authentication=Active Directory Managed Identity;User Id=${{ env.MI_CLIENT_ID }};"
+          echo "CONNECTION_STRING=$CONNECTION_STRING" >> $GITHUB_ENV
+
+      - name: Run EF Core Migrations
+        run: dotnet ef database update --project Microsoft.Greenlight.Shared --connection "$CONNECTION_STRING"
+        env:
+          CONNECTION_STRING: ${{ env.CONNECTION_STRING }}
+
       - name: Deploy Application
         run: azd deploy --no-prompt
         env:
