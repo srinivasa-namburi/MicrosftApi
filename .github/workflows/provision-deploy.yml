@@ -225,6 +225,8 @@ jobs:
           RG_NAME="rg-${{ env.AZURE_ENV_NAME }}"
           SQL_SERVER_NAME=$(az sql server list -g "$RG_NAME" --query "[0].fullyQualifiedDomainName" -o tsv)
 
+          echo "SQL_SERVER_NAME=$SQL_SERVER_NAME"
+
           # Check if SQL Server name is retrieved
           if [ -z "$SQL_SERVER_NAME" ]; then
             echo "SQL Server not found in the resource group $RG_NAME."
@@ -232,13 +234,8 @@ jobs:
           fi
 
           # Construct the connection string
-          CONNECTION_STRING="Server=tcp:$SQL_SERVER_NAME,1433;Database=$DB_NAME;Authentication=Active Directory Managed Identity;User Id=${{ env.MI_CLIENT_ID }};"
+          CONNECTION_STRING="Server=tcp:${SQL_SERVER_NAME},1433;Database=${DB_NAME};Authentication=Active Directory Managed Identity;User Id=${MI_CLIENT_ID};"
           echo "CONNECTION_STRING=$CONNECTION_STRING" >> $GITHUB_ENV
-
-      - name: Run EF Core Migrations
-        run: dotnet ef database update --project Microsoft.Greenlight.Shared --connection "$CONNECTION_STRING"
-        env:
-          CONNECTION_STRING: ${{ env.CONNECTION_STRING }}
 
       - name: Deploy Application
         run: azd deploy --no-prompt
