@@ -82,19 +82,29 @@ public static class SemanticKernelExtensions
 
         List<DocumentProcessInfo> documentProcesses = [];
 
-        // Get dynamic document processes
-        if (dbContext != null && mapper != null)
+        try
         {
-            var dynamicDocumentProcesses = dbContext.DynamicDocumentProcessDefinitions
-                .Where(x => x.LogicType == DocumentProcessLogicType.KernelMemory)
-                .Include(x => x.DocumentOutline)
-                .ToList();
 
-            foreach (var documentProcess in dynamicDocumentProcesses)
+
+            // Get dynamic document processes
+            if (dbContext != null && mapper != null)
             {
-                var documentProcessInfo = mapper.Map<DocumentProcessInfo>(documentProcess);
-                documentProcesses.Add(documentProcessInfo);
+                var dynamicDocumentProcesses = dbContext.DynamicDocumentProcessDefinitions
+                    .Where(x => x.LogicType == DocumentProcessLogicType.KernelMemory)
+                    .Include(x => x.DocumentOutline)
+                    .ToList();
+
+                foreach (var documentProcess in dynamicDocumentProcesses)
+                {
+                    var documentProcessInfo = mapper.Map<DocumentProcessInfo>(documentProcess);
+                    documentProcesses.Add(documentProcessInfo);
+                }
             }
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine("Not yet able to load Dynamic Plugins, possibly due to an in-process upgrade");
+            throw;
         }
 
         // Get static document processes
