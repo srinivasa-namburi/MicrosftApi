@@ -91,13 +91,21 @@ namespace Microsoft.Greenlight.Shared.Plugins
             {
                 var dbContext = scope.ServiceProvider.GetRequiredService<DocGenerationDbContext>();
                 var azureFileHelper = scope.ServiceProvider.GetRequiredService<AzureFileHelper>();
-
-                var dynamicPlugins = await dbContext.DynamicPlugins
-                    .Include(dp => dp.DocumentProcesses)
-                    .ThenInclude(dp => dp.DynamicDocumentProcessDefinition)
-                    .AsNoTracking()
-                    .AsSplitQuery()
-                    .ToListAsync();
+                List<DynamicPlugin> dynamicPlugins;
+                try
+                {
+                    dynamicPlugins = await dbContext.DynamicPlugins
+                        .Include(dp => dp.DocumentProcesses)
+                        .ThenInclude(dp => dp.DynamicDocumentProcessDefinition)
+                        .AsNoTracking()
+                        .AsSplitQuery()
+                        .ToListAsync();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Unable to load dynamic plugins yet");
+                    return;
+                }
 
                 foreach (var plugin in dynamicPlugins)
                 {
