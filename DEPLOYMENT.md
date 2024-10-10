@@ -2,7 +2,7 @@
 
 # Pre-Requisites
 
-1. Fork the Repository, then download the fork you've created of the GenAI for Industry Permitting repository with git, and run this command from a PowerShell prompt (if you're on Windows, open Powershell through Terminal or the Windows Powershell application, if you're on Linux/Mac, precede the follow script name with "pwsh"). Make sure your active working directory is wherever you downloaded the repository to. This script creates the Service Principle used by the applicaion for it's ongoing operation. It acts as the Application client against Microsoft Entra to run authentication.
+1. Fork the Repository, then download the fork you've created of the GenAI for Industry Permitting repository with git, and run this command from a PowerShell prompt (if you're on Windows, open Powershell through Terminal or the Windows Powershell application, if you're on Linux/Mac, precede the follow script name with "pwsh"). Make sure your active working directory is wherever you downloaded the repository to. This script creates the Service Principle used by the applicaion for it's ongoing operation. It acts as the Application client against Microsoft Entra to run authentication. Take note of the outputted secret details at the end of the script, this will be required for the PVICO_ENTRA_CREDENTIALS secret later on. 
 
    ```
    .\build\scripts\sp-create.ps1
@@ -10,7 +10,7 @@
 
    - ![image](https://github.com/user-attachments/assets/556c6ac0-7354-447b-8c91-1a15469aee8f)
 
-2. Create a Service Principal for GitHub Actions to utilize for deployment. Either (1) Cloud Application Administrator or (2) Application Developer permission on the tenant (Microsoft Entra) is required to perform this step. Application Developer is normally sufficient - and both Cloud Application Administrator and Application Developer supersede it. To do this, run this command (you must have the Azure CLI installed and be logged on to the tenant using "az login" first - you can download the Azure CLI here if you don't have it : https://learn.microsoft.com/en-us/cli/azure/install-azure-cli). Substitute <subscriptionId> with your actual subscription id:
+2. Create a Service Principal for GitHub Actions to utilize for deployment. Either (1) Cloud Application Administrator or (2) Application Developer permission on the tenant (Microsoft Entra) is required to perform this step. Application Developer is normally sufficient - and both Cloud Application Administrator and Application Developer supersede it. To do this, run this command (you must have the Azure CLI installed and be logged on to the tenant using "az login" first - you can download the Azure CLI here if you don't have it : https://learn.microsoft.com/en-us/cli/azure/install-azure-cli). The output of this script should be noted for storage in the AZURE_CREDENTIALS secret in a later step. Substitute <subscriptionId> with your actual subscription id:
 
 ```
   az ad sp create-for-rbac
@@ -36,9 +36,10 @@
 4. If using private networking:
 
    - Create or select a VNET in the Azure Portal in the same subscription of the deployment
-   - Create or select a VNET for services
-   - Create a VNET for Container Apps Environment for GenAI for Industry Permitting
-     - This must use Subnet Delegation - delegate to Microsoft.App.Environments. Take note of the Subnet ID for both of these subnets, it is needed for later
+   - Create or select a Subnet in the VNET created above
+   - Create a Subnet for Container Apps Environment for GenAI for Industry Permitting
+     - The Subnet for Container Apps Environment must use Subnet Delegation - delegate to Microsoft.App.Environments.
+   - Take note of the Subnet ID for both of these subnets, you will these to fill in the the AZURE_SUBNET_CAE and AZURE_SUBNET_PE variables. 
 
 5. Add the following deployment variables to the Secrets and Variables section of the repository:
 
