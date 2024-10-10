@@ -47,7 +47,15 @@ public class SetupDataInitializerService : BackgroundService
         var dbContext = scope.ServiceProvider.GetRequiredService<DocGenerationDbContext>();
         var documentProcessInfoService = scope.ServiceProvider.GetRequiredService<IDocumentProcessInfoService>();
 
-        await InitializeDatabaseAsync(dbContext, cancellationToken);
+        // Determine if we're running in a development environment
+        var isDevelopment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development";
+        
+        if (isDevelopment)
+        {
+            _logger.LogInformation("Running in Development environment. Running database migrations.");
+            await InitializeDatabaseAsync(dbContext, cancellationToken);  
+        }
+        
         await SeedAsync(dbContext, cancellationToken);
         await CreateKernelMemoryIndexes(documentProcessInfoService, cancellationToken);
 
