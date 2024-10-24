@@ -50,7 +50,7 @@ internal sealed class DocumentGenerationApiClient : BaseServiceClient<DocumentGe
         return await response?.Content.ReadAsStreamAsync()!;
     }
 
-    public async Task<string> ExportDocumentLinkAsync(string documentId)
+    public async Task<string?> GenerateExportDocumentLinkAsync(string? documentId)
     {
         var response = await SendGetRequestMessage($"/api/documents/{documentId}/word-export/permalink");
         response?.EnsureSuccessStatusCode();

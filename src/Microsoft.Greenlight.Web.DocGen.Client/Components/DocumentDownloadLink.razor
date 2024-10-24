@@ -1,41 +1,45 @@
 @inject IDocumentGenerationApiClient DocumentGenerationApiClient
+@inject NavigationManager NavigationManager
 
 <div class="exported-link-container">
-    @if (string.IsNullOrEmpty(Data))
+    @if (InProgress)
     {
-        if (InProgress)
-        {
-            <MudProgressCircular Color="Color.Secondary" Size="Size.Small" Indeterminate="true" />
-        }
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OnLinkPreparationClicked">Prepare export to Word</MudButton>
+        <MudProgressCircular Color="Color.Secondary" Size="Size.Small" Indeterminate="true" />
+    }
+
+    @if (!InProgress && !string.IsNullOrWhiteSpace(DocumentUrl))
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Target="_blank" Href="@DocumentUrl">Download Word Document</MudButton>
     }
     else
     {
-        <a href="@Data" class="mud-button mud-button-filled mud-button-filled-primary mud-button-filled-size-medium download-link" target="blank">Export to Word</a>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OnExportToWordClicked">Generate Word Export</MudButton>
     }
+    
 </div>
 
 @code {
-    [Parameter] public Func<Task<string>> ExportDocumentDelegate { get; set; }
-    [Parameter] public string DocumentId { get; set; }
-}
-
-@code {
-    string Data;
+    [Parameter] public string? DocumentId { get; set; }
+    string? DocumentUrl;
     bool InProgress = false;
+
 
     protected override async Task OnInitializedAsync()
     {
-        Data = await DocumentGenerationApiClient.GetExportDocumentLinkAsync(DocumentId);
-        StateHasChanged();
+        // Gets the exported document URL if the document ID is provided
+        // Returns a blank string if the exported document doesn't exist
+        if (DocumentId != null)
+            DocumentUrl = await DocumentGenerationApiClient.GetExportDocumentLinkAsync(DocumentId!);
+
     }
 
-    private async Task OnLinkPreparationClicked()
+    private async Task OnExportToWordClicked()
     {
         InProgress = true;
-        StateHasChanged();
-        Data = (await ExportDocumentDelegate()).Replace("\"", "");
+        await InvokeAsync(StateHasChanged);
+        DocumentUrl = await DocumentGenerationApiClient.GenerateExportDocumentLinkAsync(DocumentId);
+        DocumentUrl = DocumentUrl!.Replace("\"", "");
         InProgress = false;
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
     }
 }

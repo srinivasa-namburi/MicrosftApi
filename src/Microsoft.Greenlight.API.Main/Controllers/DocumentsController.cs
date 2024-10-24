@@ -100,7 +100,7 @@ public class DocumentsController : BaseController
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/json")]
     [Produces<GeneratedDocument>]
-    public async Task<ActionResult<GeneratedDocument>> GetDocument(string documentId)
+    public async Task<ActionResult<GeneratedDocument>> GetFullGeneratedDocument(string documentId)
     {
         var documentGuid = Guid.Parse(documentId);
         var document = await _dbContext.GeneratedDocuments
@@ -139,17 +139,20 @@ public class DocumentsController : BaseController
             return NotFound();
         }
 
-        var accessUrl = _fileHelper.GetProxiedBlobUrl(existingLink.AbsoluteUrl);
-        return accessUrl;
+        var assetUrl = _fileHelper.GetProxiedAssetBlobUrl(existingLink.Id);
+        return assetUrl;
+
+        //var accessUrl = _fileHelper.GetProxiedBlobUrl(existingLink.AbsoluteUrl);
+        //return accessUrl;
     }
 
     [HttpGet("{documentId}/word-export")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/octet-stream")]
-    public async Task<IActionResult> GetDocumentExport(string documentId, string exporterType = "Word")
+    public async Task<IActionResult> GetDocumentExportFile(string documentId, string exporterType = "Word")
     {
-        var documentResult = await GetDocument(documentId);
+        var documentResult = await GetFullGeneratedDocument(documentId);
         if (documentResult.Result is NotFoundResult)
         {
             return NotFound();
@@ -198,7 +201,7 @@ public class DocumentsController : BaseController
     [Produces("application/json")]
     public async Task<ActionResult<string>> GetDocumentExportPermalink(string documentId)
     {
-        var documentResult = await GetDocument(documentId);
+        var documentResult = await GetFullGeneratedDocument(documentId);
         if (documentResult.Result is NotFoundResult)
         {
             return NotFound();
@@ -210,27 +213,31 @@ public class DocumentsController : BaseController
             return NotFound();
         }
 
-        var existingLink = await _dbContext.ExportedDocumentLinks
+        var documentExportedLink = await _dbContext.ExportedDocumentLinks
             .AsNoTracking()
             .FirstOrDefaultAsync(l => l.GeneratedDocumentId == document.Id && l.MimeType == MimeTypes.MsWordX);
 
         var blobUri = "";
 
-        if (existingLink is not null)
+        if (documentExportedLink is not null)
         {
-            blobUri = existingLink.AbsoluteUrl;
+            // The document has already been exported/generated - return the existing link
+            blobUri = documentExportedLink.AbsoluteUrl;
         }
         else
         {
+            // The document has not been exported/generated - generate and export it now
             var exportStream = await _wordDocumentExporter.ExportDocumentAsync(document, false);
             var fileNameGuid = Guid.NewGuid();
             var fileName = $"{document.Id}-{fileNameGuid}.docx";
             blobUri = await _fileHelper.UploadFileToBlobAsync(exportStream, fileName, "document-export", true);
-            await _fileHelper.SaveFileInfoAsync(blobUri, "document-export", fileName, Guid.Parse(documentId));
+            documentExportedLink = await _fileHelper.SaveFileInfoAsync(blobUri, "document-export", fileName, Guid.Parse(documentId));
         }
 
-        var accessUrl = _fileHelper.GetProxiedBlobUrl(blobUri);
-        return accessUrl;
+        var assetUrl = _fileHelper.GetProxiedAssetBlobUrl(documentExportedLink.Id);
+        return assetUrl;
+        //var accessUrl = _fileHelper.GetProxiedBlobUrl(blobUri);
+        //return accessUrl;
     }
 
     [HttpDelete("{documentId}")]

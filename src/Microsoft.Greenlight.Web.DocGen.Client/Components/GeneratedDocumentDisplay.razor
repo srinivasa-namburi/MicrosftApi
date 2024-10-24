@@ -36,7 +36,7 @@
             <MudItem xs="12" sm="3" Class="d-flex justify-end align-center">
                 @if (areNodesGenerated)
                 {
-                    <DocumentDownloadLink DocumentId=@DocumentId.ToString() ExportDocumentDelegate=@(()=>ExportDocumentLink()) />
+                    <DocumentDownloadLink DocumentId=@DocumentId.ToString() />
                 }
             </MudItem>
         </MudGrid>
@@ -176,11 +176,6 @@ else
         var fileType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
         var fileUrl = $"data:{fileType};base64,{base64}";
         Navigation.NavigateTo(fileUrl, true);
-    }
-
-    private async Task<string> ExportDocumentLink()
-    {
-        return await DocumentGenerationApiClient.ExportDocumentLinkAsync(DocumentId.ToString());
     }
 
     private async Task UpdateContentNodeState(List<ContentNode>? documentContentNodes, ContentNode updatedNodeFromEvent)
