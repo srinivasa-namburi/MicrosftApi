@@ -38,7 +38,7 @@ public class CreateDynamicDocumentProcessPromptsConsumer : IConsumer<CreateDynam
 
         if (AdminHelper.IsRunningInProduction())
         {
-            await context.Publish<RestartWorker>(Guid.NewGuid());
+            await context.Publish(new RestartWorker(Guid.NewGuid()));
         }
     }
 
