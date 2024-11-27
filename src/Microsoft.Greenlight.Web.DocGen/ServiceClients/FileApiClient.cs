@@ -12,13 +12,17 @@ public class FileApiClient : BaseServiceClient<FileApiClient>, IFileApiClient
 
     public async Task<string> UploadFileDirectAsync(string containerName, string fileName, IBrowserFile file)
     {
-        var url = $"api/file/{containerName}/{fileName}/direct";
+        var encodedFileName = Uri.EscapeDataString(fileName);
+        var encodedContainerName = Uri.EscapeDataString(containerName);
+        var url = $"/api/file/upload/direct/{encodedContainerName}/{encodedFileName}";
         return await UploadFileAsync(url, file);
     }
 
     public async Task<string> UploadFileAndStoreLinkAsync(string containerName, string fileName, IBrowserFile file)
     {
-        var url = $"api/file/{containerName}/{fileName}";
+        var encodedFileName = Uri.EscapeDataString(fileName);
+        var encodedContainerName = Uri.EscapeDataString(containerName);
+        var url = $"/api/file/upload/direct/{encodedContainerName}/{encodedFileName}";
         return await UploadFileAsync(url, file);
     }
 

@@ -127,7 +127,7 @@ public class FileController : BaseController
         }
     }
 
-    [HttpPost("upload/{containerName}/{fileName}/direct")]
+    [HttpPost("upload/direct/{containerName}/{fileName}")]
     [DisableRequestSizeLimit]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]

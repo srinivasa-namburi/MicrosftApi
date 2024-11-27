@@ -191,6 +191,8 @@ public class ReviewApiClient : WebAssemblyBaseServiceClient<ReviewApiClient>, IR
     public async Task<ExportedDocumentLinkInfo> UploadDocumentForReviewInstanceAsync(IBrowserFile file)
     {
         var fileName = file.Name;
+        fileName = WebUtility.UrlEncode(fileName);
+
         var url = $"/api/file/upload/reviews/{fileName}/file-info";
 
         var response = await SendPostRequestMessage(url, file);

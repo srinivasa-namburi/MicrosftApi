@@ -1,9 +1,12 @@
 using System.Text.Json;
 using AutoMapper;
+using MassTransit;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
+using Microsoft.Greenlight.Shared.Contracts.Messages;
 using Microsoft.Greenlight.Shared.Data.Sql;
+using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Models.DocumentProcess;
 using Microsoft.Greenlight.Shared.Repositories;
 using Microsoft.Greenlight.Shared.Services;
@@ -21,18 +24,21 @@ public class DocumentProcessController : BaseController
     private readonly IDocumentProcessInfoService _documentProcessInfoService;
     private readonly IPluginService _pluginService;
     private readonly IMapper _mapper;
+    private readonly IPublishEndpoint _publishEndpoint;
 
     public DocumentProcessController(
         DocGenerationDbContext dbContext,
         IDocumentProcessInfoService documentProcessInfoService,
         IPluginService pluginService,
         IMapper mapper,
+        IPublishEndpoint publishEndpoint,
         DynamicDocumentProcessDefinitionRepository repository)
     {
         _dbContext = dbContext;
         _documentProcessInfoService = documentProcessInfoService;
         _pluginService = pluginService;
         _mapper = mapper;
+        _publishEndpoint = publishEndpoint;
         _repository = repository;
     }
 
@@ -105,7 +111,7 @@ public class DocumentProcessController : BaseController
     public async Task<ActionResult<DocumentProcessInfo>> CreateDocumentProcess([FromBody] DocumentProcessInfo documentProcessInfo)
     {
         var createdDocumentProcessInfo = await _documentProcessInfoService.CreateDocumentProcessInfoAsync(documentProcessInfo);
-
+        // Restarts are done in the background CreateDynamicDocumentProcessPromptsConsumer.
         return Created($"/api/document-process/{createdDocumentProcessInfo.Id}", createdDocumentProcessInfo);
     }
 
@@ -125,7 +131,12 @@ public class DocumentProcessController : BaseController
         _mapper.Map(documentProcessInfo, existingDocumentProcess);
         _dbContext.DynamicDocumentProcessDefinitions.Update(existingDocumentProcess);
         await _dbContext.SaveChangesAsync();
-        
+
+        if (AdminHelper.IsRunningInProduction())
+        {
+            await _publishEndpoint.Publish<RestartWorker>(Guid.NewGuid());
+        }
+
         return Accepted($"/api/document-process/{documentProcessInfo.Id}", documentProcessInfo);
     }
 
@@ -145,6 +156,11 @@ public class DocumentProcessController : BaseController
 
         // Remove the document process
         var result = await _documentProcessInfoService.DeleteDocumentProcessInfoAsync(id);
+
+        if (AdminHelper.IsRunningInProduction())
+        {
+            await _publishEndpoint.Publish<RestartWorker>(Guid.NewGuid());
+        }
         var resultJson = JsonSerializer.Serialize(result);
         return Ok(resultJson);
     }

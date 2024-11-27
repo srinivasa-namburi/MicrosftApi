@@ -1,4 +1,5 @@
-﻿@inject IDocumentLibraryApiClient DocumentLibraryApiClient
+﻿@using System.Net
+@inject IDocumentLibraryApiClient DocumentLibraryApiClient
 @inject IDocumentProcessApiClient DocumentProcessApiClient
 @inject IFileApiClient FileApiClient
 @inject ISnackbar Snackbar
@@ -30,15 +31,15 @@
 <!-- File Upload Section -->
 <MudPaper Class="pa-4">
     <MudFileUpload T="IReadOnlyList<IBrowserFile>" 
-                   FilesChanged="HandleFileSelected"
-                   MaximumFileCount="16384"
-                   >
+    FilesChanged="HandleFileSelected"
+    MaximumFileCount="16384"
+    >
         <ButtonTemplate>
             <MudButton HtmlTag="label"
-                       Variant="Variant.Filled"
-                       Color="Color.Primary"
-                       StartIcon="@Icons.Material.Filled.CloudUpload"
-                       for="@context">
+            Variant="Variant.Filled"
+            Color="Color.Primary"
+            StartIcon="@Icons.Material.Filled.CloudUpload"
+            for="@context">
                 Upload Files to Document Library
             </MudButton>
         </ButtonTemplate>
@@ -249,7 +250,9 @@
         foreach (var file in files)
         {
             var fileName = $"{DocumentLibraryInfo.BlobStorageAutoImportFolderName}/{file.Name}";
-
+            // URL encode the file name
+            fileName = WebUtility.UrlEncode(fileName);
+            
             try
             {
                 var result = await FileApiClient.UploadFileDirectAsync(DocumentLibraryInfo.BlobStorageContainerName, fileName, file);
