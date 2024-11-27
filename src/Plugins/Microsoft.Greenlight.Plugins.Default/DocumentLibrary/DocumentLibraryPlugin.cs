@@ -1,14 +1,12 @@
 ﻿using System.ComponentModel;
 using AutoMapper;
-using Microsoft.AspNetCore.Mvc.Diagnostics;
 using Microsoft.Greenlight.DocumentProcess.Shared.Search;
 using Microsoft.Greenlight.Extensions.Plugins;
 using Microsoft.Greenlight.Shared.Contracts.DTO.DocumentLibrary;
 using Microsoft.Greenlight.Shared.Services;
-using Microsoft.KernelMemory;
 using Microsoft.SemanticKernel;
 
-namespace Microsoft.Greenlight.DocumentProcess.Shared.Plugins.DocumentLibrary;
+namespace Microsoft.Greenlight.Plugins.Default.DocumentLibrary;
 
 public class DocumentLibraryPlugin : IPluginImplementation
 {

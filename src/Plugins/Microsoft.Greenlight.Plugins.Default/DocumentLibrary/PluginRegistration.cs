@@ -1,7 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Greenlight.Extensions.Plugins;
 
-namespace Microsoft.Greenlight.DocumentProcess.Shared.Plugins.DocumentLibrary;
+namespace Microsoft.Greenlight.Plugins.Default.DocumentLibrary;
 
 public class PluginRegistration : IPluginRegistration
 {
