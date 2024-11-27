@@ -176,6 +176,7 @@ var setupManager = builder
     .WithReference(queueService)
     .WithReference(docGenSql)
     .WithReference(redis)
+    .WithReference(apiMain)
     ;
 
     

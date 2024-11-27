@@ -1,5 +1,8 @@
+using MassTransit;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Greenlight.Shared.Contracts.DTO.DocumentLibrary;
+using Microsoft.Greenlight.Shared.Contracts.Messages;
+using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Services;
 
 namespace Microsoft.Greenlight.API.Main.Controllers
@@ -8,10 +11,14 @@ namespace Microsoft.Greenlight.API.Main.Controllers
     public class DocumentLibraryController : BaseController
     {
         private readonly IDocumentLibraryInfoService _documentLibraryInfoService;
+        private readonly IPublishEndpoint _publishEndpoint;
 
-        public DocumentLibraryController(IDocumentLibraryInfoService documentLibraryInfoService)
+        public DocumentLibraryController(
+            IDocumentLibraryInfoService documentLibraryInfoService,
+            IPublishEndpoint publishEndpoint)
         {
             _documentLibraryInfoService = documentLibraryInfoService;
+            _publishEndpoint = publishEndpoint;
         }
 
         [HttpGet]
@@ -67,7 +74,14 @@ namespace Microsoft.Greenlight.API.Main.Controllers
             }
 
             var createdLibrary = await _documentLibraryInfoService.CreateDocumentLibraryAsync(documentLibraryInfo);
+
+            if (AdminHelper.IsRunningInProduction())
+            {
+                await _publishEndpoint.Publish<RestartWorker>(Guid.NewGuid());
+            }
+            
             return CreatedAtAction(nameof(GetDocumentLibraryById), new { id = createdLibrary.Id }, createdLibrary);
+
         }
 
         [HttpPut("{id:guid}")]
@@ -90,6 +104,12 @@ namespace Microsoft.Greenlight.API.Main.Controllers
             {
                 return NotFound();
             }
+
+            if (AdminHelper.IsRunningInProduction())
+            {
+                await _publishEndpoint.Publish<RestartWorker>(Guid.NewGuid());
+            }
+
             return NoContent();
         }
 

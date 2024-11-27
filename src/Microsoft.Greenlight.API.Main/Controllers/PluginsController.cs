@@ -1,9 +1,11 @@
 // File: Microsoft.Greenlight.API.Main/Controllers/PluginController.cs
 
 using AutoMapper;
+using MassTransit;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Greenlight.Shared.Contracts.DTO.Plugins;
+using Microsoft.Greenlight.Shared.Contracts.Messages;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Models.Plugins;
@@ -18,17 +20,20 @@ public class PluginsController : BaseController
     private readonly DocGenerationDbContext _dbContext;
     private readonly IMapper _mapper;
     private readonly AzureFileHelper _fileHelper;
+    private readonly IPublishEndpoint _publishEndpoint;
 
     public PluginsController(
         IPluginService pluginService, 
         DocGenerationDbContext dbContext, 
         IMapper mapper,
-        AzureFileHelper fileHelper)
+        AzureFileHelper fileHelper,
+        IPublishEndpoint publishEndpoint)
     {
         _pluginService = pluginService;
         _dbContext = dbContext;
         _mapper = mapper;
         _fileHelper = fileHelper;
+        _publishEndpoint = publishEndpoint;
     }
 
     [HttpGet]
@@ -175,6 +180,11 @@ public class PluginsController : BaseController
             await _dbContext.SaveChangesAsync();
 
             var pluginInfo = _mapper.Map<DynamicPluginInfo>(plugin);
+
+            if (AdminHelper.IsRunningInProduction())
+            {
+                await _publishEndpoint.Publish<RestartWorker>(Guid.NewGuid());
+            }
 
             return Ok(pluginInfo);
         }

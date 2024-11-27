@@ -1,8 +1,10 @@
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Greenlight.DocumentProcess.Shared.Prompts;
+using Microsoft.Greenlight.Shared.Contracts.Messages;
 using Microsoft.Greenlight.Shared.Contracts.Messages.DocumentProcesses;
 using Microsoft.Greenlight.Shared.Enums;
+using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Models.DocumentProcess;
 using Microsoft.Greenlight.Shared.Repositories;
 
@@ -33,6 +35,11 @@ public class CreateDynamicDocumentProcessPromptsConsumer : IConsumer<CreateDynam
     {
         var documentProcessId = context.Message.DocumentProcessId;
         await CreateMissingPromptImplementations(documentProcessId, context.CancellationToken);
+
+        if (AdminHelper.IsRunningInProduction())
+        {
+            await context.Publish<RestartWorker>(Guid.NewGuid());
+        }
     }
 
     private async Task CreateMissingPromptImplementations(Guid documentProcessId, CancellationToken stoppingToken)
