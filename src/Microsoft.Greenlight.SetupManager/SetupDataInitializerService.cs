@@ -20,7 +20,6 @@ public class SetupDataInitializerService : BackgroundService
     private readonly ILogger<SetupDataInitializerService> _logger;
     private readonly IHostApplicationLifetime _lifetime;
 
-    private IDocumentProcessInfoService _documentProcessInfoService;
     private readonly SearchClientFactory _searchClientFactory;
 
     public const string ActivitySourceName = "Migrations";
@@ -29,8 +28,6 @@ public class SetupDataInitializerService : BackgroundService
     public SetupDataInitializerService(
         IServiceProvider sp,
         ILogger<SetupDataInitializerService> logger,
-        IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
-        IConfiguration configuration,
         IHostApplicationLifetime lifetime,
         SearchClientFactory searchClientFactory)
     {
@@ -46,16 +43,14 @@ public class SetupDataInitializerService : BackgroundService
 
         var dbContext = scope.ServiceProvider.GetRequiredService<DocGenerationDbContext>();
         var documentProcessInfoService = scope.ServiceProvider.GetRequiredService<IDocumentProcessInfoService>();
-
-        // Determine if we're running in a development environment
-        var isDevelopment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development";
+        var documentLibraryInfoService = scope.ServiceProvider.GetRequiredService<IDocumentLibraryInfoService>();
+        var additionalDocumentLibraryKernelMemoryRepository = scope.ServiceProvider.GetRequiredService<IAdditionalDocumentLibraryKernelMemoryRepository>();
 
         await InitializeDatabaseAsync(dbContext, cancellationToken);
-
         await SeedAsync(dbContext, cancellationToken);
-        await CreateKernelMemoryIndexes(documentProcessInfoService, cancellationToken);
+        await CreateKernelMemoryIndexes(documentProcessInfoService, documentLibraryInfoService,
+            additionalDocumentLibraryKernelMemoryRepository, cancellationToken);
 
-        _lifetime.StopApplication();
     }
 
     private async Task InitializeDatabaseAsync(DocGenerationDbContext dbContext, CancellationToken cancellationToken)
@@ -86,7 +81,10 @@ public class SetupDataInitializerService : BackgroundService
         activity!.Stop();
     }
 
-    private async Task CreateKernelMemoryIndexes(IDocumentProcessInfoService documentProcessInfoService,
+    private async Task CreateKernelMemoryIndexes(
+        IDocumentProcessInfoService documentProcessInfoService, 
+        IDocumentLibraryInfoService documentLibraryInfoService,
+        IAdditionalDocumentLibraryKernelMemoryRepository additionalDocumentLibraryKernelMemoryRepository,
         CancellationToken cancellationToken)
     {
         var documentProcesses = await documentProcessInfoService.GetCombinedDocumentProcessInfoListAsync();
@@ -152,6 +150,56 @@ public class SetupDataInitializerService : BackgroundService
                 await kernelMemoryRepository.DeleteContentAsync(documentProcess.ShortName, repository, dummyDocumentCreatedFileName);
             }
         }
+
+        _logger.LogInformation("Kernel Memory indexes created for {Count} Document Processes", kernelMemoryDocumentProcesses.Count);
+
+        
+        var documentLibraries = await documentLibraryInfoService.GetAllDocumentLibrariesAsync();
+
+
+        if (documentLibraries.Count == 0)
+        {
+            _logger.LogInformation("No Document Libraries found. Skipping index creation.");
+            return;
+        }
+
+        _logger.LogInformation("Updating or creating indexes for {Count} Document Libraries", documentLibraries.Count);
+
+        // For each Document Library, create the necessary indexes if they don't already exist
+        foreach (var documentLibrary in documentLibraries)
+        {
+            var searchIndexClient = _searchClientFactory.GetSearchIndexClientForIndex(documentLibrary.IndexName);
+            var indexAlreadyExists = true;
+            try
+            {
+                var index = await searchIndexClient.GetIndexAsync(documentLibrary.IndexName, cancellationToken);
+            }
+            catch (RequestFailedException e)
+            {
+                // The AI Search API returns a 404 status code if the index does not exist
+                if (e.Status == 404)
+                {
+                    indexAlreadyExists = false;
+                }
+            }
+            if (indexAlreadyExists)
+            {
+                _logger.LogInformation("Index {IndexName} already exists for Document Library {DocumentLibrary}. Skipping creation.", documentLibrary.IndexName, documentLibrary.ShortName);
+                continue;
+            }
+            _logger.LogInformation("Creating index for Document Library {DocumentLibrary}", documentLibrary.ShortName);
+            // Create a stream from the file DummyDocument.pdf in the current directory
+            var fileStream = File.OpenRead("DummyDocument.pdf");
+            // The indexes are created automatically on upload of a document. Use the repository to upload the dummy document
+            await additionalDocumentLibraryKernelMemoryRepository.StoreContentAsync(documentLibrary.ShortName, documentLibrary.IndexName, fileStream, "DummyDocument.pdf", null);
+            fileStream.Close();
+            _logger.LogInformation("Index created for Document Library {DocumentLibrary}", documentLibrary.ShortName);
+            // Delete the dummy document after the index is created
+            await additionalDocumentLibraryKernelMemoryRepository.DeleteContentAsync(documentLibrary.ShortName, documentLibrary.IndexName, "DummyDocument.pdf");
+        }
+
+        _logger.LogInformation("Indexes updated or created for {Count} Document Libraries", documentLibraries.Count);
+
     }
 
 
