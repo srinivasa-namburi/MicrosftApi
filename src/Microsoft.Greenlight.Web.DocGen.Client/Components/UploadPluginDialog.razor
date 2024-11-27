@@ -1,0 +1,46 @@
+﻿@inject IPluginApiClient PluginApiClient
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <MudFileUpload T="IBrowserFile" OnFilesChanged="HandleFilesChanged">
+            <ButtonTemplate>
+                <MudButton HtmlTag="label"
+                           Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.CloudUpload"
+                           for="@context">
+                    Upload Plugin
+                </MudButton>
+            </ButtonTemplate>
+        </MudFileUpload>
+    </DialogContent>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    MudDialogInstance MudDialog { get; set; } = default!;
+
+    private async Task HandleFilesChanged(InputFileChangeEventArgs e)
+    {
+        var selectedFile = e.File;
+
+        if (selectedFile == null)
+        {
+            Snackbar.Add("Please select a file to upload.", Severity.Error);
+            return;
+        }
+
+        try
+        {
+            Snackbar.Add($"Uploading plugin: {selectedFile.Name}", Severity.Info);
+            var pluginInfo = await PluginApiClient.UploadPluginAsync(selectedFile);
+            Snackbar.Add("Plugin uploaded successfully.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(pluginInfo));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error uploading plugin: {ex.Message}", Severity.Error);
+        }
+    }
+}

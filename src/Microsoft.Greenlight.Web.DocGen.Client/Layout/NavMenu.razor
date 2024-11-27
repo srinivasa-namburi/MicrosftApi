@@ -2,19 +2,22 @@
 
 @inject IDocumentProcessApiClient DocumentProcessApiClient
 @inject IConfigurationApiClient ConfigurationApiClient
+@inject IDialogService DialogService
 
 <MudNavMenu>
     <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">Home</MudNavLink>
     <MudNavLink Href="/docs" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ViewList">All Documents</MudNavLink>
+
     <MudNavGroup Title="New Document" Icon="@Icons.Material.Filled.Description">
         @foreach (var dp in _documentProcesses)
         {
             var url = $"/{dp.ShortName}/generate";
-            var description = !string.IsNullOrEmpty(dp.Description) ? dp.Description : dp.ShortName ;
+            var description = !string.IsNullOrEmpty(dp.Description) ? dp.Description : dp.ShortName;
             <MudNavLink Href="@url">@description</MudNavLink>
         }
     </MudNavGroup>
-    <MudNavGroup Title="Nuclear Copilot" Icon="@Icons.Material.Filled.AssistantDirection">
+
+    <MudNavGroup Title="Permitting CoPilot" Icon="@Icons.Material.Filled.AssistantDirection">
         @foreach (var dp in _documentProcesses)
         {
             var url = $"/copilot/{dp.ShortName}";
@@ -22,8 +25,7 @@
             <MudNavLink Href="@url" Match="NavLinkMatch.Prefix">@description</MudNavLink>
         }
     </MudNavGroup>
-    <MudNavLink Href="/document-processes" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Build">Document Process Manager</MudNavLink>
-    
+
     @if (_featureFlags?.EnableReviews == true)
     {
         <MudNavLink Href="/reviews" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Reviews">Reviews</MudNavLink>
@@ -32,6 +34,14 @@
     {
         <MudNavLink Href="/mass-document-creation" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Receipt">Mass Document Creation</MudNavLink>
     }
+
+    <MudNavGroup Title="Administration" Icon="@Icons.Material.Filled.AdminPanelSettings">
+        <MudNavLink Href="/document-processes" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Build">Document Process Manager</MudNavLink>
+        <MudNavLink Href="/document-libraries" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.LibraryBooks">Document Libraries</MudNavLink>
+        <MudNavLink Href="/plugins" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Extension">Plugins</MudNavLink>
+    </MudNavGroup>
+
+    <MudNavLink OnClick="@ShowRestartWorkersDialog" Icon="@Icons.Material.Filled.Refresh">Restart Workers</MudNavLink>
 
     <LogInOrOut />
 </MudNavMenu>
@@ -51,6 +61,38 @@
         catch
         {
             return;
+        }
+    }
+
+    private async Task ShowRestartWorkersDialog()
+    {
+        var parameters = new DialogParameters
+        {
+            { "ContentText", "Are you sure you want to restart the workers? This will take approximately 1 minute." },
+            { "ButtonText", "OK" },
+            { "CancelButtonText", "Cancel" },
+            { "DialogColor", Color.Warning }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<ConfirmationDialog>("Restart Workers", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            await RestartWorkers();
+        }
+    }
+
+    private async Task RestartWorkers()
+    {
+        try
+        {
+            await ConfigurationApiClient.RestartWorkersAsync();
+        }
+        catch (Exception ex)
+        {
+            // Handle exceptions if necessary
         }
     }
 }

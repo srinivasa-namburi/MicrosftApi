@@ -1,0 +1,52 @@
+﻿@inject IDocumentLibraryApiClient DocumentLibraryApiClient
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <MudText Typo="Typo.h6">Select Document Process to Associate</MudText>
+        <MudSelect T="DocumentProcessInfo" Label="Document Process" @bind-Value="SelectedProcess" Required="true">
+            @foreach (var process in AvailableProcesses)
+            {
+                <MudSelectItem Value="process">@process.ShortName</MudSelectItem>
+            }
+        </MudSelect>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@AssociateProcess" Disabled="SelectedProcess == null">Associate</MudButton>
+        <MudButton OnClick="@Cancel">Cancel</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public List<DocumentProcessInfo> AvailableProcesses { get; set; } = new();
+    [Parameter] public Guid DocumentLibraryId { get; set; }
+
+    private DocumentProcessInfo? SelectedProcess;
+
+    private async Task AssociateProcess()
+    {
+        if (SelectedProcess == null)
+        {
+            Snackbar.Add("Please select a document process.", Severity.Error);
+            return;
+        }
+
+        try
+        {
+            await DocumentLibraryApiClient.AssociateDocumentProcessAsync(DocumentLibraryId, SelectedProcess.Id);
+            Snackbar.Add($"Document process '{SelectedProcess.ShortName}' associated successfully.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error associating document process: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+}

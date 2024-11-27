@@ -22,6 +22,24 @@ public class DynamicPluginVersion : IEquatable<DynamicPluginVersion>, IComparabl
         return new DynamicPluginVersion(parts[0], parts[1], parts[2]);
     }
 
+    public static bool TryParse(string version, out DynamicPluginVersion pluginVersion)
+    {
+        pluginVersion = null;
+        var parts = version.Split('.');
+        if (parts.Length != 3)
+            return false;
+
+        if (int.TryParse(parts[0], out var major) &&
+            int.TryParse(parts[1], out var minor) &&
+            int.TryParse(parts[2], out var patch))
+        {
+            pluginVersion = new DynamicPluginVersion(major, minor, patch);
+            return true;
+        }
+
+        return false;
+    }
+
     public override string ToString() => $"{Major}.{Minor}.{Patch}";
 
     public int CompareTo(DynamicPluginVersion other)

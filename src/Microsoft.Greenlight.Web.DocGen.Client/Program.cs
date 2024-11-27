@@ -59,7 +59,32 @@ builder.Services.AddHttpClient<IDocumentOutlineApiClient, DocumentOutlineApiClie
 builder.Services.AddHttpClient<IReviewApiClient, ReviewApiClient>(client =>
 {
     client.BaseAddress = serverBaseAddress;
+}).ConfigurePrimaryHttpMessageHandler(() =>
+{
+    var handler = new HttpClientHandler();
+    handler.MaxRequestContentBufferSize = 10 * 1024 * 1024 * 20; // 200 MB
+    return handler;
 });
+
+builder.Services.AddHttpClient<IPluginApiClient, PluginApiClient>(client =>
+{
+    client.BaseAddress = serverBaseAddress;
+});
+
+builder.Services.AddHttpClient<IDocumentLibraryApiClient, DocumentLibraryApiClient>(client =>
+{
+    client.BaseAddress = serverBaseAddress;
+});
+
+builder.Services.AddHttpClient<IFileApiClient, FileApiClient>(client =>
+{
+    client.BaseAddress = serverBaseAddress;
+}).ConfigurePrimaryHttpMessageHandler(() =>
+{
+    var handler = new HttpClientHandler();
+    handler.MaxRequestContentBufferSize = 10 * 1024 * 1024 * 20; // 200 MB
+    return handler;
+});;
 
 
 

@@ -1,8 +1,9 @@
-﻿using Microsoft.Extensions.Hosting;
+﻿using Microsoft.Extensions.DependencyInjection;
 
 namespace Microsoft.Greenlight.Extensions.Plugins;
 
 public interface IPluginRegistration
 {
-    IHostApplicationBuilder RegisterPlugin(IHostApplicationBuilder builder);
+    void RegisterPlugin(IServiceCollection serviceCollection, IServiceProvider serviceProvider);
+
 }

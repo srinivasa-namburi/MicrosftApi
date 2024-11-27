@@ -26,6 +26,12 @@ public class ConfigurationApiClient : BaseServiceClient<ConfigurationApiClient>,
        return documentProcesses;
     }
 
+    public async Task RestartWorkersAsync()
+    {
+        var response = await SendPostRequestMessage("/api/configuration/restart-workers", null);
+        response?.EnsureSuccessStatusCode();
+    }
+
     public async Task<ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions> GetFeatureFlagsAsync()
     {
         return _serviceConfigurationOptions.GreenlightServices.FeatureFlags;

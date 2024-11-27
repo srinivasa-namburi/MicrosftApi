@@ -31,6 +31,7 @@
 		<PackageReference Include="MassTransit.Quartz" Version="8.2.1" />
 		<PackageReference Include="MassTransit.RabbitMQ" Version="8.2.1" />
 		<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.8" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.1" />
 		<PackageReference Include="Microsoft.KernelMemory.Core" Version="0.78.241005.1" />
 		<PackageReference Include="Microsoft.KernelMemory.DataFormats.AzureAIDocIntel" Version="0.78.241005.1" />
 		<PackageReference Include="Microsoft.KernelMemory.DocumentStorage.AzureBlobs" Version="0.78.241005.1" />

@@ -1,0 +1,47 @@
+﻿@page "/document-library/{Id:guid?}"
+@inject IDocumentLibraryApiClient DocumentLibraryApiClient
+@inject NavigationManager NavigationManager
+
+<MudPaper Class="pa-4">
+    @if (IsLoading)
+    {
+        <MudProgressCircular Indeterminate="true" Class="my-4" />
+    }
+    else
+    {
+        <DocumentLibraryForm DocumentLibraryInfo="@DocumentLibraryInfo" OnSaved="OnSaved" />
+    }
+</MudPaper>
+
+@code {
+    [Parameter]
+    public Guid? Id { get; set; }
+
+    private bool IsNew => !Id.HasValue || Id == Guid.Empty;
+    private bool IsLoading { get; set; } = true;
+
+    private DocumentLibraryInfo DocumentLibraryInfo { get; set; } = new DocumentLibraryInfo();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!IsNew)
+        {
+            var library = await DocumentLibraryApiClient.GetDocumentLibraryByIdAsync(Id.Value);
+            if (library != null)
+            {
+                DocumentLibraryInfo = library;
+            }
+            else
+            {
+                NavigationManager.NavigateTo("/document-libraries");
+                return;
+            }
+        }
+        IsLoading = false;
+    }
+
+    private void OnSaved(DocumentLibraryInfo savedLibrary)
+    {
+        NavigationManager.NavigateTo("/document-libraries");
+    }
+}

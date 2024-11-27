@@ -3,8 +3,10 @@ using Microsoft.Greenlight.DocumentProcess.Shared;
 using Microsoft.Greenlight.ServiceDefaults;
 using Microsoft.Greenlight.Shared;
 using Microsoft.Greenlight.Shared.Configuration;
+using Microsoft.Greenlight.Shared.Contracts.Messages;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Helpers;
+using Microsoft.Greenlight.Shared.Management;
 using Microsoft.Greenlight.Worker.Scheduler;
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -19,7 +21,8 @@ var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfig
 await builder.DelayStartup(serviceConfigurationOptions.GreenlightServices.DocumentGeneration.DurableDevelopmentServices);
 
 builder.AddGreenlightServices(credentialHelper, serviceConfigurationOptions);
-builder.DynamicallyRegisterPlugins(serviceConfigurationOptions);
+builder.RegisterStaticPlugins(serviceConfigurationOptions);
+
 builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
 builder.AddSemanticKernelServices(serviceConfigurationOptions);
 
@@ -31,45 +34,35 @@ builder.Services.AddHostedService<ScheduledExportedDocumentCleanupWorker>();
 var serviceBusConnectionString = builder.Configuration.GetConnectionString("sbus");
 serviceBusConnectionString = serviceBusConnectionString?.Replace("https://", "sb://").Replace(":443/", "/");
 
-var rabbitMqConnectionString = builder.Configuration.GetConnectionString("rabbitmqdocgen");
-
-if (!string.IsNullOrWhiteSpace(serviceBusConnectionString))
+builder.Services.AddMassTransit(x =>
 {
-    builder.Services.AddMassTransit(x =>
+    x.SetKebabCaseEndpointNameFormatter();
+    x.AddConsumers(typeof(Program).Assembly);
+
+    x.AddConsumer<RestartWorkerConsumer>();
+
+    x.UsingAzureServiceBus((context, cfg) =>
     {
-        x.SetKebabCaseEndpointNameFormatter();
-        x.AddConsumers(typeof(Program).Assembly);
 
-        x.UsingAzureServiceBus((context, cfg) =>
+        // Register the restart worker subscription for this node
+        var subscriptionName = RestartWorkerConsumer.GetRestartWorkerEndpointName();
+
+        cfg.SubscriptionEndpoint<RestartWorker>(subscriptionName, e =>
         {
-            cfg.Host(serviceBusConnectionString, configure: config =>
-            {
-                config.TokenCredential = credentialHelper.GetAzureCredential();
-            });
-            cfg.ConfigureEndpoints(context);
-            cfg.ConcurrentMessageLimit = 1;
-            cfg.PrefetchCount = 3;
+            e.ConfigureConsumer<RestartWorkerConsumer>(context);
         });
-    });
-}
-else
-{
-    builder.Services.AddMassTransit(x =>
-    {
-        x.SetKebabCaseEndpointNameFormatter();
-        x.AddConsumers(typeof(Program).Assembly);
 
-        x.UsingRabbitMq((context, cfg) =>
+        cfg.Host(serviceBusConnectionString, configure: config =>
         {
-            cfg.PrefetchCount = 1;
-            cfg.ConcurrentMessageLimit = 1;
-            cfg.Host(rabbitMqConnectionString);
-            cfg.ConfigureEndpoints(context);
+            config.TokenCredential = credentialHelper.GetAzureCredential();
         });
+        cfg.ConfigureEndpoints(context);
+        cfg.ConcurrentMessageLimit = 1;
+        cfg.PrefetchCount = 3;
     });
-}
+});
 
-
+builder.Services.AddSingleton<IHostedService, ShutdownCleanupService>();
 
 var host = builder.Build();
 host.Run();

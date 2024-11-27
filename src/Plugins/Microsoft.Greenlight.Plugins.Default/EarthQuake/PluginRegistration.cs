@@ -8,12 +8,10 @@ namespace Microsoft.Greenlight.Plugins.Default.EarthQuake;
 
 public class PluginRegistration : IPluginRegistration
 {
-    public IHostApplicationBuilder RegisterPlugin(IHostApplicationBuilder builder)
+    public void RegisterPlugin(IServiceCollection serviceCollection, IServiceProvider serviceProvider)
     {
-        builder.Services.AddScoped<IEarthquakeConnector, USGSEarthquakeConnector>();
-        builder.Services.AddScoped<EarthquakePlugin>();
-        return builder;
+        serviceCollection.AddScoped<IEarthquakeConnector, USGSEarthquakeConnector>();
+        serviceCollection.AddScoped<EarthquakePlugin>();
     }
-
 }
 

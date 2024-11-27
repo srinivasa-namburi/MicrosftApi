@@ -36,6 +36,12 @@ public class ConfigurationApiClient : WebAssemblyBaseServiceClient<Configuration
                throw new IOException("No document processes available!");
     }
 
+    public async Task RestartWorkersAsync()
+    {
+        var response = await SendPostRequestMessage("/api/configuration/restart-workers", null);
+        response?.EnsureSuccessStatusCode();
+    }
+
     public async Task<ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions> GetFeatureFlagsAsync()
     {
         var response = await SendGetRequestMessage($"/api/configuration/feature-flags");

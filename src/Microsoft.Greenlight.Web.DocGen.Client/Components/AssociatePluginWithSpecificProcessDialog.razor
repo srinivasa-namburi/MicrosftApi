@@ -1,0 +1,65 @@
+@inject IPluginApiClient PluginApiClient
+@inject ISnackbar Snackbar
+
+<MudDialog MaxWidth="MaxWidth.Small">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Associate Plugin with Document Process</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudSelect T="DynamicPluginInfo" @bind-Value="SelectedPlugin" Label="Select Plugin" Required="true">
+            @foreach (var plugin in AvailablePlugins)
+            {
+                <MudSelectItem Value="plugin">@plugin.Name</MudSelectItem>
+            }
+        </MudSelect>
+
+        @if (SelectedPlugin != null)
+        {
+            <MudSelect T="string" @bind-Value="SelectedVersion" Label="Select Version" Required="true">
+                @foreach (var version in SelectedPlugin.Versions.Select(v => v.ToString()).OrderByDescending(v => v))
+                {
+                    <MudSelectItem Value="@version">@version</MudSelectItem>
+                }
+            </MudSelect>
+        }
+
+        <MudButton OnClick="@AssociatePlugin" Variant="Variant.Filled" Color="Color.Primary">Associate</MudButton>
+
+    </DialogContent>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public List<DynamicPluginInfo> AvailablePlugins { get; set; }
+    [Parameter] public Guid ProcessId { get; set; }
+
+    private MudForm form;
+    private DynamicPluginInfo? SelectedPlugin;
+    private string? SelectedVersion;
+
+    private async Task AssociatePlugin()
+    {
+        if (SelectedPlugin == null || SelectedVersion == null)
+        {
+            Snackbar.Add("Please select a plugin and version.", Severity.Error);
+            return;
+        }
+
+        try
+        {
+            var dynamicPluginVersionObj = SelectedPlugin.Versions.FirstOrDefault(v => v.ToString() == SelectedVersion);
+            if (dynamicPluginVersionObj == null)
+            {
+                Snackbar.Add("Invalid plugin version selected.", Severity.Error);
+                return;
+            }
+            await PluginApiClient.AssociatePluginWithDocumentProcessAsync(SelectedPlugin.Id, ProcessId, dynamicPluginVersionObj);
+            Snackbar.Add($"Plugin '{SelectedPlugin.Name}' version '{SelectedVersion}' associated successfully.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error associating plugin: {ex.Message}", Severity.Error);
+        }
+    }
+}

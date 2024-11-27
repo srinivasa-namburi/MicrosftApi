@@ -14,6 +14,6 @@ public class DocumentIngestionSagaState : SagaStateMachineInstance
     public string OriginalDocumentUrl { get; set; }
     public string? UploadedByUserOid { get; set; }
     public string? ClassificationShortCode { get; set; }
-    public string? DocumentProcessName { get; set; } = "US.NuclearLicensing";
+    public string? DocumentLibraryShortName { get; set; } = "US.NuclearLicensing";
     public string? Plugin { get; set; }
 }

@@ -13,11 +13,10 @@ namespace Microsoft.Greenlight.DocumentProcess.Shared.Plugins.KmDocs;
 
 public class PluginRegistration : IPluginRegistration
 {
-    public IHostApplicationBuilder RegisterPlugin(IHostApplicationBuilder builder)
+    public void RegisterPlugin(IServiceCollection serviceCollection, IServiceProvider serviceProvider)
     {
-        var serviceProvider = builder.Services.BuildServiceProvider();
-
         var docDbContext = serviceProvider.GetRequiredService<DocGenerationDbContext>();
+        var configuration = serviceProvider.GetRequiredService<IConfiguration>();
 
         var dynamicDocumentProcessDefinitions = docDbContext.DynamicDocumentProcessDefinitions
             .Where(x => x.LogicType == DocumentProcessLogicType.KernelMemory)
@@ -29,19 +28,17 @@ public class PluginRegistration : IPluginRegistration
         foreach (var documentProcess in dynamicDocumentProcessDefinitions)
         {
             var documentProcessInfo = mapper.Map<DocumentProcessInfo>(documentProcess);
-            builder.Services.AddKeyedSingleton<KmDocsPlugin>(documentProcess.ShortName + "-KmDocsPlugin",
+            serviceCollection.AddKeyedSingleton<KmDocsPlugin>(documentProcess.ShortName + "-KmDocsPlugin",
                 (provider, o) => new KmDocsPlugin(provider, documentProcessInfo));
         }
 
-        var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
+        var serviceConfigurationOptions = configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
         
         foreach (var staticDocumentProcess in serviceConfigurationOptions.GreenlightServices.DocumentProcesses)
         {
             var documentProcessInfo = mapper.Map<DocumentProcessInfo>(staticDocumentProcess);
-            builder.Services.AddKeyedSingleton<KmDocsPlugin>(documentProcessInfo.ShortName + "-KmDocsPlugin",
+            serviceCollection.AddKeyedSingleton<KmDocsPlugin>(documentProcessInfo.ShortName + "-KmDocsPlugin",
                 (provider, o) => new KmDocsPlugin(provider, documentProcessInfo));
         }
-
-        return builder;
     }
 }

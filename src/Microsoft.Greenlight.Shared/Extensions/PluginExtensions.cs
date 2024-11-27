@@ -9,12 +9,13 @@ using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Plugins;
+using StackExchange.Redis;
 
 namespace Microsoft.Greenlight.Shared.Extensions
 {
     public static class PluginExtensions
     {
-        public static IHostApplicationBuilder DynamicallyRegisterPlugins(this IHostApplicationBuilder builder, ServiceConfigurationOptions options)
+        public static IHostApplicationBuilder RegisterStaticPlugins(this IHostApplicationBuilder builder, ServiceConfigurationOptions options)
         {
             string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
 
@@ -34,24 +35,17 @@ namespace Microsoft.Greenlight.Shared.Extensions
 
             builder.RegisterPluginsForAssemblies(pluginAssemblyPaths);
             builder.RegisterPluginsForAssemblies(documentProcessAssemblyPaths);
-            builder.RegisterDynamicPlugins();
 
             return builder;
         }
 
-
-        private static IHostApplicationBuilder RegisterDynamicPlugins(this IHostApplicationBuilder builder)
-        {
-            var dynamicPluginManager = new DynamicPluginManager(builder.Services.BuildServiceProvider(), builder);
-            Task.Run(() => dynamicPluginManager.LoadDynamicPluginsAsync()).Wait();
-            builder.Services.AddSingleton(dynamicPluginManager);
-            
-            return builder;
-        }
 
         private static IHostApplicationBuilder RegisterPluginsForAssemblies(this IHostApplicationBuilder builder,
             IEnumerable<string> assemblyPaths)
         {
+            // Build the Service Provider here
+            var sp = builder.Services.BuildServiceProvider();
+
             foreach (var path in assemblyPaths)
             {
                 try
@@ -66,7 +60,7 @@ namespace Microsoft.Greenlight.Shared.Extensions
                     {
                         if (Activator.CreateInstance(type) is IPluginRegistration pluginInstance)
                         {
-                            pluginInstance.RegisterPlugin(builder);
+                            pluginInstance.RegisterPlugin(builder.Services, sp);
                         }
                     }
                 }
@@ -162,8 +156,14 @@ namespace Microsoft.Greenlight.Shared.Extensions
             var sharedStaticPlugins = GetPluginsByAssemblyPrefix("Microsoft.Greenlight.DocumentProcess.Shared")
                 .ToList();
 
-            var dynamicPluginManager = serviceProvider.GetRequiredService<DynamicPluginManager>();
-            var dynamicPlugins = await dynamicPluginManager.GetPluginTypesAsync(documentProcess);
+            //Only load dynamic plugins if we can find the DynamicPluginManager in the DI container
+            var dynamicPlugins = new List<Type>();
+            if (serviceProvider.GetServices<DynamicPluginManager>().Any())
+            {
+                var dynamicPluginManager = serviceProvider.GetRequiredService<DynamicPluginManager>();
+                var dynamicPluginEnumerable = await dynamicPluginManager.GetPluginTypesAsync(documentProcess);
+                dynamicPlugins = dynamicPluginEnumerable.ToList();
+            }
 
             var allPlugins = sharedStaticPlugins.Concat(dynamicPlugins);
 
@@ -180,6 +180,7 @@ namespace Microsoft.Greenlight.Shared.Extensions
                     object pluginInstance;
                     if (sharedStaticPlugins.Contains(pluginType))
                     {
+                        //This is a shared, static plugin and not a dynamic one
                         try
                         {
                             // We try to resolve for DocumentProcessName-PluginType first
@@ -187,11 +188,11 @@ namespace Microsoft.Greenlight.Shared.Extensions
                             {
                                 pluginInstance = serviceProvider.GetRequiredKeyedService(pluginType,
                                     documentProcess.ShortName + "-" + pluginType.Name);
-                                pluginRegistrationKey = documentProcess.ShortName.Replace(".","_").Replace("-","_") + "_" + pluginType.Name;
+                                pluginRegistrationKey = documentProcess.ShortName.Replace(".", "_").Replace("-", "_") + "_" + pluginType.Name;
                             }
                             catch
                             {
-                                pluginInstance = serviceProvider.GetRequiredKeyedService(pluginType,pluginRegistrationKey);
+                                pluginInstance = serviceProvider.GetRequiredKeyedService(pluginType, pluginRegistrationKey);
                             }
                         }
                         catch
@@ -208,13 +209,13 @@ namespace Microsoft.Greenlight.Shared.Extensions
                     }
                     else
                     {
-
+                        //This is a dynamic plugin
                         try
                         {
                             using var scope = serviceProvider.CreateScope();
                             var scopedProvider = scope.ServiceProvider;
                             pluginInstance = scopedProvider.GetRequiredKeyedService(pluginType, pluginRegistrationKey);
-                            
+
                         }
                         catch
                         {
@@ -232,7 +233,7 @@ namespace Microsoft.Greenlight.Shared.Extensions
             }
         }
 
-        private static async Task<DynamicPluginInfo> GetDynamicPluginInfoAsync(
+        private static async Task<LoadedDynamicPluginInfo> GetDynamicPluginInfoAsync(
             DynamicPluginManager dynamicPluginManager,
             DocumentProcessInfo documentProcess,
             Type pluginType)

@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Microsoft.Greenlight.Shared.Models;
+using Microsoft.Greenlight.Shared.Models.DocumentLibrary;
 using Microsoft.Greenlight.Shared.Models.DocumentProcess;
 using Microsoft.Greenlight.Shared.Models.Plugins;
 using Microsoft.Greenlight.Shared.Models.Review;
@@ -56,6 +57,57 @@ public class DocGenerationDbContext : DbContext
             (c1, c2) => c1.SequenceEqual(c2),
             c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
             c => c.ToList());
+
+       
+        modelBuilder.Entity<DocumentLibrary>()
+            .ToTable("DocumentLibraries");
+
+        modelBuilder.Entity<DocumentLibrary>()
+            .HasIndex(nameof(DocumentLibrary.ShortName))
+            .IsUnique();
+
+        modelBuilder.Entity<DocumentLibrary>()
+            .HasIndex(nameof(DocumentLibrary.IndexName))
+            .IsUnique();
+
+        modelBuilder.Entity<DocumentLibrary>()
+            .HasIndex(nameof(DocumentLibrary.BlobStorageContainerName))
+            .IsUnique();
+
+        modelBuilder.Entity<DocumentLibrary>()
+            .HasMany(x => x.DocumentProcessAssociations)
+            .WithOne(x => x.DocumentLibrary)
+            .HasForeignKey(x => x.DocumentLibraryId)
+            .IsRequired(true);
+
+        modelBuilder.Entity<DocumentLibraryDocumentProcessAssociation>()
+            .ToTable("DocumentLibraryDocumentProcessAssociations");
+
+        modelBuilder.Entity<DocumentLibraryDocumentProcessAssociation>()
+            .HasIndex(nameof(DocumentLibraryDocumentProcessAssociation.DocumentLibraryId), nameof(DocumentLibraryDocumentProcessAssociation.DynamicDocumentProcessDefinitionId))
+            .IsUnique();
+
+        modelBuilder.Entity<DocumentLibraryDocumentProcessAssociation>()
+            .HasOne(x => x.DocumentLibrary)
+            .WithMany(x => x.DocumentProcessAssociations)
+            .HasForeignKey(x => x.DocumentLibraryId)
+            .IsRequired(true)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<DocumentLibraryDocumentProcessAssociation>()
+            .HasOne(x => x.DynamicDocumentProcessDefinition)
+            .WithMany(x=>x.AdditionalDocumentLibraries)
+            .HasForeignKey(x => x.DynamicDocumentProcessDefinitionId)
+            .IsRequired(true)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<DocumentLibraryDocumentProcessAssociation>()
+            .HasIndex(nameof(DocumentLibraryDocumentProcessAssociation.DocumentLibraryId))
+            .IsUnique(false);
+
+        modelBuilder.Entity<DocumentLibraryDocumentProcessAssociation>()
+            .HasIndex(nameof(DocumentLibraryDocumentProcessAssociation.DynamicDocumentProcessDefinitionId))
+            .IsUnique(false);
 
         modelBuilder.Entity<DynamicPlugin>()
             .ToTable("DynamicPlugins");
@@ -294,6 +346,19 @@ public class DocGenerationDbContext : DbContext
             .IsRequired(false)
             .OnDelete(DeleteBehavior.Cascade);
 
+        modelBuilder.Entity<DynamicDocumentProcessDefinition>()
+            .HasIndex(nameof(DynamicDocumentProcessDefinition.ShortName))
+            .IsUnique();
+
+        modelBuilder.Entity<DynamicDocumentProcessDefinition>()
+            .HasIndex(nameof(DynamicDocumentProcessDefinition.LogicType))
+            .IsUnique(false);
+
+        modelBuilder.Entity<DynamicDocumentProcessDefinition>()
+            .Property(e => e.Repositories)
+            .HasConversion(stringListToJsonConverter)
+            .Metadata.SetValueComparer(stringListComparer);
+        
         modelBuilder.Entity<PromptDefinition>()
             .ToTable("PromptDefinitions");
 
@@ -319,12 +384,9 @@ public class DocGenerationDbContext : DbContext
         modelBuilder.Entity<PromptImplementation>()
             .ToTable("PromptImplementations");
 
-        // Index for unique combination of PromptDefinitionId and DocumentProcessDefinitionId, 
-        // as a PromptDefinition can only be implemented once for a DocumentProcessDefinition
         modelBuilder.Entity<PromptImplementation>()
             .HasIndex(nameof(PromptImplementation.PromptDefinitionId), nameof(PromptImplementation.DocumentProcessDefinitionId))
             .IsUnique();
-
 
         modelBuilder.Entity<PromptImplementation>()
             .HasOne(x => x.DocumentProcessDefinition)
@@ -351,23 +413,7 @@ public class DocGenerationDbContext : DbContext
             .IsRequired(true)
             .OnDelete(DeleteBehavior.Cascade);
 
-        modelBuilder.Entity<DynamicDocumentProcessDefinition>()
-            .ToTable("DynamicDocumentProcessDefinitions");
-
-        modelBuilder.Entity<DynamicDocumentProcessDefinition>()
-            .HasIndex(nameof(DynamicDocumentProcessDefinition.ShortName))
-            .IsUnique();
-
-        modelBuilder.Entity<DynamicDocumentProcessDefinition>()
-            .HasIndex(nameof(DynamicDocumentProcessDefinition.LogicType))
-            .IsUnique(false);
-
-        modelBuilder.Entity<DynamicDocumentProcessDefinition>()
-            .Property(e => e.Repositories)
-            .HasConversion(stringListToJsonConverter)
-            .Metadata
-                .SetValueComparer(stringListComparer);
-
+       
         modelBuilder.Entity<ChatConversation>()
             .ToTable("ChatConversations");
 
@@ -620,7 +666,7 @@ public class DocGenerationDbContext : DbContext
             .HasIndex(x => x.FileHash)
             .IsUnique(false);
         modelBuilder.Entity<DocumentIngestionSagaState>()
-            .HasIndex(x => x.DocumentProcessName)
+            .HasIndex(x => x.DocumentLibraryShortName)
             .IsUnique(false);
 
         // Mass Transit SAGA for Kernel Memory Document Ingestion
@@ -629,7 +675,7 @@ public class DocGenerationDbContext : DbContext
             .HasIndex(x => x.FileHash)
             .IsUnique(false);
         modelBuilder.Entity<KernelMemoryDocumentIngestionSagaState>()
-            .HasIndex(x => x.DocumentProcessName)
+            .HasIndex(x => x.DocumentLibraryShortName)
             .IsUnique(false);
 
     }
@@ -668,4 +714,7 @@ public class DocGenerationDbContext : DbContext
     public DbSet<ReviewInstance> ReviewInstances { get; set; }
     public DbSet<ReviewQuestionAnswer> ReviewQuestionAnswers { get; set; }
     public DbSet<DynamicPlugin> DynamicPlugins { get; set; }
+    public DbSet<DynamicPluginDocumentProcess> DynamicPluginDocumentProcesses { get; set; }
+    public DbSet<DocumentLibrary> DocumentLibraries { get; set; }
+    public DbSet<DocumentLibraryDocumentProcessAssociation> DocumentLibraryDocumentProcessAssociations { get; set; }
 }

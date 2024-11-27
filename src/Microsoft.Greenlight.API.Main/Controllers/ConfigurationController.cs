@@ -1,15 +1,22 @@
+using MassTransit;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using Microsoft.Greenlight.Shared.Configuration;
+using Microsoft.Greenlight.Shared.Contracts.Messages;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
 public class ConfigurationController : BaseController
 {
+    private readonly IPublishEndpoint _publishEndpoint;
     private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
 
-    public ConfigurationController(IOptions<ServiceConfigurationOptions> serviceConfigurationOptionsSelector)
+    public ConfigurationController(
+        IOptions<ServiceConfigurationOptions> serviceConfigurationOptionsSelector,
+        IPublishEndpoint publishEndpoint
+        )
     {
+        _publishEndpoint = publishEndpoint;
         _serviceConfigurationOptions = serviceConfigurationOptionsSelector.Value;
     }
 
@@ -38,5 +45,12 @@ public class ConfigurationController : BaseController
     {
         var featureFlags = _serviceConfigurationOptions.GreenlightServices.FeatureFlags;
         return Ok(featureFlags);
+    }
+
+    [HttpPost("restart-workers")]
+    public async Task<IActionResult> RestartWorkers()
+    {
+        await _publishEndpoint.Publish(new RestartWorker(Guid.NewGuid()));
+        return Ok("Restart command sent to all workers.");
     }
 }

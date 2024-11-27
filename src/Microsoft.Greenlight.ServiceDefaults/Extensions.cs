@@ -37,6 +37,13 @@ public static class Extensions
                 Timeout = TimeSpan.FromMinutes(5)
             });
 
+            http.ConfigurePrimaryHttpMessageHandler(() =>
+            {
+                var handler = new HttpClientHandler();
+                handler.MaxRequestContentBufferSize = 10 * 1024 * 1024 * 20; // 200 MB
+                return handler;
+            });
+
             // Turn on service discovery by default
             http.AddServiceDiscovery();
         });

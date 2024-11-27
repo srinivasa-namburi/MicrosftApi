@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using Azure.AI.OpenAI;
 using Microsoft.Extensions.Logging;
@@ -175,6 +176,8 @@ public class GenericAiCompletionService : IAiCompletionService
         var mainPromptInfo = await _promptInfoService.GetPromptByShortCodeAndProcessNameAsync("SectionGenerationMainPrompt", ProcessName);
         var mainPrompt = mainPromptInfo.Text;
 
+        var documentProcessName = ProcessName;
+
         var template = Template.Parse(mainPrompt);
 
         var result = await template.RenderAsync(new
@@ -183,7 +186,8 @@ public class GenericAiCompletionService : IAiCompletionService
             fullSectionName,
             customDataString,
             tableOfContentsString,
-            exampleString
+            exampleString,
+            documentProcessName
 
         }, member => member.Name);
 

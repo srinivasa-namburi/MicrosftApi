@@ -30,6 +30,7 @@
 
 	<ItemGroup>
 		<Folder Include="Pages\Ingest\" />
+		<Folder Include="Pages\Plugins\" />
 	</ItemGroup>
 
 	<ItemGroup>

@@ -7,6 +7,7 @@ using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Models.DocumentProcess;
 using Microsoft.Greenlight.Shared.Repositories;
 using Microsoft.Greenlight.Shared.Services;
+using MongoDB.Libmongocrypt;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
@@ -18,16 +19,19 @@ public class DocumentProcessController : BaseController
     private readonly DynamicDocumentProcessDefinitionRepository _repository;
 
     private readonly IDocumentProcessInfoService _documentProcessInfoService;
+    private readonly IPluginService _pluginService;
     private readonly IMapper _mapper;
 
     public DocumentProcessController(
         DocGenerationDbContext dbContext,
         IDocumentProcessInfoService documentProcessInfoService,
+        IPluginService pluginService,
         IMapper mapper,
         DynamicDocumentProcessDefinitionRepository repository)
     {
         _dbContext = dbContext;
         _documentProcessInfoService = documentProcessInfoService;
+        _pluginService = pluginService;
         _mapper = mapper;
         _repository = repository;
     }
@@ -80,6 +84,18 @@ public class DocumentProcessController : BaseController
         return Ok(documentProcess);
     }
 
+    [HttpGet("by-document-library/{libraryId:guid}")]
+    [Produces(typeof(List<DocumentProcessInfo>))]
+    public async Task<ActionResult<List<DocumentProcessInfo>>> GetDocumentProcessesByLibraryId(Guid libraryId)
+    {
+        var processes = await _documentProcessInfoService.GetDocumentProcessesByLibraryIdAsync(libraryId);
+        if (processes == null || !processes.Any())
+        {
+            return NotFound();
+        }
+        return Ok(processes);
+    }
+
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -120,6 +136,14 @@ public class DocumentProcessController : BaseController
     [Produces<bool>]
     public async Task<ActionResult<bool>> DeleteDocumentProcess(Guid id)
     {
+        // Use the Plugin Service to delete all plugin associations for this document process, if any exist
+        var plugins = await _pluginService.GetPluginsByDocumentProcessIdAsync(id);
+        foreach (var plugin in plugins)
+        {
+            await _pluginService.DisassociatePluginFromDocumentProcessAsync(plugin.Id, id);
+        }
+
+        // Remove the document process
         var result = await _documentProcessInfoService.DeleteDocumentProcessInfoAsync(id);
         var resultJson = JsonSerializer.Serialize(result);
         return Ok(resultJson);

@@ -1,0 +1,57 @@
+﻿@inject IDocumentLibraryApiClient DocumentLibraryApiClient
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <MudText Typo="Typo.h6">Select Document Library to Associate</MudText>
+        <MudSelect T="DocumentLibraryInfo" Label="Document Library" ValueChanged="OnLibraryChanged" Required="true">
+            @foreach (var library in AvailableLibraries)
+            {
+                <MudSelectItem Value="library">@library.ShortName</MudSelectItem>
+            }
+        </MudSelect>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@AssociateLibrary" Disabled="SelectedLibrary == null">Associate</MudButton>
+        <MudButton OnClick="@Cancel">Cancel</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public List<DocumentLibraryInfo> AvailableLibraries { get; set; } = new();
+    [Parameter] public Guid DocumentProcessId { get; set; }
+
+    private DocumentLibraryInfo? SelectedLibrary;
+
+    private void OnLibraryChanged(DocumentLibraryInfo newLibrary)
+    {
+        SelectedLibrary = newLibrary;
+    }
+
+    private async Task AssociateLibrary()
+    {
+        if (SelectedLibrary == null)
+        {
+            Snackbar.Add("Please select a document library.", Severity.Error);
+            return;
+        }
+
+        try
+        {
+            await DocumentLibraryApiClient.AssociateDocumentProcessAsync(SelectedLibrary.Id, DocumentProcessId);
+            Snackbar.Add($"Document library '{SelectedLibrary.ShortName}' associated successfully.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error associating document library: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+}

@@ -67,7 +67,10 @@ public class AzureFileHelper
         var url = new Uri(fullBlobUrl);
         var containerName = url.Segments[1].TrimEnd('/');
         var blobPath = fullBlobUrl.Replace(url.Scheme + "://" + url.Host + "/" + containerName + "/", "");
-       
+
+        // Url Decode the blob path
+        blobPath = WebUtility.UrlDecode(blobPath);
+
         // Remove the SAS token if it exists at the end of the blobPath
         if (blobPath.Contains("?"))
         {

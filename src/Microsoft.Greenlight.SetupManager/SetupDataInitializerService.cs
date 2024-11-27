@@ -49,13 +49,9 @@ public class SetupDataInitializerService : BackgroundService
 
         // Determine if we're running in a development environment
         var isDevelopment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development";
-        
-        if (isDevelopment)
-        {
-            _logger.LogInformation("Running in Development environment. Running database migrations.");
-            await InitializeDatabaseAsync(dbContext, cancellationToken);  
-        }
-        
+
+        await InitializeDatabaseAsync(dbContext, cancellationToken);
+
         await SeedAsync(dbContext, cancellationToken);
         await CreateKernelMemoryIndexes(documentProcessInfoService, cancellationToken);
 
@@ -121,12 +117,12 @@ public class SetupDataInitializerService : BackgroundService
                 // Check if the index already exists. If it does, skip it.
                 var searchIndexClient = _searchClientFactory.GetSearchIndexClientForIndex(repository);
                 var indexAlreadyExists = true;
-                
+
                 try
                 {
                     var index = await searchIndexClient.GetIndexAsync(repository, cancellationToken);
                 }
-                catch(RequestFailedException e)
+                catch (RequestFailedException e)
                 {
                     // The AI Search API returns a 404 status code if the index does not exist
                     if (e.Status == 404)
@@ -134,7 +130,7 @@ public class SetupDataInitializerService : BackgroundService
                         indexAlreadyExists = false;
                     }
                 }
-                
+
                 if (indexAlreadyExists)
                 {
                     _logger.LogInformation("Index {IndexName} already exists for Document Process {DocumentProcess}. Skipping creation.", repository, documentProcess.ShortName);

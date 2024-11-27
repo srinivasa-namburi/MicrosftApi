@@ -11,7 +11,6 @@ using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Mappings;
-using Microsoft.Greenlight.Shared.Services.Search;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -32,7 +31,7 @@ await builder.DelayStartup(serviceConfigurationOptions.GreenlightServices.Docume
 builder.AddGreenlightServices(credentialHelper, serviceConfigurationOptions);
 builder.Services.AddAutoMapper(typeof(ChatMessageProfile));
 
-builder.DynamicallyRegisterPlugins(serviceConfigurationOptions);
+//builder.DynamicallyRegisterPlugins(serviceConfigurationOptions);
 builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
 builder.AddSemanticKernelServices(serviceConfigurationOptions);
 
@@ -117,8 +116,7 @@ var serviceBusConnectionString = builder.Configuration.GetConnectionString("sbus
 serviceBusConnectionString = serviceBusConnectionString?.Replace("https://", "sb://").Replace(":443/", "/");
 var rabbitMqConnectionString = builder.Configuration.GetConnectionString("rabbitmqdocgen");
 
-if (!string.IsNullOrWhiteSpace(serviceBusConnectionString)) // Use Azure Service Bus for production
-{
+
     builder.Services.AddMassTransit(x =>
     {
         x.SetKebabCaseEndpointNameFormatter();
@@ -133,21 +131,6 @@ if (!string.IsNullOrWhiteSpace(serviceBusConnectionString)) // Use Azure Service
 
         });
     });
-}
-else // Use RabbitMQ for local development
-{
-    builder.Services.AddMassTransit(x =>
-    {
-        x.SetKebabCaseEndpointNameFormatter();
-        x.AddConsumers(typeof(Program).Assembly);
-
-        x.UsingRabbitMq((context, cfg) =>
-        {
-            cfg.Host(rabbitMqConnectionString);
-            cfg.ConfigureEndpoints(context);
-        });
-    });
-}
 
 var app = builder.Build();
 

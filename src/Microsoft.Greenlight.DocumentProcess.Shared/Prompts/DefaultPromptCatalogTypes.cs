@@ -20,6 +20,8 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
 
     public string ChatSinglePassUserPrompt =>
         """
+        This is a conversation for the Document Process Named: {{ documentProcessName }}.
+        
         The 5 last chat messages are between the [ChatHistory] and [/ChatHistory] tags.
         A summary of full conversation history is between the [ChatHistorySummary] and [/ChatHistorySummary] tags.
         The user's question is between the [User] and [/User] tags.
@@ -29,6 +31,10 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
 
         Be precise when answering the user's query, don't provide unnecessary information 
         that goes beyond the user's question.
+        
+        Use the native_DocumentLibraryPlugin to determine if you have access to any relevant additional information. Prioritize 
+        using this plugin to find additional information over using general knowledge. You can also enhance this information with general knowledge. 
+        Use general knowledge alone without document library data if you have no available document libraries that match the type of information you need. 
 
         If asked to limit to a certain number of items, please respect that limit and don't list 
         additional items beyond the limit.
@@ -67,9 +73,12 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
 
     public string SectionGenerationMainPrompt =>
         """
-        This is the initial query in a multi-pass conversation. You are not expected to return the full output in this pass.
+        This is the initial query in a multi-pass conversation for the document process with shortname {{ documentProcessName }}. Do not reference
+        the document process name in the resulting output. You are not expected to return the full output in this pass.
         However, please be as complete as possible in your response for this pass. For this task, including this initial query,
         we will be performing {{ numberOfPasses }} passes to form a complete response. This is the first pass.
+        
+        
 
         There will be additional queries asking to to expand on a combined summary of the output you provide here and
         further summaries from later responses.
@@ -97,6 +106,10 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
         Use the native_FacilitiesPlugin (if available) to look for geographical markers.
 
         Use the native_EarthQuakePlugin if you need to find seismic history for an area.
+        
+        Use the native_DocumentLibraryPlugin to determine if you have access to any relevant additional information. Prioritize 
+        using this plugin to find additional information over using general knowledge. You can also enhance this information with general knowledge. 
+        Use general knowledge alone without document library data if you have no available document libraries that match the type of information you need. 
 
         If you do use plugins, please denote them as references at the end of the section you are writing.
         For the native_FacilitiesPlugin, write the source as Azure Maps (API).

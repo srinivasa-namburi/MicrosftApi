@@ -1,20 +1,17 @@
 ﻿using System.Reflection;
-using Microsoft.Greenlight.Extensions.Plugins;
-using Microsoft.Greenlight.Shared.Interfaces;
 using Microsoft.Greenlight.Shared.Models.Plugins;
 
 namespace Microsoft.Greenlight.Shared.Plugins;
 
-public class DynamicPluginInfo
+public class LoadedDynamicPluginInfo
 {
     public DynamicPlugin Plugin { get; set; }
     public DynamicPluginVersion Version { get; set; }
     public Assembly Assembly { get; set; }
     public List<Type> PluginTypes { get; set; }
-    public PluginLoadContext LoadContext { get; set; }
     public string TempDirectory { get; set; }
 
-    public static DynamicPluginInfo CreateFrom(DynamicPlugin plugin, DynamicPluginVersion version, string tempDirectory, Assembly assembly, PluginLoadContext loadContext)
+    public static LoadedDynamicPluginInfo CreateFrom(DynamicPlugin plugin, DynamicPluginVersion version, string tempDirectory, Assembly assembly)
     {
         // We search by name instead of Type first since they're in fact different types when we load them in different contexts
         const string interfaceFullName = "Microsoft.Greenlight.Extensions.Plugins.IPluginImplementation";
@@ -44,13 +41,12 @@ public class DynamicPluginInfo
             Console.WriteLine($"  {type.FullName}");
         }
 
-        return new DynamicPluginInfo
+        return new LoadedDynamicPluginInfo
         {
             Plugin = plugin,
             Version = version,
             Assembly = assembly,
             PluginTypes = pluginTypes,
-            LoadContext = loadContext,
             TempDirectory = tempDirectory
         };
     }

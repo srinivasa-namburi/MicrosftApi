@@ -1,10 +1,12 @@
 using AutoMapper;
+using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.KernelMemory.Pipeline;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Helpers;
+using Microsoft.Greenlight.Shared.Services;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
@@ -14,12 +16,21 @@ public class FileController : BaseController
     private readonly AzureFileHelper _fileHelper;
     private readonly DocGenerationDbContext _dbContext;
     private readonly IMapper _mapper;
+    private readonly IDocumentLibraryInfoService _documentLibraryInfoService;
+    private readonly IDocumentProcessInfoService _documentLibraryProcessService;
 
-    public FileController(AzureFileHelper fileHelper, DocGenerationDbContext dbContext, IMapper mapper)
+    public FileController(
+        AzureFileHelper fileHelper, 
+        DocGenerationDbContext dbContext, 
+        IMapper mapper,
+        IDocumentLibraryInfoService documentLibraryInfoService,
+        IDocumentProcessInfoService documentLibraryProcessService)
     {
         _fileHelper = fileHelper;
         _dbContext = dbContext;
         _mapper = mapper;
+        _documentLibraryInfoService = documentLibraryInfoService;
+        _documentLibraryProcessService = documentLibraryProcessService;
     }
 
     [HttpGet("download/{fileUrl}")]
@@ -67,12 +78,19 @@ public class FileController : BaseController
     }
 
     [HttpPost("upload/{containerName}/{fileName}")]
+    [HttpPost("upload/{containerName}/{fileName}/direct")]
     [DisableRequestSizeLimit]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [Produces(typeof(string))]
-    public async Task<IActionResult> UploadFile(string containerName, string fileName, [FromForm] IFormFile file)
+    public async Task<IActionResult> UploadFile(string containerName, string fileName, [FromForm] IFormFile? file = null)
     {
+        // Url Decode the file name and container name
+        fileName = Uri.UnescapeDataString(fileName);
+        containerName = Uri.UnescapeDataString(containerName);
+
+        var directUpload = Request.GetDisplayUrl().Contains("/direct");
+
         // Check if the file is provided
         if (file == null || file.Length == 0)
         {
@@ -82,7 +100,35 @@ public class FileController : BaseController
         // Validate containerName
         if (containerName != "document-export" && containerName != "document-assets" && containerName != "reviews")
         {
-            return BadRequest("Invalid container name. Must be one of 'document-export', 'document-assets', or 'reviews'.");
+            var badContainerName = true;
+            // Validate dynamically if container name might be part of either a document library or a document process
+
+            var allDocumentProcesses =
+                await _documentLibraryProcessService.GetCombinedDocumentProcessInfoListAsync();
+
+            var documentProcess = allDocumentProcesses.FirstOrDefault(x => x.BlobStorageContainerName == containerName);
+
+            if (documentProcess != null)
+            {
+                badContainerName = false;
+            }
+            else
+            {
+                var documentLibraryForContainerName = await _dbContext.DocumentLibraries
+                    .Where(x => x.BlobStorageContainerName == containerName)
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync();
+
+                if (documentLibraryForContainerName != null)
+                {
+                    badContainerName = false;
+                }
+            }
+
+            if (badContainerName)
+            {
+                return BadRequest("Invalid container name. Must be one of 'document-export', 'document-assets', or 'reviews'.");
+            }
         }
 
         // Validate fileName
@@ -94,17 +140,34 @@ public class FileController : BaseController
         // Read the file stream
         using (var stream = file.OpenReadStream())
         {
-            // Generate a random file name for the backend in blob storage
-            var blobFileName = Guid.NewGuid() + Path.GetExtension(fileName);
-
+            string blobFileName;
+            if (directUpload)
+            {
+                blobFileName = fileName;
+            }
+            else
+            {
+                // Generate a random file name for the backend in blob storage
+                blobFileName = Guid.NewGuid() + Path.GetExtension(fileName);
+            }
+            
             // Upload the file to the blob storage
             var blobUrl = await _fileHelper.UploadFileToBlobAsync(stream, blobFileName, containerName, true);
 
-            // Save the file information in the database
-            var exportedDocumentLink = await _fileHelper.SaveFileInfoAsync(blobUrl, containerName, fileName);
+            string fileAccessUrl;
+            if (directUpload)
+            {
+                fileAccessUrl = blobUrl;
+                fileAccessUrl = _fileHelper.GetProxiedBlobUrl(fileAccessUrl);
+            }
+            else
+            {
+                // Save the file information in the database
+                var exportedDocumentLink = await _fileHelper.SaveFileInfoAsync(blobUrl, containerName, fileName);
 
-            // Get the access URL for the file
-            var fileAccessUrl = _fileHelper.GetProxiedAssetBlobUrl(exportedDocumentLink.Id);
+                // Get the access URL for the file
+                fileAccessUrl = _fileHelper.GetProxiedAssetBlobUrl(exportedDocumentLink.Id);
+            }
 
             return Ok(fileAccessUrl);
         }

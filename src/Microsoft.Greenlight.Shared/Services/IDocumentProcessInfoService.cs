@@ -11,4 +11,5 @@ public interface IDocumentProcessInfoService
     Task<DocumentProcessInfo?> GetDocumentProcessInfoByIdAsync(Guid id);
     Task<DocumentProcessInfo> CreateDocumentProcessInfoAsync(DocumentProcessInfo documentProcessInfo);
     Task<bool> DeleteDocumentProcessInfoAsync(Guid processId);
+    Task<List<DocumentProcessInfo>> GetDocumentProcessesByLibraryIdAsync(Guid libraryId);
 }

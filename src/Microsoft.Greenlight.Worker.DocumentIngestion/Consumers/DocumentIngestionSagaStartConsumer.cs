@@ -21,33 +21,51 @@ public class DocumentIngestionSagaStartConsumer : IConsumer<DocumentIngestionReq
 
     public async Task Consume(ConsumeContext<DocumentIngestionRequest> context)
     {
-        var documentProcess =
-            await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(context.Message.DocumentProcessName);
+        DocumentProcessLogicType logicType;
 
-        if (documentProcess == null)
+        if (context.Message.DocumentLibraryType == DocumentLibraryType.PrimaryDocumentProcessLibrary)
         {
-            _logger.LogError("DocumentIngestionSagaStartConsumer : Document Process {DocumentProcessName} not found in configuration, aborting ingestion processing for Document ID {CorrelationID}", context.Message.DocumentProcessName, context.Message.Id);
-            return;
+            // For Document Processes, we need to check the Logic Type of the Document Process
+            var documentProcess =
+                await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(context.Message.DocumentLibraryShortName);
+
+            if (documentProcess == null)
+            {
+                _logger.LogError("DocumentIngestionSagaStartConsumer : Document Process {DocumentProcessName} not found in configuration, aborting ingestion processing for Document ID {CorrelationID}", context.Message.DocumentLibraryShortName, context.Message.Id);
+                return;
+            }
+
+            logicType = documentProcess.LogicType;
         }
-
-        if (documentProcess.LogicType == DocumentProcessLogicType.KernelMemory)
+        else
         {
-            _logger.LogInformation("DocumentIngestionSagaStartConsumer : Received KernelMemory message with ID : {CorrelationID} for Document Process {DocumentProcessName}", context.Message.Id, context.Message.DocumentProcessName);
+            // For Document Libraries, we default to Kernel Memory as they always use Kernel Memory.
+            logicType = DocumentProcessLogicType.KernelMemory;
+        }
+        
+        if (logicType == DocumentProcessLogicType.KernelMemory)
+        {
+            _logger.LogInformation(
+                context.Message.DocumentLibraryType == DocumentLibraryType.PrimaryDocumentProcessLibrary
+                    ? "DocumentIngestionSagaStartConsumer : Received KernelMemory message with ID : {CorrelationID} for Document Process {DocumentProcessName}"
+                    : "DocumentIngestionSagaStartConsumer : Received KernelMemory message with ID : {CorrelationID} for Document Library {DocumentLibraryName}",
+                context.Message.Id, context.Message.DocumentLibraryShortName);
+
             await context.Publish(new KernelMemoryDocumentIngestionRequest(context.Message.Id)
             {
-                DocumentProcessName = context.Message.DocumentProcessName,
+                DocumentLibraryShortName = context.Message.DocumentLibraryShortName,
+                DocumentLibraryType = context.Message.DocumentLibraryType,
                 FileName = context.Message.FileName,
                 OriginalDocumentUrl = context.Message.OriginalDocumentUrl,
-                UploadedByUserOid = context.Message.UploadedByUserOid,
-                Plugin = context.Message.Plugin
+                UploadedByUserOid = context.Message.UploadedByUserOid
             });
         }
         else
         {
-            _logger.LogInformation("DocumentIngestionSagaStartConsumer : Received Classic message with ID : {CorrelationID} for Document Process {DocumentProcessName}", context.Message.Id, context.Message.DocumentProcessName);
+            _logger.LogInformation("DocumentIngestionSagaStartConsumer : Received Classic message with ID : {CorrelationID} for Document Process {DocumentProcessName}", context.Message.Id, context.Message.DocumentLibraryShortName);
             await context.Publish(new ClassicDocumentIngestionRequest(context.Message.Id)
             {
-                DocumentProcessName = context.Message.DocumentProcessName,
+                DocumentProcessName = context.Message.DocumentLibraryShortName,
                 FileName = context.Message.FileName,
                 OriginalDocumentUrl = context.Message.OriginalDocumentUrl,
                 UploadedByUserOid = context.Message.UploadedByUserOid,

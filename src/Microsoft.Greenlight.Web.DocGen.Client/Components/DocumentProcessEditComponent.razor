@@ -1,18 +1,19 @@
 @inject IDocumentProcessApiClient DocumentProcessApiClient
+@inject IDocumentLibraryApiClient DocumentLibraryApiClient
+@inject IPluginApiClient PluginApiClient
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
     <MudPaper Class="pa-4">
-        <MudTextField @bind-Value="_process.ShortName" Label="Short Name" Disabled="_isEditMode" OnBlur="ComputeIndexName" />
+        <MudTextField @bind-Value="_process.ShortName" Label="Short Name" Disabled="_isEditMode" OnBlur="ValidateAndFormatShortName" />
         <MudTextField @bind-Value="_process.Description" Label="Description" />
         <MudTextField @bind-Value="_process.BlobStorageContainerName" Label="Blob Storage Container Name" />
         <MudTextField @bind-Value="_process.BlobStorageAutoImportFolderName" Label="Auto Import Folder Name" />
-        <MudTextField @bind-Value="_indexName" 
-                      Label="Repository Index Name" 
+        <MudTextField @bind-Value="_indexName"
+                      Label="Repository Index Name"
                       Disabled="_isEditMode"
-                      OnInternalInputChanged="UpdateRepositories" 
-                      OnBlur="UpdateRepositories" />
+                      OnInternalInputChanged="UpdateRepositories" />
         <MudCheckBox T="bool" Label="Classify Documents" ValueChanged="@(e => OnClassifyDocumentsCheckboxChanged(e))" />
 
         @if (_process.ClassifyDocuments)
@@ -23,13 +24,79 @@
         <MudDivider />
 
         <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveProcess">Save</MudButton>
-     
+
         @if (ProcessId != null)
         {
             <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="OpenDocumentOutlineEditor">Document Outline Editor</MudButton>
         }
         <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="Cancel">Cancel</MudButton>
     </MudPaper>
+
+ 
+    
+    <!-- Document Libraries Association -->
+    @if (_isEditMode)
+    {
+        <!-- Divider -->
+        <MudDivider Class="my-4" />
+
+        <MudPaper Class="pa-4">
+            <MudText Typo="Typo.h6">Associated Document Libraries</MudText>
+
+            <MudTable Items="_associatedLibraries" Hover="true">
+                <HeaderContent>
+                    <MudTh>Library Name</MudTh>
+                    <MudTh>Description</MudTh>
+                    <MudTh>Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.ShortName</MudTd>
+                    <MudTd>@context.DescriptionOfContents</MudTd>
+                    <MudTd>
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="() => ConfirmDisassociateLibrary(context.Id)" />
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ShowAssociateLibraryDialog">Associate Document Library</MudButton>
+        </MudPaper>
+    }
+
+    <!-- Plugin Associations Section -->
+    @if (_isEditMode)
+    {
+        <!-- Divider -->
+        <MudDivider Class="my-4" />
+
+        <MudPaper Class="pa-4">
+            <MudText Typo="Typo.h6">Associated Plugins</MudText>
+
+            <MudTable Items="_associatedPlugins" Hover="true">
+                <HeaderContent>
+                    <MudTh>Plugin Name</MudTh>
+                    <MudTh>Version</MudTh>
+                    <MudTh>Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Plugin.Name</MudTd>
+                    <MudTd>
+                        <MudSelect T="string" @bind-Value="context.Version" Dense="true" OnBlur="() => UpdatePluginVersion(context)">
+                            @foreach (var version in context.Plugin.Versions.Select(v => v.ToString()).OrderByDescending(v => v))
+                            {
+                                <MudSelectItem Value="@version">@version</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudTd>
+                    <MudTd>
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="() => ConfirmRemovePluginAssociation(context.Plugin.Id)" />
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ShowAssociatePluginDialog">Associate Plugin</MudButton>
+        </MudPaper>
+    }
+
 
     @if (_isEditMode && _showPrompts)
     {
@@ -60,22 +127,92 @@
 
     private string _indexName = string.Empty;
 
+    // Plugin-related fields
+    private List<DynamicPluginInfo> _availablePlugins = new();
+    private List<PluginAssociationViewModel> _associatedPlugins = new();
+
+    // Document Library-related fields
+    private List<DocumentLibraryInfo> _associatedLibraries = new();
+    private List<DocumentLibraryInfo> _availableLibraries = new();
+
     protected override async Task OnInitializedAsync()
     {
         if (ProcessId.HasValue)
         {
             _isEditMode = true;
             _process = await DocumentProcessApiClient.GetDocumentProcessInfoByIdAsync(ProcessId.Value) ?? new DocumentProcessInfo();
+
+            // Initialize _indexName with the existing repository value
+            if (_process.Repositories != null && _process.Repositories.Any())
+            {
+                _indexName = _process.Repositories.First();
+            }
+            else
+            {
+                _indexName = string.Empty;
+            }
+
+            // Load associated plugins
+            await LoadAssociatedPlugins();
+
+            // Load available plugins
+            _availablePlugins = await PluginApiClient.GetAllPluginsAsync();
+
+            // Load associated document libraries
+            await LoadAssociatedLibraries();
+
+            // Load available document libraries
+            await LoadAvailableLibraries();
+
+            // Load prompts
             _prompts = await DocumentProcessApiClient.GetPromptsByProcessIdAsync(ProcessId.Value);
             _showPrompts = true;
         }
     }
 
+    private async Task LoadAssociatedLibraries()
+    {
+        if (_process == null)
+            return;
+
+        _associatedLibraries = await DocumentLibraryApiClient.GetDocumentLibrariesByProcessIdAsync(_process.Id);
+    }
+
+    private async Task LoadAvailableLibraries()
+    {
+        var allLibraries = await DocumentLibraryApiClient.GetAllDocumentLibrariesAsync();
+        _availableLibraries = allLibraries.Where(l => !_associatedLibraries.Any(al => al.Id == l.Id)).ToList();
+    }
+
+    private async Task LoadAssociatedPlugins()
+    {
+        // Get associated plugins from the API
+        var associatedPluginInfos = await PluginApiClient.GetPluginsByDocumentProcessIdAsync(_process.Id);
+
+        // Map to PluginAssociation objects
+        _associatedPlugins = associatedPluginInfos.Select(p =>
+        {
+            var docProcess = p.DocumentProcesses.FirstOrDefault(dp => dp.DynamicDocumentProcessDefinitionId == _process.Id);
+
+            return new PluginAssociationViewModel
+                {
+                    Plugin = p,
+                    Version = docProcess?.Version.ToString() ?? p.LatestVersion.ToString()
+                };
+
+        }).ToList();
+    }
+
+
     private async Task SaveProcess()
     {
+        ValidateAndFormatShortName();
+        UpdateRepositories();
+
         if (_isEditMode)
         {
             await DocumentProcessApiClient.UpdateDynamicDocumentProcessDefinitionAsync(_process);
+            Snackbar.Add("Document process updated successfully.", Severity.Success);
         }
         else
         {
@@ -84,13 +221,22 @@
             {
                 _process = createdProcess;
                 _isEditMode = true;
-                await Task.Delay(10000); // Wait for 10 seconds before showing prompts
+
+                // Load associated plugins and libraries
+                await LoadAssociatedPlugins();
+                await LoadAssociatedLibraries();
+                await LoadAvailableLibraries();
+
+                // Load prompts
                 _prompts = await DocumentProcessApiClient.GetPromptsByProcessIdAsync(_process.Id);
                 _showPrompts = true;
+
+                Snackbar.Add("Document process created successfully.", Severity.Success);
             }
         }
 
         await OnProcessSaved.InvokeAsync();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task Cancel()
@@ -109,7 +255,30 @@
         DialogService.Show<EditDocumentOutlineDialog>("Document Outline Editor", parameters, options);
     }
 
-    private void ComputeIndexName()
+    private void ValidateAndFormatShortName()
+    {
+        if (string.IsNullOrWhiteSpace(_process.ShortName))
+        {
+            Snackbar.Add("Short Name cannot be empty.", Severity.Error);
+            return;
+        }
+
+        // Replace spaces with periods
+        _process.ShortName = _process.ShortName.Replace(" ", ".");
+
+        // Remove any characters that are not letters, digits, or periods
+        _process.ShortName = new string(_process.ShortName.Where(c => char.IsLetterOrDigit(c) || c == '.').ToArray());
+
+        if (string.IsNullOrWhiteSpace(_process.ShortName))
+        {
+            Snackbar.Add("Short Name must contain valid characters.", Severity.Error);
+            return;
+        }
+
+        ComputeIndexAndBlobStorageContainerName();
+    }
+
+    private void ComputeIndexAndBlobStorageContainerName()
     {
         if (!_isEditMode && string.IsNullOrWhiteSpace(_indexName))
         {
@@ -117,12 +286,84 @@
                                             .Replace(" ", "-")
                                             .Replace(".", "-");
         }
+
+        if (!_isEditMode && string.IsNullOrWhiteSpace(_process.BlobStorageContainerName))
+        {
+            _process.BlobStorageContainerName = "blob-" + _process.ShortName.ToLower()
+                                            .Replace(" ", "-")
+                                            .Replace(".", "-");
+        }
     }
 
     private void UpdateRepositories()
     {
+        _process.Repositories ??= new List<string>();
         _process.Repositories.Clear();
         _process.Repositories.Add(_indexName);
+    }
+
+    // Document Library Association Methods
+    private void ShowAssociateLibraryDialog()
+    {
+        var parameters = new DialogParameters
+        {
+            { "AvailableLibraries", _availableLibraries },
+            { "DocumentProcessId", _process.Id }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = DialogService.Show<AssociateDocumentLibraryWithDocumentProcessDialog>("Associate Document Library", parameters, options);
+
+        dialog.Result.ContinueWith(async result =>
+        {
+            if (!result.Result.Cancelled)
+            {
+                await LoadAssociatedLibraries();
+                await LoadAvailableLibraries();
+                StateHasChanged();
+            }
+        });
+    }
+
+    private void ConfirmDisassociateLibrary(Guid libraryId)
+    {
+        var parameters = new DialogParameters
+        {
+            { "ContentText", "Are you sure you want to disassociate this document library?" },
+            { "ButtonText", "Disassociate" },
+            { "DialogColor", Color.Error }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = DialogService.Show<ConfirmationDialog>("Disassociate Document Library", parameters, options);
+
+        dialog.Result.ContinueWith(async result =>
+        {
+            if (!result.Result.Cancelled)
+            {
+                await DisassociateLibrary(libraryId);
+                StateHasChanged();
+            }
+        });
+    }
+
+    private async Task DisassociateLibrary(Guid libraryId)
+    {
+        if (_process == null)
+            return;
+
+        try
+        {
+            await DocumentLibraryApiClient.DisassociateDocumentProcessAsync(libraryId, _process.Id);
+            Snackbar.Add("Document library disassociated successfully.", Severity.Success);
+
+            await LoadAssociatedLibraries();
+            await LoadAvailableLibraries();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error disassociating document library: {ex.Message}", Severity.Error);
+        }
     }
 
     private void OnClassifyDocumentsCheckboxChanged(bool value)
@@ -132,6 +373,111 @@
         {
             _process.ClassificationModelName = string.Empty;
         }
+    }
+
+    // Plugin-related methods
+    private void ShowAssociatePluginDialog()
+    {
+        var parameters = new DialogParameters
+        {
+            { "AvailablePlugins", _availablePlugins },
+            { "ProcessId", _process.Id }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = DialogService.Show<AssociatePluginWithSpecificProcessDialog>("Associate Plugin", parameters, options);
+
+        dialog.Result.ContinueWith(async result =>
+        {
+            if (!result.Result.Cancelled)
+            {
+                await LoadAssociatedPlugins();
+                StateHasChanged();
+            }
+        });
+    }
+
+    private void ConfirmRemovePluginAssociation(Guid pluginId)
+    {
+        var parameters = new DialogParameters
+        {
+            { "ContentText", "Are you sure you want to disassociate this plugin?" },
+            { "ButtonText", "Disassociate" },
+            { "DialogColor", Color.Error }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = DialogService.Show<ConfirmationDialog>("Disassociate Plugin", parameters, options);
+
+        dialog.Result.ContinueWith(async result =>
+        {
+            if (!result.Result.Cancelled)
+            {
+                await RemovePluginAssociation(pluginId);
+                StateHasChanged();
+            }
+        });
+    }
+
+    private async Task UpdatePluginVersion(PluginAssociationViewModel association)
+    {
+        try
+        {
+            string version = association.Version;
+
+            // Find the version object from the plugin
+            var versionObject = association.Plugin.Versions.FirstOrDefault(v => v.ToString() == version);
+
+            if (versionObject == null)
+            {
+                Snackbar.Add("Invalid version selected.", Severity.Error);
+                return;
+            }
+
+            if (_process == null)
+            {
+                Snackbar.Add("Invalid plugin selected.", Severity.Error);
+                return;
+            }
+
+            await PluginApiClient.AssociatePluginWithDocumentProcessAsync(association.Plugin.Id, _process.Id, versionObject);
+            Snackbar.Add($"Plugin '{association.Plugin.Name}' updated to version '{version}'.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to update plugin version: {ex.Message}", Severity.Error);
+        }
+    }
+    private async Task RemovePluginAssociation(Guid pluginId)
+    {
+        try
+        {
+            if (_process == null)
+            {
+                Snackbar.Add(
+                    "Invalid document process selected for disassociation - please reload the page",
+                    Severity.Error
+                    );
+                return;
+            }
+
+            await PluginApiClient.DisassociatePluginFromDocumentProcessAsync(pluginId, _process.Id);
+            await LoadAssociatedPlugins();
+
+            Snackbar.Add("Plugin disassociated successfully.", Severity.Success);
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error disassociating plugin: {ex.Message}", Severity.Error);
+        }
+    }
+
+    // Helper class for plugin associations
+    private class PluginAssociationViewModel
+    {
+        public DynamicPluginInfo Plugin { get; set; }
+        public string Version { get; set; }
     }
 
 }

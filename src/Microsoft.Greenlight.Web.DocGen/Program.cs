@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
@@ -33,48 +34,71 @@ var azureAdSettings = azureAdSection.Get<AzureAdOptions>();
 var serviceConfigurationSection = builder.Configuration.GetSection("ServiceConfiguration");
 builder.Services.Configure<ServiceConfigurationOptions>(serviceConfigurationSection);
 
+var apiUri = new Uri("https+http://api-main");
+
 builder.Services.AddHttpClient<IDocumentGenerationApiClient, DocumentGenerationApiClient>(httpClient =>
 {
-    httpClient.BaseAddress = new("https+http://api-main");
+    httpClient.BaseAddress = apiUri;
 });
 builder.Services.AddHttpClient<IDocumentIngestionApiClient, DocumentIngestionApiClient>(httpClient =>
 {
-    httpClient.BaseAddress = new("https+http://api-main");
+    httpClient.BaseAddress = apiUri;
 });
 builder.Services.AddHttpClient<IContentNodeApiClient, ContentNodeApiClient>(httpClient =>
 {
-    httpClient.BaseAddress = new("https+http://api-main");
+    httpClient.BaseAddress = apiUri;
 });
 builder.Services.AddHttpClient<IChatApiClient, ChatApiClient>(httpClient =>
 {
-    httpClient.BaseAddress = new("https+http://api-main");
+    httpClient.BaseAddress = apiUri;
 });
 builder.Services.AddHttpClient<IAuthorizationApiClient, AuthorizationApiClient>(httpClient =>
 {
-    httpClient.BaseAddress = new("https+http://api-main");
+    httpClient.BaseAddress = apiUri;
 });
 builder.Services.AddHttpClient<IConfigurationApiClient, ConfigurationApiClient>(httpClient =>
 {
-    httpClient.BaseAddress = new("https+http://api-main");
+    httpClient.BaseAddress = apiUri;
 });
 builder.Services.AddHttpClient<IDocumentProcessApiClient, DocumentProcessApiClient>(httpClient =>
 {
-    httpClient.BaseAddress = new("https+http://api-main");
+    httpClient.BaseAddress = apiUri;
 });
 builder.Services.AddHttpClient<IDocumentOutlineApiClient, DocumentOutlineApiClient>(httpClient =>
 {
-    httpClient.BaseAddress = new("https+http://api-main");
+    httpClient.BaseAddress = apiUri;
 });
-
 builder.Services.AddHttpClient<IReviewApiClient, ReviewApiClient>(httpClient =>
 {
-    httpClient.BaseAddress = new("https+http://api-main");
+    httpClient.BaseAddress = apiUri;
+}).ConfigurePrimaryHttpMessageHandler(() =>
+{
+    var handler = new HttpClientHandler();
+    handler.MaxRequestContentBufferSize = 10 * 1024 * 1024 * 20; // 200 MB
+    return handler;
+});;;
+builder.Services.AddHttpClient<IPluginApiClient, PluginApiClient>(httpClient =>
+{
+    httpClient.BaseAddress = apiUri;
 });
+builder.Services.AddHttpClient<IDocumentLibraryApiClient, DocumentLibraryApiClient>(httpClient =>
+{
+    httpClient.BaseAddress = apiUri;
+});
+builder.Services.AddHttpClient<IFileApiClient, FileApiClient>(httpClient =>
+{
+    httpClient.BaseAddress = apiUri;
+}).ConfigurePrimaryHttpMessageHandler(() =>
+{
+    var handler = new HttpClientHandler();
+    handler.MaxRequestContentBufferSize = 10 * 1024 * 1024 * 20; // 200 MB
+    return handler;
+});;;
 
 // Add services to the container.
 builder.Services.AddAuthentication("MicrosoftOidc")
     .AddOpenIdConnect("MicrosoftOidc", oidcOptions =>
-    { 
+    {
         //oidcOptions.NonceCookie.SameSite = SameSiteMode.None;
         //oidcOptions.CorrelationCookie.SameSite = SameSiteMode.None;
         oidcOptions.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
@@ -134,19 +158,19 @@ builder.Services.AddAuthentication("MicrosoftOidc")
             OnTokenValidated = async context =>
             {
                 var authorizationClient = context.HttpContext.RequestServices.GetRequiredService<IAuthorizationApiClient>();
-                
+
                 if (!string.IsNullOrWhiteSpace(context.SecurityToken.RawData) && context.Principal.Identity is ClaimsIdentity identity && !identity.HasClaim(c => c.Type == "access_token"))
                 {
                     identity.AddClaim(new Claim("access_token", context.SecurityToken.RawData));
                 }
 
                 var userInfo = UserInfo.FromClaimsPrincipal(context.Principal, context.SecurityToken);
-                
+
                 var user = new UserInfoDTO(userInfo.UserId, userInfo.Name)
                 {
                     Email = userInfo.Email
                 };
-                
+
                 await authorizationClient.StoreOrUpdateUserDetailsAsync(user);
             }
         };
@@ -179,7 +203,7 @@ builder.Services.AddMudServices();
 
 if (builder.Environment.IsDevelopment())
 {
-   builder.Services.AddSignalR();
+    builder.Services.AddSignalR();
 }
 else
 {
@@ -202,21 +226,19 @@ else
 });
 }
 
-
-
-//builder.Services.AddSignalR();
-
 builder.Services.AddSingleton<DynamicComponentResolver>();
+
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = 10 * 1024 * 1024 * 20; // 200MB
+});
 
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
-    
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
-    //app.UseHsts();
 }
 else
 {
@@ -261,7 +283,7 @@ app.MapForwarder("/hubs/{**catch-all}", "https://api-main/", transformBuilder =>
     });
 }).RequireAuthorization();
 
-app.MapGet("/api-address", ()=>
+app.MapGet("/api-address", () =>
 {
     var apiAddress = builder.Configuration["services:api-main:https:0"];
     if (string.IsNullOrEmpty(apiAddress))

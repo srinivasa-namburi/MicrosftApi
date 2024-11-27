@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
+using Microsoft.Greenlight.Shared.Contracts.DTO.DocumentLibrary;
 using Microsoft.Greenlight.Shared.Contracts.Messages.DocumentProcesses;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Models.DocumentProcess;
@@ -84,8 +85,26 @@ namespace Microsoft.Greenlight.Shared.Services
             return result;
         }
 
+        public async Task<List<DocumentProcessInfo>> GetDocumentProcessesByLibraryIdAsync(Guid libraryId)
+        {
+            var processes = await _dbContext.DocumentLibraryDocumentProcessAssociations
+                .Where(x => x.DocumentLibraryId == libraryId)
+                .Include(x => x.DynamicDocumentProcessDefinition)
+                    .ThenInclude(x=>x.DocumentOutline)
+                        .ThenInclude(x => x.OutlineItems)
+                .Include(x=>x.DocumentLibrary)
+                .AsNoTracking()
+                .AsSplitQuery()
+                .Select(x => x.DynamicDocumentProcessDefinition)
+                .ToListAsync();
+
+            return _mapper.Map<List<DocumentProcessInfo>>(processes);
+        }
+        
         public async Task<DocumentProcessInfo> CreateDocumentProcessInfoAsync(DocumentProcessInfo documentProcessInfo)
         {
+            ValidateAndFormatShortName(documentProcessInfo);
+
             var dynamicDocumentProcess = _mapper.Map<DynamicDocumentProcessDefinition>(documentProcessInfo);
             if (dynamicDocumentProcess.Id == Guid.Empty)
             {
@@ -178,6 +197,24 @@ namespace Microsoft.Greenlight.Shared.Services
                 return true;
             }
             else return false;
+        }
+        private void ValidateAndFormatShortName(DocumentProcessInfo documentProcessInfo)
+        {
+            if (string.IsNullOrWhiteSpace(documentProcessInfo.ShortName))
+            {
+                throw new ArgumentException("Short Name cannot be empty.");
+            }
+
+            // Replace spaces with periods
+            documentProcessInfo.ShortName = documentProcessInfo.ShortName.Replace(" ", ".");
+
+            // Remove any characters that are not letters, digits, or periods
+            documentProcessInfo.ShortName = new string(documentProcessInfo.ShortName.Where(c => char.IsLetterOrDigit(c) || c == '.').ToArray());
+
+            if (string.IsNullOrWhiteSpace(documentProcessInfo.ShortName))
+            {
+                throw new ArgumentException("Short Name must contain valid characters.");
+            }
         }
     }
 }

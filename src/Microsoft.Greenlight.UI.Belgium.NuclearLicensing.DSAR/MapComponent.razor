@@ -41,7 +41,7 @@
         Value="@CurrentItem"
         ValueChanged="CurrentItemChanged"
         SearchFuncWithCancel="@Search"
-        ToStringFunc="@(item => item is null ? null : $"{item.DisplayAddress}")"
+        ToStringFunc="@(item => item is null ? null : $"{item.DisplayAddress!.ToString()}")"
         Variant="Variant.Outlined"
         CoerceValue="true"
         DisableUnderLine="true"

@@ -35,7 +35,8 @@ public class USNRCEnvironmentalReportPromptCatalogTypes : IPromptCatalogTypes
 
     public string SectionGenerationMainPrompt =>
         """
-        This is the initial query in a multi-pass conversation. You are not expected to return the full output in this pass.
+        This is the initial query in a multi-pass conversation for the document process with shortname {{ documentProcessName }}. Do not reference
+        the document process name in the resulting output. You are not expected to return the full output in this pass.
         However, please be as complete as possible in your response for this pass. For this task, including this initial query,
         we will be performing {{ numberOfPasses }} passes to form a complete response. This is the first pass.
 
@@ -68,7 +69,7 @@ public class USNRCEnvironmentalReportPromptCatalogTypes : IPromptCatalogTypes
         Use the native_FacilitiesPlugin (if available) to look for geographical markers.
 
         Use the native_EarthQuakePlugin if you need to find seismic history for an area.
-
+        
         If you do use plugins, please denote them as references at the end of the section you are writing.
         For the native_FacilitiesPlugin, write the source as Azure Maps (API).
         For the native_EarthQuakePlugin, write the source as US Geological Survey (API).

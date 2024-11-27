@@ -21,7 +21,6 @@ builder.Services.AddSingleton<SetupDataInitializerService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<SetupDataInitializerService>());
 
 builder.AddGreenlightServices(credentialHelper, serviceConfigurationOptions);
-//builder.DynamicallyRegisterPlugins(serviceConfigurationOptions);
 builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
 
 if (!serviceConfigurationOptions.GreenlightServices.DocumentGeneration.CreateBodyTextNodes)
@@ -39,8 +38,6 @@ var serviceBusConnectionString = builder.Configuration.GetConnectionString("sbus
 serviceBusConnectionString = serviceBusConnectionString?.Replace("https://", "sb://").Replace(":443/", "/");
 var rabbitMqConnectionString = builder.Configuration.GetConnectionString("rabbitmqdocgen");
 
-if (!string.IsNullOrWhiteSpace(serviceBusConnectionString))
-{
     builder.Services.AddMassTransit(x =>
     {
         x.SetKebabCaseEndpointNameFormatter();
@@ -69,31 +66,12 @@ if (!string.IsNullOrWhiteSpace(serviceBusConnectionString))
             }));
         });
     });
-}
-else
-{
-    builder.Services.AddMassTransit(x =>
-    {
-        x.SetKebabCaseEndpointNameFormatter();
-        x.AddConsumers(typeof(Program).Assembly);
-        
-        x.UsingRabbitMq((context, cfg) =>
-        {
-            cfg.PrefetchCount = 3;
-            cfg.ConcurrentMessageLimit = 4;
-            cfg.Host(rabbitMqConnectionString);
-            cfg.ConfigureEndpoints(context);
-        });
-    });
-}
 
 
 if (builder.Environment.IsDevelopment() && !serviceConfigurationOptions.GreenlightServices.DocumentGeneration.DurableDevelopmentServices)
 {
    await DeleteAllQueues(serviceBusConnectionString, credentialHelper);
 }
-
-
 
 var host = builder.Build();
 host.Run();

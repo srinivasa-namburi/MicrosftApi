@@ -14,7 +14,7 @@ public static class StartupDelay
         else
         {
             Console.WriteLine($"Waiting for SetupManager to perform migrations...");
-            await Task.Delay(TimeSpan.FromSeconds(1));
+            await Task.Delay(TimeSpan.FromSeconds(15));
         }
     }
 }

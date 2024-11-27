@@ -52,9 +52,11 @@ public static class DocumentProcessExtensions
     private static IHostApplicationBuilder AddCommonDocumentProcessServices(this IHostApplicationBuilder builder,
         ServiceConfigurationOptions options)
     {
-        // Document Info Service and associated mappings
         builder.Services.AddScoped<IDocumentProcessInfoService, DocumentProcessInfoService>();
         builder.Services.AddScoped<IPromptInfoService, PromptInfoService>();
+        builder.Services.AddScoped<IPluginService, PluginService>();
+        builder.Services.AddScoped<IDocumentLibraryInfoService, DocumentLibraryInfoService>();
+
         builder.Services.AddScoped<DocumentAnalysisClient>((serviceProvider) => new DocumentAnalysisClient(
             new Uri(options.DocumentIntelligence.Endpoint),
             new AzureKeyCredential(options.DocumentIntelligence.Key)));
@@ -76,10 +78,21 @@ public static class DocumentProcessExtensions
         // Register the Generic implementation of the AiCompletionServiceParameters class
         builder.Services.AddSingleton(typeof(AiCompletionServiceParameters<>));
 
+        // Register the Kernel Memory Instance Factory for Document Libraries
+        builder.Services.AddSingleton<KernelMemoryInstanceContainer>();
+        builder.Services.AddScoped<IKernelMemoryInstanceFactory, KernelMemoryInstanceFactory>();
+
         // Register the ReviewKernelMemoryRepository
         builder.AddKernelMemoryForReviews(options);
         builder.Services.AddKeyedScoped<IKernelMemoryRepository,KernelMemoryRepository>("Reviews-IKernelMemoryRepository");
         builder.Services.AddScoped<IReviewKernelMemoryRepository, ReviewKernelMemoryRepository>();
+
+        // Register the Additional Document Libraries Kernel Memory Repositories and services
+        builder.Services.AddKeyedScoped<IKernelMemoryRepository, KernelMemoryRepository>(
+            "AdditionalBase-IKernelMemoryRepository");
+        builder.Services.AddScoped<IAdditionalDocumentLibraryKernelMemoryRepository, AdditionalDocumentLibraryKernelMemoryRepository>();
+
+
         
         return builder;
     }

@@ -28,16 +28,16 @@ public class KernelMemoryDocumentIngestionSaga : MassTransitStateMachine<KernelM
                     context.Saga.FileName = context.Message.FileName;
                     context.Saga.OriginalDocumentUrl = context.Message.OriginalDocumentUrl;
                     context.Saga.UploadedByUserOid = context.Message.UploadedByUserOid;
-                    context.Saga.DocumentProcessName = context.Message.DocumentProcessName;
-                    context.Saga.Plugin = context.Message.Plugin;
+                    context.Saga.DocumentLibraryShortName = context.Message.DocumentLibraryShortName;
+                    context.Saga.DocumentLibraryType = context.Message.DocumentLibraryType;
                 })
                 .Publish(context => new KernelMemoryCreateIngestedDocument(context.Message.CorrelationId)
                 {
-                    DocumentProcessName = context.Saga.DocumentProcessName,
+                    DocumentLibraryShortName = context.Saga.DocumentLibraryShortName,
                     FileName = context.Saga.FileName,
                     OriginalDocumentUrl = context.Saga.OriginalDocumentUrl,
                     UploadedByUserOid = context.Saga.UploadedByUserOid,
-                    Plugin = context.Saga.Plugin
+                    DocumentLibraryType = context.Saga.DocumentLibraryType
                 })
                 .TransitionTo(Creating)
         );

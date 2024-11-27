@@ -241,6 +241,86 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.ToTable("ConversationSummaries");
                 });
 
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.DocumentLibrary.DocumentLibrary", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("BlobStorageAutoImportFolderName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("BlobStorageContainerName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("DescriptionOfContents")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("DescriptionOfWhenToUse")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("IndexName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("ShortName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BlobStorageContainerName")
+                        .IsUnique();
+
+                    b.HasIndex("IndexName")
+                        .IsUnique();
+
+                    b.HasIndex("ShortName")
+                        .IsUnique();
+
+                    b.ToTable("DocumentLibraries", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.DocumentLibrary.DocumentLibraryDocumentProcessAssociation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("DocumentLibraryId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("DynamicDocumentProcessDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentLibraryId");
+
+                    b.HasIndex("DynamicDocumentProcessDefinitionId");
+
+                    b.HasIndex("DocumentLibraryId", "DynamicDocumentProcessDefinitionId")
+                        .IsUnique();
+
+                    b.ToTable("DocumentLibraryDocumentProcessAssociations", (string)null);
+                });
+
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.DocumentMetadata", b =>
                 {
                     b.Property<Guid>("Id")
@@ -998,7 +1078,7 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
-                    b.Property<string>("DocumentProcessName")
+                    b.Property<string>("DocumentLibraryShortName")
                         .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("FileHash")
@@ -1020,7 +1100,7 @@ namespace Microsoft.Greenlight.Shared.Migrations
 
                     b.HasKey("CorrelationId");
 
-                    b.HasIndex("DocumentProcessName");
+                    b.HasIndex("DocumentLibraryShortName");
 
                     b.HasIndex("FileHash");
 
@@ -1063,6 +1143,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
             modelBuilder.Entity("Microsoft.Greenlight.Shared.SagaState.KernelMemoryDocumentIngestionSagaState", b =>
                 {
                     b.HasBaseType("Microsoft.Greenlight.Shared.SagaState.DocumentIngestionSagaState");
+
+                    b.Property<int>("DocumentLibraryType")
+                        .HasColumnType("int");
 
                     b.HasDiscriminator().HasValue("KernelMemoryDocumentIngestionSagaState");
                 });
@@ -1147,6 +1230,25 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Navigation("IngestedDocument");
 
                     b.Navigation("Parent");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.DocumentLibrary.DocumentLibraryDocumentProcessAssociation", b =>
+                {
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.DocumentLibrary.DocumentLibrary", "DocumentLibrary")
+                        .WithMany("DocumentProcessAssociations")
+                        .HasForeignKey("DocumentLibraryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.DocumentProcess.DynamicDocumentProcessDefinition", "DynamicDocumentProcessDefinition")
+                        .WithMany("AdditionalDocumentLibraries")
+                        .HasForeignKey("DynamicDocumentProcessDefinitionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("DocumentLibrary");
+
+                    b.Navigation("DynamicDocumentProcessDefinition");
                 });
 
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.DocumentMetadata", b =>
@@ -1354,6 +1456,11 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Navigation("SummarizedChatMessages");
                 });
 
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.DocumentLibrary.DocumentLibrary", b =>
+                {
+                    b.Navigation("DocumentProcessAssociations");
+                });
+
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.DocumentProcess.DocumentOutline", b =>
                 {
                     b.Navigation("OutlineItems");
@@ -1366,6 +1473,8 @@ namespace Microsoft.Greenlight.Shared.Migrations
 
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.DocumentProcess.DynamicDocumentProcessDefinition", b =>
                 {
+                    b.Navigation("AdditionalDocumentLibraries");
+
                     b.Navigation("DocumentOutline");
 
                     b.Navigation("Plugins");

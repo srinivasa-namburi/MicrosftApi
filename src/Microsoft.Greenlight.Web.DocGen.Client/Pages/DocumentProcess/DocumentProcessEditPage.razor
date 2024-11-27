@@ -1,12 +1,15 @@
 @page "/document-processes/edit/{ProcessId:guid?}"
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Plugins
 
 @inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
 
 <DocumentProcessEditComponent ProcessId="ProcessId" OnProcessSaved="HandleProcessSaved" OnCancel="HandleCancel" />
 
 @code {
     [Parameter] public Guid? ProcessId { get; set; }
-
+    
     private void HandleProcessSaved()
     {
         Navigation.NavigateTo("/document-processes");

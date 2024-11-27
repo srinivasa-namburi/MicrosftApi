@@ -1,6 +1,3 @@
-using Azure.AI.OpenAI;
-using Azure.Identity;
-using Azure.Search.Documents;
 using Azure.Search.Documents.Indexes;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,6 +7,7 @@ using Microsoft.KernelMemory;
 using Microsoft.KernelMemory.Configuration;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
+using Microsoft.Greenlight.Shared.Contracts.DTO.DocumentLibrary;
 using Microsoft.Greenlight.Shared.Helpers;
 
 namespace Microsoft.Greenlight.Shared.Extensions;
@@ -20,9 +18,9 @@ public static class KernelMemoryExtensions
     private const int MaxTokensPerLine = 100;
 
     public static IHostApplicationBuilder AddKeyedKernelMemoryForDocumentProcess(
-        this IHostApplicationBuilder builder, 
-        ServiceConfigurationOptions serviceConfigurationOptions, 
-        DocumentProcessOptions documentProcessOptions, 
+        this IHostApplicationBuilder builder,
+        ServiceConfigurationOptions serviceConfigurationOptions,
+        DocumentProcessOptions documentProcessOptions,
         string? key = null)
     {
         var documentProcessName = documentProcessOptions.Name;
@@ -43,30 +41,74 @@ public static class KernelMemoryExtensions
     public static IHostApplicationBuilder AddKeyedKernelMemoryForDocumentProcess(
         this IHostApplicationBuilder builder,
         ServiceConfigurationOptions serviceConfigurationOptions,
-        string documentProcessName,
+        string documentProcessName = "",
+        string? key = "")
+    {
+        var serviceProvider = builder.Services.BuildServiceProvider();
+        var blobContainerName = documentProcessName.ToLower().Replace(" ", "-").Replace(".", "-") + "-km-blobs";
+
+        var kernelMemory = CreateKernelMemoryInstance(
+            serviceProvider,
+            serviceConfigurationOptions,
+            documentProcessName,
+            blobContainerName
+            );
+
+        builder.Services.AddKeyedSingleton<IKernelMemory>(documentProcessName + "-IKernelMemory", kernelMemory);
+
+        return builder;
+    }
+
+    public static IHostApplicationBuilder AddKernelMemoryForReviews(
+        this IHostApplicationBuilder builder,
+        ServiceConfigurationOptions serviceConfigurationOptions
+    )
+    {
+        builder.AddKeyedKernelMemoryForDocumentProcess(serviceConfigurationOptions, "Reviews");
+        return builder;
+    }
+
+    public static IKernelMemory GetKernelMemoryInstanceForDocumentLibrary(
+        this IServiceProvider serviceProvider,
+        ServiceConfigurationOptions serviceConfigurationOptions,
+        DocumentLibraryInfo documentLibraryInfo,
         string? key = null)
     {
-        var sp = builder.Services.BuildServiceProvider();
-        var azureCredentialHelper = sp.GetRequiredService<AzureCredentialHelper>();
-        var baseSearchClient = sp.GetService<SearchIndexClient>();
-        var configuration = builder.Configuration;
+        var documentLibraryShortName = documentLibraryInfo.ShortName;
+        var indexName = documentLibraryInfo.IndexName ?? throw new ArgumentException("IndexName must be provided in DocumentLibraryInfo");
 
-        if (string.IsNullOrEmpty(key) && !string.IsNullOrEmpty(documentProcessName))
-        {
-            key = documentProcessName;
-        }
+        var blobContainerName =  documentLibraryShortName.ToLower().Replace(" ", "-").Replace(".", "-") + "-km-blobs";
 
-        if (string.IsNullOrEmpty(key))
-        {
-            throw new ArgumentException("Key must be provided or Document Process must have a valid name");
-        }
+        var kernelMemory = CreateKernelMemoryInstance(
+            serviceProvider,
+            serviceConfigurationOptions,
+            documentLibraryShortName,
+            blobContainerName,
+            indexName
+           );
 
-        var openAiConnString = builder.Configuration.GetConnectionString("openai-planner");
-        
-        // Get Endpoint from Connection String
-        var openAiEndpoint = openAiConnString!.Split(";").FirstOrDefault(x => x.Contains("Endpoint="))?.Split("=")[1];
-        // Get Key from Connection String
-        var openAiKey = openAiConnString!.Split(";").FirstOrDefault(x => x.Contains("Key="))?.Split("=")[1];
+        return kernelMemory;
+    }
+
+
+    private static IKernelMemory CreateKernelMemoryInstance(
+        IServiceProvider serviceProvider,
+        ServiceConfigurationOptions serviceConfigurationOptions,
+        string documentLibraryName,
+        string blobContainerName,
+        string indexName = ""
+    )
+    {
+        var azureCredentialHelper = serviceProvider.GetRequiredService<AzureCredentialHelper>();
+        var configuration = serviceProvider.GetRequiredService<IConfiguration>();
+        var baseSearchClient = serviceProvider.GetService<SearchIndexClient>();
+
+        // Get OpenAI connection string
+        var openAiConnString = configuration.GetConnectionString("openai-planner") ?? throw new InvalidOperationException("OpenAI connection string not found.");
+
+        // Extract Endpoint and Key
+        var openAiEndpoint = openAiConnString.Split(";").FirstOrDefault(x => x.Contains("Endpoint="))?.Split("=")[1];
+        var openAiKey = openAiConnString.Split(";").FirstOrDefault(x => x.Contains("Key="))?.Split("=")[1];
 
         var openAiEmbeddingConfig = new AzureOpenAIConfig()
         {
@@ -88,34 +130,28 @@ public static class KernelMemoryExtensions
 
         var azureAiSearchConfig = new AzureAISearchConfig()
         {
-           Endpoint = baseSearchClient.Endpoint.AbsoluteUri,
-           Auth = AzureAISearchConfig.AuthTypes.ManualTokenCredential
+            Endpoint = baseSearchClient.Endpoint.AbsoluteUri,
+            Auth = AzureAISearchConfig.AuthTypes.ManualTokenCredential
         };
 
         azureAiSearchConfig.SetCredential(azureCredentialHelper.GetAzureCredential());
-        
+
         // Blob Connection String
-        var blobConnection = configuration.GetConnectionString("blob-docing");
+        var blobConnection = configuration.GetConnectionString("blob-docing") ?? throw new ArgumentException("Blob Connection String must be provided");
 
-        if (string.IsNullOrEmpty(blobConnection))
-        {
-            throw new ArgumentException("Blob Connection String must be provided");
-        }
-
-        // The connection string is just a URL. The account name is the first part after https:// and before the first period.
+        // Extract Blob account name
         var blobAccountName = blobConnection.Split(".")[0].Split("//")[1];
-        var documentProcessContainerName = documentProcessName.ToLower().Replace(" ", "-").Replace(".", "-")+"-km-blobs";
 
         var azureBlobsConfig = new AzureBlobsConfig()
         {
             Account = blobAccountName,
             ConnectionString = blobConnection,
-            Container = documentProcessContainerName,
+            Container = blobContainerName,
             Auth = AzureBlobsConfig.AuthTypes.ManualTokenCredential
         };
 
         azureBlobsConfig.SetCredential(azureCredentialHelper.GetAzureCredential());
-        
+
         var textPartitioningOptions = new TextPartitioningOptions
         {
             MaxTokensPerParagraph = PartitionSize,
@@ -123,56 +159,41 @@ public static class KernelMemoryExtensions
             OverlappingTokens = 0
         };
 
-        KernelMemoryConfig? kernelMemoryConfig = null;
-        // Only do this if no KernelMemoryConfig has been registered in the service collection
-        if (sp.GetService<KernelMemoryConfig>() == null)
+        // Get or create KernelMemoryConfig
+        var kernelMemoryConfig = serviceProvider.GetService<KernelMemoryConfig>() ?? configuration.GetSection("KernelMemory").Get<KernelMemoryConfig>() ?? new KernelMemoryConfig();
+
+        if (kernelMemoryConfig.DataIngestion.MemoryDbUpsertBatchSize < 20)
         {
-            builder.Services.AddOptions<KernelMemoryConfig>().Bind(builder.Configuration.GetSection("KernelMemory"));
-            kernelMemoryConfig = builder.Configuration.GetSection("KernelMemory").Get<KernelMemoryConfig>()! ?? new KernelMemoryConfig();
-            kernelMemoryConfig.DataIngestion ??= new KernelMemoryConfig.DataIngestionConfig();
+            kernelMemoryConfig.DataIngestion.MemoryDbUpsertBatchSize = 20;
+        }
 
-            if (kernelMemoryConfig.DataIngestion.MemoryDbUpsertBatchSize < 20)
-            {
-                kernelMemoryConfig.DataIngestion.MemoryDbUpsertBatchSize = 20;
-            }
-
-            builder.Services.AddSingleton<KernelMemoryConfig>(kernelMemoryConfig);
+        if (!string.IsNullOrEmpty(indexName))
+        {
+            kernelMemoryConfig.DefaultIndexName = indexName;
         }
 
         var kernelMemoryBuilder = new KernelMemoryBuilder();
-        if (kernelMemoryConfig != null)
-        {
-            kernelMemoryBuilder.Services.AddSingleton(kernelMemoryConfig);
-        }
+
+        kernelMemoryBuilder.Services.AddSingleton(kernelMemoryConfig);
 
         kernelMemoryBuilder
             .WithAzureOpenAITextEmbeddingGeneration(openAiEmbeddingConfig)
             .WithAzureOpenAITextGeneration(openAiChatCompletionConfig)
             .WithCustomTextPartitioningOptions(textPartitioningOptions)
             .WithAzureBlobsDocumentStorage(azureBlobsConfig)
-            .WithAzureAISearchMemoryDb(azureAiSearchConfig);
-        
+            .WithAzureAISearchMemoryDb(azureAiSearchConfig)
+            ;
+
         // Add Logging
         kernelMemoryBuilder.Services.AddLogging(l =>
         {
             l.AddConsole().SetMinimumLevel(LogLevel.Information);
-            l.AddConfiguration(builder.Configuration);
+            l.AddConfiguration(configuration);
         });
-       
+
         var kernelMemory = kernelMemoryBuilder.Build();
 
-        builder.Services.AddKeyedSingleton<IKernelMemory>(documentProcessName +"-IKernelMemory", kernelMemory);
-        
-        return builder;
+        return kernelMemory;
     }
 
-    public static IHostApplicationBuilder AddKernelMemoryForReviews(
-        this IHostApplicationBuilder builder,
-        ServiceConfigurationOptions serviceConfigurationOptions
-        
-    )
-    {
-        builder.AddKeyedKernelMemoryForDocumentProcess(serviceConfigurationOptions, "Reviews");
-        return builder;
-    }
 }

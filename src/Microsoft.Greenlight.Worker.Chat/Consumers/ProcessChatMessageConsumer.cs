@@ -106,7 +106,6 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
             ReplyToId = userMessageDto.Id,
             Id = Guid.NewGuid(),
             State = ChatMessageCreationState.InProgress
-
         };
 
         var conversation = await _dbContext.ChatConversations
@@ -197,7 +196,8 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
         {
             chatHistoryString,
             previousSummariesForConversationString,
-            userMessage
+            userMessage,
+            documentProcessName
 
         }, member => member.Name);
 

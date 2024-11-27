@@ -15,3 +15,5 @@ public interface IReviewKernelMemoryRepository
     Task<MemoryAnswer> AskInDocument(Guid reviewRequestId, ReviewQuestion reviewQuestion);
     Task<MemoryAnswer> AskInDocument(Guid reviewRequestId, ReviewQuestionInfo reviewQuestion);
 }
+
+

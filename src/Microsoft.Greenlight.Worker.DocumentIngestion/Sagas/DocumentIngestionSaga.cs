@@ -29,12 +29,11 @@ public class DocumentIngestionSaga : MassTransitStateMachine<DocumentIngestionSa
                 context.Saga.FileName = context.Message.FileName;
                 context.Saga.OriginalDocumentUrl = context.Message.OriginalDocumentUrl;
                 context.Saga.UploadedByUserOid = context.Message.UploadedByUserOid;
-                context.Saga.DocumentProcessName = context.Message.DocumentProcessName;
-                context.Saga.Plugin = context.Message.Plugin;
+                context.Saga.DocumentLibraryShortName = context.Message.DocumentProcessName;
             })
             .Publish(context => new CreateIngestedDocument(context.Saga.CorrelationId)
             {
-                DocumentProcessName = context.Saga.DocumentProcessName,
+                DocumentProcessName = context.Saga.DocumentLibraryShortName,
                 FileName = context.Saga.FileName,
                 OriginalDocumentUrl = context.Saga.OriginalDocumentUrl,
                 UploadedByUserOid = context.Saga.UploadedByUserOid,
@@ -51,7 +50,7 @@ public class DocumentIngestionSaga : MassTransitStateMachine<DocumentIngestionSa
             })
             .Publish(context => new ClassifyIngestedDocument(context.Saga.CorrelationId)
             {
-                DocumentProcessName = context.Saga.DocumentProcessName,
+                DocumentProcessName = context.Saga.DocumentLibraryShortName,
                 OriginalDocumentUrl = context.Saga.OriginalDocumentUrl,
                 FileName = context.Saga.FileName,
                 UploadedByUserOid = context.Saga.UploadedByUserOid,
@@ -75,7 +74,7 @@ public class DocumentIngestionSaga : MassTransitStateMachine<DocumentIngestionSa
             })
             .Publish(context => new ProcessIngestedDocument(context.Message.CorrelationId)
             {
-                DocumentProcessName = context.Saga.DocumentProcessName,
+                DocumentProcessName = context.Saga.DocumentLibraryShortName,
                 OriginalDocumentUrl = context.Saga.OriginalDocumentUrl,
                 FileName = context.Saga.FileName,
                 UploadedByUserOid = context.Saga.UploadedByUserOid,

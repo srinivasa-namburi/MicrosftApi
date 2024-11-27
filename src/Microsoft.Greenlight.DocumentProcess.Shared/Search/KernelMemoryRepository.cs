@@ -1,10 +1,6 @@
 using System.Net;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.KernelMemory;
-using Microsoft.KernelMemory.Context;
-using Microsoft.Greenlight.Shared.Configuration;
-using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Services;
 
@@ -12,31 +8,34 @@ namespace Microsoft.Greenlight.DocumentProcess.Shared.Search;
 
 public class KernelMemoryRepository : IKernelMemoryRepository
 {
+    private readonly IKernelMemoryInstanceFactory _kernelMemoryInstanceFactory;
     private IKernelMemory? _memory;
     private readonly IServiceProvider _sp;
     private readonly ILogger<KernelMemoryRepository> _logger;
     private readonly IDocumentProcessInfoService _documentProcessInfoService;
 
-
     public KernelMemoryRepository(
         IServiceProvider sp,
         ILogger<KernelMemoryRepository> logger,
-        IDocumentProcessInfoService documentProcessInfoService)
+        IDocumentProcessInfoService documentProcessInfoService,
+        IKernelMemoryInstanceFactory kernelMemoryInstanceFactory
+    )
     {
         _sp = sp;
         _logger = logger;
         _documentProcessInfoService = documentProcessInfoService;
+        _kernelMemoryInstanceFactory = kernelMemoryInstanceFactory;
     }
 
-    public async Task StoreContentAsync(string documentProcessName, string indexName, Stream fileStream,
+    public async Task StoreContentAsync(string documentLibraryName, string indexName, Stream fileStream,
         string fileName, string? documentUrl, string? userId = null, Dictionary<string, string>? additionalTags = null)
     {
-        GetKernelMemoryForDocumentProcess(documentProcessName);
+        var memory = await GetKernelMemoryForDocumentLibrary(documentLibraryName);
 
-        if (_memory == null)
+        if (memory == null)
         {
-            _logger.LogError("Kernel Memory service not found for Document Process {DocumentProcessName}", documentProcessName);
-            throw new Exception("Kernel Memory service not found for Document Process " + documentProcessName);
+            _logger.LogError("Kernel Memory service not found for Document Library {DocumentLibraryName}", documentLibraryName);
+            throw new Exception("Kernel Memory service not found for Document Library " + documentLibraryName);
         }
 
         // URL encode the documentUrl if it is not null
@@ -45,19 +44,25 @@ public class KernelMemoryRepository : IKernelMemoryRepository
             documentUrl = WebUtility.UrlEncode(documentUrl);
         }
 
+        // Decode the fileName
+        fileName = WebUtility.UrlDecode(fileName);
+
+        // Sanitize the fileName - replace spaces with underscores, pluses with underscores, tildes with underscores, and slashes with underscores
+        fileName = fileName.Replace(" ", "_").Replace("+", "_").Replace("~", "_").Replace("/", "_");
+
         var documentRequest = new DocumentUploadRequest()
         {
             DocumentId = fileName,
             Files = [new(fileName, fileStream)],
             Tags = new TagCollection()
             {
-                "DocumentProcessName", documentProcessName,
+                "DocumentProcessName", documentLibraryName,
                 "OriginalDocumentUrl", documentUrl ?? string.Empty,
                 "UploadedByUserOid", userId ?? string.Empty
             },
             Index = indexName
         };
-        
+
         if (additionalTags != null)
         {
             // Check the keys in the additionalParameters dictionary. If any of them look like URLs (if they start with https: or http:, URL encode the value
@@ -76,63 +81,51 @@ public class KernelMemoryRepository : IKernelMemoryRepository
             }
         }
 
-        await _memory.ImportDocumentAsync(documentRequest);
+        await memory.ImportDocumentAsync(documentRequest);
     }
 
-    public async Task DeleteContentAsync(string documentProcessName, string indexName, string fileName)
+    public async Task DeleteContentAsync(string documentLibraryName, string indexName, string fileName)
     {
-        GetKernelMemoryForDocumentProcess(documentProcessName);
+        var memory = await GetKernelMemoryForDocumentLibrary(documentLibraryName);
 
-        if (_memory == null)
+        if (memory == null)
         {
-            _logger.LogError("Kernel Memory service not found for Document Process {DocumentProcessName}", documentProcessName);
-            throw new Exception("Kernel Memory service not found for Document Process " + documentProcessName);
+            _logger.LogError("Kernel Memory service not found for Document Library {DocumentLibraryName}", documentLibraryName);
+            throw new Exception("Kernel Memory service not found for Document Library " + documentLibraryName);
         }
 
-        await _memory.DeleteDocumentAsync(fileName, indexName);
+        await memory.DeleteDocumentAsync(fileName, indexName);
     }
 
-    public async Task<List<SortedDictionary<int, Citation.Partition>>> SearchAsync(DocumentProcessInfo documentProcessInfo, string searchText, int top = 12, double minRelevance = 0.7)
-    {
-        var documentProcessName = documentProcessInfo.ShortName;
-        return await SearchAsync(documentProcessName, searchText, top, minRelevance);
-    }
-
-    public async Task<List<SortedDictionary<int, Citation.Partition>>> SearchAsync(DocumentProcessOptions documentProcessOptions, string searchText, int top = 12, double minRelevance = 0.7)
-    {
-        var documentProcessName = documentProcessOptions.Name;
-        return await SearchAsync(documentProcessName, searchText, top, minRelevance);
-    }
-
-    public async Task<List<SortedDictionary<int, Citation.Partition>>> SearchAsync(string documentProcessName, string searchText, int top = 12, double minRelevance = 0.7)
+    public async Task<List<SortedDictionary<int, Citation.Partition>>> SearchAsync(string documentLibraryName, string searchText, int top = 12, double minRelevance = 0.7)
     {
         var documentProcess =
-            await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentProcessName);
+            await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentLibraryName);
 
         if (documentProcess == null)
         {
-            _logger.LogError("Document Process {DocumentProcessName} not found in configuration", documentProcessName);
-            throw new Exception("Document Process " + documentProcessName + " not found in configuration");
+            _logger.LogError("Document Process {DocumentProcessName} not found in configuration", documentLibraryName);
+            throw new Exception("Document Process " + documentLibraryName + " not found in configuration");
         }
 
         var indexName = documentProcess.Repositories[0];
-        var searchResults = await SearchAsync(documentProcessName, indexName, searchText, top, minRelevance);
+        var searchResults = await SearchAsync(documentLibraryName, indexName, searchText, top, minRelevance);
 
         return searchResults;
     }
 
-    public async Task<List<SortedDictionary<int, Citation.Partition>>> SearchAsync(string documentProcessName,
+    public async Task<List<SortedDictionary<int, Citation.Partition>>> SearchAsync(string documentLibraryName,
         string indexName, string searchText, int top = 12, double minRelevance = 0.7)
     {
-        GetKernelMemoryForDocumentProcess(documentProcessName);
+        var memory = await GetKernelMemoryForDocumentLibrary(documentLibraryName);
 
-        if (_memory == null)
+        if (memory == null)
         {
-            _logger.LogError("Kernel Memory service not found for Document Process {DocumentProcessName}", documentProcessName);
-            throw new Exception("Kernel Memory service not found for Document Process " + documentProcessName);
+            _logger.LogError("Kernel Memory service not found for Document Library {DocumentLibraryName}", documentLibraryName);
+            throw new Exception("Kernel Memory service not found for Document Library " + documentLibraryName);
         }
 
-        var results = await _memory.SearchAsync(searchText,
+        var results = await memory.SearchAsync(searchText,
             index: indexName,
             minRelevance: minRelevance,
             limit: top);
@@ -177,15 +170,15 @@ public class KernelMemoryRepository : IKernelMemoryRepository
         return sortedPartitions;
     }
 
-    public async Task<List<SortedDictionary<int, Citation.Partition>>> SearchAsync(string documentProcessName, string indexName, Dictionary<string, string> parametersExactMatch, string searchText, int top = 12,
+    public async Task<List<SortedDictionary<int, Citation.Partition>>> SearchAsync(string documentLibraryName, string indexName, Dictionary<string, string> parametersExactMatch, string searchText, int top = 12,
         double minRelevance = 0.7)
     {
-        GetKernelMemoryForDocumentProcess(documentProcessName);
+        var memory = await GetKernelMemoryForDocumentLibrary(documentLibraryName);
 
-        if (_memory == null)
+        if (memory == null)
         {
-            _logger.LogError("Kernel Memory service not found for Document Process {DocumentProcessName}", documentProcessName);
-            throw new Exception("Kernel Memory service not found for Document Process " + documentProcessName);
+            _logger.LogError("Kernel Memory service not found for Document Library {DocumentLibraryName}", documentLibraryName);
+            throw new Exception("Kernel Memory service not found for Document Library " + documentLibraryName);
         }
 
         var tagFilter = new List<MemoryFilter>();
@@ -194,10 +187,10 @@ public class KernelMemoryRepository : IKernelMemoryRepository
             tagFilter.Add(new MemoryFilter().ByTag(parameter.Key, parameter.Value));
         }
 
-        var searchResult = await _memory.SearchAsync(searchText,
+        var searchResult = await memory.SearchAsync(searchText,
             index: indexName,
-            filters: tagFilter, 
-            limit: top, 
+            filters: tagFilter,
+            limit: top,
             minRelevance: minRelevance);
 
         var sortedPartitions = new List<SortedDictionary<int, Citation.Partition>>();
@@ -215,29 +208,58 @@ public class KernelMemoryRepository : IKernelMemoryRepository
         return sortedPartitions;
     }
 
-    public async Task<MemoryAnswer?> AskAsync(string documentProcessName, string indexName, Dictionary<string, string> parametersExactMatch, string question)
+    public async Task<MemoryAnswer?> AskAsync(string documentLibraryName, string indexName, Dictionary<string, string>? parametersExactMatch, string question)
     {
-        GetKernelMemoryForDocumentProcess(documentProcessName);
+        var memory = await GetKernelMemoryForDocumentLibrary(documentLibraryName);
 
-        if (_memory == null)
+        if (memory == null)
         {
-            _logger.LogError("Kernel Memory service not found for Document Process {DocumentProcessName}", documentProcessName);
-            throw new Exception("Kernel Memory service not found for Document Process " + documentProcessName);
+            _logger.LogError("Kernel Memory service not found for Document Library {DocumentLibraryName}", documentLibraryName);
+            throw new Exception("Kernel Memory service not found for Document Library " + documentLibraryName);
         }
 
         var tagFilter = new List<MemoryFilter>();
-        foreach (var parameter in parametersExactMatch)
+
+        MemoryAnswer? result;
+
+        if (parametersExactMatch != null)
         {
-            tagFilter.Add(new MemoryFilter().ByTag(parameter.Key, parameter.Value));
+            foreach (var parameter in parametersExactMatch)
+            {
+                tagFilter.Add(new MemoryFilter().ByTag(parameter.Key, parameter.Value));
+            }
+
+            result = await memory.AskAsync(question, indexName, filters: tagFilter, minRelevance: 0.7D);
+        }
+        else
+        {
+            result = await memory.AskAsync(question, indexName, minRelevance: 0.7D);
         }
 
-        var result = await _memory.AskAsync(question, indexName, filters: tagFilter, minRelevance:0.7D);
         return result;
     }
 
-    private void GetKernelMemoryForDocumentProcess(string documentProcessName)
+    private async Task<IKernelMemory> GetKernelMemoryForDocumentLibrary(string documentLibraryName)
     {
-        if (_memory != null) return;
-        _memory = _sp.GetRequiredServiceForDocumentProcess<IKernelMemory>(documentProcessName);
+        if (documentLibraryName.StartsWith("Additional-"))
+        {
+            var internalDocumentLibraryName = documentLibraryName.Replace("Additional-", "");
+            var memory = await _kernelMemoryInstanceFactory.GetKernelMemoryInstanceForDocumentLibrary(internalDocumentLibraryName);
+            return memory;
+        }
+        else
+        {
+            // For standard Document Processes, we have an instance of this repository for each process, so the Kernel Memory Instance is set to a member variable
+            if (_memory != null) return _memory;
+            _memory = _sp.GetServiceForDocumentProcess<IKernelMemory>(documentLibraryName);
+
+            if (_memory == null)
+            {
+                _logger.LogError("Kernel Memory service not found for Document Process {DocumentLibraryName}", documentLibraryName);
+                throw new Exception("Kernel Memory service not found for Document Process " + documentLibraryName);
+            }
+
+            return _memory;
+        }
     }
 }

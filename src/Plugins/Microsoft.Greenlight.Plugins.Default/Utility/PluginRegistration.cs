@@ -7,10 +7,9 @@ namespace Microsoft.Greenlight.Plugins.Default.Utility;
 
 public class PluginRegistration : IPluginRegistration
 {
-    public IHostApplicationBuilder RegisterPlugin(IHostApplicationBuilder builder)
+    public void RegisterPlugin(IServiceCollection serviceCollection, IServiceProvider serviceProvider)
     {
-        builder.Services.AddSingleton<DatePlugin>();
-        builder.Services.AddSingleton<ConversionPlugin>();
-        return builder;
+        serviceCollection.AddSingleton<DatePlugin>();
+        serviceCollection.AddSingleton<ConversionPlugin>();
     }
 }

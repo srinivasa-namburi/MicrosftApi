@@ -1,0 +1,76 @@
+﻿@inject IDocumentLibraryApiClient DocumentLibraryApiClient
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+
+<MudPaper Class="pa-4">
+    <MudText Typo="Typo.h5">Document Libraries</MudText>
+
+    <MudButton OnClick="@CreateNew" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add">
+        Create New Document Library
+    </MudButton>
+
+    @if (DocumentLibraries == null)
+    {
+        <MudProgressCircular Indeterminate="true" Class="my-4" />
+    }
+    else
+    {
+        <MudTable Items="DocumentLibraries" Hover="true">
+            <HeaderContent>
+                <MudTh>Short Name</MudTh>
+                <MudTh>Description</MudTh>
+                <MudTh>Index Name</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Short Name">@context.ShortName</MudTd>
+                <MudTd DataLabel="Description">@context.DescriptionOfContents</MudTd>
+                <MudTd DataLabel="Index Name">@context.IndexName</MudTd>
+                <MudTd DataLabel="Actions">
+                    <MudIconButton Color="Color.Default" Icon="@Icons.Material.Filled.StickyNote2" Size="Size.Small" OnClick="@(()=>EditLibrary(context.Id))"></MudIconButton>
+                    <MudIconButton Color="Color.Error" Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => DeleteLibrary(context.Id))"/>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+</MudPaper>
+
+@code {
+    private List<DocumentLibraryInfo>? DocumentLibraries;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadLibraries();
+    }
+
+    private async Task LoadLibraries()
+    {
+        DocumentLibraries = await DocumentLibraryApiClient.GetAllDocumentLibrariesAsync();
+    }
+
+    private void CreateNew()
+    {
+        NavigationManager.NavigateTo("/document-library/");
+    }
+
+    private void EditLibrary(Guid id)
+    {
+        NavigationManager.NavigateTo($"/document-library/{id}");
+    }
+
+    private async Task DeleteLibrary(Guid id)
+    {
+        bool confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to delete this document library?");
+        if (confirmed)
+        {
+            await DocumentLibraryApiClient.DeleteDocumentLibraryAsync(id);
+            await LoadLibraries();
+        }
+    }
+
+    private void RowClicked(TableRowClickEventArgs<DocumentLibraryInfo> obj)
+    {
+        EditLibrary(obj.Item.Id);
+    }
+
+}
