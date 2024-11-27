@@ -8,6 +8,7 @@ using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Models.Plugins;
 using Microsoft.Greenlight.Shared.Services;
+using Swashbuckle.AspNetCore.Annotations;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
@@ -98,6 +99,7 @@ public class PluginsController : BaseController
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [Produces(typeof(DynamicPluginInfo))]
+    [SwaggerIgnore]
     public async Task<IActionResult> UploadPlugin([FromForm] IFormFile file)
     {
         
