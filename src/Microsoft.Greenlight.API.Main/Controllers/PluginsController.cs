@@ -183,7 +183,7 @@ public class PluginsController : BaseController
 
             if (AdminHelper.IsRunningInProduction())
             {
-                await _publishEndpoint.Publish<RestartWorker>(Guid.NewGuid());
+                await _publishEndpoint.Publish(new RestartWorker(Guid.NewGuid()));
             }
 
             return Ok(pluginInfo);

@@ -19,10 +19,11 @@ namespace Microsoft.Greenlight.API.Main.Controllers;
 public class DocumentProcessController : BaseController
 {
     private readonly DocGenerationDbContext _dbContext;
-    private readonly DynamicDocumentProcessDefinitionRepository _repository;
+
 
     private readonly IDocumentProcessInfoService _documentProcessInfoService;
     private readonly IPluginService _pluginService;
+    private readonly IDocumentLibraryInfoService _documentLibraryInfoService;
     private readonly IMapper _mapper;
     private readonly IPublishEndpoint _publishEndpoint;
 
@@ -30,16 +31,17 @@ public class DocumentProcessController : BaseController
         DocGenerationDbContext dbContext,
         IDocumentProcessInfoService documentProcessInfoService,
         IPluginService pluginService,
+        IDocumentLibraryInfoService documentLibraryInfoService,
         IMapper mapper,
-        IPublishEndpoint publishEndpoint,
-        DynamicDocumentProcessDefinitionRepository repository)
+        IPublishEndpoint publishEndpoint
+        )
     {
         _dbContext = dbContext;
         _documentProcessInfoService = documentProcessInfoService;
         _pluginService = pluginService;
+        _documentLibraryInfoService = documentLibraryInfoService;
         _mapper = mapper;
         _publishEndpoint = publishEndpoint;
-        _repository = repository;
     }
 
     [HttpGet]
@@ -134,7 +136,7 @@ public class DocumentProcessController : BaseController
 
         if (AdminHelper.IsRunningInProduction())
         {
-            await _publishEndpoint.Publish<RestartWorker>(Guid.NewGuid());
+            await _publishEndpoint.Publish(new RestartWorker(Guid.NewGuid()));
         }
 
         return Accepted($"/api/document-process/{documentProcessInfo.Id}", documentProcessInfo);
@@ -154,12 +156,18 @@ public class DocumentProcessController : BaseController
             await _pluginService.DisassociatePluginFromDocumentProcessAsync(plugin.Id, id);
         }
 
+        var documentLibraries = await _documentLibraryInfoService.GetDocumentLibrariesByProcessIdAsync(id);
+        foreach (var library in documentLibraries)
+        {
+            await _documentLibraryInfoService.DisassociateDocumentProcessAsync(library.Id, id);
+        }
+
         // Remove the document process
         var result = await _documentProcessInfoService.DeleteDocumentProcessInfoAsync(id);
 
         if (AdminHelper.IsRunningInProduction())
         {
-            await _publishEndpoint.Publish<RestartWorker>(Guid.NewGuid());
+            await _publishEndpoint.Publish(new RestartWorker(Guid.NewGuid()));
         }
         var resultJson = JsonSerializer.Serialize(result);
         return Ok(resultJson);

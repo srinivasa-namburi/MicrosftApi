@@ -77,7 +77,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
 
             if (AdminHelper.IsRunningInProduction())
             {
-                await _publishEndpoint.Publish<RestartWorker>(Guid.NewGuid());
+                await _publishEndpoint.Publish(new RestartWorker(Guid.NewGuid()));
             }
             
             return CreatedAtAction(nameof(GetDocumentLibraryById), new { id = createdLibrary.Id }, createdLibrary);
@@ -107,7 +107,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
 
             if (AdminHelper.IsRunningInProduction())
             {
-                await _publishEndpoint.Publish<RestartWorker>(Guid.NewGuid());
+                await _publishEndpoint.Publish(new RestartWorker(Guid.NewGuid()));
             }
 
             return NoContent();

@@ -22,6 +22,7 @@ namespace Microsoft.Greenlight.Shared.Helpers
             var azureContainerApp1 = _configuration["CONTAINER_APP_ENV"];
             if (!string.IsNullOrEmpty(azureContainerApp1))
             {
+                Console.WriteLine("AdminHelper check true : Running in Azure Container Apps");
                 return true;
             }
 
@@ -29,6 +30,7 @@ namespace Microsoft.Greenlight.Shared.Helpers
             var azureContainerApp2 = _configuration["WEBSITE_INSTANCE_ID"];
             if (!string.IsNullOrEmpty(azureContainerApp2))
             {
+                Console.WriteLine("AdminHelper check true : Running in Azure Container Apps");
                 return true;
             }
 
@@ -36,6 +38,7 @@ namespace Microsoft.Greenlight.Shared.Helpers
             var environment = _configuration["ASPNETCORE_ENVIRONMENT"];
             if (!string.IsNullOrEmpty(environment) && environment.Equals("Production", StringComparison.OrdinalIgnoreCase))
             {
+                Console.WriteLine("AdminHelper check true : Running in Azure Container Apps");
                 return true;
             }
 
@@ -46,16 +49,19 @@ namespace Microsoft.Greenlight.Shared.Helpers
                 var webDocgenHttps = _configuration[$"services{separator}web-docgen{separator}https{separator}0"];
                 if (webDocgenHttps != null && !webDocgenHttps.Contains("localhost"))
                 {
+                    Console.WriteLine("AdminHelper check true : Running in Azure Container Apps");
                     return true;
                 }
 
                 var apiMainHttps = _configuration[$"services{separator}api-main{separator}https{separator}0"];
                 if (apiMainHttps != null && !apiMainHttps.Contains("localhost"))
                 {
+                    Console.WriteLine("AdminHelper check true : Running in Azure Container Apps");
                     return true;
                 }
             }
-            
+
+            Console.WriteLine("AdminHelper check false : Not running in Azure Container Apps");
             return false;
         }
     }
