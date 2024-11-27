@@ -97,6 +97,9 @@ builder.Services.AddMassTransit(x =>
      });
  });
 
+// Initialize AdminHelper with configuration
+AdminHelper.Initialize(builder.Configuration);
+
 builder.Services.AddSingleton<IHostedService, ShutdownCleanupService>();
 
 var host = builder.Build();

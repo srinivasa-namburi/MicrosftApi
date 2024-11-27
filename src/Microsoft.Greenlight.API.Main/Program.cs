@@ -132,6 +132,9 @@ var rabbitMqConnectionString = builder.Configuration.GetConnectionString("rabbit
         });
     });
 
+// Initialize AdminHelper with configuration
+AdminHelper.Initialize(builder.Configuration);
+
 var app = builder.Build();
 
 var webSocketOptions = new WebSocketOptions()

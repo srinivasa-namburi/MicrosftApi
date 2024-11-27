@@ -83,6 +83,9 @@ builder.Services.AddMassTransit(x =>
     });
 });
 
+// Initialize AdminHelper with configuration
+AdminHelper.Initialize(builder.Configuration);
+
 builder.Services.AddSingleton<IHostedService, ShutdownCleanupService>();
 
 if (builder.Environment.IsDevelopment() && !serviceConfigurationOptions.GreenlightServices.DocumentGeneration.DurableDevelopmentServices)

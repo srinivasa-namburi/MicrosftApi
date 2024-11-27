@@ -1,33 +1,62 @@
-﻿namespace Microsoft.Greenlight.Shared.Helpers;
+﻿using Microsoft.Extensions.Configuration;
 
-public static class AdminHelper
+namespace Microsoft.Greenlight.Shared.Helpers
 {
-    public static bool IsRunningInProduction()
+    public static class AdminHelper
     {
-        var separators = new[] { "__", ":", "::" };
+        private static IConfiguration? _configuration;
 
-        foreach (var separator in separators)
+        public static void Initialize(IConfiguration configuration)
         {
-            var webDocgenHttps = Environment.GetEnvironmentVariable($"services{separator}web-docgen{separator}https{separator}0");
-            if (webDocgenHttps != null && !webDocgenHttps.Contains("localhost"))
+            _configuration = configuration;
+        }
+
+        public static bool IsRunningInProduction()
+        {
+            if (_configuration == null)
+            {
+                throw new InvalidOperationException("AdminHelper is not initialized. Call Initialize method with IConfiguration.");
+            }
+
+            // Check for Azure Container Apps specific environment variable
+            var azureContainerApp1 = _configuration["CONTAINER_APP_ENV"];
+            if (!string.IsNullOrEmpty(azureContainerApp1))
             {
                 return true;
+            }
+
+            // Check for Azure Container Apps specific environment variable
+            var azureContainerApp2 = _configuration["WEBSITE_INSTANCE_ID"];
+            if (!string.IsNullOrEmpty(azureContainerApp2))
+            {
+                return true;
+            }
+
+            // Additional check for ASPNETCORE_ENVIRONMENT
+            var environment = _configuration["ASPNETCORE_ENVIRONMENT"];
+            if (!string.IsNullOrEmpty(environment) && environment.Equals("Production", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            var separators = new[] { "__", ":", "::" };
+
+            foreach (var separator in separators)
+            {
+                var webDocgenHttps = _configuration[$"services{separator}web-docgen{separator}https{separator}0"];
+                if (webDocgenHttps != null && !webDocgenHttps.Contains("localhost"))
+                {
+                    return true;
+                }
+
+                var apiMainHttps = _configuration[$"services{separator}api-main{separator}https{separator}0"];
+                if (apiMainHttps != null && !apiMainHttps.Contains("localhost"))
+                {
+                    return true;
+                }
             }
             
-            var apiMainHttps = Environment.GetEnvironmentVariable($"services{separator}api-main{separator}https{separator}0");
-            if (apiMainHttps != null && !apiMainHttps.Contains("localhost"))
-            {
-                return true;
-            }
+            return false;
         }
-
-        // Additional check for the presence of CONTAINER_APP_HOSTNAME, which indicates if the app is running in a container under Azure Container Apps
-        var containerAppHostName = Environment.GetEnvironmentVariable("CONTAINER_APP_HOSTNAME");
-        if (!string.IsNullOrEmpty(containerAppHostName))
-        {
-            return true;
-        }
-
-        return false;
     }
 }
