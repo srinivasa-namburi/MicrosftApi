@@ -1,4 +1,6 @@
-﻿using MassTransit;
+﻿using System.Security.Cryptography;
+using System.Text;
+using MassTransit;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Shared.Contracts.Messages;
@@ -18,10 +20,17 @@ public class RestartWorkerConsumer : IConsumer<RestartWorker>
         var domainNameParts = domainName.Split('.');
         var domainNameShort = domainNameParts[^1];
 
+        //Compute an MD5 hash based on the machine name
+        var machineName = Environment.MachineName;
+        var machineNameHashBytes = MD5.HashData(Encoding.UTF8.GetBytes(machineName));
+        var machineNameHash = BitConverter.ToString(machineNameHashBytes).Replace("-", "").ToLower();
+
+        machineNameHash = machineNameHash.Substring(0, 14);
+        
         // Computed subscription name
 
         var processId = Environment.ProcessId;
-        var subscriptionName = $"rw-{domainNameShort}-{Environment.MachineName}-{processId}";
+        var subscriptionName = $"rw-{domainNameShort}-{machineNameHash}-{processId}";
 
         return subscriptionName;
     }

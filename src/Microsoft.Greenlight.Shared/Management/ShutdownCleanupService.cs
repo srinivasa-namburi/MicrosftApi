@@ -24,7 +24,7 @@ public class ShutdownCleanupService : IHostedService
         var domainNameShort = domainNameParts[^1];
 
         // Register the restart worker subscription for this node
-        _subscriptionName = $"rw-{domainNameShort}-{Environment.MachineName}";
+        _subscriptionName = RestartWorkerConsumer.GetRestartWorkerEndpointName();
         _topicPath = "microsoft.greenlight.shared.contracts.messages/restartworker";
 
         var serviceBusConnectionString = configuration.GetConnectionString("sbus");
