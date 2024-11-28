@@ -53,15 +53,23 @@ public class KernelMemoryRepository : IKernelMemoryRepository
         var documentRequest = new DocumentUploadRequest()
         {
             DocumentId = fileName,
-            Files = [new(fileName, fileStream)],
-            Tags = new TagCollection()
-            {
-                "DocumentProcessName", documentLibraryName,
-                "OriginalDocumentUrl", documentUrl ?? string.Empty,
-                "UploadedByUserOid", userId ?? string.Empty
-            },
+            Files = [new DocumentUploadRequest.UploadedFile(fileName, fileStream)],
             Index = indexName
         };
+
+        var isDocumentLibraryDocument = documentLibraryName.StartsWith("Additional-").ToString().ToLowerInvariant();
+        var tags = new Dictionary<string,string>
+        {
+            {"DocumentProcessName", documentLibraryName},
+            {"IsDocumentLibraryDocument", isDocumentLibraryDocument},
+            {"OriginalDocumentUrl", documentUrl ?? string.Empty},
+            {"UploadedByUserOid", userId ?? string.Empty}
+        };
+
+        foreach (var (key, value) in tags)
+        {
+            documentRequest.Tags.Add(key, value);
+        }
 
         if (additionalTags != null)
         {
