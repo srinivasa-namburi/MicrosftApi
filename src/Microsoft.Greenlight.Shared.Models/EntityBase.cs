@@ -19,19 +19,4 @@ public abstract class EntityBase
 
     [Timestamp]
     public byte[] RowVersion { get; set; } = Array.Empty<byte>();
-
-    //public bool IsActive { get; set; } = true;
-    //public DateTimeOffset? DeletedAt { get; set; }
-
-    //public void Undo()
-    //{
-    //    IsActive = true;
-    //    DeletedAt = null;
-    //}
-
-    //public void Delete()
-    //{
-    //    IsActive = false;
-    //    DeletedAt = DateTimeOffset.UtcNow;
-    //}
 }

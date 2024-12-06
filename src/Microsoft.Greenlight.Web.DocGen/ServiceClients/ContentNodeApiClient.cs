@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.Greenlight.Shared.Contracts.DTO.Document;
 using Microsoft.Greenlight.Shared.Models;
 using Microsoft.Greenlight.Web.Shared.ServiceClients;
 
@@ -11,12 +12,21 @@ internal sealed class ContentNodeApiClient : BaseServiceClient<ContentNodeApiCli
     {
     }
 
-    public async Task<ContentNode?> GetContentNodeAsync(string contentNodeId)
+    public async Task<ContentNodeInfo?> GetContentNodeAsync(string contentNodeId)
     {
         var response = await SendGetRequestMessage($"/api/content-nodes/{contentNodeId}");
         response?.EnsureSuccessStatusCode();
 
-        return await response?.Content.ReadFromJsonAsync<ContentNode>()! ??
+        return await response?.Content.ReadFromJsonAsync<ContentNodeInfo>()! ??
                throw new IOException("No content node!");
+    }
+
+    public async Task<ContentNodeSystemItemInfo?> GetContentNodeSystemItemAsync(Guid contentNodeSystemItemId)
+    {
+        var response = await SendGetRequestMessage($"/api/content-nodes/content-node-system-item/{contentNodeSystemItemId}");
+        response?.EnsureSuccessStatusCode();
+
+        return await response?.Content.ReadFromJsonAsync<ContentNodeSystemItemInfo>()! ??
+               throw new IOException("No content node system item!");
     }
 }

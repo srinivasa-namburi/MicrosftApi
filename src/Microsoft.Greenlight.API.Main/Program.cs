@@ -75,6 +75,13 @@ builder.Services.AddSwaggerGen(c =>
             new[] { entraScopes! }
         }
     });
+
+    // Add support for text/plain
+    c.MapType<string>(() => new OpenApiSchema
+    {
+        Type = "string",
+        Format = "text"
+    });
     
 });
 

@@ -1,21 +1,39 @@
 @page "/docs/{GeneratedDocumentId}"
+@using CsvHelper.Configuration.Attributes
+@using Microsoft.Greenlight.Shared.Configuration
+@using Microsoft.Greenlight.Web.DocGen.Client.ServiceClients
 
 
 @inject NavigationManager Navigation
+@inject IConfigurationApiClient ConfigurationApiClient
 
 @code {
+    
+
+
     [Parameter] public string GeneratedDocumentId { get; set; }
     
 }
+@if (generatedDocumentIdGuid != Guid.Empty)
+{
+    <GeneratedDocumentDisplay DocumentId="@generatedDocumentIdGuid" LiveUpdated="true" EnableReferenceFrontend="@EnableReferenceFrontend" />
+}
 
-<GeneratedDocumentDisplay DocumentId="@generatedDocumentIdGuid" LiveUpdated="true" />
 
 @code
 {
     private Guid generatedDocumentIdGuid { get; set; }
+    private bool EnableReferenceFrontend { get; set; } = false;
+    private ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions? _featureFlags;
 
     protected override async Task OnInitializedAsync()
     {
+        _featureFlags = await ConfigurationApiClient.GetFeatureFlagsAsync();
+        if (_featureFlags != null)
+        {
+            EnableReferenceFrontend = _featureFlags.EnableReferenceFrontend;
+        }
+        
         generatedDocumentIdGuid = Guid.Parse(GeneratedDocumentId);
     }
 }

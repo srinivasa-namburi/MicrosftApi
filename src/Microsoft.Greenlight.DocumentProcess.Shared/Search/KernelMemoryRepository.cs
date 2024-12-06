@@ -1,8 +1,10 @@
 using System.Net;
 using Microsoft.Extensions.Logging;
+using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.KernelMemory;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Services;
+using Microsoft.Greenlight.Shared.Models.SourceReferences;
 
 namespace Microsoft.Greenlight.DocumentProcess.Shared.Search;
 
@@ -13,17 +15,20 @@ public class KernelMemoryRepository : IKernelMemoryRepository
     private readonly IServiceProvider _sp;
     private readonly ILogger<KernelMemoryRepository> _logger;
     private readonly IDocumentProcessInfoService _documentProcessInfoService;
+    private readonly IDocumentLibraryInfoService _documentLibraryInfoService;
 
     public KernelMemoryRepository(
         IServiceProvider sp,
         ILogger<KernelMemoryRepository> logger,
         IDocumentProcessInfoService documentProcessInfoService,
+        IDocumentLibraryInfoService documentLibraryInfoService,
         IKernelMemoryInstanceFactory kernelMemoryInstanceFactory
     )
     {
         _sp = sp;
         _logger = logger;
         _documentProcessInfoService = documentProcessInfoService;
+        _documentLibraryInfoService = documentLibraryInfoService;
         _kernelMemoryInstanceFactory = kernelMemoryInstanceFactory;
     }
 
@@ -58,7 +63,7 @@ public class KernelMemoryRepository : IKernelMemoryRepository
         };
 
         var isDocumentLibraryDocument = documentLibraryName.StartsWith("Additional-").ToString().ToLowerInvariant();
-        var tags = new Dictionary<string,string>
+        var tags = new Dictionary<string, string>
         {
             {"DocumentProcessName", documentLibraryName},
             {"IsDocumentLibraryDocument", isDocumentLibraryDocument},
@@ -105,80 +110,61 @@ public class KernelMemoryRepository : IKernelMemoryRepository
         await memory.DeleteDocumentAsync(fileName, indexName);
     }
 
-    public async Task<List<SortedDictionary<int, Citation.Partition>>> SearchAsync(string documentLibraryName, string searchText, int top = 12, double minRelevance = 0.7)
+    public async Task<List<KernelMemoryDocumentSourceReferenceItem>> SearchAsync(
+        string documentLibraryName, 
+        string searchText, 
+        int top = 12, 
+        double minRelevance = 0.7)
     {
-        var documentProcess =
-            await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentLibraryName);
-
-        if (documentProcess == null)
+        string indexName = string.Empty;
+        if(documentLibraryName.StartsWith("Additional-"))
         {
-            _logger.LogError("Document Process {DocumentProcessName} not found in configuration", documentLibraryName);
-            throw new Exception("Document Process " + documentLibraryName + " not found in configuration");
+            var documentLibrary = await _documentLibraryInfoService.GetDocumentLibraryByShortNameAsync(documentLibraryName);
+            if (documentLibrary == null)
+            {
+                _logger.LogError("Document Library {DocumentLibraryName} not found in configuration", documentLibraryName);
+                throw new Exception("Document Library " + documentLibraryName + " not found in configuration");
+            }
+
+            indexName = documentLibrary.IndexName;
+
+        }
+        else
+        {
+            var documentProcess =
+                await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentLibraryName);
+
+            if (documentProcess == null)
+            {
+                _logger.LogError("Document Process {DocumentProcessName} not found in configuration", documentLibraryName);
+                throw new Exception("Document Process " + documentLibraryName + " not found in configuration");
+            }
+
+            indexName = documentProcess.Repositories[0];
         }
 
-        var indexName = documentProcess.Repositories[0];
         var searchResults = await SearchAsync(documentLibraryName, indexName, searchText, top, minRelevance);
 
         return searchResults;
     }
 
-    public async Task<List<SortedDictionary<int, Citation.Partition>>> SearchAsync(string documentLibraryName,
-        string indexName, string searchText, int top = 12, double minRelevance = 0.7)
+    public async Task<List<KernelMemoryDocumentSourceReferenceItem>> SearchAsync(
+        string documentLibraryName,
+        string indexName, 
+        string searchText, 
+        int top = 12, 
+        double minRelevance = 0.7)
     {
-        var memory = await GetKernelMemoryForDocumentLibrary(documentLibraryName);
-
-        if (memory == null)
-        {
-            _logger.LogError("Kernel Memory service not found for Document Library {DocumentLibraryName}", documentLibraryName);
-            throw new Exception("Kernel Memory service not found for Document Library " + documentLibraryName);
-        }
-
-        var results = await memory.SearchAsync(searchText,
-            index: indexName,
-            minRelevance: minRelevance,
-            limit: top);
-
-        var sortedPartitions = new List<SortedDictionary<int, Citation.Partition>>();
-
-        foreach (var citation in results.Results)
-        {
-            foreach (var partition in citation.Partitions)
-            {
-                // Collect partitions in a sorted collection
-                var partitions = new SortedDictionary<int, Citation.Partition> { [partition.PartitionNumber] = partition };
-
-                #region Adjacent partition fetching - currently inactive
-                //TODO:Get adjacent partitions. The below code isn't operational because it sometimes fails as there is no previous or next partition. Needs to be more resilient to that.
-
-                // //Filters to fetch adjacent partitions
-                //var filters = new List<MemoryFilter>
-                //{
-
-                //     MemoryFilters.ByDocument(citation.DocumentId).ByTag(Constants.ReservedFilePartitionNumberTag, $"{partition.PartitionNumber - 1}"),
-                //     MemoryFilters.ByDocument(citation.DocumentId).ByTag(Constants.ReservedFilePartitionNumberTag, $"{partition.PartitionNumber + 1}")
-                //};
-
-                // // Fetch adjacent partitions and add them to the sorted collection
-
-                // SearchResult adjacentList = await _memory.SearchAsync("", filters: filters, limit: 2);
-
-                // // Make this more resilient to failures when there is no previous or next partition
-
-                // foreach (var adjacent in adjacentList.Results.First().Partitions)
-                // {
-                //     partitions[adjacent.PartitionNumber] = adjacent;
-                // }
-
-                #endregion
-
-                // Adds the sorted dictionary of partitions for this result to the sortedPartitions list
-                sortedPartitions.Add(partitions);
-            }
-        }
-        return sortedPartitions;
+        var blankParameters = new Dictionary<string, string>();
+        return await SearchAsync(documentLibraryName, indexName, blankParameters, searchText, top, minRelevance);
     }
 
-    public async Task<List<SortedDictionary<int, Citation.Partition>>> SearchAsync(string documentLibraryName, string indexName, Dictionary<string, string> parametersExactMatch, string searchText, int top = 12,
+    public async Task<List<KernelMemoryDocumentSourceReferenceItem>> SearchAsync(
+        string documentLibraryName, 
+        string indexName, 
+        Dictionary<string, string> parametersExactMatch, 
+        string searchText, 
+        int top = 12,
         double minRelevance = 0.7)
     {
         var memory = await GetKernelMemoryForDocumentLibrary(documentLibraryName);
@@ -189,31 +175,119 @@ public class KernelMemoryRepository : IKernelMemoryRepository
             throw new Exception("Kernel Memory service not found for Document Library " + documentLibraryName);
         }
 
-        var tagFilter = new List<MemoryFilter>();
-        foreach (var parameter in parametersExactMatch)
+        SearchResult results;
+        if (parametersExactMatch.Count <= 0)
         {
-            tagFilter.Add(new MemoryFilter().ByTag(parameter.Key, parameter.Value));
+            results = await memory.SearchAsync(searchText,
+                index: indexName,
+                minRelevance: minRelevance,
+                limit: top);
         }
-
-        var searchResult = await memory.SearchAsync(searchText,
-            index: indexName,
-            filters: tagFilter,
-            limit: top,
-            minRelevance: minRelevance);
-
-        var sortedPartitions = new List<SortedDictionary<int, Citation.Partition>>();
-
-        foreach (var citation in searchResult.Results)
+        else
         {
-            foreach (var partition in citation.Partitions)
+            var tagFilter = new List<MemoryFilter>();
+            foreach (var parameter in parametersExactMatch)
             {
-                // Collect partitions in a sorted collection
-                var partitions = new SortedDictionary<int, Citation.Partition> { [partition.PartitionNumber] = partition };
-                // Adds the sorted dictionary of partitions for this result to the sortedPartitions list
-                sortedPartitions.Add(partitions);
+                tagFilter.Add(new MemoryFilter().ByTag(parameter.Key, parameter.Value));
             }
+
+            results = await memory.SearchAsync(searchText,
+                index: indexName,
+                minRelevance: minRelevance,
+                limit: top,
+                filters: tagFilter);
         }
-        return sortedPartitions;
+
+        List<KernelMemoryDocumentSourceReferenceItem> sourceItems;
+        if (documentLibraryName.StartsWith("Additional-"))
+        {
+            var internalDocumentLibraryName = documentLibraryName.Replace("Additional-", "");
+            var documentLibrary = await _documentLibraryInfoService.GetDocumentLibraryByShortNameAsync(internalDocumentLibraryName);
+
+            if (documentLibrary == null)
+            {
+                _logger.LogError("Document Library {DocumentLibraryName} not found in configuration", internalDocumentLibraryName);
+                throw new Exception("Document Library " + internalDocumentLibraryName + " not found in configuration");
+            }
+
+            var sourceReferenceItems = new List<DocumentLibrarySourceReferenceItem>();
+
+            foreach (var citation in results.Results)
+            {
+                var sourceReferenceItem = new DocumentLibrarySourceReferenceItem
+                {
+                    DocumentLibraryShortName = internalDocumentLibraryName,
+                    IndexName = documentLibrary.IndexName
+                };
+                sourceReferenceItem.SetBasicParameters();
+                sourceReferenceItem.AddCitation(citation);
+
+                var firstPartition = citation.Partitions.FirstOrDefault();
+                if (firstPartition != null)
+                {
+                    if (firstPartition.Tags.ContainsKey("OriginalDocumentUrl"))
+                    {
+                        sourceReferenceItem.SourceReferenceLinkType = SourceReferenceLinkType.SystemNonProxiedUrl;
+                        firstPartition.Tags.TryGetValue("OriginalDocumentUrl", out var links);
+                        if (links is { Count: > 0 })
+                        {
+                            sourceReferenceItem.SourceReferenceLink = links.FirstOrDefault();
+                        }
+                    }
+                }
+
+                sourceReferenceItems.Add(sourceReferenceItem);
+            }
+
+            sourceItems = [.. sourceReferenceItems];
+
+        }
+        else
+        {
+            //We're dealing with a Document Process and need to create DocumentProcessKnowledgeRepositorySourceReferenceItems 
+            //instead of DocumentLibrarySourceReferenceItems. Otherwise, the code is the same as above.
+
+            var documentProcess = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentLibraryName);
+
+            if (documentProcess == null)
+            {
+                _logger.LogError("Document Process {DocumentProcessName} not found in configuration", documentLibraryName);
+                throw new Exception("Document Process " + documentLibraryName + " not found in configuration");
+            }
+
+            var sourceReferenceItems = new List<DocumentProcessRepositorySourceReferenceItem>();
+
+            foreach (var citation in results.Results)
+            {
+                var sourceReferenceItem = new DocumentProcessRepositorySourceReferenceItem
+                {
+                    DocumentProcessShortName = documentLibraryName,
+                    IndexName = documentProcess.Repositories[0]
+                };
+                sourceReferenceItem.SetBasicParameters();
+                sourceReferenceItem.AddCitation(citation);
+
+                var firstPartition = citation.Partitions.FirstOrDefault();
+                if (firstPartition != null)
+                {
+                    if (firstPartition.Tags.ContainsKey("OriginalDocumentUrl"))
+                    {
+                        sourceReferenceItem.SourceReferenceLinkType = SourceReferenceLinkType.SystemNonProxiedUrl;
+                        firstPartition.Tags.TryGetValue("OriginalDocumentUrl", out var links);
+                        if (links is { Count: > 0 })
+                        {
+                            sourceReferenceItem.SourceReferenceLink = links.FirstOrDefault();
+                        }
+                    }
+                }
+
+                sourceReferenceItems.Add(sourceReferenceItem);
+            }
+
+            sourceItems = [.. sourceReferenceItems];
+        }
+
+        return sourceItems;
     }
 
     public async Task<MemoryAnswer?> AskAsync(string documentLibraryName, string indexName, Dictionary<string, string>? parametersExactMatch, string question)
@@ -243,7 +317,6 @@ public class KernelMemoryRepository : IKernelMemoryRepository
         {
             result = await memory.AskAsync(question, indexName, minRelevance: 0.7D);
         }
-
         return result;
     }
 

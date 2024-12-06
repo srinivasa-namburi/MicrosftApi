@@ -90,11 +90,25 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
 
                 var bodyContentNodes = await GenerateBodyText(contentNodeType, sectionNumber, sectionTitle, tableOfContentsString, documentProcessName, message.MetadataId);
 
+                int bodyContentNodeNumber = 1;
                 // Set the Parent of all bodyContentNodes to be the existingContentNode
                 foreach (var bodyContentNode in bodyContentNodes)
                 {
                     bodyContentNode.ParentId = existingContentNode.Id;
+
+                    // We want to attach the content node system item to the parent node, not the body context nodes
+                    if (bodyContentNodeNumber == 1)
+                    {
+                        ReAttachContentNodeSystemItemToHeadingNode(bodyContentNode, existingContentNode);
+                    }
+                    else
+                    {
+                        bodyContentNode.ContentNodeSystemItemId = null;
+                        bodyContentNode.ContentNodeSystemItem = null;
+                    }
+
                     _dbContext.ContentNodes.Add(bodyContentNode);
+                    bodyContentNodeNumber++;
                 }
 
                 if (bodyContentNodes.Count == 1)
@@ -134,6 +148,22 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
         {
             // Publish the ContentNodeGenerated event defined at the top of this file
             await context.Publish(contentNodeGeneratedEvent);
+        }
+    }
+
+    private void ReAttachContentNodeSystemItemToHeadingNode(ContentNode bodyContentNode, ContentNode existingContentNode)
+    {
+        if (bodyContentNode.ContentNodeSystemItem != null)
+        {
+            existingContentNode.ContentNodeSystemItemId = bodyContentNode.ContentNodeSystemItem.Id;
+            existingContentNode.ContentNodeSystemItem = bodyContentNode.ContentNodeSystemItem;
+            existingContentNode.ContentNodeSystemItem.ContentNodeId = existingContentNode.Id;
+            existingContentNode.ContentNodeSystemItem.ContentNode = existingContentNode;
+
+            _dbContext.ContentNodeSystemItems.Add(existingContentNode.ContentNodeSystemItem);
+
+            bodyContentNode.ContentNodeSystemItemId = null;
+            bodyContentNode.ContentNodeSystemItem = null;
         }
     }
 

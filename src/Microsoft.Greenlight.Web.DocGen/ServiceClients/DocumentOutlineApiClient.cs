@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Web.Shared.ServiceClients;
@@ -9,6 +10,24 @@ public class DocumentOutlineApiClient : BaseServiceClient<DocumentOutlineApiClie
 {
     public DocumentOutlineApiClient(HttpClient httpClient, ILogger<DocumentOutlineApiClient> logger, AuthenticationStateProvider authStateProvider) : base(httpClient, logger, authStateProvider)
     {
+    }
+
+    public async Task<List<DocumentOutlineItemInfo>> GenerateOutlineFromTextAsync(string outlineText)
+    {
+        var url = "/api/document-outline/generate-from-text";
+        var content = new StringContent(outlineText, Encoding.UTF8, "application/json");
+        var response = await SendPostRequestMessage(url, content);
+
+        if (response.IsSuccessStatusCode)
+        {
+            var result = await response.Content.ReadFromJsonAsync<List<DocumentOutlineItemInfo>>();
+            return result ?? new List<DocumentOutlineItemInfo>();
+        }
+        else
+        {
+            // Handle error response
+            return new List<DocumentOutlineItemInfo>();
+        }
     }
 
     public async Task<List<DocumentOutlineInfo>> GetDocumentOutlinesAsync()

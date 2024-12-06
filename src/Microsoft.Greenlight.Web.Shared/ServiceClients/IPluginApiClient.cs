@@ -1,6 +1,5 @@
 ﻿using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.Greenlight.Shared.Contracts.DTO.Plugins;
-using Microsoft.Greenlight.Shared.Models.Plugins;
 
 namespace Microsoft.Greenlight.Web.Shared.ServiceClients;
 

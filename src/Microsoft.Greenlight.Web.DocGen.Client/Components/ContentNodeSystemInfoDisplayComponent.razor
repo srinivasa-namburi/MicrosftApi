@@ -1,0 +1,57 @@
+﻿@using Microsoft.Greenlight.Shared.Contracts.DTO.Document
+@using Microsoft.KernelMemory
+
+@code {
+    [Parameter] public ContentNodeSystemItemInfo? SystemItem { get; set; }
+}
+
+@if (SystemItem != null)
+{
+    <MudPaper Class="pa-3 mb-3" Outlined="true">
+        <MudText Typo="Typo.h6">Reference Information:</MudText>
+        <MudDivider Class="my-2" />
+        @if (SystemItem.ComputedUsedMainGenerationPrompt == null)
+        {
+            <MudText Typo="Typo.body1"><strong>Computed Used Main Generation Prompt:</strong><br /> @SystemItem.ComputedUsedMainGenerationPrompt</MudText>
+        }
+        @if (SystemItem.ComputedSectionPromptInstructions == null)
+        {
+            <MudText Typo="Typo.body1"><strong>Computed Section Prompt Instructions:</strong><br /> @SystemItem.ComputedSectionPromptInstructions</MudText>
+        }
+
+        @if (SystemItem.SourceReferences.Count > 0)
+        {
+            <MudText Typo="Typo.body1"><strong>Source References:</strong></MudText>
+            <ul>
+                @* @foreach (var sourceReference in SystemItem.SourceReferences)
+            {
+                <li>
+                    @sourceReference.Description (@sourceReference.SourceReferenceType)
+                    @switch (sourceReference)
+                    {
+                        case KernelMemoryDocumentSourceReferenceItemInfo kernelMemoryItem:
+
+                                @foreach (var citation in kernelMemoryItem.Citations)
+                                {
+                                    <strong>Kernel Memory Citation:</strong> @citation.SourceName
+                                }
+
+                            break;
+                        case PluginSourceReferenceItemInfo pluginItem:
+                            <p>
+                                <strong>Plugin Identifier: </strong> @pluginItem.PluginIdentifier
+                                <br/>
+                                <strong>Plugin inputs:</strong> 
+                                <RenderMultilineText Value="@pluginItem.SourceInputJson"/>
+                                <br/>
+                                <strong>Plugin output:</strong>
+                                <RenderMultilineText Value="@pluginItem.SourceOutput" />
+                            </p>
+                            break;
+                    }
+                </li>
+            } *@
+            </ul>
+        }
+    </MudPaper>
+}

@@ -175,6 +175,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("ContentNodeSystemItemId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid?>("GeneratedDocumentId")
                         .HasColumnType("uniqueidentifier");
 
@@ -209,6 +212,35 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.HasIndex("ParentId");
 
                     b.ToTable("ContentNodes");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.ContentNodeSystemItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ComputedSectionPromptInstructions")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ComputedUsedMainGenerationPrompt")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("ContentNodeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ContentNodeId")
+                        .IsUnique();
+
+                    b.ToTable("ContentNodeSystemItems", (string)null);
                 });
 
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.ConversationSummary", b =>
@@ -921,6 +953,52 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.ToTable("ReviewQuestionAnswers", (string)null);
                 });
 
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.SourceReferences.SourceReferenceItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ContentNodeSystemItemId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Discriminator")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SourceOutput")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("SourceReferenceLink")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("SourceReferenceLinkType")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SourceReferenceType")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ContentNodeSystemItemId");
+
+                    b.ToTable("SourceReferenceItems", (string)null);
+
+                    b.HasDiscriminator<string>("Discriminator").HasValue("SourceReferenceItem");
+
+                    b.UseTphMappingStrategy();
+                });
+
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Table", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1140,6 +1218,34 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.ToTable("ReviewExecutionSagaStates", (string)null);
                 });
 
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.SourceReferences.KernelMemoryDocumentSourceReferenceItem", b =>
+                {
+                    b.HasBaseType("Microsoft.Greenlight.Shared.Models.SourceReferences.SourceReferenceItem");
+
+                    b.Property<string>("CitationJsons")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("IndexName")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasDiscriminator().HasValue("KernelMemoryDocumentSourceReferenceItem");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.SourceReferences.PluginSourceReferenceItem", b =>
+                {
+                    b.HasBaseType("Microsoft.Greenlight.Shared.Models.SourceReferences.SourceReferenceItem");
+
+                    b.Property<string>("PluginIdentifier")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("SourceInputJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasDiscriminator().HasValue("PluginSourceReferenceItem");
+                });
+
             modelBuilder.Entity("Microsoft.Greenlight.Shared.SagaState.KernelMemoryDocumentIngestionSagaState", b =>
                 {
                     b.HasBaseType("Microsoft.Greenlight.Shared.SagaState.DocumentIngestionSagaState");
@@ -1148,6 +1254,26 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .HasColumnType("int");
 
                     b.HasDiscriminator().HasValue("KernelMemoryDocumentIngestionSagaState");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.SourceReferences.DocumentLibrarySourceReferenceItem", b =>
+                {
+                    b.HasBaseType("Microsoft.Greenlight.Shared.Models.SourceReferences.KernelMemoryDocumentSourceReferenceItem");
+
+                    b.Property<string>("DocumentLibraryShortName")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasDiscriminator().HasValue("DocumentLibrarySourceReferenceItem");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.SourceReferences.DocumentProcessRepositorySourceReferenceItem", b =>
+                {
+                    b.HasBaseType("Microsoft.Greenlight.Shared.Models.SourceReferences.KernelMemoryDocumentSourceReferenceItem");
+
+                    b.Property<string>("DocumentProcessShortName")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasDiscriminator().HasValue("DocumentProcessRepositorySourceReferenceItem");
                 });
 
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.BoundingPolygon", b =>
@@ -1230,6 +1356,16 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Navigation("IngestedDocument");
 
                     b.Navigation("Parent");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.ContentNodeSystemItem", b =>
+                {
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.ContentNode", "ContentNode")
+                        .WithOne("ContentNodeSystemItem")
+                        .HasForeignKey("Microsoft.Greenlight.Shared.Models.ContentNodeSystemItem", "ContentNodeId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("ContentNode");
                 });
 
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.DocumentLibrary.DocumentLibraryDocumentProcessAssociation", b =>
@@ -1413,6 +1549,16 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Navigation("ReviewInstance");
                 });
 
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.SourceReferences.SourceReferenceItem", b =>
+                {
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.ContentNodeSystemItem", "ContentNodeSystemItem")
+                        .WithMany("SourceReferences")
+                        .HasForeignKey("ContentNodeSystemItemId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("ContentNodeSystemItem");
+                });
+
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Table", b =>
                 {
                     b.HasOne("Microsoft.Greenlight.Shared.Models.IngestedDocument", "IngestedDocument")
@@ -1449,6 +1595,13 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Navigation("BoundingRegions");
 
                     b.Navigation("Children");
+
+                    b.Navigation("ContentNodeSystemItem");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.ContentNodeSystemItem", b =>
+                {
+                    b.Navigation("SourceReferences");
                 });
 
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.ConversationSummary", b =>

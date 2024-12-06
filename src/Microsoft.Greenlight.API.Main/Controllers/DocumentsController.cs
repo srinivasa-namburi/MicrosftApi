@@ -10,6 +10,8 @@ using Microsoft.Greenlight.Shared.Exporters;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Models;
 using System.Text.RegularExpressions;
+using AutoMapper;
+using Microsoft.Greenlight.Shared.Contracts.DTO.Document;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
@@ -21,19 +23,20 @@ public class DocumentsController : BaseController
     private readonly DocGenerationDbContext _dbContext;
     private readonly IDocumentExporter _wordDocumentExporter;
     private readonly AzureFileHelper _fileHelper;
+    private readonly IMapper _mapper;
 
     public DocumentsController(
         IPublishEndpoint publishEndpoint,
         DocGenerationDbContext dbContext,
         [FromKeyedServices("IDocumentExporter-Word")]
         IDocumentExporter wordDocumentExporter,
-        AzureFileHelper fileHelper
-        )
+        AzureFileHelper fileHelper, IMapper mapper)
     {
         _publishEndpoint = publishEndpoint;
         _dbContext = dbContext;
         _wordDocumentExporter = wordDocumentExporter;
         _fileHelper = fileHelper;
+        _mapper = mapper;
     }
 
     [HttpPost("generatemultiple")]
@@ -67,60 +70,96 @@ public class DocumentsController : BaseController
         return Accepted();
     }
 
-    [HttpPost("ingest")]
-    [ProducesResponseType(StatusCodes.Status202Accepted)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [Consumes("application/json")]
-    public async Task<IActionResult> IngestDocument([FromBody] DocumentIngestionRequest documentIngestionRequest)
-    {
-        var claimsPrincipal = HttpContext.User;
-
-        if (documentIngestionRequest.Id == Guid.Empty)
-        {
-            documentIngestionRequest.Id = Guid.NewGuid();
-        }
-
-        documentIngestionRequest.UploadedByUserOid = claimsPrincipal.GetObjectId();
-        await _publishEndpoint.Publish<DocumentIngestionRequest>(documentIngestionRequest);
-
-        return Accepted();
-    }
-
-    [HttpPost("reindex-all")]
-    [ProducesResponseType(StatusCodes.Status202Accepted)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> ReindexAllCompletedDocuments()
-    {
-        await _publishEndpoint.Publish<ReindexAllCompletedDocuments>(new ReindexAllCompletedDocuments(Guid.NewGuid()));
-        return Accepted();
-    }
-
     [HttpGet("{documentId}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/json")]
-    [Produces<GeneratedDocument>]
-    public async Task<ActionResult<GeneratedDocument>> GetFullGeneratedDocument(string documentId)
+    [Produces<GeneratedDocumentInfo>]
+    public async Task<ActionResult<GeneratedDocumentInfo>> GetFullGeneratedDocument(string documentId)
     {
         var documentGuid = Guid.Parse(documentId);
+
+        // Load the GeneratedDocument
+        var document = await AssembleFullDocument(documentGuid);
+
+        var documentInfo = _mapper.Map<GeneratedDocumentInfo>(document);
+
+        return Ok(documentInfo);
+    }
+
+    private async Task<GeneratedDocument?> AssembleFullDocument(Guid documentGuid)
+    {
         var document = await _dbContext.GeneratedDocuments
-            .Include(w => w.ContentNodes)
-            .ThenInclude(r => r.Children)
-                .ThenInclude(s => s.Children)
-                    .ThenInclude(t => t.Children)
-                        .ThenInclude(u => u.Children)
-                            .ThenInclude(v => v.Children)
-                               .ThenInclude(w => w.Children)
             .AsNoTracking()
-            .AsSplitQuery()
             .FirstOrDefaultAsync(d => d.Id == documentGuid);
 
         if (document == null)
         {
-            return NotFound();
+            return document;
         }
 
+        // Step 1: Load top-level ContentNodes
+        var topLevelNodes = await _dbContext.ContentNodes
+            .AsNoTracking()
+            .Include(cn => cn.ContentNodeSystemItem)
+            .Where(cn => cn.GeneratedDocumentId == documentGuid)
+            .ToListAsync();
+
+        // Step 2: Load all descendants
+        var descendantNodes = await GetAllDescendantContentNodesAsync(topLevelNodes.Select(cn => cn.Id).ToList());
+
+        // Combine all ContentNodes
+        var allContentNodes = topLevelNodes.Concat(descendantNodes).ToList();
+
+        // Build the hierarchy
+        var contentNodeDict = allContentNodes.ToDictionary(cn => cn.Id);
+
+        // Initialize Children collections
+        foreach (var node in allContentNodes)
+        {
+            node.Children = new List<ContentNode>();
+        }
+
+        // Link parents and children
+        foreach (var node in allContentNodes)
+        {
+            if (node.ParentId.HasValue && contentNodeDict.TryGetValue(node.ParentId.Value, out var parentNode))
+            {
+                parentNode.Children.Add(node);
+            }
+        }
+
+        // Assign the root ContentNodes to the document
+        document.ContentNodes = topLevelNodes;
         return document;
+    }
+
+    private async Task<List<ContentNode>> GetAllDescendantContentNodesAsync(List<Guid> parentIds)
+    {
+        var allDescendants = new List<ContentNode>();
+        var currentLevelIds = parentIds;
+
+        while (currentLevelIds.Any())
+        {
+            // Load the children of the current level
+            var childNodes = await _dbContext.ContentNodes
+                .AsNoTracking()
+                .Include(cn => cn.ContentNodeSystemItem)
+                .Where(cn => cn.ParentId.HasValue && currentLevelIds.Contains(cn.ParentId.Value))
+                .ToListAsync();
+
+            if (!childNodes.Any())
+            {
+                break;
+            }
+
+            allDescendants.AddRange(childNodes);
+
+            // Prepare for the next level
+            currentLevelIds = childNodes.Select(cn => cn.Id).ToList();
+        }
+
+        return allDescendants;
     }
 
     [HttpGet("{documentId}/export-link")]
@@ -141,9 +180,6 @@ public class DocumentsController : BaseController
 
         var assetUrl = _fileHelper.GetProxiedAssetBlobUrl(existingLink.Id);
         return assetUrl;
-
-        //var accessUrl = _fileHelper.GetProxiedBlobUrl(existingLink.AbsoluteUrl);
-        //return accessUrl;
     }
 
     [HttpGet("{documentId}/word-export")]
@@ -152,18 +188,12 @@ public class DocumentsController : BaseController
     [Produces("application/octet-stream")]
     public async Task<IActionResult> GetDocumentExportFile(string documentId, string exporterType = "Word")
     {
-        var documentResult = await GetFullGeneratedDocument(documentId);
-        if (documentResult.Result is NotFoundResult)
-        {
-            return NotFound();
-        }
-
-        var document = documentResult.Value;
+        var document = await AssembleFullDocument(Guid.Parse(documentId));
         if (document == null)
         {
             return NotFound();
         }
-
+        
         IDocumentExporter exporter;
 
         // Capitalize the first letter of the exporter type, lowercase the rest
@@ -201,13 +231,8 @@ public class DocumentsController : BaseController
     [Produces("application/json")]
     public async Task<ActionResult<string>> GetDocumentExportPermalink(string documentId)
     {
-        var documentResult = await GetFullGeneratedDocument(documentId);
-        if (documentResult.Result is NotFoundResult)
-        {
-            return NotFound();
-        }
-
-        var document = documentResult.Value;
+        var document = await AssembleFullDocument(Guid.Parse(documentId));
+        
         if (document == null)
         {
             return NotFound();
@@ -284,12 +309,23 @@ public class DocumentsController : BaseController
         // Load children of the current node
         var children = await _dbContext.ContentNodes
             .Where(c => c.ParentId == parentNode.Id)
+            .Include(x=>x.ContentNodeSystemItem)
+            .ThenInclude(x=>x!.SourceReferences)
             .ToListAsync();
 
         foreach (var child in children)
         {
             // Recursively delete grandchildren
             await DeleteChildContentNodesRecursively(child);
+            
+            if (child.ContentNodeSystemItem != null)
+            {
+                foreach (var sourceReference in child.ContentNodeSystemItem.SourceReferences)
+                {
+                    _dbContext.SourceReferenceItems.Remove(sourceReference);
+                }
+                _dbContext.ContentNodeSystemItems.Remove(child.ContentNodeSystemItem);
+            }
 
             // Delete the child node after its children have been deleted
             _dbContext.ContentNodes.Remove(child);

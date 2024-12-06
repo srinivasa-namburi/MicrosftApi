@@ -10,6 +10,8 @@ using Microsoft.Greenlight.Shared.Models;
 using Microsoft.Greenlight.Web.Shared.Helpers;
 using System.Text.RegularExpressions;
 using System.Web;
+using AutoMapper;
+using Microsoft.Greenlight.Shared.Contracts.DTO.Document;
 using Table = DocumentFormat.OpenXml.Wordprocessing.Table;
 using TableCell = DocumentFormat.OpenXml.Wordprocessing.TableCell;
 
@@ -21,10 +23,12 @@ public class WordDocumentExporter : IDocumentExporter
     private int _numberingIdCounter = 3; // Starts from 3 as 1 is reserved for bullets and 2 for headers
     private Dictionary<int, int> _numberingLevelCounters = new Dictionary<int, int>();
     private bool _documentHeaderHasNumbering = false;
+    private readonly IMapper _mapper;
 
-    public WordDocumentExporter(DocGenerationDbContext dbContext)
+    public WordDocumentExporter(DocGenerationDbContext dbContext, IMapper mapper)
     {
         _dbContext = dbContext;
+        _mapper = mapper;
     }
 
     public async Task<Stream?> ExportDocumentAsync(Guid generatedDocumentId)
@@ -77,9 +81,12 @@ public class WordDocumentExporter : IDocumentExporter
             // Todo: content of header and footer should be dynamic. It is semi-static now.
             AddHeaderAndFooterToDocument(mainPart, generatedDocument.Title, "Revision 1");
 
-            ContentNodeSorter.SortContentNodes(generatedDocument.ContentNodes);
+            var contentNodeInfos = _mapper.Map<List<ContentNodeInfo>>(generatedDocument.ContentNodes);
+            ContentNodeSorter.SortContentNodes(contentNodeInfos);
+            
+            var reverseMap = _mapper.Map<List<ContentNode>>(contentNodeInfos);
 
-            foreach (var contentNode in generatedDocument.ContentNodes)
+            foreach (var contentNode in reverseMap)
             {
                 AppendContentNode(body, contentNode, 0);
             }

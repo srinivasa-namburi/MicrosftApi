@@ -9,7 +9,7 @@ public class ContentNode : EntityBase
     public ContentNodeType Type { get; set; }
     public ContentNodeGenerationState? GenerationState { get; set; }
     public List<ContentNode> Children { get; set; } = new List<ContentNode>();
-    
+
     [JsonIgnore]
     public ContentNode? Parent { get; set; }
     public Guid? ParentId { get; set; }
@@ -22,7 +22,9 @@ public class ContentNode : EntityBase
     [JsonIgnore]
     public virtual GeneratedDocument? GeneratedDocument { get; set; }
 
+    public Guid? ContentNodeSystemItemId { get; set; }
+    [JsonIgnore]
+    public virtual ContentNodeSystemItem? ContentNodeSystemItem { get; set; }
+
     public List<BoundingRegion>? BoundingRegions { get; set; } = new List<BoundingRegion>();
-
-
 }

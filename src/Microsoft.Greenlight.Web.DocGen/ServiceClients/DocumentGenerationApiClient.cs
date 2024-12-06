@@ -1,6 +1,7 @@
 using System.Net;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
+using Microsoft.Greenlight.Shared.Contracts.DTO.Document;
 using Microsoft.Greenlight.Shared.Models;
 using Microsoft.Greenlight.Web.Shared.ServiceClients;
 
@@ -25,12 +26,12 @@ internal sealed class DocumentGenerationApiClient : BaseServiceClient<DocumentGe
         return response?.StatusCode.ToString();
     }
 
-    public async Task<GeneratedDocument?> GetDocumentAsync(string documentId)
+    public async Task<GeneratedDocumentInfo?> GetDocumentAsync(string documentId)
     {
         var response = await SendGetRequestMessage($"/api/documents/{documentId}");
         response?.EnsureSuccessStatusCode();
 
-        return await response?.Content.ReadFromJsonAsync<GeneratedDocument>()! ??
+        return await response?.Content.ReadFromJsonAsync<GeneratedDocumentInfo>()! ??
                throw new IOException("No document!");
     }
 

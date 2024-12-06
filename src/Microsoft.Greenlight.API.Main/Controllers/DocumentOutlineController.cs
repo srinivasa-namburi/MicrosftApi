@@ -1,4 +1,6 @@
 using AutoMapper;
+using DocumentFormat.OpenXml.Wordprocessing;
+using MassTransit.Courier;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
@@ -93,6 +95,10 @@ public class DocumentOutlineController : BaseController
             // Update the nested items
             foreach (var changedItem in changeRequest.ChangedOutlineItems)
             {
+                if (changedItem.Level == 0)
+                {
+                    changedItem.DocumentOutlineId = id;
+                }
                 if (changedItem.Id == Guid.Empty || changedItem.Id == null)
                 {
                     // New item because there is no ID
@@ -172,5 +178,79 @@ public class DocumentOutlineController : BaseController
         await _dbContext.SaveChangesAsync();
 
         return Created("/api/document-outline/{newDocumentOutline.Id}", newDocumentOutline);
+    }
+
+    [HttpPost("generate-from-text")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [Produces(typeof(List<DocumentOutlineItemInfo>))]
+    [Consumes("application/json")]
+    public async Task<ActionResult<List<DocumentOutlineItemInfo>>> GenerateOutlineFromText(SimpleTextDTO textDto)
+    {
+        var outlineText = textDto.Text;
+
+        if (string.IsNullOrWhiteSpace(outlineText))
+        {
+            return BadRequest("Outline text cannot be empty.");
+        }    
+
+        // the outline text is a json string with \n for line feeds that need to be turned into a regular string with regular line feeds
+        outlineText = outlineText.Replace("\\n", "\n");
+
+        var documentOutlineLines = outlineText.Split("\n").ToList();
+
+        // Foreach line in the lines List, remove quotes as well as leading and trailing whitespace
+        documentOutlineLines = documentOutlineLines.Select(x => x.Trim([' ', '"', '-'])
+                .Replace("[", "")
+                .Replace("]", ""))
+            .ToList();
+
+        // Remove any empty lines
+        documentOutlineLines = documentOutlineLines.Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
+
+        // Re-create the string with the outline text - each line separated by a newline
+        outlineText = string.Join("\n", documentOutlineLines);
+        
+        // This renders the Outline Items based on the text
+        var outline = new DocumentOutline
+        {
+            FullText = outlineText
+        };
+
+        var infoOutline = _mapper.Map<List<DocumentOutlineItemInfo>>(outline.OutlineItems);
+
+        CleanSectionTitles(infoOutline);
+        SetOrderAndLevelProperties(infoOutline);
+       
+        return Ok(infoOutline);
+    }
+
+    private static void SetOrderAndLevelProperties(List<DocumentOutlineItemInfo> infoOutline, int level = 0, int order = 0)
+    {
+        foreach (var item in infoOutline)
+        {
+            item.Level = level;
+            item.OrderIndex = order;
+            order += 1;
+
+            if (item.Children.Count > 0)
+            {
+                SetOrderAndLevelProperties(item.Children, level + 1, 0);
+            }
+        }
+    }
+
+    private void CleanSectionTitles(List<DocumentOutlineItemInfo> items)
+    {
+        foreach (var item in items)
+        {
+            item.SectionTitle = item.SectionTitle.TrimStart(' ', '.');
+            item.SectionNumber = item.SectionNumber?.TrimStart(' ', '.');
+
+            if (item.Children.Count > 0)
+            {
+                CleanSectionTitles(item.Children);
+            }
+        }
     }
 }

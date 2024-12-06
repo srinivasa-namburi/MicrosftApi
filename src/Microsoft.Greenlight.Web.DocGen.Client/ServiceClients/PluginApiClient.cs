@@ -1,9 +1,7 @@
 ﻿using Microsoft.AspNetCore.Components.Authorization;
-using Microsoft.Greenlight.Shared.Models.Plugins;
 using Microsoft.Greenlight.Web.Shared.ServiceClients;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Components.Forms;
-using System.Net.Http.Headers;
 using Microsoft.Greenlight.Shared.Contracts.DTO.Plugins;
 
 namespace Microsoft.Greenlight.Web.DocGen.Client.ServiceClients;

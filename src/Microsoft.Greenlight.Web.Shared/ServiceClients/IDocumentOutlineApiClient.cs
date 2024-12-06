@@ -12,4 +12,5 @@ public interface IDocumentOutlineApiClient : IServiceClient
     Task<DocumentOutlineInfo?> UpdateDocumentOutlineAsync(Guid id,
         DocumentOutlineChangeRequest documentOutlineChangeRequest);
 
+    Task<List<DocumentOutlineItemInfo>> GenerateOutlineFromTextAsync(string outlineText);
 }

@@ -1,9 +1,9 @@
 @implements IAsyncDisposable
 @using Microsoft.AspNetCore.SignalR.Client
 @using Microsoft.Greenlight.Shared.Contracts.Messages.DocumentGeneration.Events
-@using Microsoft.Greenlight.Shared.Models
 @using Microsoft.Greenlight.Web.Shared.Helpers
 @using System.Timers;
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Document
 
 @inject IDocumentGenerationApiClient DocumentGenerationApiClient
 @inject IContentNodeApiClient ContentNodeApiClient
@@ -15,7 +15,9 @@
 @code {
     [Parameter] public Guid DocumentId { get; set; }
     [Parameter] public bool LiveUpdated { get; set; } = true;
-    [Parameter] public GeneratedDocument? Document { get; set; }
+    [Parameter] public GeneratedDocumentInfo? Document { get; set; }
+    [Parameter] public bool EnableReferenceFrontend { get; set; }
+
     [CascadingParameter] public HubConnection? HubConnection { get; set; }
 
     private bool receivedMessagesVisible = false;
@@ -47,7 +49,7 @@
             {
                 @foreach (var contentNode in Document.ContentNodes)
                 {
-                    <ContentNodeDisplay Node="@contentNode" Recursive="true" />
+                    <ContentNodeDisplay Node="@contentNode" Recursive="true" EnableReferenceFrontend="@EnableReferenceFrontend" />
                 }
             }
         </MudPaper>
@@ -178,7 +180,7 @@ else
         Navigation.NavigateTo(fileUrl, true);
     }
 
-    private async Task UpdateContentNodeState(List<ContentNode>? documentContentNodes, ContentNode updatedNodeFromEvent)
+    private async Task UpdateContentNodeState(List<ContentNodeInfo>? documentContentNodes, ContentNodeInfo updatedNodeFromEvent)
     {
         if (documentContentNodes is null || !documentContentNodes.Any()) return;
 
@@ -189,7 +191,7 @@ else
         await InvokeAsync(StateHasChanged);
 
         // Recursive method to search and update the node in the tree.
-        List<ContentNode> UpdateNodes(List<ContentNode> nodes, ContentNode updatedNode)
+        List<ContentNodeInfo> UpdateNodes(List<ContentNodeInfo> nodes, ContentNodeInfo updatedNode)
         {
             for (int i = 0; i < nodes.Count; i++)
             {
@@ -302,13 +304,13 @@ else
 
     }
 
-    private async Task<GeneratedDocument?> GetDocumentAsync(Guid? documentId)
+    private async Task<GeneratedDocumentInfo?> GetDocumentAsync(Guid? documentId)
     {
         if (documentId == null) return null;
         return await DocumentGenerationApiClient.GetDocumentAsync(documentId.ToString());
     }
 
-    private bool AllNodesGenerated(List<ContentNode> contentNodes)
+    private bool AllNodesGenerated(List<ContentNodeInfo> contentNodes)
     {
         if (contentNodes is null || !contentNodes.Any()) return false;
 

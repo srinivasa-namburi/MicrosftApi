@@ -4,6 +4,7 @@ using Microsoft.Greenlight.Shared.Contracts;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Models;
+using Microsoft.Greenlight.Shared.Models.SourceReferences;
 
 namespace Microsoft.Greenlight.DocumentProcess.Shared.Generation;
 
@@ -44,24 +45,14 @@ public class KernelMemoryBodyTextGenerator : IBodyTextGenerator
         );
     }
 
-    private async Task<List<ReportDocument>> GetDocumentsForQuery(ContentNodeType contentNodeType, string sectionOrTitleNumber,
+    private async Task<List<DocumentProcessRepositorySourceReferenceItem>> GetDocumentsForQuery(ContentNodeType contentNodeType, string sectionOrTitleNumber,
         string sectionOrTitleText)
     {
-        List<ReportDocument> documents = new List<ReportDocument>();
-       
-        var searchResult = await _kernelMemoryRepository.SearchAsync(_documentProcessName, sectionOrTitleNumber + " " + sectionOrTitleText, top: 50);
+      
+        var resultItems = await _kernelMemoryRepository.SearchAsync(_documentProcessName, sectionOrTitleNumber + " " + sectionOrTitleText, top: 50);
 
-        foreach (var resultDictionary in searchResult)
-        {
-            var document = new ReportDocument();
-            foreach (var partition in resultDictionary.Values)
-            {
-                document.Content += partition.Text;
-            }
-            documents.Add(document);
-
-        }
-        
+        // The results are of type SourceReferenceItem, but we need to cast them to DocumentProcessKnowledgeRepositorySourceReferenceItem
+        var documents = resultItems.Select(x => (DocumentProcessRepositorySourceReferenceItem)x).ToList();
         return documents;
     }
 }

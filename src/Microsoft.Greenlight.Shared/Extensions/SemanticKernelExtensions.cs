@@ -1,30 +1,24 @@
 using AutoMapper;
-using Azure.AI.OpenAI;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.ChatCompletion;
-using Microsoft.SemanticKernel.Embeddings;
-using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
+using Microsoft.KernelMemory;
+using Microsoft.Greenlight.Shared.Plugins;
 
 
 namespace Microsoft.Greenlight.Shared.Extensions;
-#pragma warning disable SKEXP0011
-#pragma warning disable SKEXP0010
-#pragma warning disable SKEXP0001
+
 
 public static class SemanticKernelExtensions
 {
     public static IHostApplicationBuilder AddSemanticKernelServices(this IHostApplicationBuilder builder,
     ServiceConfigurationOptions serviceConfigurationOptions)
     {
-        builder.AddCompletionServices();
 
         // UnKeyed Kernel for compatibility. Note - this loads ALL plugins, including document plugins, from all Document Processes.
         builder.Services.AddScoped<Kernel>(serviceProvider =>
@@ -40,14 +34,16 @@ public static class SemanticKernelExtensions
 
         foreach (var documentProcess in documentProcesses)
         {
-            builder.Services.AddKeyedTransient<Kernel>(documentProcess.ShortName + "-Kernel", (provider, o) =>
+            builder.Services.AddKeyedScoped<Kernel>(documentProcess.ShortName + "-Kernel", (provider, o) =>
             {
                 KernelPluginCollection plugins = [];
-
+                
                 // Add plugins from the document process
                 plugins.AddSharedAndDocumentProcessPluginsToPluginCollection(provider, documentProcess, null);
 
                 var kernel = new Kernel(provider, plugins);
+                kernel.FunctionInvocationFilters.Add(
+                    provider.GetRequiredKeyedService<IFunctionInvocationFilter>("InputOutputTrackingPluginInvocationFilter"));
                 return kernel;
             });
         }
@@ -84,8 +80,6 @@ public static class SemanticKernelExtensions
 
         try
         {
-
-
             // Get dynamic document processes
             if (dbContext != null && mapper != null)
             {
@@ -116,32 +110,6 @@ public static class SemanticKernelExtensions
         }
 
         return documentProcesses;
-    }
-
-    private static IHostApplicationBuilder AddCompletionServices(this IHostApplicationBuilder builder)
-    {
-        var sp = builder.Services.BuildServiceProvider();
-        var openAiPlanner = sp.GetKeyedService<AzureOpenAIClient>("openai-planner");
-        var serviceConfigurationOptions = builder.Configuration.GetSection("ServiceConfiguration").Get<ServiceConfigurationOptions>()!;
-
-        // Only register the completion services if they don't already exist in the service collection
-        if (sp.GetService<IChatCompletionService>() == null)
-        {
-            builder.Services.AddScoped<IChatCompletionService>(service =>
-                new AzureOpenAIChatCompletionService(serviceConfigurationOptions.OpenAi.Gpt4o_Or_Gpt4128KDeploymentName,
-                    openAiPlanner, "openai-chatcompletion")
-            );
-        }
-
-        if (sp.GetService<ITextEmbeddingGenerationService>() == null)
-        {
-            builder.Services.AddScoped<ITextEmbeddingGenerationService>(service =>
-                new AzureOpenAITextEmbeddingGenerationService(serviceConfigurationOptions.OpenAi.EmbeddingModelDeploymentName,
-                    openAiPlanner, "openai-embeddinggeneration")
-            );
-        }
-
-        return builder;
     }
 
 }

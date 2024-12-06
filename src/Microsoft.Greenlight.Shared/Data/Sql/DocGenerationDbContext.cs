@@ -8,6 +8,7 @@ using Microsoft.Greenlight.Shared.Models.DocumentLibrary;
 using Microsoft.Greenlight.Shared.Models.DocumentProcess;
 using Microsoft.Greenlight.Shared.Models.Plugins;
 using Microsoft.Greenlight.Shared.Models.Review;
+using Microsoft.Greenlight.Shared.Models.SourceReferences;
 using Microsoft.Greenlight.Shared.SagaState;
 
 namespace Microsoft.Greenlight.Shared.Data.Sql;
@@ -58,7 +59,60 @@ public class DocGenerationDbContext : DbContext
             c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
             c => c.ToList());
 
-       
+        modelBuilder.Entity<ContentNodeSystemItem>()
+            .ToTable("ContentNodeSystemItems");
+
+        modelBuilder.Entity<ContentNodeSystemItem>()
+            .HasIndex(nameof(ContentNodeSystemItem.ContentNodeId))
+            .IsUnique();
+
+        modelBuilder.Entity<ContentNodeSystemItem>()
+            .HasMany(x => x.SourceReferences)
+            .WithOne(x=>x.ContentNodeSystemItem)
+            .HasForeignKey(x => x.ContentNodeSystemItemId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ContentNodeSystemItem>()
+            .HasOne(x => x.ContentNode)
+            .WithOne(x => x.ContentNodeSystemItem)
+            .HasForeignKey<ContentNodeSystemItem>(x => x.ContentNodeId)
+            .IsRequired()
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ContentNode>()
+            .HasOne(c=>c.ContentNodeSystemItem)
+            .WithOne(c => c.ContentNode)
+            .HasForeignKey<ContentNodeSystemItem>(c => c.ContentNodeId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<SourceReferenceItem>()
+             .ToTable("SourceReferenceItems");
+
+        modelBuilder.Entity<SourceReferenceItem>()
+            .HasIndex(nameof(SourceReferenceItem.ContentNodeSystemItemId))
+            .IsUnique(false);
+
+        modelBuilder.Entity<SourceReferenceItem>()
+            .HasDiscriminator<string>("Discriminator")
+            .HasValue<PluginSourceReferenceItem>("PluginSourceReferenceItem")
+            .HasValue<KernelMemoryDocumentSourceReferenceItem>("KernelMemoryDocumentSourceReferenceItem")
+            .HasValue<DocumentProcessRepositorySourceReferenceItem>("DocumentProcessRepositorySourceReferenceItem")
+            .HasValue<DocumentLibrarySourceReferenceItem>("DocumentLibrarySourceReferenceItem")
+            .HasValue<PluginSourceReferenceItem>("PluginSourceReferenceItem");
+
+        modelBuilder.Entity<SourceReferenceItem>()
+            .Property("Discriminator")
+            .HasMaxLength(100);
+
+        modelBuilder.Entity<SourceReferenceItem>()
+            .HasOne(x => x.ContentNodeSystemItem)
+            .WithMany(x => x.SourceReferences)
+            .HasForeignKey(x => x.ContentNodeSystemItemId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Cascade);
+
         modelBuilder.Entity<DocumentLibrary>()
             .ToTable("DocumentLibraries");
 
@@ -679,6 +733,9 @@ public class DocGenerationDbContext : DbContext
             .IsUnique(false);
 
     }
+
+    public DbSet<SourceReferenceItem> SourceReferenceItems { get; set; }
+    public DbSet<ContentNodeSystemItem> ContentNodeSystemItems { get; set; }
 
     public DbSet<GeneratedDocument> GeneratedDocuments { get; set; }
     public DbSet<ExportedDocumentLink> ExportedDocumentLinks { get; set; }

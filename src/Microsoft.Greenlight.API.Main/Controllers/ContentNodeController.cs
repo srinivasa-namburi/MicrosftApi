@@ -1,6 +1,8 @@
+using AutoMapper;
 using MassTransit;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Greenlight.Shared.Contracts.DTO.Document;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Models;
 
@@ -10,37 +12,90 @@ namespace Microsoft.Greenlight.API.Main.Controllers;
 public class ContentNodeController : BaseController
 {
     private readonly DocGenerationDbContext _dbContext;
+    private readonly IMapper _mapper;
 
     public ContentNodeController(
-        DocGenerationDbContext dbContext)
+        DocGenerationDbContext dbContext, IMapper mapper)
     {
         _dbContext = dbContext;
+        _mapper = mapper;
     }
 
     [HttpGet("{contentNodeId}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [Produces("application/json")]
-    [Produces<ContentNode>]
-    public async Task<ActionResult<ContentNode>> GetContentNode(string contentNodeId)
+    [Produces(typeof(ContentNodeInfo))]
+    public async Task<ActionResult<ContentNodeInfo>> GetContentNode(string contentNodeId)
     {
         var contentNodeGuid = Guid.Parse(contentNodeId);
-        var contentNode = await _dbContext.ContentNodes
-            .Include(w => w.Children)
-                .ThenInclude(r=>r.Children)
-                    .ThenInclude(s=>s.Children)
-                        .ThenInclude(t=>t.Children)
-                            .ThenInclude(u=>u.Children)
-            .AsNoTracking()
-            .AsSplitQuery()
-            .FirstOrDefaultAsync(d => d.Id == contentNodeGuid);
 
-        if (contentNode == null)
+        // Step 1: Load the initial ContentNode
+        var initialContentNode = await _dbContext.ContentNodes
+            .Include(cn => cn.ContentNodeSystemItem)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(cn => cn.Id == contentNodeGuid);
+
+        if (initialContentNode == null)
         {
             return NotFound();
         }
 
-        return Ok(contentNode);
+        // Step 2: Load all descendants
+        var allContentNodes = new List<ContentNode> { initialContentNode };
+
+        // Use a queue to iteratively load descendants
+        var queue = new Queue<ContentNode>();
+        queue.Enqueue(initialContentNode);
+
+        while (queue.Count > 0)
+        {
+            var parent = queue.Dequeue();
+
+            // Load children of the current parent
+            var children = await _dbContext.ContentNodes
+                .Include(cn => cn.ContentNodeSystemItem)
+                .Where(cn => cn.ParentId == parent.Id)
+                .AsNoTracking()
+                .ToListAsync();
+
+            // Assign children to the parent
+            parent.Children = children;
+
+            // Add children to the list and enqueue them for further processing
+            foreach (var child in children)
+            {
+                allContentNodes.Add(child);
+                queue.Enqueue(child);
+            }
+        }
+
+        // Step 3: Map the ContentNode to ContentNodeInfo
+        var contentNodeInfo = _mapper.Map<ContentNodeInfo>(initialContentNode);
+
+        return Ok(contentNodeInfo);
     }
-   
+
+    [HttpGet("content-node-system-item/{contentNodeSystemItemId:guid}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [Produces("application/json")]
+    [Produces<ContentNodeSystemItemInfo>]
+    public async Task<ActionResult<ContentNodeSystemItemInfo>> GetContentNodeSystemItem(Guid contentNodeSystemItemId)
+    {
+        var contentNodeSystemItem = await _dbContext.ContentNodeSystemItems.Where(d => d.Id == contentNodeSystemItemId)
+            .Include(x => x.SourceReferences)
+            .AsSplitQuery()
+            .AsNoTracking()
+            .FirstOrDefaultAsync();
+
+        if (contentNodeSystemItem == null)
+        {
+            return NotFound();
+        }
+
+        var contentNodeSystemItemInfo = _mapper.Map<ContentNodeSystemItemInfo>(contentNodeSystemItem);
+
+        return Ok(contentNodeSystemItemInfo);
+    }
+
 }

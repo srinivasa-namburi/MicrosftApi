@@ -9,6 +9,36 @@
     <DialogContent>
         @if (CurrentDocumentOutline != null)
         {
+            <!-- Import Outline Button -->
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="ShowImportOutlineSection">
+                Import Outline from Text
+            </MudButton>
+
+            <!-- Import Outline TextArea -->
+            @if (ShowImportSection)
+            {
+                <MudPaper Class="pa-4 mt-4">
+                    <MudTextField @bind-Value="OutlineText" Label="Paste Outline Text Here" Lines="10" FullWidth="true" />
+                    <MudStack Row="true" Spacing="2" Class="mt-2">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ProcessOutlineText">Process</MudButton>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="HideImportOutlineSection">Cancel</MudButton>
+                    </MudStack>
+                </MudPaper>
+            }
+
+            <!-- Import Confirmation Section -->
+            @if (ShowImportConfirmationSection)
+            {
+                <MudPaper Class="pa-4 mt-4">
+                    <MudText Typo="Typo.h6">Import Outline</MudText>
+                    <MudText>You are about to import an outline with @TotalImportedItems sections. This will replace your current outline, and any custom section prompts and customizations will be cleared.</MudText>
+                    <MudStack Row="true" Spacing="2" Class="mt-2">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ConfirmImport">Import</MudButton>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="CancelImport">Cancel</MudButton>
+                    </MudStack>
+                </MudPaper>
+            }
+
             <MudTreeView Items="@CurrentDocumentOutline.OutlineItems.ToHashSet()" Hover="true" T="DocumentOutlineItemInfo">
                 <ItemTemplate Context="item">
                     <MudTreeViewItem Items="@item.Children.ToHashSet()" Text="@item.SectionTitle" Expanded T="DocumentOutlineItemInfo">
@@ -76,6 +106,13 @@
 
     private DocumentOutlineItemInfo? CopiedDocumentOutlineItemInfo { get; set; }
 
+    private bool ShowImportSection { get; set; } = false;
+    private bool ShowImportConfirmationSection { get; set; } = false;
+    private string OutlineText { get; set; } = string.Empty;
+
+    private List<DocumentOutlineItemInfo> ImportedOutlineItems { get; set; } = new();
+    private int TotalImportedItems { get; set; } = 0;
+
     protected override async Task OnParametersSetAsync()
     {
         if (DocumentOutlineId != Guid.Empty)
@@ -92,6 +129,82 @@
 
             CurrentDocumentOutline = CloneDocumentOutline(OriginalDocumentOutline);
         }
+    }
+
+    private void ShowImportOutlineSection()
+    {
+        ShowImportSection = true;
+        ShowImportConfirmationSection = false;
+        StateHasChanged();
+    }
+
+    private void HideImportOutlineSection()
+    {
+        ShowImportSection = false;
+        ImportedOutlineItems = new();
+        TotalImportedItems = 0;
+        StateHasChanged();
+    }
+
+    private void CancelImport()
+    {
+        ShowImportConfirmationSection = false;
+        OutlineText = string.Empty;
+        ImportedOutlineItems = new();
+        TotalImportedItems = 0;
+        StateHasChanged();
+    }
+
+    private async Task ProcessOutlineText()
+    {
+        if (string.IsNullOrWhiteSpace(OutlineText))
+        {
+            // Optionally show an error message
+            return;
+        }
+
+        // Call the API to generate the outline items
+        var newOutlineItems = await DocumentOutlineApiClient.GenerateOutlineFromTextAsync(OutlineText);
+
+        if (newOutlineItems != null && newOutlineItems.Any())
+        {
+            ImportedOutlineItems = newOutlineItems;
+            TotalImportedItems = CountTotalItems(ImportedOutlineItems);
+            ShowImportConfirmationSection = true;
+            ShowImportSection = false;
+        }
+        else
+        {
+            // Handle error or empty result
+            // Optionally show an error message
+            ShowImportSection = false;
+        }
+    }
+
+    private int CountTotalItems(List<DocumentOutlineItemInfo> items)
+    {
+        int count = 0;
+        foreach (var item in items)
+        {
+            count += 1;
+            if (item.Children != null && item.Children.Any())
+            {
+                count += CountTotalItems(item.Children);
+            }
+        }
+        return count;
+    }
+
+    private async Task ConfirmImport()
+    {
+        // Replace the current outline items with the new ones
+        CurrentDocumentOutline.OutlineItems = ImportedOutlineItems;
+
+        // Hide the confirmation section
+        ShowImportConfirmationSection = false;
+
+        // Optionally update the UI or notify the user
+        await InvokeAsync(StateHasChanged);
     }
 
     private DocumentOutlineInfo? CloneDocumentOutline(DocumentOutlineInfo? documentOutline)
@@ -175,17 +288,6 @@
             CompareItems(originalItem?.Children ?? new List<DocumentOutlineItemInfo>(), currentItem.Children, changedItems, deletedItems);
         }
 
-        /*foreach (var currentItem in currentItems)
-            {
-            var originalItem = originalItems.FirstOrDefault(o => o.Id == currentItem.Id); gets the originalItem with the same Id as the currentItem -- problem is, order is not preserved ...
-            if (originalItem == null || !currentItem.Equals(originalItem))
-                {
-                changedItems.Add(currentItem);
-            }
-
-            CompareItems(originalItem?.Children ?? new List<DocumentOutlineItemInfo>(), currentItem.Children, changedItems, deletedItems);
-        }*/
-
         foreach (var originalItem in originalItems)
         {
             if (!currentItemIds.Contains(originalItem.Id))
@@ -215,56 +317,11 @@
         MudDialog.Cancel();
     }
 
-    /*private RenderFragment RenderOutlineItem(DocumentOutlineItemInfo item, int level) => builder =>
-    {
-    builder.OpenElement(0, "div");
-    builder.AddAttribute(1, "style", $"margin-left: {level * 20}px;");
-
-    builder.OpenElement(2, "div");
-    builder.AddContent(3, $"Level {level}");
-    builder.CloseElement();
-
-    builder.OpenComponent<MudTextField<string>>(4);
-    builder.AddAttribute(5, "Label", "Section Number");
-    builder.AddAttribute(6, "Value", item.SectionNumber);
-    builder.AddAttribute(7, "ValueChanged", EventCallback.Factory.Create<string>(this, value => item.SectionNumber = value));
-    builder.CloseComponent();
-
-    builder.OpenComponent<MudTextField<string>>(8);
-    builder.AddAttribute(9, "Label", "Section Title");
-    builder.AddAttribute(10, "Value", item.SectionTitle);
-    builder.AddAttribute(11, "ValueChanged", EventCallback.Factory.Create<string>(this, value => item.SectionTitle = value));
-    builder.CloseComponent();
-
-    builder.OpenComponent<MudTextField<string>>(12);
-    builder.AddAttribute(13, "Label", "Prompt Instructions");
-    builder.AddAttribute(14, "Value", item.PromptInstructions);
-    builder.AddAttribute(15, "ValueChanged", EventCallback.Factory.Create<string>(this, value => item.PromptInstructions = value));
-    builder.CloseComponent();
-
-    builder.OpenElement(16, "div");
-    builder.OpenComponent<MudButton>(17);
-    builder.AddAttribute(18, "Variant", Variant.Outlined);
-    builder.AddAttribute(19, "Color", Color.Primary);
-    builder.AddAttribute(20, "OnClick", EventCallback.Factory.Create(this, () => AddChildItem(item)));
-    builder.AddContent(21, "Add Child");
-    builder.CloseComponent();
-    builder.CloseElement();
-
-    // Recursively render child items
-    foreach (var child in item.Children)
-        {
-        builder.AddContent(22, RenderOutlineItem(child, level + 1));
-    }
-
-    builder.CloseElement();
-    };*/
-
     private void CopyItem(DocumentOutlineItemInfo item)
     {
         Guid newId = Guid.NewGuid();
         CopiedDocumentOutlineItemInfo = new DocumentOutlineItemInfo
-        {
+            {
                 Id = newId,
                 SectionNumber = item.SectionNumber,
                 SectionTitle = item.SectionTitle,
@@ -274,7 +331,7 @@
                 DocumentOutlineId = item.DocumentOutlineId,
                 Children = CopyItemRecursiveHelper(item.Children, newId, item.Level),
                 OrderIndex = item.OrderIndex,
-        };
+            };
     }
 
     private List<DocumentOutlineItemInfo> CopyItemRecursiveHelper(List<DocumentOutlineItemInfo> children, Guid parentId, int parentLevel)

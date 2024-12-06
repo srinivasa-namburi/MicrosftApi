@@ -77,7 +77,7 @@ public class DocumentOutline : EntityBase
                     }
 
                     var parent = parentStack.Peek();
-                    outlineItem.Parent = parent;
+                    outlineItem.ParentId = parent.Id;
                     parent.Children.Add(outlineItem);
                     parentStack.Push(outlineItem);
                 }

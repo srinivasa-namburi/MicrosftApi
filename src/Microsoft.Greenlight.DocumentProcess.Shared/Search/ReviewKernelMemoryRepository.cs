@@ -8,6 +8,7 @@ using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Models.Review;
+using Microsoft.Greenlight.Shared.Models.SourceReferences;
 
 namespace Microsoft.Greenlight.DocumentProcess.Shared.Search;
 
@@ -70,7 +71,7 @@ public class ReviewKernelMemoryRepository : IReviewKernelMemoryRepository
         await StoreDocumentForReview(reviewRequestId, fileStream, fileName, fullBlobUrl, userId);
     }
 
-    public async Task<List<SortedDictionary<int, Citation.Partition>>> SearchInDocumentForReview(Guid reviewRequestId, string searchText, int top = 12, double minRelevance = 0.7)
+    public async Task<List<KernelMemoryDocumentSourceReferenceItem>> SearchInDocumentForReview(Guid reviewRequestId, string searchText, int top = 12, double minRelevance = 0.7)
     {
         var reviewRequest = await _dbContext.ReviewInstances.AsNoTracking().FirstOrDefaultAsync(x => x.Id == reviewRequestId);
         if (reviewRequest == null)
@@ -87,7 +88,6 @@ public class ReviewKernelMemoryRepository : IReviewKernelMemoryRepository
         };
 
         var searchResults = await _kernelMemoryRepository.SearchAsync("Reviews", "index-reviews", searchTags, searchText, top, minRelevance);
-
         _logger.LogInformation("Search completed for ReviewRequestId: {ReviewRequestId}. Number of results: {ResultsCount}", reviewRequestId, searchResults.Count);
 
         return searchResults;

@@ -26,29 +26,29 @@
     </MudForm>
 </MudPaper>
 
-<MudDivider Class="my-4" />
-
-<!-- File Upload Section -->
-<MudPaper Class="pa-4">
-    <MudFileUpload T="IReadOnlyList<IBrowserFile>" 
-    FilesChanged="HandleFileSelected"
-    MaximumFileCount="16384"
-    >
-        <ButtonTemplate>
-            <MudButton HtmlTag="label"
-            Variant="Variant.Filled"
-            Color="Color.Primary"
-            StartIcon="@Icons.Material.Filled.CloudUpload"
-            for="@context">
-                Upload Files to Document Library
-            </MudButton>
-        </ButtonTemplate>
-    </MudFileUpload>
-</MudPaper>
-
-
 @if (IsEditMode)
 {
+    <MudDivider Class="my-4" />
+
+    <!-- File Upload Section -->
+    <MudPaper Class="pa-4">
+        <MudFileUpload T="IReadOnlyList<IBrowserFile>"
+                       FilesChanged="HandleFileSelected"
+                       MaximumFileCount="16384">
+            <ButtonTemplate>
+                <MudButton HtmlTag="label"
+                           Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.CloudUpload"
+                           for="@context">
+                    Upload Files to Document Library
+                </MudButton>
+            </ButtonTemplate>
+        </MudFileUpload>
+    </MudPaper>
+
+
+
     <MudDivider Class="my-4" />
 
     <!-- Associated Document Processes Section -->
@@ -252,7 +252,7 @@
             var fileName = $"{DocumentLibraryInfo.BlobStorageAutoImportFolderName}/{file.Name}";
             // URL encode the file name
             fileName = WebUtility.UrlEncode(fileName);
-            
+
             try
             {
                 var result = await FileApiClient.UploadFileDirectAsync(DocumentLibraryInfo.BlobStorageContainerName, fileName, file);

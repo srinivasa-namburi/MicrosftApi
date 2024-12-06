@@ -27,6 +27,7 @@ public class ServiceConfigurationOptions
         {
             public bool EnableMassDocumentProduction { get; set; }
             public bool EnableReviews { get; set; }
+            public bool EnableReferenceFrontend { get; set; }
         }
 
         public class DocumentIngestionOptions

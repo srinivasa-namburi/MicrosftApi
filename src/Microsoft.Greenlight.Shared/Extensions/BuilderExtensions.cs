@@ -1,4 +1,5 @@
 using System.ClientModel;
+using System.Diagnostics.CodeAnalysis;
 using Aspire.Azure.Messaging.ServiceBus;
 using Aspire.Azure.Search.Documents;
 using Aspire.Azure.Storage.Blobs;
@@ -12,10 +13,18 @@ using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Exporters;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Mappings;
+using Microsoft.Greenlight.Shared.Plugins;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.Shared.Services.Search;
+using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.ChatCompletion;
+using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
+using Microsoft.SemanticKernel.Embeddings;
 
 namespace Microsoft.Greenlight.Shared.Extensions;
+#pragma warning disable SKEXP0011
+#pragma warning disable SKEXP0010
+#pragma warning disable SKEXP0001
 
 public static class BuilderExtensions
 {
@@ -56,6 +65,17 @@ public static class BuilderExtensions
             return openAIClient;
         });
 
+        builder.Services.AddScoped<IChatCompletionService>(service =>
+            new AzureOpenAIChatCompletionService(serviceConfigurationOptions.OpenAi.Gpt4o_Or_Gpt4128KDeploymentName,
+                service.GetRequiredKeyedService<AzureOpenAIClient>("openai-planner"), "openai-chatcompletion")
+        );
+
+        
+        builder.Services.AddScoped<ITextEmbeddingGenerationService>(service =>
+            new AzureOpenAITextEmbeddingGenerationService(serviceConfigurationOptions.OpenAi.EmbeddingModelDeploymentName,
+                service.GetRequiredKeyedService<AzureOpenAIClient>("openai-planner"), "openai-embeddinggeneration")
+        );
+
         builder.AddRabbitMQClient("rabbitmqdocgen");
         builder.AddRedisClient("redis");
 
@@ -66,8 +86,10 @@ public static class BuilderExtensions
 
         builder.AddDocGenDbContext(serviceConfigurationOptions);
 
-        return builder;
+        builder.Services.AddSingleton<IPluginSourceReferenceCollector, PluginSourceReferenceCollector>();
+        builder.Services.AddKeyedScoped<IFunctionInvocationFilter, InputOutputTrackingPluginInvocationFilter>("InputOutputTrackingPluginInvocationFilter");
 
+        return builder;
     }
 
     public static T? GetServiceForDocumentProcess<T>(this IServiceProvider sp, DocumentProcessInfo documentProcessInfo)

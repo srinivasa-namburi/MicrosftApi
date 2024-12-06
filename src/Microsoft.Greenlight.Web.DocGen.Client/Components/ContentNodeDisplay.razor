@@ -1,19 +1,13 @@
-@using Microsoft.Greenlight.Shared.Models
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Document
+
+@inject IContentNodeApiClient ContentNodeApiClient
 
 @code {
-    [Parameter] public ContentNode? Node { get; set; }
-    [Parameter] public bool Recursive { get; set; } = false;
 
-    private string GetPanelClass(ContentNodeType nodeType)
-    {
-        return nodeType switch
-        {
-            ContentNodeType.Title => "mt-2",
-            ContentNodeType.Heading => "mt-2",
-            ContentNodeType.BodyText => "mt-2",
-            _ => "", // Default class, BodyText nodes might not need extra padding here.
-        };
-    }
+    [Parameter] public ContentNodeInfo? Node { get; set; }
+    [Parameter] public bool Recursive { get; set; } = false;
+    [Parameter] public bool EnableReferenceFrontend { get; set; } = false;
+    
 }
 
 <style>
@@ -31,7 +25,8 @@
     if (Node.Type == ContentNodeType.Title || Node.Type == ContentNodeType.Heading)
     {
         <MudExpansionPanels>
-            <MudExpansionPanel Class="@GetPanelClass(Node.Type)">
+            <MudExpansionPanel Class="@GetPanelClass(Node.Type)"
+                               @bind-IsExpanded="IsPanelExpanded">
                 <TitleContent>
                     <MudGrid>
                         <MudItem xs="1">
@@ -52,15 +47,33 @@
                                 <MudIcon Icon="@Icons.Material.Rounded.Error" Color="Color.Error" Size="Size.Medium" />
                             }
                         </MudItem>
-                        <MudItem xs="11">
-                            @Node.Text
-                        </MudItem>
+                        @if (Node.ContentNodeSystemItemId != null && EnableReferenceFrontend)
+                        {
+                            <MudItem xs="9">
+                                @Node.Text
+                            </MudItem>
+                            <MudItem xs="2">
+                                <MudTooltip Text="Reference information is available for this section. Click here to show it." Placement="Placement.Bottom">
+                                    <MudIconButton OnClick="()=>ToggleSystemInfo(Node)" Icon="@Icons.Material.Rounded.Info" Color="Color.Info" Size="Size.Small" />
+                                </MudTooltip>
+                            </MudItem>
+                        }
+                        else
+                        {
+                            <MudItem xs="11">
+                                @Node.Text
+                            </MudItem>
+                        }
                     </MudGrid>
                 </TitleContent>
                 <ChildContent>
-
                     @if (Node.Children != null && Node.Children.Any() && Recursive)
                     {
+                        @if (ShowSystemInfo && SystemItem != null && EnableReferenceFrontend)
+                        {
+                            <ContentNodeSystemInfoDisplayComponent SystemItem="@SystemItem" />
+                        }
+
                         <div class="section-content">
                             @foreach (var childNode in Node.Children)
                             {
@@ -68,7 +81,6 @@
                             }
                         </div>
                     }
-
                 </ChildContent>
             </MudExpansionPanel>
         </MudExpansionPanels>
@@ -79,5 +91,56 @@
         <MudText Class="@GetPanelClass(Node.Type)" Style="padding-left: 20px;">
             <RenderMultilineText Value="@Node.Text" />
         </MudText>
+    }
+}
+
+@code {
+
+
+
+    private ContentNodeSystemItemInfo? SystemItem { get; set; }
+
+    private bool ShowSystemInfo = false;
+    private bool IsPanelExpanded = false;
+    private bool IsLoadingSystemInfo = false;
+
+    private string GetPanelClass(ContentNodeType nodeType)
+    {
+        return nodeType switch
+        {
+            ContentNodeType.Title => "mt-2",
+            ContentNodeType.Heading => "mt-2",
+            ContentNodeType.BodyText => "mt-2",
+            _ => "", // Default class, BodyText nodes might not need extra padding here.
+        };
+    }
+
+    private async void ToggleSystemInfo(ContentNodeInfo node)
+    {
+        if (IsLoadingSystemInfo)
+            return;
+
+        IsLoadingSystemInfo = true;
+
+        await ShowReferenceInformation(node);
+
+        ShowSystemInfo = !ShowSystemInfo;
+        if (ShowSystemInfo)
+        {
+            IsPanelExpanded = true;
+        }
+
+        IsLoadingSystemInfo = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ShowReferenceInformation(ContentNodeInfo node)
+    {
+        if (SystemItem == null && node.ContentNodeSystemItemId != null)
+        {
+            SystemItem = await ContentNodeApiClient.GetContentNodeSystemItemAsync((Guid)node.ContentNodeSystemItemId);
+        }
+
+        await InvokeAsync(StateHasChanged);
     }
 }

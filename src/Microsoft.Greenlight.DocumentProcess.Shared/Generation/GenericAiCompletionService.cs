@@ -1,11 +1,10 @@
-using System.Diagnostics;
 using System.Text;
 using Azure.AI.OpenAI;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 using Microsoft.Greenlight.Shared.Configuration;
-using Microsoft.Greenlight.Shared.Contracts;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Extensions;
@@ -13,9 +12,14 @@ using Microsoft.Greenlight.Shared.Models;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
 using Scriban;
+using Microsoft.Greenlight.Shared.Models.SourceReferences;
+using Microsoft.Greenlight.Shared.Plugins;
 
 namespace Microsoft.Greenlight.DocumentProcess.Shared.Generation;
 
+#pragma warning disable SKEXP0011
+#pragma warning disable SKEXP0010
+#pragma warning disable SKEXP0001
 public class GenericAiCompletionService : IAiCompletionService
 {
     private string ProcessName { get; set; }
@@ -29,6 +33,8 @@ public class GenericAiCompletionService : IAiCompletionService
     private readonly int _numberOfPasses = 6;
     private readonly IDocumentProcessInfoService _documentProcessInfoService;
     private readonly IPromptInfoService _promptInfoService;
+
+    private ContentNode _contentNode;
 
     public GenericAiCompletionService(
         AiCompletionServiceParameters<GenericAiCompletionService> parameters,
@@ -44,38 +50,57 @@ public class GenericAiCompletionService : IAiCompletionService
         ProcessName = processName;
     }
 
-    public async Task<List<ContentNode>> GetBodyContentNodes(List<ReportDocument> documents,
+    public async Task<List<ContentNode>> GetBodyContentNodes(
+        List<DocumentProcessRepositorySourceReferenceItem> sourceDocuments,
         string sectionOrTitleNumber, string sectionOrTitleText, ContentNodeType contentNodeType,
         string tableOfContentsString, Guid? metadataId)
     {
         var combinedBodyTextStringBuilder = new StringBuilder();
 
-        await foreach (var bodyContentNodeString in GetStreamingBodyContentText(documents, sectionOrTitleNumber, sectionOrTitleText,
+        var contentNodeId = Guid.NewGuid();
+        var contentNodeSystemItemId = Guid.NewGuid();
+        _contentNode = new ContentNode
+        {
+            Id = contentNodeId,
+            Text = string.Empty,
+            Type = ContentNodeType.BodyText,
+            GenerationState = ContentNodeGenerationState.InProgress,
+            ContentNodeSystemItemId = contentNodeSystemItemId,
+            ContentNodeSystemItem = new ContentNodeSystemItem
+            {
+                Id = contentNodeSystemItemId,
+                ContentNodeId = contentNodeId,
+                SourceReferences = []
+            }
+        };
+
+        foreach (var sourceDocument in sourceDocuments)
+        {
+            sourceDocument.ContentNodeSystemItemId = _contentNode.ContentNodeSystemItem.Id;
+        }
+
+        await foreach (var bodyContentNodeString in GetStreamingBodyContentText(sourceDocuments, sectionOrTitleNumber, sectionOrTitleText,
                            contentNodeType, tableOfContentsString, metadataId))
         {
             combinedBodyTextStringBuilder.Append(bodyContentNodeString);
         }
 
         var combinedBodyText = combinedBodyTextStringBuilder.ToString();
+        _contentNode.Text = combinedBodyText;
+        _contentNode.GenerationState = ContentNodeGenerationState.Completed;
 
-        var combinedBodyTextNode = new ContentNode()
-        {
-            Id = Guid.NewGuid(),
-            Text = combinedBodyText,
-            Type = ContentNodeType.BodyText,
-            GenerationState = ContentNodeGenerationState.Completed
-        };
-
-        return [combinedBodyTextNode];
+        return [_contentNode];
     }
 
-    public async IAsyncEnumerable<string> GetStreamingBodyContentText(List<ReportDocument> documents,
+    public async IAsyncEnumerable<string> GetStreamingBodyContentText(
+        List<DocumentProcessRepositorySourceReferenceItem> sourceDocuments,
         string sectionOrTitleNumber, string sectionOrTitleText,
         ContentNodeType contentNodeType, string tableOfContentsString, Guid? metadataId)
     {
 
         var plugins = new KernelPluginCollection();
         var documentProcess = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(ProcessName);
+        var pluginSourceReferenceCollector = _sp.GetRequiredService<IPluginSourceReferenceCollector>();
 
         // Set up Semantic Kernel for the right Document Process
         _sk ??= _sp.GetRequiredServiceForDocumentProcess<Kernel>(documentProcess!.ShortName);
@@ -87,13 +112,16 @@ public class GenericAiCompletionService : IAiCompletionService
         _sk.PrepareSemanticKernelInstanceForGeneration(documentProcess!.ShortName);
 
         var sectionExample = new StringBuilder();
-        var firstDocuments = documents.Take(20).ToList();
+        var firstDocuments = sourceDocuments.Take(20).ToList();
 
         foreach (var document in firstDocuments)
         {
             sectionExample.AppendLine($"[EXAMPLE: Document Extract]");
-            sectionExample.AppendLine(document.Content);
-            sectionExample.AppendLine();
+            sectionExample.AppendLine(document.FullTextOutput);
+            sectionExample.AppendLine($"[/EXAMPLE]");
+
+            // Add the document to the ContentNodeSystemItem.SourceReferences collection
+            _contentNode.ContentNodeSystemItem?.SourceReferences.Add(document);
         }
 
         var exampleString = sectionExample.ToString();
@@ -102,8 +130,6 @@ public class GenericAiCompletionService : IAiCompletionService
         var systemPromptInfo =
             await _promptInfoService.GetPromptByShortCodeAndProcessNameAsync("SectionGenerationSystemPrompt", ProcessName);
         var systemPrompt = systemPromptInfo.Text;
-
-
 
         var lastPassResponse = new List<string>();
         var documentMetaData = await _dbContext.DocumentMetadata.FindAsync(metadataId);
@@ -125,7 +151,21 @@ public class GenericAiCompletionService : IAiCompletionService
             if (i == 0)
             {
 
-                prompt = await BuildMainPrompt(_numberOfPasses.ToString(), fullSectionName, customDataString, tableOfContentsString, exampleString);
+                prompt = await BuildMainPrompt(
+                    _numberOfPasses.ToString(), 
+                    fullSectionName, 
+                    customDataString, 
+                    tableOfContentsString, 
+                    exampleString);
+
+                // Remove all the Example Documents from the prompt and make a skinny prompt without it
+                // The documents are in the exampleString variable
+                // We include these as source references in the ContentNodeSystemItem instead.
+                var skinnyPrompt = prompt.Replace(exampleString, "[RAG Documents in Source Items Collection]", StringComparison.InvariantCultureIgnoreCase);
+
+                // Add the computed prompt to the content node system item
+                _contentNode.ContentNodeSystemItem!.ComputedUsedMainGenerationPrompt = skinnyPrompt;
+
                 originalPrompt = prompt;
             }
             else
@@ -136,7 +176,7 @@ public class GenericAiCompletionService : IAiCompletionService
 
             var responseLine = "";
             await foreach (var stringUpdate in ReturnCompletionsForPromptWithSemanticKernelFunctionCalling(systemPrompt,
-                               prompt))
+                               prompt, pluginSourceReferenceCollector))
             {
                 Console.Write(stringUpdate);
                 // Continue building the update until we reach a new line
@@ -234,8 +274,9 @@ public class GenericAiCompletionService : IAiCompletionService
         return result;
     }
 
-    private async IAsyncEnumerable<string> ReturnCompletionsForPromptWithSemanticKernelFunctionCalling(string systemPrompt,
-             string userPrompt)
+    private async IAsyncEnumerable<string> ReturnCompletionsForPromptWithSemanticKernelFunctionCalling(
+        string systemPrompt,
+        string userPrompt, IPluginSourceReferenceCollector pluginSourceReferenceCollector)
     {
         var openAiExecutionSettings = new AzureOpenAIPromptExecutionSettings
         {
@@ -246,10 +287,26 @@ public class GenericAiCompletionService : IAiCompletionService
             FrequencyPenalty = 0.5f
         };
 
-        await foreach (var update in _sk.InvokePromptStreamingAsync(userPrompt, new KernelArguments(openAiExecutionSettings)))
+        int pluginsadded = 0;
+        var executionIdString = Guid.NewGuid().ToString();
+        var kernelArguments = new KernelArguments(openAiExecutionSettings)
+        {
+            {"System-ExecutionId", executionIdString}
+        };
+
+        await foreach (var update in _sk.InvokePromptStreamingAsync(userPrompt, kernelArguments))
         {
             yield return update.ToString();
         }
+
+        var executionId = Guid.Parse(executionIdString);
+        var sourceReferenceItems = pluginSourceReferenceCollector.GetAll(executionId);
+        if (sourceReferenceItems.Count > 0)
+        {
+            _contentNode.ContentNodeSystemItem!.SourceReferences.AddRange(sourceReferenceItems);
+        }
+
+        pluginSourceReferenceCollector.Clear(executionId);
     }
 
     private async Task<string> SummarizeOutput(string originalContent)

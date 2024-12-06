@@ -1,3 +1,4 @@
+using Microsoft.Greenlight.Shared.Models.SourceReferences;
 using Microsoft.KernelMemory;
 
 namespace Microsoft.Greenlight.DocumentProcess.Shared.Search;
@@ -11,13 +12,18 @@ public interface IKernelMemoryRepository
 
     Task DeleteContentAsync(string documentLibraryName, string indexName, string fileName);
     
-    Task<List<SortedDictionary<int, Citation.Partition>>> SearchAsync(string documentLibraryName, string searchText, int top = 12, double minRelevance = 0.7);
-
-    Task<List<SortedDictionary<int, Citation.Partition>>> SearchAsync(string documentLibraryName, string indexName, Dictionary<string, string> parametersExactMatch, string searchText, int top = 12, double minRelevance = 0.7);
+    Task<List<KernelMemoryDocumentSourceReferenceItem>> SearchAsync(string documentLibraryName, 
+        string searchText, 
+        int top = 12, double minRelevance = 0.7);
+    Task<List<KernelMemoryDocumentSourceReferenceItem>> SearchAsync(string documentLibraryName,
+        string indexName, string searchText, 
+        int top = 12, double minRelevance = 0.7);
+    Task<List<KernelMemoryDocumentSourceReferenceItem>> SearchAsync(string documentLibraryName, 
+        string indexName, Dictionary<string, string> parametersExactMatch, string searchText, 
+        int top = 12, double minRelevance = 0.7);
 
     Task<MemoryAnswer?> AskAsync(string documentLibraryName, string indexName, Dictionary<string, string>? parametersExactMatch,
         string question);
 
-    Task<List<SortedDictionary<int, Citation.Partition>>> SearchAsync(string documentLibraryName,
-        string indexName, string searchText, int top = 12, double minRelevance = 0.7);
+
 }

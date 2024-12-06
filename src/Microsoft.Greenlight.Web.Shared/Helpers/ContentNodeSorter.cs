@@ -1,12 +1,12 @@
 using System.Text.RegularExpressions;
+using Microsoft.Greenlight.Shared.Contracts.DTO.Document;
 using Microsoft.Greenlight.Shared.Enums;
-using Microsoft.Greenlight.Shared.Models;
 
 namespace Microsoft.Greenlight.Web.Shared.Helpers;
 
 public static class ContentNodeSorter
 {
-    public static void SortContentNodes(List<ContentNode> nodes)
+    public static void SortContentNodes(List<ContentNodeInfo> nodes)
     {
         // Prioritize BodyText nodes and sort the nodes list itself
         nodes.Sort(CompareContentNodes);
@@ -21,7 +21,7 @@ public static class ContentNodeSorter
         }
     }
 
-    private static int CompareContentNodes(ContentNode x, ContentNode y)
+    private static int CompareContentNodes(ContentNodeInfo x, ContentNodeInfo y)
     {
         // Priority to BodyText nodes to bubble them up
         if (x.Type == ContentNodeType.BodyText && y.Type != ContentNodeType.BodyText) return -1;

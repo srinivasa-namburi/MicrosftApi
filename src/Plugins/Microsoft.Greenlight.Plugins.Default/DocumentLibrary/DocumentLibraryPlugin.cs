@@ -3,6 +3,7 @@ using AutoMapper;
 using Microsoft.Greenlight.DocumentProcess.Shared.Search;
 using Microsoft.Greenlight.Extensions.Plugins;
 using Microsoft.Greenlight.Shared.Contracts.DTO.DocumentLibrary;
+using Microsoft.Greenlight.Shared.Models.SourceReferences;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.SemanticKernel;
 
@@ -11,16 +12,19 @@ namespace Microsoft.Greenlight.Plugins.Default.DocumentLibrary;
 public class DocumentLibraryPlugin : IPluginImplementation
 {
     private readonly IDocumentLibraryInfoService _documentLibraryInfoService;
+    private readonly IDocumentProcessInfoService _documentProcessInfoService;
     private readonly IAdditionalDocumentLibraryKernelMemoryRepository _kmRepository;
     private readonly IMapper _mapper;
 
     public DocumentLibraryPlugin(
         IDocumentLibraryInfoService documentLibraryInfoService,
+        IDocumentProcessInfoService documentProcessInfoService,
         IAdditionalDocumentLibraryKernelMemoryRepository kmRepository,
         IMapper mapper
         )
     {
         _documentLibraryInfoService = documentLibraryInfoService;
+        _documentProcessInfoService = documentProcessInfoService;
         _kmRepository = kmRepository;
         _mapper = mapper;
     }
@@ -33,10 +37,14 @@ public class DocumentLibraryPlugin : IPluginImplementation
         string documentProcessName)
     {
         documentProcessName = documentProcessName.TrimEnd('.').TrimEnd(); // removes any trailing periods or whitespace from the document process name
-        var documentLibraries = await _documentLibraryInfoService.GetAllDocumentLibrariesAsync();
-
-        var documentLibrariesForDocumentProcess = documentLibraries.Where(dl =>
-            dl.DocumentProcessAssociations.Any(dpa => dpa.DocumentProcessShortName == documentProcessName)).ToList();
+        
+        var dp = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentProcessName);
+        if (dp == null)
+        {
+            throw new Exception("For assistant : Wrong Document Process ShortName provided - no valid document process found.");
+        }
+        
+        var documentLibrariesForDocumentProcess = await _documentLibraryInfoService.GetDocumentLibrariesByProcessIdAsync(dp.Id);
 
         var simplifiedDocumentLibraryList = new List<DocumentLibraryUsageInfo>();
         foreach (var docLibrary in documentLibrariesForDocumentProcess)
@@ -63,23 +71,18 @@ public class DocumentLibraryPlugin : IPluginImplementation
         )
     {
 
-        // The AI sometimes gets confused with document library names and index names.
-        // If the document library name starts with index- then we need to search the document libraries to get the correct document library.
+        var documentLibrary =
+            await _documentLibraryInfoService.GetDocumentLibraryByShortNameAsync(documentLibraryShortName);
 
-        if (documentLibraryShortName.StartsWith("index-"))
+        if (documentLibrary == null)
         {
-            var documentLibrary = await _documentLibraryInfoService.GetDocumentLibraryByIndexNameAsync(documentLibraryShortName);
-            if (documentLibrary == null)
-            {
-                return "For assistant : Wrong Document Library ShortName provided - no valid library found. Please use the DocumentProcessShortName returned by GetDocumentLibraryInfo";
-            }
-            documentLibraryShortName = documentLibrary.ShortName;
+            return "For assistant : Wrong Document Library ShortName provided - no valid library found. Please use the DocumentProcessShortName returned by GetDocumentLibraryInfo";
         }
 
         var memoryAnswer = await _kmRepository.AskAsync(documentLibraryShortName, indexName, questionText);
         if (memoryAnswer?.Result == null || memoryAnswer?.Result == "INFO NOT FOUND")
         {
-            return "No answer found";
+            return "No answer found - please try another query or reformulate to use the SearchDocumentLibrary function instead";
         }
 
         var resultText = memoryAnswer!.Result;
@@ -89,7 +92,7 @@ public class DocumentLibraryPlugin : IPluginImplementation
     [KernelFunction("SearchDocumentLibrary")]
     [Description("Search the contents of a document library. Do not search without a valid documentLibraryShortName " +
                  "which you MUST retrieve from 'GetDocumentLibraryInfo'")]
-    public async Task<List<string>> SearchDocumentLibraryAsync(
+    public async Task<List<DocumentLibrarySourceReferenceItem>> SearchDocumentLibraryAsync(
             [Description("The short name of the document library to search. " +
                          "You MUST retrieve these shortnames using the plugin method 'GetDocumentLibraryInfo' BEFORE calling this method. The libraries " +
                          "in that list are the ONLY valid libraries for this method. Don't call this method without the correct documentLibraryShortName." +
@@ -97,33 +100,32 @@ public class DocumentLibraryPlugin : IPluginImplementation
             string documentLibraryShortName,
             [Description("The search text to use for the search")]
             string searchText,
-            [Description("The number of results to return")]
+            [Description("The number of results to return. Minimum value 12, may be up to 25")]
             int top = 12,
             [Description("The minimum relevance score for a result to be returned")]
             double minRelevance = 0.7
         )
     {
-        if (documentLibraryShortName.StartsWith("index-"))
+
+        var documentLibrary =
+            await _documentLibraryInfoService.GetDocumentLibraryByShortNameAsync(documentLibraryShortName);
+        if (documentLibrary == null)
         {
-            var documentLibrary = await _documentLibraryInfoService.GetDocumentLibraryByIndexNameAsync(documentLibraryShortName);
-            if (documentLibrary == null)
-            {
-                return ["For assistant : Wrong Document Library ShortName provided - no valid library found. Please use the DocumentProcessShortName returned by GetDocumentLibraryInfo"];
-            }
-            documentLibraryShortName = documentLibrary.ShortName;
+            throw new Exception(
+                "For assistant : Wrong Document Library ShortName provided - no valid library found. Please use the DocumentProcessShortName returned by GetDocumentLibraryInfo");
         }
 
         var searchResults = await _kmRepository.SearchAsync(documentLibraryShortName, searchText, top, minRelevance);
 
-        List<string> searchResultStrings = new();
-        foreach (var searchResult in searchResults)
+        var documentLibrarySourceReferenceItems = new List<DocumentLibrarySourceReferenceItem>();
+        foreach (var sourceReferenceItem in searchResults)
         {
-            foreach (var searchResultPartition in searchResult)
+            if (sourceReferenceItem is DocumentLibrarySourceReferenceItem item)
             {
-                searchResultStrings.Add(searchResultPartition.Value.Text);
+                documentLibrarySourceReferenceItems.Add(item);
             }
         }
 
-        return searchResultStrings;
+        return documentLibrarySourceReferenceItems;
     }
 }
