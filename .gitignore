@@ -514,3 +514,4 @@ webapi/CopilotChatWebApi.sln
 # Tesseract OCR language data files
 *.traineddata
 
+/src/Microsoft.Greenlight.AppHost/infra

@@ -93,16 +93,17 @@ else // For production/Azure deployment
 {
     docGenSql = builder.AddAzureSqlServer("sqldocgen").AddDatabase(sqlDatabaseName!);
 
-    redisResource = builder.AddAzureRedis("redis").ConfigureInfrastructure(static infra =>
-    {
-        var redisResource = infra.GetProvisionableResources().OfType<RedisProvisioning.RedisResource>().Single();
-        redisResource.Sku = new RedisProvisioning.RedisSku()
-        {
-            Name = RedisProvisioning.RedisSkuName.Standard,
-            Family = RedisProvisioning.RedisSkuFamily.BasicOrStandard,
-            Capacity = 1
-        };
-    });
+    //redisResource = builder.AddAzureRedis("redis").ConfigureInfrastructure(static infra =>
+    //{
+    //    var redisResource = infra.GetProvisionableResources().OfType<RedisProvisioning.RedisResource>().Single();
+    //    redisResource.Sku = new RedisProvisioning.RedisSku()
+    //    {
+    //        Name = RedisProvisioning.RedisSkuName.Standard,
+    //        Family = RedisProvisioning.RedisSkuFamily.BasicOrStandard,
+    //        Capacity = 1
+    //    };
+    //});
+    redisResource = builder.AddAzureRedis("redis");
 
     sbus = builder.AddAzureServiceBus("sbus").ConfigureInfrastructure(infra =>
     {
