@@ -6,7 +6,7 @@ param principalId string
 param principalType string
 
 resource signalr 'Microsoft.SignalRService/signalR@2024-03-01' = {
-  name: take('signalr-${uniqueString(resourceGroup().id)}', 63)
+  name: take('signalr${uniqueString(resourceGroup().id)}', 63)
   location: location
   tags: {
     'aspire-resource-name': 'signalr'

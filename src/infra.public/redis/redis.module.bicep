@@ -8,7 +8,7 @@ param principalId string
 param principalName string
 
 resource redis 'Microsoft.Cache/redis@2024-03-01' = {
-  name: take('redis-${uniqueString(resourceGroup().id)}', 63)
+  name: take('redis${uniqueString(resourceGroup().id)}', 63)
   location: location
   properties: {
     sku: {

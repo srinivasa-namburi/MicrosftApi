@@ -8,7 +8,7 @@ param principalId string
 param principalType string
 
 resource sbus 'Microsoft.ServiceBus/namespaces@2024-01-01' = {
-  name: take('sbus-${uniqueString(resourceGroup().id)}', 50)
+  name: take('sbus${uniqueString(resourceGroup().id)}', 50)
   location: location
   properties: {
   }

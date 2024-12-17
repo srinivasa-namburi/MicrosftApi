@@ -6,7 +6,7 @@ param principalId string
 param principalType string
 
 resource aiSearch 'Microsoft.Search/searchServices@2023-11-01' = {
-  name: take('aisearch-${uniqueString(resourceGroup().id)}', 60)
+  name: take('aisearch${uniqueString(resourceGroup().id)}', 60)
   location: location
   tags: {
     'aspire-resource-name': 'aiSearch'
