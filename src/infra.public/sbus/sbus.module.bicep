@@ -1,7 +1,7 @@
 @description('The location for the resource(s) to be deployed.')
 param location string = resourceGroup().location
 
-param sku string = 'Standard'
+param sku string = 'Premium'
 
 param principalId string
 
