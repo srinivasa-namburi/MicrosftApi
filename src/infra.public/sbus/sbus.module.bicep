@@ -1,41 +1,35 @@
-targetScope = 'resourceGroup'
-
-@description('')
+@description('The location for the resource(s) to be deployed.')
 param location string = resourceGroup().location
 
-@description('')
-param sku string = 'Premium'
+param sku string = 'Standard'
 
-@description('')
 param principalId string
 
-@description('')
 param principalType string
 
-
-resource serviceBusNamespace_r4wPCvQVC 'Microsoft.ServiceBus/namespaces@2021-11-01' = {
-  name: toLower(take('sbus${uniqueString(resourceGroup().id)}', 24))
+resource sbus 'Microsoft.ServiceBus/namespaces@2024-01-01' = {
+  name: take('sbus-${uniqueString(resourceGroup().id)}', 50)
   location: location
-  tags: {
-    'aspire-resource-name': 'sbus'
+  properties: {
   }
   sku: {
     name: sku
     tier: 'Premium'
     capacity: 1
   }
-  properties: {
+  tags: {
+    'aspire-resource-name': 'sbus'
   }
 }
 
-resource roleAssignment_Cp26g1LUw 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  scope: serviceBusNamespace_r4wPCvQVC
-  name: guid(serviceBusNamespace_r4wPCvQVC.id, principalId, subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '090c5cfd-751d-490a-894a-3ce6f1109419'))
+resource sbus_AzureServiceBusDataOwner 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(sbus.id, principalId, subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '090c5cfd-751d-490a-894a-3ce6f1109419'))
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '090c5cfd-751d-490a-894a-3ce6f1109419')
     principalId: principalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '090c5cfd-751d-490a-894a-3ce6f1109419')
     principalType: principalType
   }
+  scope: sbus
 }
 
-output serviceBusEndpoint string = serviceBusNamespace_r4wPCvQVC.properties.serviceBusEndpoint
+output serviceBusEndpoint string = sbus.properties.serviceBusEndpoint

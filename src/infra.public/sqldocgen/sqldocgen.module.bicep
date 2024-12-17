@@ -1,24 +1,14 @@
-targetScope = 'resourceGroup'
-
-@description('')
+@description('The location for the resource(s) to be deployed.')
 param location string = resourceGroup().location
 
-@description('')
 param principalId string
 
-@description('')
 param principalName string
 
-
-resource sqlServer_34MHlY0Ot 'Microsoft.Sql/servers@2020-11-01-preview' = {
-  name: toLower(take('sqldocgen${uniqueString(resourceGroup().id)}', 24))
+resource sqldocgen 'Microsoft.Sql/servers@2021-11-01' = {
+  name: take('sqldocgen-${uniqueString(resourceGroup().id)}', 63)
   location: location
-  tags: {
-    'aspire-resource-name': 'sqldocgen'
-  }
   properties: {
-    version: '12.0'
-    publicNetworkAccess: 'Enabled'
     administrators: {
       administratorType: 'ActiveDirectory'
       login: principalName
@@ -26,27 +16,31 @@ resource sqlServer_34MHlY0Ot 'Microsoft.Sql/servers@2020-11-01-preview' = {
       tenantId: subscription().tenantId
       azureADOnlyAuthentication: true
     }
+    minimalTlsVersion: '1.2'
+    publicNetworkAccess: 'Enabled'
+    version: '12.0'
+  }
+  tags: {
+    'aspire-resource-name': 'sqldocgen'
   }
 }
 
-resource sqlFirewallRule_n7p8WgM0M 'Microsoft.Sql/servers/firewallRules@2020-11-01-preview' = {
-  parent: sqlServer_34MHlY0Ot
+resource sqlFirewallRule_AllowAllAzureIps 'Microsoft.Sql/servers/firewallRules@2021-11-01' = {
   name: 'AllowAllAzureIps'
   properties: {
-    startIpAddress: '0.0.0.0'
     endIpAddress: '0.0.0.0'
+    startIpAddress: '0.0.0.0'
   }
+  parent: sqldocgen
 }
 
-resource sqlDatabase_RnsdBrRX2 'Microsoft.Sql/servers/databases@2020-11-01-preview' = {
-  parent: sqlServer_34MHlY0Ot
+resource ProjectVicoDB 'Microsoft.Sql/servers/databases@2021-11-01' = {
   name: 'ProjectVicoDB'
   location: location
+  parent: sqldocgen
   sku: {
     name: 'HS_Gen5_2'
   }
-  properties: {
-  }
 }
 
-output sqlServerFqdn string = sqlServer_34MHlY0Ot.properties.fullyQualifiedDomainName
+output sqlServerFqdn string = sqldocgen.properties.fullyQualifiedDomainName

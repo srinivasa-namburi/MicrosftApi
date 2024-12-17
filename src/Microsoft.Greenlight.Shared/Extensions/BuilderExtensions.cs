@@ -20,6 +20,8 @@ using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
 using Microsoft.SemanticKernel.Embeddings;
+using StackExchange.Redis;
+using StackExchange.Redis.Configuration;
 
 namespace Microsoft.Greenlight.Shared.Extensions;
 #pragma warning disable SKEXP0011
@@ -77,7 +79,29 @@ public static class BuilderExtensions
         );
 
         builder.AddRabbitMQClient("rabbitmqdocgen");
-        builder.AddRedisClient("redis");
+
+
+        if (AdminHelper.IsRunningInProduction())
+        {
+            var azureOptionsProvider = new AzureOptionsProvider();
+
+            var configurationOptions = ConfigurationOptions.Parse(
+                builder.Configuration.GetConnectionString("redis") ??
+                throw new InvalidOperationException("Couldn't find a redis connection string"));
+
+            if (configurationOptions.EndPoints.Any(azureOptionsProvider.IsMatch))
+            {
+                configurationOptions.ConfigureForAzureWithTokenCredentialAsync(
+                    credentialHelper.GetAzureCredential()).Wait();
+            }
+
+            builder.AddRedisClient("redis",
+                configureOptions: options => { options.Defaults = configurationOptions.Defaults; });
+        }
+        else
+        {
+            builder.AddRedisClient("redis");
+        }
 
         builder.Services.AddScoped<AzureFileHelper>();
         builder.Services.AddSingleton<SearchClientFactory>();

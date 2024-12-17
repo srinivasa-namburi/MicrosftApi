@@ -1,9 +1,6 @@
-using RedisProvisioning = Azure.Provisioning.Redis;
-using Azure.Provisioning.Search;
-using Azure.Provisioning.SignalR;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Greenlight.AppHost;
+
 
 var builder = DistributedApplication.CreateBuilder(args);
 AppHostConfigurationSetup(builder);
@@ -65,24 +62,9 @@ if (builder.ExecutionContext.IsRunMode) // For local development
     }
     else
     {
-        signalr = builder.AddAzureSignalR("signalr").ConfigureInfrastructure(static infra =>
-        {
-            var signalr = infra.GetProvisionableResources().OfType<SignalRService>().Single();
-            signalr.Sku = new SignalRResourceSku()
-            {
-                Tier = SignalRSkuTier.Standard,
-                Name = "Standard_S1",
-                Capacity = 1
-            };
-        });
-
+        signalr = builder.AddAzureSignalR("signalr");
         sbus = builder.AddAzureServiceBus("sbus");
-
-        azureAiSearch = builder.AddAzureSearch("aiSearch").ConfigureInfrastructure(static infra =>
-        {
-            var search = infra.GetProvisionableResources().OfType<SearchService>().Single();
-            search.SearchSkuName = SearchServiceSkuName.Basic;
-        });
+        azureAiSearch = builder.AddAzureSearch("aiSearch");
 
         blobStorage = builder
             .AddAzureStorage("docing")
@@ -93,49 +75,14 @@ else // For production/Azure deployment
 {
     docGenSql = builder.AddAzureSqlServer("sqldocgen").AddDatabase(sqlDatabaseName!);
 
-    //redisResource = builder.AddAzureRedis("redis").ConfigureInfrastructure(static infra =>
-    //{
-    //    var redisResource = infra.GetProvisionableResources().OfType<RedisProvisioning.RedisResource>().Single();
-    //    redisResource.Sku = new RedisProvisioning.RedisSku()
-    //    {
-    //        Name = RedisProvisioning.RedisSkuName.Standard,
-    //        Family = RedisProvisioning.RedisSkuFamily.BasicOrStandard,
-    //        Capacity = 1
-    //    };
-    //});
     redisResource = builder.AddAzureRedis("redis");
-
-    sbus = builder.AddAzureServiceBus("sbus").ConfigureInfrastructure(infra =>
-    {
-        /*
-        var bus = infra.GetProvisionableResources().OfType<ServiceBusQueue>().Single();
-
-
-        options.Properties.Sku.Name = ServiceBusSkuName.Premium;
-        options.Properties.Sku.Tier = ServiceBusSkuTier.Premium;
-        options.Properties.Sku.Capacity = 1;
-        */
-    });
-
-    azureAiSearch = builder.AddAzureSearch("aiSearch").ConfigureInfrastructure(infra =>
-    {
-        var search = infra.GetProvisionableResources().OfType<SearchService>().Single();
-        search.SearchSkuName = SearchServiceSkuName.Standard;
-        search.ReplicaCount = 2;
-        search.PartitionCount = 2;
-    });
-
-    signalr = builder.AddAzureSignalR("signalr").ConfigureInfrastructure(infra =>
-    {
-        var signalr = infra.GetProvisionableResources().OfType<SignalRService>().Single();
-        signalr.Sku = new SignalRResourceSku()
-        {
-            Tier = SignalRSkuTier.Premium,
-            Name = "Premium_P1",
-            Capacity = 3
-        };
-    });
-
+    
+    sbus = builder.AddAzureServiceBus("sbus");
+    
+    azureAiSearch = builder.AddAzureSearch("aiSearch");
+    
+    signalr = builder.AddAzureSignalR("signalr");
+    
     blobStorage = builder
         .AddAzureStorage("docing")
         .AddBlobs("blob-docing");

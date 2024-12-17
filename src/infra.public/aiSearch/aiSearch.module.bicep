@@ -1,17 +1,12 @@
-targetScope = 'resourceGroup'
-
-@description('')
+@description('The location for the resource(s) to be deployed.')
 param location string = resourceGroup().location
 
-@description('')
 param principalId string
 
-@description('')
 param principalType string
 
-
-resource searchService_65MAWFiAj 'Microsoft.Search/searchServices@2023-11-01' = {
-  name: toLower(take('aiSearch${uniqueString(resourceGroup().id)}', 24))
+resource aiSearch 'Microsoft.Search/searchServices@2023-11-01' = {
+  name: take('aisearch-${uniqueString(resourceGroup().id)}', 60)
   location: location
   tags: {
     'aspire-resource-name': 'aiSearch'
@@ -32,24 +27,24 @@ resource searchService_65MAWFiAj 'Microsoft.Search/searchServices@2023-11-01' = 
   }
 }
 
-resource roleAssignment_kdkawv46r 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  scope: searchService_65MAWFiAj
-  name: guid(searchService_65MAWFiAj.id, principalId, subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '8ebe5a00-799e-43f5-93ac-243d3dce84a7'))
+resource aiSearch_SearchIndexDataContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(aiSearch.id, principalId, subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '8ebe5a00-799e-43f5-93ac-243d3dce84a7'))
   properties: {
+    principalId: principalId
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '8ebe5a00-799e-43f5-93ac-243d3dce84a7')
-    principalId: principalId
     principalType: principalType
   }
+  scope: aiSearch
 }
 
-resource roleAssignment_V8mKGEf6f 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  scope: searchService_65MAWFiAj
-  name: guid(searchService_65MAWFiAj.id, principalId, subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7ca78c08-252a-4471-8644-bb5ff32d4ba0'))
+resource aiSearch_SearchServiceContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(aiSearch.id, principalId, subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7ca78c08-252a-4471-8644-bb5ff32d4ba0'))
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7ca78c08-252a-4471-8644-bb5ff32d4ba0')
     principalId: principalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7ca78c08-252a-4471-8644-bb5ff32d4ba0')
     principalType: principalType
   }
+  scope: aiSearch
 }
 
-output connectionString string = 'Endpoint=https://${searchService_65MAWFiAj.name}.search.windows.net'
+output connectionString string = 'Endpoint=https://${aiSearch.name}.search.windows.net'
