@@ -25,6 +25,8 @@ var credentialHelper = new AzureCredentialHelper(builder.Configuration);
 
 builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
+// Initialize AdminHelper with configuration
+AdminHelper.Initialize(builder.Configuration);
 
 await builder.DelayStartup(serviceConfigurationOptions.GreenlightServices.DocumentGeneration.DurableDevelopmentServices);
 
@@ -32,6 +34,7 @@ builder.AddGreenlightServices(credentialHelper, serviceConfigurationOptions);
 builder.Services.AddAutoMapper(typeof(ChatMessageProfile));
 
 //builder.DynamicallyRegisterPlugins(serviceConfigurationOptions);
+builder.AddRepositories();
 builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
 builder.AddSemanticKernelServices(serviceConfigurationOptions);
 
@@ -138,9 +141,6 @@ var rabbitMqConnectionString = builder.Configuration.GetConnectionString("rabbit
 
         });
     });
-
-// Initialize AdminHelper with configuration
-AdminHelper.Initialize(builder.Configuration);
 
 var app = builder.Build();
 

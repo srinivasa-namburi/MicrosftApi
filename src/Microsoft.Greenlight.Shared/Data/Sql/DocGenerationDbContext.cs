@@ -31,7 +31,36 @@ public class DocGenerationDbContext : DbContext
         {
             optionsBuilder.UseSqlServer("ProjectVicoDB");
         }
+    }
 
+    public override int SaveChanges()
+    {
+        UpdateTimestamps();
+        return base.SaveChanges();
+    }
+
+    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        UpdateTimestamps();
+        return await base.SaveChangesAsync(cancellationToken);
+    }
+
+    private void UpdateTimestamps()
+    {
+        var entries = ChangeTracker.Entries<EntityBase>();
+
+        foreach (var entry in entries)
+        {
+            if (entry.State == EntityState.Added)
+            {
+                entry.Entity.CreatedUtc = DateTime.UtcNow;
+                entry.Entity.ModifiedUtc = DateTime.UtcNow;
+            }
+            else if (entry.State == EntityState.Modified)
+            {
+                entry.Entity.ModifiedUtc = DateTime.UtcNow;
+            }
+        }
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -80,12 +109,6 @@ public class DocGenerationDbContext : DbContext
             .IsRequired()
             .OnDelete(DeleteBehavior.Cascade);
 
-        modelBuilder.Entity<ContentNode>()
-            .HasOne(c=>c.ContentNodeSystemItem)
-            .WithOne(c => c.ContentNode)
-            .HasForeignKey<ContentNodeSystemItem>(c => c.ContentNodeId)
-            .IsRequired(false)
-            .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<SourceReferenceItem>()
              .ToTable("SourceReferenceItems");
@@ -515,7 +538,7 @@ public class DocGenerationDbContext : DbContext
             .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<ChatMessage>()
-            .HasIndex(nameof(ChatMessage.CreatedAt))
+            .HasIndex(nameof(ChatMessage.CreatedUtc))
             .IsUnique(false);
 
         modelBuilder.Entity<ChatMessage>()

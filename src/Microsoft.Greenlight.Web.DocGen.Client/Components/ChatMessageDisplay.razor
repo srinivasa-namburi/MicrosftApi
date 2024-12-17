@@ -92,7 +92,7 @@
                 @ChatMessage.UserFullName
             </MudText>
             <MudText Typo="Typo.body2" Class="my-0" Align="@align" Color="@Color.Info">
-                @ChatMessage.CreatedAt.ToString("MM/dd/yyyy HH:mm:ss")
+                @ChatMessage.CreatedUtc.ToString("MM/dd/yyyy HH:mm:ss")
             </MudText>
         </CardHeaderContent>
     </MudCardHeader>

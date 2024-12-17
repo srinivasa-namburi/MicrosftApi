@@ -70,7 +70,7 @@
     <div class="chat-container">
         <div @ref="_messagesContainer" class="messages-container">
             <MudList @ref="_mudMessageList" Dense="true" DisablePadding="true">
-                @foreach (var chatMessage in ChatMessages.OrderBy(x => x.CreatedAt))
+                @foreach (var chatMessage in ChatMessages.OrderBy(x => x.CreatedUtc))
                 {
                     <MudListItem>
                         <ChatMessageDisplay ChatMessage="@chatMessage" CurrentUser="CurrentUser" />
@@ -251,21 +251,21 @@ else
                     ConversationId = ConversationId!.Value,
                     Id = Guid.NewGuid(),
                     Message = chatText,
-                    CreatedAt = DateTime.UtcNow,
+                    CreatedUtc = DateTime.UtcNow,
                     Source = ChatMessageSource.User,
                     UserId = CurrentUser!.ProviderSubjectId,
                     UserFullName = CurrentUser!.FullName
                 };
 
             await ProcessMessage(chatMessage);
-        }
+        }   
 
     }
 
     private async Task ProcessOtherUserMessage(ChatMessageDTO chatMessageDto)
     {
         // Append the message according to its CreatedAt date - directly following the message with a CreatedAt date lower than this message
-        var index = ChatMessages.FindLastIndex(x => x.CreatedAt < chatMessageDto.CreatedAt);
+        var index = ChatMessages.FindLastIndex(x => x.CreatedUtc < chatMessageDto.CreatedUtc);
         if (index == -1)
         {
             ChatMessages.Insert(0, chatMessageDto);

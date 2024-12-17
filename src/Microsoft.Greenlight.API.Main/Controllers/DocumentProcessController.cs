@@ -8,9 +8,8 @@ using Microsoft.Greenlight.Shared.Contracts.Messages;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Models.DocumentProcess;
-using Microsoft.Greenlight.Shared.Repositories;
 using Microsoft.Greenlight.Shared.Services;
-using MongoDB.Libmongocrypt;
+
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 

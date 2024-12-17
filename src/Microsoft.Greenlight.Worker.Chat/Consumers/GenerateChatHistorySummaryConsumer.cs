@@ -27,7 +27,7 @@ public class GenerateChatHistorySummaryConsumer : IConsumer<GenerateChatHistoryS
         var message = context.Message;
 
         var chatMessages = _dbContext.ChatMessages
-            .Where(x => x.CreatedAt < message.SummaryTime && x.ConversationId == message.CorrelationId)
+            .Where(x => x.CreatedUtc < message.SummaryTime && x.ConversationId == message.CorrelationId)
             .Include(s => s.SummarizedByConversationSummary);
 
         var summaries = _dbContext.ConversationSummaries

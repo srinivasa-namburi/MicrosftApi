@@ -322,7 +322,7 @@ public class SearchIndexingProcessor : IIndexingProcessor
         
         Console.WriteLine("Done with embeddings generation");
 
-        var returnValue = embeddingResult.Value.Vector.ToArray();
+        var returnValue = embeddingResult.Value.ToFloats().ToArray();
         return returnValue;
     }
 

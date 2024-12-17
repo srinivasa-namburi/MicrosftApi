@@ -30,7 +30,10 @@ public class DynamicDocumentOutlineService : IDocumentOutlineService
                     .ThenInclude(q => q.Children)
                         .ThenInclude(r => r.Children)
                             .ThenInclude(s => s.Children)
+                                .ThenInclude(t=>t.Children)
+                                    .ThenInclude(u => u.Children)
             .AsNoTracking()
+            .AsSplitQuery()
             .FirstOrDefaultAsync();
 
         var orderedSectionListExample = documentProcess.DocumentOutline.FullText;
@@ -93,6 +96,14 @@ public class DynamicDocumentOutlineService : IDocumentOutlineService
                 GenerationState = ContentNodeGenerationState.OutlineOnly,
                 Children = new List<ContentNode>()
             };
+
+            var documentOutlineItem = documentProcess.DocumentOutline.OutlineItems.FirstOrDefault(x => x.SectionNumber == section.Key);
+
+            if (documentOutlineItem != null)
+            {
+                currentNode.RenderTitleOnly = documentOutlineItem.RenderTitleOnly;
+                currentNode.PromptInstructions = documentOutlineItem.PromptInstructions;
+            }
 
             if (parentNode != null)
             {

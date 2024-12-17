@@ -6,6 +6,7 @@ public class DocumentOutlineItemInfo()
     public string? SectionNumber { get; set; }
     public required string SectionTitle { get; set; }
     public string? PromptInstructions { get; set; }
+    public bool RenderTitleOnly { get; set; }
     public required int Level { get; set; } = 0;
     public Guid? ParentId { get; set; }
     public Guid? DocumentOutlineId { get; set; }
@@ -24,6 +25,7 @@ public class DocumentOutlineItemInfo()
                SectionNumber == other.SectionNumber &&
                SectionTitle == other.SectionTitle &&
                PromptInstructions == other.PromptInstructions &&
+               RenderTitleOnly == other.RenderTitleOnly &&
                Children.SequenceEqual(other.Children) &&
                OrderIndex == other.OrderIndex;
     }

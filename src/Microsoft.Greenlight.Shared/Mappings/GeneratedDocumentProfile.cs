@@ -13,11 +13,12 @@ public class GeneratedDocumentProfile : Profile
     public GeneratedDocumentProfile()
     {
         // Mapping for ContentNode
-       
+
 
         CreateMap<ContentNode, ContentNodeInfo>()
             .ForMember(dest => dest.Children, opt => opt.Ignore())
-            .ForMember(dest => dest.ContentNodeSystemItem, opt => opt.MapFrom(src => src.ContentNodeSystemItem))
+            .ForMember(dest => dest.ContentNodeSystemItem, opt => opt.Ignore())
+            .ForMember(dest => dest.ContentNodeSystemItemId, opt => opt.MapFrom(src => src.ContentNodeSystemItemId))
             .AfterMap((src, dest, context) =>
             {
                 // Map children recursively
@@ -29,7 +30,8 @@ public class GeneratedDocumentProfile : Profile
 
         CreateMap<ContentNodeInfo, ContentNode>()
             .ForMember(dest => dest.Children, opt => opt.Ignore())
-            .ForMember(dest => dest.ContentNodeSystemItem, opt => opt.MapFrom(src => src.ContentNodeSystemItem))
+            .ForMember(dest => dest.ContentNodeSystemItem, opt => opt.Ignore())
+            .ForMember(dest => dest.ContentNodeSystemItemId, opt => opt.MapFrom(src => src.ContentNodeSystemItemId))
             .AfterMap((src, dest, context) =>
             {
                 if (src.Children != null && src.Children.Any())
@@ -39,11 +41,13 @@ public class GeneratedDocumentProfile : Profile
             });
 
         // Mapping for ContentNodeSystemItem
-        CreateMap<ContentNodeSystemItem, ContentNodeSystemItemInfo>();
+        CreateMap<ContentNodeSystemItem, ContentNodeSystemItemInfo>()
+            .ReverseMap();
 
         // Polymorphic mapping for SourceReferenceItem
-        CreateMap<SourceReferenceItem, SourceReferenceItemInfo>();
-        
+        CreateMap<SourceReferenceItem, SourceReferenceItemInfo>()
+            .ReverseMap();
+
         CreateMap<PluginSourceReferenceItem, PluginSourceReferenceItemInfo>()
             .IncludeBase<SourceReferenceItem, SourceReferenceItemInfo>();
 
@@ -51,7 +55,7 @@ public class GeneratedDocumentProfile : Profile
         CreateMap<KernelMemoryDocumentSourceReferenceItem, KernelMemoryDocumentSourceReferenceItemInfo>()
             .ForMember(dest => dest.Citations, opt => opt.MapFrom(src => DeserializeCitations(src.CitationJsons)))
             .IncludeBase<SourceReferenceItem, SourceReferenceItemInfo>();
-        
+
         CreateMap<DocumentLibrarySourceReferenceItem, DocumentLibrarySourceReferenceItemInfo>()
             .IncludeBase<KernelMemoryDocumentSourceReferenceItem, KernelMemoryDocumentSourceReferenceItemInfo>();
 
@@ -78,9 +82,6 @@ public class GeneratedDocumentProfile : Profile
                     dest.ContentNodes = src.ContentNodes.Select(cn => context.Mapper.Map<ContentNode>(cn)).ToList();
                 }
             });
-
-        CreateMap<ContentNodeSystemItemInfo, ContentNodeSystemItem>();
-
     }
 
     private static List<Citation> DeserializeCitations(List<string> citationJsons)

@@ -77,7 +77,7 @@
                         <div class="section-content">
                             @foreach (var childNode in Node.Children)
                             {
-                                <ContentNodeDisplay Node="childNode" Recursive="true" />
+                                <ContentNodeDisplay Node="childNode" Recursive="true" EnableReferenceFrontend="@EnableReferenceFrontend" />
                             }
                         </div>
                     }
@@ -123,7 +123,7 @@
         IsLoadingSystemInfo = true;
 
         await ShowReferenceInformation(node);
-
+        node.ContentNodeSystemItem = SystemItem;
         ShowSystemInfo = !ShowSystemInfo;
         if (ShowSystemInfo)
         {

@@ -8,7 +8,7 @@
    .\build\scripts\sp-create.ps1
    ```
 
-   - ![image](https://github.com/user-attachments/assets/556c6ac0-7354-447b-8c91-1a15469aee8f)
+   - ![ForkGithubRepository](./docs/assets/ForkRepository.png)
 
 2. Create a Service Principal for GitHub Actions to utilize for deployment. Either (1) Cloud Application Administrator or (2) Application Developer permission on the tenant (Microsoft Entra) is required to perform this step. Application Developer is normally sufficient - and both Cloud Application Administrator and Application Developer supersede it. To do this, run this command (you must have the Azure CLI installed and be logged on to the tenant using "az login" first - you can download the Azure CLI here if you don't have it : https://learn.microsoft.com/en-us/cli/azure/install-azure-cli). The output of this script should be noted for storage in the AZURE_CREDENTIALS secret in a later step. Substitute <subscriptionId> with your actual subscription id:
 
@@ -31,7 +31,7 @@
         - We recommend a 300,000 tokens per minute (TPM) limit as a minimum
    2. Azure Maps
 
-   - ![image](https://github.com/user-attachments/assets/36341022-c7ed-4411-886b-554a9593b453)
+   - ![ConfigureAzureResources](./docs/assets/ConfigureAzureResources.png)
 
 4. If using private networking:
 
@@ -57,7 +57,7 @@
      - AZURE_SUBSCRIPTION_ID: {Your Subscription ID}
      - DEPLOYMENT_MODEL: {private | public}
      - PVICO_OPENAI_RESOURCEGROUP : {The name of the Resource Group where your Azure OpenAI instance has been deployed}
-     - <img width="394" alt="image" src="https://github.com/user-attachments/assets/8d473af4-1551-49da-9a5a-9e75bbd4ab5f">
+     - <img width="394" alt="SetGithubSecrets" src="./docs/assets/GithubSecrets.png">
 
 6. If you are running the "load-trainingdata" process to bring in the sample training data to the solution, add the following deployment variables to the Secrets and Variables section of the repository. These will only be available after the solution is fully deployed.
    - Secrets:

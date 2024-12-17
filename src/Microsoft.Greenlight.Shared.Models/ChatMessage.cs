@@ -15,7 +15,6 @@ public class ChatMessage : EntityBase
     public ChatMessageSource Source { get; set; }
     public string Message { get; set; }
     public string? ContentText { get; set; }
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public ConversationSummary? SummarizedByConversationSummary { get; set; }
     public Guid? SummarizedByConversationSummaryId { get; set; }
     public UserInformation? AuthorUserInformation { get; set; }

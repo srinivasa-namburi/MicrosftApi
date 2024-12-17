@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<ErrorOnDuplicatePublishOutputFiles>false</ErrorOnDuplicatePublishOutputFiles>
+		<UserSecretsId>dotnet-Microsoft.Greenlight.SetupManager.Plugin-40b8dfee-0b99-47e6-b256-7000174539fd</UserSecretsId>
+	</PropertyGroup>
+
+	<ItemGroup>
+	  <Compile Remove="manifests\**" />
+	  <Content Remove="manifests\**" />
+	  <EmbeddedResource Remove="manifests\**" />
+	  <None Remove="manifests\**" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Remove="DummyDocument.pdf" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Content Include="DummyDocument.pdf">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </Content>
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\Microsoft.Greenlight.DocumentProcesses\Microsoft.Greenlight.DocumentProcesses.csproj" />
+		<ProjectReference Include="..\Microsoft.Greenlight.ServiceDefaults\Microsoft.Greenlight.ServiceDefaults.csproj" />
+		<ProjectReference Include="..\Microsoft.Greenlight.Shared\Microsoft.Greenlight.Shared.csproj" />
+	</ItemGroup>
+</Project>

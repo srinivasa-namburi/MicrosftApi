@@ -1,13 +1,9 @@
-using Azure.ResourceManager.Redis.Models;
-using Azure.ResourceManager.Search.Models;
-using Azure.ResourceManager.ServiceBus.Models;
-using Azure.ResourceManager.SignalR.Models;
+using RedisProvisioning = Azure.Provisioning.Redis;
+using Azure.Provisioning.Search;
+using Azure.Provisioning.SignalR;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Greenlight.AppHost;
-
-
-#pragma warning disable ASPIRE0001
-#pragma warning disable AZPROVISION001
 
 var builder = DistributedApplication.CreateBuilder(args);
 AppHostConfigurationSetup(builder);
@@ -28,11 +24,9 @@ var durableDevelopment = Convert.ToBoolean(builder.Configuration["ServiceConfigu
 var sqlPassword = builder.AddParameter("sqlPassword", true);
 var sqlDatabaseName = builder.Configuration["ServiceConfiguration:SQL:DatabaseName"];
 
-IResourceBuilder<SqlServerDatabaseResource> docGenSql;
+IResourceBuilder<IResourceWithConnectionString> docGenSql;
 IResourceBuilder<IResourceWithConnectionString> sbus;
-IResourceBuilder<IResourceWithConnectionString> queueService;
-IResourceBuilder<RedisResource> redis;
-IResourceBuilder<IResourceWithConnectionString> openAi;
+IResourceBuilder<IResourceWithConnectionString> redisResource;
 IResourceBuilder<IResourceWithConnectionString> signalr;
 IResourceBuilder<IResourceWithConnectionString> azureAiSearch;
 IResourceBuilder<IResourceWithConnectionString> blobStorage;
@@ -41,23 +35,23 @@ if (builder.ExecutionContext.IsRunMode) // For local development
 {
     if (durableDevelopment)
     {
-        redis = builder
-            .AddRedis("redis", 16379)
+        redisResource = builder.AddRedis("redis", 16379)
             .WithDataVolume("pvico-redis-vol")
-            .WithPersistence();
+            .WithLifetime(ContainerLifetime.Persistent);
 
         docGenSql = builder
             .AddSqlServer("sqldocgen", password: sqlPassword, port: 9001)
             .WithDataVolume("pvico-sql-docgen-vol")
-            .AddDatabase(sqlDatabaseName);
+            .WithLifetime(ContainerLifetime.Persistent)
+            .AddDatabase(sqlDatabaseName!);
     }
     else // Don't persist data and queue content - it will be deleted on restart!
     {
         docGenSql = builder
             .AddSqlServer("sqldocgen", password: sqlPassword, 9001)
-            .AddDatabase(sqlDatabaseName);
+            .AddDatabase(sqlDatabaseName!);
 
-        redis = builder.AddRedis("redis", 16379);
+        redisResource = builder.AddRedis("redis", 16379);
     }
 
     // The following resources are either deployed through the Aspire Azure Resource Manager or connected via connection string.
@@ -71,18 +65,23 @@ if (builder.ExecutionContext.IsRunMode) // For local development
     }
     else
     {
-        signalr = builder.AddAzureSignalR("signalr", configureResource: (resourceBuilder, construct, options) =>
+        signalr = builder.AddAzureSignalR("signalr").ConfigureInfrastructure(static infra =>
         {
-            options.Properties.Sku.Tier = SignalRSkuTier.Standard;
-            options.Properties.Sku.Name = "Standard_S1";
-            options.Properties.Sku.Capacity = 1;
+            var signalr = infra.GetProvisionableResources().OfType<SignalRService>().Single();
+            signalr.Sku = new SignalRResourceSku()
+            {
+                Tier = SignalRSkuTier.Standard,
+                Name = "Standard_S1",
+                Capacity = 1
+            };
         });
 
         sbus = builder.AddAzureServiceBus("sbus");
 
-        azureAiSearch = builder.AddAzureSearch("aiSearch", (resourceBuilder, construct, options) =>
+        azureAiSearch = builder.AddAzureSearch("aiSearch").ConfigureInfrastructure(static infra =>
         {
-            options.Properties.SkuName = SearchSkuName.Basic;
+            var search = infra.GetProvisionableResources().OfType<SearchService>().Single();
+            search.SearchSkuName = SearchServiceSkuName.Basic;
         });
 
         blobStorage = builder
@@ -92,40 +91,48 @@ if (builder.ExecutionContext.IsRunMode) // For local development
 }
 else // For production/Azure deployment
 {
-    docGenSql = builder
-        .AddSqlServer("sqldocgen")
-        .PublishAsAzureSqlDatabase()
-        .AddDatabase(sqlDatabaseName);
+    docGenSql = builder.AddAzureSqlServer("sqldocgen").AddDatabase(sqlDatabaseName!);
 
-    redis = builder.AddRedis("redis")
-        .PublishAsAzureRedis((resourceBuilder, construct, options) =>
-        {
-            options.Properties.Sku.Name = RedisSkuName.Standard;
-            options.Properties.Sku.Family = RedisSkuFamily.BasicOrStandard;
-            options.Properties.Sku.Capacity = 1;
-        })
-        .WithPersistence();
-
-    sbus = builder.AddAzureServiceBus("sbus", (resourceBuilder, construct, options) =>
+    redisResource = builder.AddAzureRedis("redis").ConfigureInfrastructure(static infra =>
     {
+        var redisResource = infra.GetProvisionableResources().OfType<RedisProvisioning.RedisResource>().Single();
+        redisResource.Sku = new RedisProvisioning.RedisSku()
+        {
+            Name = RedisProvisioning.RedisSkuName.Standard,
+            Family = RedisProvisioning.RedisSkuFamily.BasicOrStandard,
+            Capacity = 1
+        };
+    });
+
+    sbus = builder.AddAzureServiceBus("sbus").ConfigureInfrastructure(infra =>
+    {
+        /*
+        var bus = infra.GetProvisionableResources().OfType<ServiceBusQueue>().Single();
+
+
         options.Properties.Sku.Name = ServiceBusSkuName.Premium;
         options.Properties.Sku.Tier = ServiceBusSkuTier.Premium;
         options.Properties.Sku.Capacity = 1;
+        */
     });
 
-    azureAiSearch = builder.AddAzureSearch("aiSearch", (resourceBuilder, construct, options) =>
+    azureAiSearch = builder.AddAzureSearch("aiSearch").ConfigureInfrastructure(infra =>
     {
-        options.Properties.SkuName = SearchSkuName.Standard;
-        options.Properties.ReplicaCount = 2;
-        options.Properties.PartitionCount = 2;
+        var search = infra.GetProvisionableResources().OfType<SearchService>().Single();
+        search.SearchSkuName = SearchServiceSkuName.Standard;
+        search.ReplicaCount = 2;
+        search.PartitionCount = 2;
     });
 
-    signalr = builder.AddAzureSignalR("signalr", configureResource: (resourceBuilder, construct, options) =>
+    signalr = builder.AddAzureSignalR("signalr").ConfigureInfrastructure(infra =>
     {
-
-        options.Properties.Sku.Tier = SignalRSkuTier.Premium;
-        options.Properties.Sku.Name = "Premium_P1";
-        options.Properties.Sku.Capacity = 3;
+        var signalr = infra.GetProvisionableResources().OfType<SignalRService>().Single();
+        signalr.Sku = new SignalRResourceSku()
+        {
+            Tier = SignalRSkuTier.Premium,
+            Name = "Premium_P1",
+            Capacity = 3
+        };
     });
 
     blobStorage = builder
@@ -134,7 +141,14 @@ else // For production/Azure deployment
 
 }
 
-queueService = sbus;
+var dbSetupManager = builder
+    .AddProject<Projects.Microsoft_Greenlight_SetupManager_DB>("db-setupmanager")
+    .WithReplicas(1) // There can only be one Setup Manager
+    .WithConfigSection(envServiceConfigurationConfigurationSection)
+    .WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithConfigSection(envAzureConfigurationSection)
+    .WithReference(docGenSql)
+    .WaitFor(docGenSql);
 
 var apiMain = builder
     .AddProject<Projects.Microsoft_Greenlight_API_Main>("api-main")
@@ -146,10 +160,25 @@ var apiMain = builder
     .WithConfigSection(envKestrelConfigurationSection)
     .WithReference(blobStorage)
     .WithReference(signalr)
-    .WithReference(redis)
+    .WithReference(redisResource)
     .WithReference(docGenSql)
-    .WithReference(queueService)
-    .WithReference(azureAiSearch);
+    .WithReference(sbus)
+    .WithReference(azureAiSearch)
+    .WaitForCompletion(dbSetupManager);
+
+var servicesSetupManager = builder
+    .AddProject<Projects.Microsoft_Greenlight_SetupManager_Services>("services-setupmanager")
+    .WithReplicas(1) // There can only be one Setup Manager
+    .WithConfigSection(envServiceConfigurationConfigurationSection)
+    .WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithConfigSection(envAzureConfigurationSection)
+    .WithReference(azureAiSearch)
+    .WithReference(blobStorage)
+    .WithReference(sbus)
+    .WithReference(docGenSql)
+    .WithReference(redisResource)
+    .WithReference(apiMain)
+    .WaitForCompletion(dbSetupManager);
 
 var docGenFrontend = builder
     .AddProject<Projects.Microsoft_Greenlight_Web_DocGen>("web-docgen")
@@ -160,26 +189,11 @@ var docGenFrontend = builder
     .WithConfigSection(envAzureConfigurationSection)
     .WithConfigSection(envKestrelConfigurationSection)
     .WithReference(signalr)
-    .WithReference(redis)
-    .WithReference(apiMain);
+    .WithReference(redisResource)
+    .WithReference(apiMain)
+    .WaitForCompletion(dbSetupManager);
 
 apiMain.WithReference(docGenFrontend); // Neccessary for CORS policy creation
-
-var setupManager = builder
-    .AddProject<Projects.Microsoft_Greenlight_SetupManager>("worker-setupmanager")
-    .WithReplicas(1) // There can only be one Setup Manager
-    .WithConfigSection(envServiceConfigurationConfigurationSection)
-    .WithConfigSection(envConnectionStringsConfigurationSection)
-    .WithConfigSection(envAzureConfigurationSection)
-    .WithReference(azureAiSearch)
-    .WithReference(blobStorage)
-    .WithReference(queueService)
-    .WithReference(docGenSql)
-    .WithReference(redis)
-    .WithReference(apiMain)
-    ;
-
-    
 
 var workerScheduler = builder
     .AddProject<Projects.Microsoft_Greenlight_Worker_Scheduler>("worker-scheduler")
@@ -189,11 +203,11 @@ var workerScheduler = builder
     .WithConfigSection(envAzureConfigurationSection)
     .WithReference(blobStorage)
     .WithReference(docGenSql)
-    .WithReference(queueService)
-    .WithReference(redis)
+    .WithReference(sbus)
+    .WithReference(redisResource)
     .WithReference(apiMain)
     .WithReference(azureAiSearch)
-    ;
+    .WaitForCompletion(dbSetupManager);
 
 var workerDocumentGeneration = builder
     .AddProject<Projects.Microsoft_Greenlight_Worker_DocumentGeneration>("worker-documentgeneration")
@@ -205,10 +219,10 @@ var workerDocumentGeneration = builder
     .WithReference(azureAiSearch)
     .WithReference(blobStorage)
     .WithReference(docGenSql)
-    .WithReference(queueService)
-    .WithReference(redis)
+    .WithReference(sbus)
+    .WithReference(redisResource)
     .WithReference(apiMain)
-    ;
+    .WaitForCompletion(dbSetupManager);
 
 var workerDocumentIngestion = builder
     .AddProject<Projects.Microsoft_Greenlight_Worker_DocumentIngestion>("worker-documentingestion")
@@ -220,9 +234,10 @@ var workerDocumentIngestion = builder
     .WithReference(azureAiSearch)
     .WithReference(blobStorage)
     .WithReference(docGenSql)
-    .WithReference(queueService)
-    .WithReference(redis)
-    .WithReference(apiMain);
+    .WithReference(sbus)
+    .WithReference(redisResource)
+    .WithReference(apiMain)
+    .WaitForCompletion(dbSetupManager);
 
 var workerChat = builder.AddProject<Projects.Microsoft_Greenlight_Worker_Chat>("worker-chat")
     .WithConfigSection(envServiceConfigurationConfigurationSection)
@@ -231,15 +246,15 @@ var workerChat = builder.AddProject<Projects.Microsoft_Greenlight_Worker_Chat>("
     .WithReference(azureAiSearch)
     .WithReference(blobStorage)
     .WithReference(docGenSql)
-    .WithReference(queueService)
-    .WithReference(redis)
-    .WithReference(apiMain);
+    .WithReference(sbus)
+    .WithReference(redisResource)
+    .WithReference(apiMain)
+    .WaitForCompletion(dbSetupManager);
 
 builder.Build().Run();
 
-void AppHostConfigurationSetup(IDistributedApplicationBuilder distributedApplicationBuilder)
+static void AppHostConfigurationSetup(IDistributedApplicationBuilder distributedApplicationBuilder)
 {
-
     distributedApplicationBuilder.Configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
 
     if (distributedApplicationBuilder.ExecutionContext.IsRunMode)

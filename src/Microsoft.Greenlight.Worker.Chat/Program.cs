@@ -17,11 +17,15 @@ var credentialHelper = new AzureCredentialHelper(builder.Configuration);
 
 builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
+// Initialize AdminHelper with configuration
+AdminHelper.Initialize(builder.Configuration);
+
 await builder.DelayStartup(serviceConfigurationOptions.GreenlightServices.DocumentGeneration.DurableDevelopmentServices);
 
 builder.AddGreenlightServices(credentialHelper, serviceConfigurationOptions);
 builder.RegisterStaticPlugins(serviceConfigurationOptions);
 
+builder.AddRepositories();
 builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
 builder.AddSemanticKernelServices(serviceConfigurationOptions);
 
@@ -68,12 +72,7 @@ builder.Services.AddMassTransit(x =>
       });
  });
 
-// Initialize AdminHelper with configuration
-AdminHelper.Initialize(builder.Configuration);
-
 builder.Services.AddSingleton<IHostedService, ShutdownCleanupService>();
-
-
 var host = builder.Build();
 
 host.Run();

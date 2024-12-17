@@ -26,7 +26,7 @@
                 </MudPaper>
             }
 
-            <!-- Import Confirmation Section -->
+            <!-- Import Outline TextArea Confirmation Section -->
             @if (ShowImportConfirmationSection)
             {
                 <MudPaper Class="pa-4 mt-4">
@@ -51,12 +51,12 @@
                                     </MudTooltip>
                                 </div>
                                 <div style="display: flex; align-items: center; justify-content: flex-end;">
+                                    <MudTooltip Text="Only create this section as a heading in generated documents, with no body text. Typically used for chapter headings.">
+                                        <MudCheckBox T="bool" Label="Heading Only" @bind-Value="item.RenderTitleOnly"/>
+                                    </MudTooltip>
                                     <MudTooltip Text="Add New Subsection">
                                         <MudIconButton Icon="@Icons.Material.Filled.Add" OnClick="() => AddChildItem(item)"></MudIconButton>
                                     </MudTooltip>
-                                    @* <MudTooltip Text="Delete Section">
-                                        <MudIconButton Icon="@Icons.Material.Filled.Delete" OnClick="() => DeleteItem(item)" Disabled="@(IsLastItem(item))"></MudIconButton>
-                                    </MudTooltip> *@
                                     <MudTooltip Text="More Options">
                                         <MudMenu Icon="@Icons.Material.Filled.MoreVert"
                                                  Size="Size.Medium" Color="Color.Inherit"
@@ -64,20 +64,20 @@
                                                  AnchorOrigin="Origin.CenterRight"
                                                  TransformOrigin="Origin.CenterLeft">
                                             <MudMenuItem Icon="@Icons.Material.Filled.Add" OnClick="() => AddChildItem(item)">Add New Subsection</MudMenuItem>
-                                            <MudDivider />
+                                            <MudDivider/>
                                             <MudMenuItem Icon="@Icons.Material.Filled.Add" OnClick="() => AddItemAbove(item)">Add New Section Above</MudMenuItem>
                                             <MudMenuItem Icon="@Icons.Material.Filled.Add" OnClick="() => AddItemBelow(item)">Add New Section Below</MudMenuItem>
-                                            <MudDivider />
+                                            <MudDivider/>
                                             <MudMenuItem Icon="@Icons.Material.Filled.ContentCopy" OnClick="() => CopyItem(item)">Copy Section</MudMenuItem>
-                                            <MudDivider />
+                                            <MudDivider/>
                                             <MudMenuItem Icon="@Icons.Material.Filled.ContentPaste" OnClick="() => PasteAsChildItem(item)" Disabled="@(CopiedDocumentOutlineItemInfo is null)">Paste as Subsection</MudMenuItem>
-                                            <MudDivider />
+                                            <MudDivider/>
                                             <MudMenuItem Icon="@Icons.Material.Filled.ContentPaste" OnClick="() => PasteItemAtSameLevel(item, true)" Disabled="@(CopiedDocumentOutlineItemInfo is null)">Paste Section Above</MudMenuItem>
                                             <MudMenuItem Icon="@Icons.Material.Filled.ContentPaste" OnClick="() => PasteItemAtSameLevel(item, false)" Disabled="@(CopiedDocumentOutlineItemInfo is null)">Paste Section Below</MudMenuItem>
-                                            <MudDivider />
+                                            <MudDivider/>
                                             <MudMenuItem Icon="@Icons.Material.Filled.ArrowDropUp" OnClick="() => MoveItemUp(item)" Disabled="@(IsMoveUpDisabled(item))">Move Section Up</MudMenuItem>
                                             <MudMenuItem Icon="@Icons.Material.Filled.ArrowDropDown" OnClick="() => MoveItemDown(item)" Disabled="@(IsMoveDownDisabled(item))">Move Section Down</MudMenuItem>
-                                            <MudDivider />
+                                            <MudDivider/>
                                             <MudMenuItem Icon="@Icons.Material.Filled.Delete" OnClick="() => DeleteItem(item)" Disabled="@(IsLastItem(item))">Delete Section</MudMenuItem>
                                         </MudMenu>
                                     </MudTooltip>

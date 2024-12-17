@@ -2,7 +2,6 @@ using System.Text;
 using System.Text.Json;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.SemanticKernel;
 using Microsoft.Greenlight.DocumentProcess.Shared.Generation;
 using Microsoft.Greenlight.Shared.Contracts.Messages.DocumentGeneration.Commands;
 using Microsoft.Greenlight.Shared.Contracts.Messages.DocumentGeneration.Events;
@@ -19,7 +18,6 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
     private readonly ILogger<GenerateReportTitleSectionConsumer> _logger;
     private readonly IPublishEndpoint _publishEndpoint;
     private readonly IServiceProvider _sp;
-    private IBodyTextGenerator? _bodyTextGenerator;
 
     public GenerateReportTitleSectionConsumer(
         DocGenerationDbContext dbContext,
@@ -37,118 +35,200 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
     public async Task Consume(ConsumeContext<GenerateReportTitleSection> context)
     {
         var message = context.Message;
+
+        var stream = new MemoryStream(Encoding.UTF8.GetBytes(message.ContentNodeJson));
+        var contentNode = await JsonSerializer.DeserializeAsync<ContentNode>(stream);
+
+        if (contentNode == null)
+        {
+            _logger.LogError("Failed to deserialize ContentNodeJson.");
+            return;
+        }
+
         var contentNodeGeneratedEvent = new ContentNodeGenerated(message.CorrelationId)
         {
+            ContentNodeId = contentNode.Id,
             AuthorOid = message.AuthorOid
         };
 
         var tableOfContentsString = GeneratePlainTextTableOfContentsFromOutlineJson(message.DocumentOutlineJson);
 
-        var trackedDocument =
-            await _dbContext.GeneratedDocuments
-                .FirstOrDefaultAsync(x => x.Id == message.CorrelationId);
+        var trackedDocument = await _dbContext.GeneratedDocuments
+            .FirstOrDefaultAsync(x => x.Id == message.CorrelationId);
 
         if (trackedDocument == null)
         {
-            // This is an orphaned generation request - ignored.
-            _logger.LogInformation("Encountered orphaned GenerateReportTitleSection - probably in development with restarting db instance?. Abandoned.");
+            // Orphaned generation request
+            _logger.LogInformation("Orphaned GenerateReportTitleSection detected. Abandoning.");
             return;
         }
-            
-        var stream = new MemoryStream(Encoding.UTF8.GetBytes(message.ContentNodeJson));
-        var contentNode = await JsonSerializer.DeserializeAsync<ContentNode>(stream);
 
-        // Find the content node with the same id as the one we are generating content for
-        // var existingContentNode = trackedDocument.ContentNodes.FirstOrDefault(cn => cn.Id == contentNode.Id);
-        var existingContentNode = await _dbContext.ContentNodes
-            .Include(x => x.Children)
-            .FirstOrDefaultAsync(cn => cn.Id == contentNode.Id)!;
+        // Start a transaction for atomic operations
+        //using var transaction = await _dbContext.Database.BeginTransactionAsync();
 
         try
         {
-            if (existingContentNode != null)
+            // Fetch and track the existing ContentNode
+            var existingContentNode = await _dbContext.ContentNodes
+                .Include(x => x.Children)
+                .Include(x => x.ContentNodeSystemItem)
+                .ThenInclude(contentNodeSystemItem => contentNodeSystemItem.SourceReferences)
+                .FirstOrDefaultAsync(cn => cn.Id == contentNode.Id);
+
+            if (existingContentNode == null)
             {
-                existingContentNode.GenerationState = ContentNodeGenerationState.InProgress;
-                await _dbContext.SaveChangesAsync();
-
-                await _publishEndpoint.Publish<ContentNodeGenerationStateChanged>(
-                    new ContentNodeGenerationStateChanged(message.CorrelationId)
-                    {
-                        ContentNodeId = existingContentNode.Id,
-                        GenerationState = ContentNodeGenerationState.InProgress
-                    });
-
-                var contentNodeType = existingContentNode.Type == ContentNodeType.Title ? "Title" : "Heading";
-
-                var sectionNumber = existingContentNode.Text.Split(' ')[0];
-                var sectionTitle = existingContentNode.Text.Substring(sectionNumber.Length).Trim();
-                var documentProcessName = trackedDocument.DocumentProcess;
-                if (string.IsNullOrEmpty(documentProcessName))
-                {
-                    throw new InvalidOperationException("DocumentProcessName is null or empty");
-                }
-
-                var bodyContentNodes = await GenerateBodyText(contentNodeType, sectionNumber, sectionTitle, tableOfContentsString, documentProcessName, message.MetadataId);
-
-                int bodyContentNodeNumber = 1;
-                // Set the Parent of all bodyContentNodes to be the existingContentNode
-                foreach (var bodyContentNode in bodyContentNodes)
-                {
-                    bodyContentNode.ParentId = existingContentNode.Id;
-
-                    // We want to attach the content node system item to the parent node, not the body context nodes
-                    if (bodyContentNodeNumber == 1)
-                    {
-                        ReAttachContentNodeSystemItemToHeadingNode(bodyContentNode, existingContentNode);
-                    }
-                    else
-                    {
-                        bodyContentNode.ContentNodeSystemItemId = null;
-                        bodyContentNode.ContentNodeSystemItem = null;
-                    }
-
-                    _dbContext.ContentNodes.Add(bodyContentNode);
-                    bodyContentNodeNumber++;
-                }
-
-                if (bodyContentNodes.Count == 1)
-                {
-                    contentNodeGeneratedEvent.ContentNodeId = bodyContentNodes[0].Id;
-                }
+                _logger.LogError("ContentNode with ID {ContentNodeId} not found.", contentNode.Id);
+                return;
             }
 
-            existingContentNode.GenerationState = ContentNodeGenerationState.Completed;
+            // If any of the direct descendants of the existing ContentNode are of type BodyText, delete them
+            var deleteBodyTextContentNodes = existingContentNode.Children
+                .Where(x => x.Type == ContentNodeType.BodyText)
+                .ToList();
+
+            foreach (var deleteBodyTextContentNode in deleteBodyTextContentNodes)
+            {
+                existingContentNode.Children.Remove(deleteBodyTextContentNode);
+                _dbContext.ContentNodes.Remove(deleteBodyTextContentNode);
+            }
+
+            // Set GenerationState to InProgress
+            existingContentNode.GenerationState = ContentNodeGenerationState.InProgress;
+            await _dbContext.SaveChangesAsync();
+
+            // Publish the InProgress event
+            await _publishEndpoint.Publish(new ContentNodeGenerationStateChanged(message.CorrelationId)
+            {
+                ContentNodeId = existingContentNode.Id,
+                GenerationState = ContentNodeGenerationState.InProgress
+            });
+
+            // Generate body content nodes
+            var bodyContentNodes = await GenerateBodyText(
+                existingContentNode.Type == ContentNodeType.Title ? "Title" : "Heading",
+                sectionNumber: ExtractSectionNumber(existingContentNode.Text),
+                sectionTitle: ExtractSectionTitle(existingContentNode.Text),
+                tableOfContentsString,
+                trackedDocument.DocumentProcess,
+                message.MetadataId
+            );
+
+            int bodyContentNodeNumber = 1;
+            foreach (var bodyContentNode in bodyContentNodes)
+            {
+                bodyContentNode.ParentId = existingContentNode.Id;
+
+                if (bodyContentNodeNumber == 1)
+                {
+                    ReAttachContentNodeSystemItemToHeadingNode(bodyContentNode, existingContentNode);
+                }
+                else
+                {
+                    bodyContentNode.ContentNodeSystemItemId = null;
+                    bodyContentNode.ContentNodeSystemItem = null;
+                }
+
+                
+                
+                bodyContentNodeNumber++;
+            }
+
+            await _dbContext.ContentNodeSystemItems.AddAsync(existingContentNode.ContentNodeSystemItem);
+            await _dbContext.ContentNodes.AddRangeAsync(bodyContentNodes);
 
             await _dbContext.SaveChangesAsync();
 
-            await _publishEndpoint.Publish<ContentNodeGenerationStateChanged>(
-                   new ContentNodeGenerationStateChanged(message.CorrelationId)
-                   {
-                       ContentNodeId = existingContentNode.Id,
-                       GenerationState = ContentNodeGenerationState.Completed
-                   });
+            existingContentNode.Children.AddRange(bodyContentNodes);
 
+            if (bodyContentNodes.Count == 1)
+            {
+                contentNodeGeneratedEvent.ContentNodeId = bodyContentNodes[0].Id;
+            }
+
+            // Set GenerationState to Completed
+            existingContentNode.GenerationState = ContentNodeGenerationState.Completed;
+            await _dbContext.SaveChangesAsync();
+
+            // Publish the Completed event
+            await _publishEndpoint.Publish(new ContentNodeGenerationStateChanged(message.CorrelationId)
+            {
+                ContentNodeId = existingContentNode.Id,
+                GenerationState = ContentNodeGenerationState.Completed
+            });
+
+            // Commit the transaction
+            //await transaction.CommitAsync();
         }
-        catch (Exception e)
+        catch (DbUpdateConcurrencyException ex)
         {
-            if (existingContentNode == null)
-            {
-                _logger.LogError(e, "Failed to generate content for content node {ContentNodeId} - content node not found", contentNode.Id);
-            }
-            else
-            {
-                _logger.LogError(e, "Failed to generate content for content node {ContentNodeId}", existingContentNode.Id);
-                existingContentNode.GenerationState = ContentNodeGenerationState.Failed;
-                await _dbContext.SaveChangesAsync();
-            }
-            
+            _logger.LogError(ex, "Concurrency error while updating ContentNode ID {ContentNodeId}.", contentNode.Id);
+            // Optionally, implement a retry mechanism or notify the user/admin
+            // For example, you can retry a fixed number of times
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "An error occurred while processing ContentNode ID {ContentNodeId}.", contentNode.Id);
             contentNodeGeneratedEvent.IsSuccessful = false;
+
+            // Attempt to set the state to Failed
+            try
+            {
+                var existingContentNode = await _dbContext.ContentNodes
+                    .FirstOrDefaultAsync(cn => cn.Id == contentNode.Id);
+
+                if (existingContentNode != null)
+                {
+                    existingContentNode.GenerationState = ContentNodeGenerationState.Failed;
+                    await _dbContext.SaveChangesAsync();
+
+                    await _publishEndpoint.Publish(new ContentNodeGenerationStateChanged(message.CorrelationId)
+                    {
+                        ContentNodeId = existingContentNode.Id,
+                        GenerationState = ContentNodeGenerationState.Failed
+                    });
+                }
+            }
+            catch (Exception innerEx)
+            {
+                _logger.LogError(innerEx, "Failed to update GenerationState to Failed for ContentNode ID {ContentNodeId}.", contentNode.Id);
+            }
         }
         finally
         {
-            // Publish the ContentNodeGenerated event defined at the top of this file
+            // Publish the ContentNodeGenerated event
             await context.Publish(contentNodeGeneratedEvent);
         }
+    }
+
+    private string ExtractSectionNumber(string text)
+    {
+        // Implement logic to extract section number from text
+        // Example:
+        var firstSpaceIndex = text.IndexOf(' ');
+        return firstSpaceIndex > 0 ? text.Substring(0, firstSpaceIndex) : string.Empty;
+    }
+
+    private string ExtractSectionTitle(string text)
+    {
+        // Implement logic to extract section title from text
+        // Example:
+        var firstSpaceIndex = text.IndexOf(' ');
+        return firstSpaceIndex > 0 ? text.Substring(firstSpaceIndex).Trim() : text;
+    }
+
+    private async Task<List<ContentNode>> GenerateBodyText(string contentNodeType, string sectionNumber,
+            string sectionTitle, string tableOfContentsString, string documentProcessName, Guid? metadataId = null)
+    {
+        var bodyTextGenerator = _sp.GetRequiredServiceForDocumentProcess<IBodyTextGenerator>(documentProcessName);
+
+        if (bodyTextGenerator == null)
+        {
+            throw new InvalidOperationException("No valid IBodyTextGenerator was found");
+        }
+
+        var result = await bodyTextGenerator.GenerateBodyText(contentNodeType, sectionNumber, sectionTitle,
+            tableOfContentsString, documentProcessName, metadataId);
+        return result;
     }
 
     private void ReAttachContentNodeSystemItemToHeadingNode(ContentNode bodyContentNode, ContentNode existingContentNode)
@@ -160,28 +240,9 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
             existingContentNode.ContentNodeSystemItem.ContentNodeId = existingContentNode.Id;
             existingContentNode.ContentNodeSystemItem.ContentNode = existingContentNode;
 
-            _dbContext.ContentNodeSystemItems.Add(existingContentNode.ContentNodeSystemItem);
-
             bodyContentNode.ContentNodeSystemItemId = null;
             bodyContentNode.ContentNodeSystemItem = null;
         }
-    }
-
-    private async Task<List<ContentNode>> GenerateBodyText(string contentNodeType, string sectionNumber,
-            string sectionTitle, string tableOfContentsString, string documentProcessName, Guid? metadataId = null)
-    {
-        // Resolve the IBodyTextGenerator to be used using the GetRequiredServiceForDocumentProcess method.
-        _bodyTextGenerator = _sp.GetRequiredServiceForDocumentProcess<IBodyTextGenerator>(documentProcessName);
-
-        if (_bodyTextGenerator == null)
-        {
-            throw new InvalidOperationException("No valid IBodyTextGenerator was found");
-        }
-
-        // This method is a wrapper around the streaming output of the AI Completion Service.
-        var result = await _bodyTextGenerator.GenerateBodyText(contentNodeType, sectionNumber, sectionTitle,
-            tableOfContentsString, documentProcessName, metadataId);
-        return result;
     }
 
     private string GeneratePlainTextTableOfContentsFromOutlineJson(string outlineJson)
@@ -195,7 +256,6 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
         var sb = new StringBuilder();
         foreach (var contentNode in contentNodes)
         {
-            // Recursively append the content nodes to the string builder - separate method call to handle recursive calling
             AppendContentNode(sb, contentNode, 0);
         }
         return sb.ToString();
@@ -203,7 +263,6 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
 
     private void AppendContentNode(StringBuilder sb, ContentNode contentNode, int depth)
     {
-        // Indent based on the depth in the hierarchy
         sb.AppendLine(new string(' ', depth * 2) + contentNode.Text);
         foreach (var child in contentNode.Children)
         {

@@ -1,29 +1,29 @@
 using Azure.Messaging.ServiceBus.Administration;
 using MassTransit;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Greenlight.DocumentProcess.Shared;
 using Microsoft.Greenlight.DocumentProcess.Shared.Generation;
 using Microsoft.Greenlight.ServiceDefaults;
-using Microsoft.Greenlight.SetupManager;
+using Microsoft.Greenlight.SetupManager.Services;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.Messages;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Management;
-using Microsoft.Greenlight.Shared.Services;
 
 var builder = Host.CreateApplicationBuilder(args);
 
 builder.AddServiceDefaults();
 builder.Services.AddSingleton<AzureCredentialHelper>();
+builder.Services.AddOptions<ServiceConfigurationOptions>()
+                .Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
+
 var credentialHelper = new AzureCredentialHelper(builder.Configuration);
-
-builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
-
-
+// Initialize AdminHelper with configuration
+AdminHelper.Initialize(builder.Configuration);
 
 builder.AddGreenlightServices(credentialHelper, serviceConfigurationOptions);
+builder.AddRepositories();
 builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
 
 if (!serviceConfigurationOptions.GreenlightServices.DocumentGeneration.CreateBodyTextNodes)
@@ -33,16 +33,9 @@ if (!serviceConfigurationOptions.GreenlightServices.DocumentGeneration.CreateBod
 
 builder.AddSemanticKernelServices(serviceConfigurationOptions);
 
-builder.Services.AddSingleton<SetupDataInitializerService>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<SetupDataInitializerService>());
-
-builder.Services.AddOpenTelemetry()
-    .WithTracing(tracing => tracing.AddSource(SetupDataInitializerService.ActivitySourceName));
-
-
+var rabbitMqConnectionString = builder.Configuration.GetConnectionString("rabbitmqdocgen");
 var serviceBusConnectionString = builder.Configuration.GetConnectionString("sbus");
 serviceBusConnectionString = serviceBusConnectionString?.Replace("https://", "sb://").Replace(":443/", "/");
-var rabbitMqConnectionString = builder.Configuration.GetConnectionString("rabbitmqdocgen");
 
 builder.Services.AddMassTransit(x =>
 {
@@ -70,8 +63,8 @@ builder.Services.AddMassTransit(x =>
         cfg.ConfigureEndpoints(context);
         cfg.ConcurrentMessageLimit = 4;
         cfg.PrefetchCount = 3;
-        cfg.UseMessageRetry(r => r.Intervals(new TimeSpan[]
-        {
+        cfg.UseMessageRetry(r => r.Intervals(
+        [
             // Set first retry to a random number between 3 and 9 seconds
             TimeSpan.FromSeconds(new Random().Next(3, 9)),
             // Set second retry to a random number between 10 and 30 seconds
@@ -79,12 +72,11 @@ builder.Services.AddMassTransit(x =>
             // Set third and final retry to a random number between 30 and 60 seconds
             TimeSpan.FromSeconds(new Random().Next(30, 60))
 
-        }));
+        ]));
     });
 });
 
-// Initialize AdminHelper with configuration
-AdminHelper.Initialize(builder.Configuration);
+
 
 builder.Services.AddSingleton<IHostedService, ShutdownCleanupService>();
 
@@ -93,10 +85,13 @@ if (builder.Environment.IsDevelopment() && !serviceConfigurationOptions.Greenlig
     await DeleteAllQueues(serviceBusConnectionString, credentialHelper);
 }
 
+builder.Services.AddSingleton<SetupServicesInitializerService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<SetupServicesInitializerService>());
+
 var host = builder.Build();
 host.Run();
 
-async Task DeleteAllQueues(string? connectionString, AzureCredentialHelper credentialHelper)
+static async Task DeleteAllQueues(string? connectionString, AzureCredentialHelper credentialHelper)
 {
     var adminClient = new ServiceBusAdministrationClient(
         connectionString,

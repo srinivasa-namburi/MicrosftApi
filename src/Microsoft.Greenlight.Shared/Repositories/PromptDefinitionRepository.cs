@@ -14,8 +14,7 @@ public class PromptDefinitionRepository : GenericRepository<PromptDefinition>
     public PromptDefinitionRepository(
         DocGenerationDbContext dbContext,
         IConnectionMultiplexer redisConnection
-    )
-        : base(dbContext, redisConnection)
+    ) : base(dbContext, redisConnection)
     {
         SetCacheDuration(DefaultCacheDuration);
     }

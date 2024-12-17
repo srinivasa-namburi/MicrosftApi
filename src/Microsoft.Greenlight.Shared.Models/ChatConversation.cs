@@ -15,5 +15,4 @@ public class ChatConversation : EntityBase
                                                """;
 
     public List<ChatMessage> ChatMessages { get; set; } = new List<ChatMessage>();
-    public DateTime? CreatedAt { get; set; }
 }

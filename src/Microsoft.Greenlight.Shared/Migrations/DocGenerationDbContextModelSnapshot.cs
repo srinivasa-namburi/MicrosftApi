@@ -17,7 +17,7 @@ namespace Microsoft.Greenlight.Shared.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.8")
+                .HasAnnotation("ProductVersion", "8.0.11")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -31,8 +31,14 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<Guid>("BoundingRegionId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<bool>("IsEmpty")
                         .HasColumnType("bit");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -66,6 +72,12 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<Guid?>("ContentNodeId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<int>("Page")
                         .HasColumnType("int");
 
@@ -95,12 +107,15 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTime?>("CreatedAt")
+                    b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("DocumentProcessName")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -132,12 +147,15 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<Guid>("ConversationId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Message")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<Guid?>("ReplyToChatMessageId")
                         .HasColumnType("uniqueidentifier");
@@ -160,7 +178,7 @@ namespace Microsoft.Greenlight.Shared.Migrations
 
                     b.HasIndex("ConversationId");
 
-                    b.HasIndex("CreatedAt");
+                    b.HasIndex("CreatedUtc");
 
                     b.HasIndex("ReplyToChatMessageId");
 
@@ -178,6 +196,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<Guid?>("ContentNodeSystemItemId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid?>("GeneratedDocumentId")
                         .HasColumnType("uniqueidentifier");
 
@@ -187,8 +208,17 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<Guid?>("IngestedDocumentId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid?>("ParentId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PromptInstructions")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("RenderTitleOnly")
+                        .HasColumnType("bit");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -229,6 +259,12 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<Guid>("ContentNodeId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -253,6 +289,12 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ModifiedUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<byte[]>("RowVersion")
@@ -287,6 +329,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
 
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("DescriptionOfContents")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -298,6 +343,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<string>("IndexName")
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -329,11 +377,17 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid>("DocumentLibraryId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("DynamicDocumentProcessDefinitionId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -359,11 +413,17 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid>("GeneratedDocumentId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("MetadataJson")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -385,8 +445,14 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid>("DocumentProcessDefinitionId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -408,11 +474,17 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid?>("DocumentOutlineId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<int>("Level")
                         .HasColumnType("int");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<int?>("OrderIndex")
                         .HasColumnType("int");
@@ -422,6 +494,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
 
                     b.Property<string>("PromptInstructions")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("RenderTitleOnly")
+                        .HasColumnType("bit");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -467,6 +542,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<bool>("ClassifyDocuments")
                         .HasColumnType("bit");
 
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("Description")
                         .HasColumnType("nvarchar(max)");
 
@@ -475,6 +553,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
 
                     b.Property<int>("LogicType")
                         .HasColumnType("int");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("Repositories")
                         .IsRequired()
@@ -509,8 +590,14 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("Description")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -536,9 +623,15 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid?>("DocumentProcessDefinitionId")
                         .IsRequired()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<Guid>("PromptDefinitionId")
                         .HasColumnType("uniqueidentifier");
@@ -572,8 +665,14 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("Description")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<Guid>("PromptDefinitionId")
                         .HasColumnType("uniqueidentifier");
@@ -615,6 +714,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<DateTimeOffset>("Created")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("FileName")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -625,6 +727,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<string>("MimeType")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -648,6 +753,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("DocumentProcess")
                         .HasColumnType("nvarchar(max)");
 
@@ -656,6 +764,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
 
                     b.Property<Guid?>("MetadataId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<Guid>("RequestingAuthorOid")
                         .HasColumnType("uniqueidentifier");
@@ -687,6 +798,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<int?>("ClassificationType")
                         .HasColumnType("int");
 
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("DocumentProcess")
                         .HasColumnType("nvarchar(450)");
 
@@ -702,6 +816,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
 
                     b.Property<int>("IngestionState")
                         .HasColumnType("int");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("OriginalDocumentUrl")
                         .IsRequired()
@@ -738,6 +855,12 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -765,8 +888,14 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<Guid>("DynamicDocumentProcessDefinitionId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -790,8 +919,14 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("Description")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -814,11 +949,17 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid>("DocumentProcessDefinitionId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<Guid>("ReviewId")
                         .HasColumnType("uniqueidentifier");
@@ -849,8 +990,14 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid>("ExportedLinkId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<Guid>("ReviewDefinitionId")
                         .HasColumnType("uniqueidentifier");
@@ -883,6 +1030,12 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("Question")
                         .IsRequired()
@@ -922,8 +1075,14 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<string>("AiSentimentReasoning")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("FullAiAnswer")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<Guid?>("OriginalReviewQuestionId")
                         .HasColumnType("uniqueidentifier");
@@ -962,6 +1121,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<Guid>("ContentNodeSystemItemId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("Description")
                         .HasColumnType("nvarchar(max)");
 
@@ -969,6 +1131,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -994,7 +1159,7 @@ namespace Microsoft.Greenlight.Shared.Migrations
 
                     b.ToTable("SourceReferenceItems", (string)null);
 
-                    b.HasDiscriminator<string>("Discriminator").HasValue("SourceReferenceItem");
+                    b.HasDiscriminator().HasValue("SourceReferenceItem");
 
                     b.UseTphMappingStrategy();
                 });
@@ -1008,8 +1173,14 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<int>("ColumnCount")
                         .HasColumnType("int");
 
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid?>("IngestedDocumentId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<int>("RowCount")
                         .HasColumnType("int");
@@ -1038,6 +1209,12 @@ namespace Microsoft.Greenlight.Shared.Migrations
 
                     b.Property<int?>("ColumnSpan")
                         .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<int>("RowIndex")
                         .HasColumnType("int");
@@ -1071,12 +1248,18 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("Email")
                         .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("FullName")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<int>("Provider")
                         .HasColumnType("int");
@@ -1184,7 +1367,7 @@ namespace Microsoft.Greenlight.Shared.Migrations
 
                     b.ToTable("DocumentIngestionSagaStates", (string)null);
 
-                    b.HasDiscriminator<string>("Discriminator").HasValue("DocumentIngestionSagaState");
+                    b.HasDiscriminator().HasValue("DocumentIngestionSagaState");
 
                     b.UseTphMappingStrategy();
                 });
@@ -1363,7 +1546,8 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.HasOne("Microsoft.Greenlight.Shared.Models.ContentNode", "ContentNode")
                         .WithOne("ContentNodeSystemItem")
                         .HasForeignKey("Microsoft.Greenlight.Shared.Models.ContentNodeSystemItem", "ContentNodeId")
-                        .OnDelete(DeleteBehavior.Cascade);
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("ContentNode");
                 });

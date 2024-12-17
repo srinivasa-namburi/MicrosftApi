@@ -1,14 +1,11 @@
 using AutoMapper;
-using Elastic.Transport.Extensions;
 using MassTransit;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.SemanticKernel;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Review.Commands;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Review.Events;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
-using Microsoft.Greenlight.Shared.Models.Review;
 
 namespace Microsoft.Greenlight.Worker.DocumentGeneration.Consumers.Review;
 
@@ -77,7 +74,7 @@ public class AnalyzeReviewQuestionAnswerSentimentConsumer : IConsumer<AnalyzeRev
                       [/Answer]
                       
                       You provided the following sentiment of the answer in relation to the question asked:
-                      {sentimentEnum.GetStringValue()}
+                      {sentimentEnum.ToString()}
                       
                       Provide a reasoning for the sentiment you provided in plain English. 
                       Be brief, but provide enough context to justify your sentiment.

@@ -16,14 +16,6 @@
 		<None Remove="s\**" />
 	</ItemGroup>
 	<ItemGroup>
-		<PackageReference Include="Humanizer.Core" Version="2.14.1" />
-		<PackageReference Include="MassTransit.Azure.ServiceBus.Core" Version="8.2.1" />
-		<PackageReference Include="MassTransit.EntityFrameworkCore" Version="8.2.1" />
-		<PackageReference Include="MassTransit.Quartz" Version="8.2.1" />
-		<PackageReference Include="MassTransit.RabbitMQ" Version="8.2.1" />
-		<PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
-	</ItemGroup>
-	<ItemGroup>
 		<ProjectReference Include="..\Microsoft.Greenlight.DocumentProcesses\Microsoft.Greenlight.DocumentProcesses.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.ServiceDefaults\Microsoft.Greenlight.ServiceDefaults.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.Shared\Microsoft.Greenlight.Shared.csproj" />

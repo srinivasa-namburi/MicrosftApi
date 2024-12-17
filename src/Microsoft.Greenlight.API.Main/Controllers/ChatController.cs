@@ -56,7 +56,7 @@ public class ChatController : BaseController
 
         var chatMessageModels = await _dbContext.ChatMessages
             .Where(x => x.ConversationId == conversationId)
-            .OrderBy(x => x.CreatedAt)
+            .OrderBy(x => x.CreatedUtc)
             .Include(x=>x.AuthorUserInformation)
             .ToListAsync();
 
@@ -85,7 +85,7 @@ public class ChatController : BaseController
         var conversation = new ChatConversation
         {
             Id = conversationId,
-            CreatedAt = DateTime.UtcNow,
+            CreatedUtc = DateTime.UtcNow,
             DocumentProcessName = documentProcessName
         };
 

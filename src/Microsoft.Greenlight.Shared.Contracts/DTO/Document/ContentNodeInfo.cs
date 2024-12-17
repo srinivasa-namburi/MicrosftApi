@@ -9,6 +9,8 @@ public class ContentNodeInfo
     public ContentNodeType Type { get; set; }
     public ContentNodeGenerationState? GenerationState { get; set; }
     public Guid? ParentId { get; set; }
+    public bool RenderTitleOnly { get; set; } = false;
+    public string? PromptInstructions { get; set; }
     public Guid? ContentNodeSystemItemId { get; set; }
     public ContentNodeSystemItemInfo? ContentNodeSystemItem { get; set; }
     public List<ContentNodeInfo> Children { get; set; } = new List<ContentNodeInfo>();

@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <PackageReference Include="MassTransit.Abstractions" Version="8.2.1" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
     <PackageReference Include="Microsoft.KernelMemory.Abstractions" Version="0.78.241005.1" />
   </ItemGroup>
 

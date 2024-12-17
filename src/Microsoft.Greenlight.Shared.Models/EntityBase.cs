@@ -19,4 +19,7 @@ public abstract class EntityBase
 
     [Timestamp]
     public byte[] RowVersion { get; set; } = Array.Empty<byte>();
+
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime ModifiedUtc { get; set; } = DateTime.UtcNow;
 }

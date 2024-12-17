@@ -102,7 +102,7 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
         {
             ConversationId = userMessageDto.ConversationId,
             Source = ChatMessageSource.Assistant,
-            CreatedAt = DateTime.UtcNow,
+            CreatedUtc = DateTime.UtcNow,
             ReplyToId = userMessageDto.Id,
             Id = Guid.NewGuid(),
             State = ChatMessageCreationState.InProgress
@@ -158,7 +158,7 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
             {
                 if (!responseDateSet)
                 {
-                    assistantMessageDto.CreatedAt = DateTime.UtcNow;
+                    assistantMessageDto.CreatedUtc = DateTime.UtcNow;
                     assistantMessageDto.State = ChatMessageCreationState.InProgress;
                     responseDateSet = true;
                 }
@@ -239,16 +239,16 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
         {
             chatHistory = await _dbContext.ChatMessages
                 .Where(x => x.ConversationId == userMessageDto.ConversationId && x.Id != userMessageDto.Id)
-                .OrderBy(x => x.CreatedAt)
+                .OrderBy(x => x.CreatedUtc)
                 .ToListAsync();
         }
         else
         {
             chatHistory = await _dbContext.ChatMessages
                 .Where(x => x.ConversationId == userMessageDto.ConversationId && x.Id != userMessageDto.Id)
-                .OrderByDescending(x => x.CreatedAt)
+                .OrderByDescending(x => x.CreatedUtc)
                 .Take(numberOfMessagesToInclude)
-                .OrderBy(x => x.CreatedAt)
+                .OrderBy(x => x.CreatedUtc)
                 .ToListAsync();
         }
 
@@ -268,13 +268,13 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
         // We want to summarize any messages prior to the 5 latest messages in the returned chatHistory list
 
         // We need to refresh the chat history list to get the 5 earliest messages
-        var fiveEarliestMessages = chatHistory.OrderBy(x => x.CreatedAt).Take(5).ToList();
+        var fiveEarliestMessages = chatHistory.OrderBy(x => x.CreatedUtc).Take(5).ToList();
         // Get the date from the latest message in the list
         var earliestMessage = fiveEarliestMessages.Last();
 
         if (fullChatHistoryCount > numberOfMessagesToInclude)
         {
-            await context.Publish(new GenerateChatHistorySummary(userMessageDto.ConversationId, earliestMessage.CreatedAt));
+            await context.Publish(new GenerateChatHistorySummary(userMessageDto.ConversationId, earliestMessage.CreatedUtc));
         }
 
         return chatHistoryString;

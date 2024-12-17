@@ -13,6 +13,8 @@ public class ContentNode : EntityBase
     [JsonIgnore]
     public ContentNode? Parent { get; set; }
     public Guid? ParentId { get; set; }
+    public bool RenderTitleOnly { get; set; } = false;
+    public string? PromptInstructions { get; set; }
 
     public Guid? IngestedDocumentId { get; set; }
     [JsonIgnore]
