@@ -12,6 +12,8 @@ using MudBlazor.Services;
 using Microsoft.Greenlight.ServiceDefaults;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
+using Microsoft.Greenlight.Shared.Extensions;
+using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Web.DocGen.Auth;
 using Microsoft.Greenlight.Web.DocGen.Components;
 using Microsoft.Greenlight.Web.DocGen.ServiceClients;
@@ -33,6 +35,14 @@ var azureAdSettings = azureAdSection.Get<AzureAdOptions>();
 
 var serviceConfigurationSection = builder.Configuration.GetSection("ServiceConfiguration");
 builder.Services.Configure<ServiceConfigurationOptions>(serviceConfigurationSection);
+var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
+
+builder.Services.AddSingleton<AzureCredentialHelper>();
+var credentialHelper = new AzureCredentialHelper(builder.Configuration);
+
+//Initialize AdminHelper with configuration
+AdminHelper.Initialize(builder.Configuration);
+
 
 var apiUri = new Uri("https+http://api-main");
 
@@ -191,11 +201,8 @@ builder.Services.AddScoped<AuthenticationStateProvider, PersistingAuthentication
 builder.Services.AddHttpForwarderWithServiceDiscovery();
 
 builder.AddAzureBlobClient("blob-docing");
-builder.AddRedisClient("redis");
 
-var redisConnection = ConnectionMultiplexer.Connect(builder.Configuration.GetConnectionString("redis"));
-builder.Services.AddDataProtection()
-    .PersistKeysToStackExchangeRedis(redisConnection, "DataProtection-Keys");
+builder.AddGreenLightRedisClient("redis", credentialHelper, serviceConfigurationOptions);
 
 builder.Services.AddSingleton<IUserIdProvider, SignalRCustomUserIdProvider>();
 
@@ -232,6 +239,11 @@ builder.Services.Configure<FormOptions>(options =>
 {
     options.MultipartBodyLengthLimit = 10 * 1024 * 1024 * 20; // 200MB
 });
+
+var redisConnection = builder.Services.BuildServiceProvider().GetRequiredService<IConnectionMultiplexer>();
+
+builder.Services.AddDataProtection()
+    .PersistKeysToStackExchangeRedis(redisConnection, "DataProtection-Keys");
 
 var app = builder.Build();
 

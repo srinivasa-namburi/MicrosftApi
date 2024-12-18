@@ -80,28 +80,8 @@ public static class BuilderExtensions
 
         builder.AddRabbitMQClient("rabbitmqdocgen");
 
-
-        if (AdminHelper.IsRunningInProduction())
-        {
-            var azureOptionsProvider = new AzureOptionsProvider();
-
-            var configurationOptions = ConfigurationOptions.Parse(
-                builder.Configuration.GetConnectionString("redis") ??
-                throw new InvalidOperationException("Couldn't find a redis connection string"));
-
-            if (configurationOptions.EndPoints.Any(azureOptionsProvider.IsMatch))
-            {
-                configurationOptions.ConfigureForAzureWithTokenCredentialAsync(
-                    credentialHelper.GetAzureCredential()).Wait();
-            }
-
-            builder.AddRedisClient("redis",
-                configureOptions: options => { options.Defaults = configurationOptions.Defaults; });
-        }
-        else
-        {
-            builder.AddRedisClient("redis");
-        }
+        builder.AddGreenLightRedisClient("redis", credentialHelper, serviceConfigurationOptions);
+        
 
         builder.Services.AddScoped<AzureFileHelper>();
         builder.Services.AddSingleton<SearchClientFactory>();
@@ -112,6 +92,35 @@ public static class BuilderExtensions
 
         builder.Services.AddSingleton<IPluginSourceReferenceCollector, PluginSourceReferenceCollector>();
         builder.Services.AddKeyedScoped<IFunctionInvocationFilter, InputOutputTrackingPluginInvocationFilter>("InputOutputTrackingPluginInvocationFilter");
+
+        return builder;
+    }
+
+    public static IHostApplicationBuilder AddGreenLightRedisClient(this IHostApplicationBuilder builder,
+        string redisConnectionStringName, AzureCredentialHelper credentialHelper,
+        ServiceConfigurationOptions serviceConfigurationOptions)
+    {
+        if (AdminHelper.IsRunningInProduction())
+        {
+            var azureOptionsProvider = new AzureOptionsProvider();
+
+            var configurationOptions = ConfigurationOptions.Parse(
+                builder.Configuration.GetConnectionString(redisConnectionStringName) ??
+                throw new InvalidOperationException("Couldn't find a redis connection string"));
+
+            if (configurationOptions.EndPoints.Any(azureOptionsProvider.IsMatch))
+            {
+                configurationOptions.ConfigureForAzureWithTokenCredentialAsync(
+                    credentialHelper.GetAzureCredential()).Wait();
+            }
+
+            builder.AddRedisClient(redisConnectionStringName,
+                configureOptions: options => { options.Defaults = configurationOptions.Defaults; });
+        }
+        else
+        {
+            builder.AddRedisClient(redisConnectionStringName);
+        }
 
         return builder;
     }
