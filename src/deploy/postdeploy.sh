@@ -9,6 +9,11 @@ resourceGroup="rg-$AZURE_ENV_NAME"
 workloadProfileType="$AZURE_CAE_WORKLOAD_TYPE"
 openai_subscription_id="$AZURE_SUBSCRIPTION_ID"
 
+if ["$SKIP_POSTDEPLOY" == "true"]; then
+    echo "Skipping post-deploy script execution as SKIP_POSTDEPLOY is set to true."
+    exit 0
+fi
+
 # Check if PVICO_OPENAI_CONNECTIONSTRING is set
 if [ -z "$PVICO_OPENAI_CONNECTIONSTRING" ]; then
     echo "PVICO_OPENAI_CONNECTIONSTRING is not set. Using default number of workers." >&2
@@ -31,12 +36,12 @@ fi
 # Define the container apps and their desired instance counts (initial values)
 declare -A containerApps=(
     ["worker-documentgeneration"]=8  # Default value
-    ["worker-chat"]=4
+    ["worker-chat"]=2
     ["worker-documentingestion"]=4
     ["web-docgen"]=1
     ["api-main"]=1
     ["worker-scheduler"]=1
-    ["worker-setupmanager"]=1
+    ["services-setupmanager"]=1
 )
 
 # Function to get the TPM for a specific deployment

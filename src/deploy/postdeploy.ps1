@@ -7,6 +7,11 @@ $resourceGroup = "rg-$Env:AZURE_ENV_NAME"
 $workloadProfileType = $Env:AZURE_CAE_WORKLOAD_TYPE
 $openai_subscription_id = $Env:AZURE_SUBSCRIPTION_ID
 
+if ($env:SKIP_POSTDEPLOY -eq "true") {
+    Write-Host "Skipping post-deployment script..."
+    return
+}
+
 # Check if PVICO_OPENAI_CONNECTIONSTRING is set
 if ([string]::IsNullOrEmpty($Env:PVICO_OPENAI_CONNECTIONSTRING)) {
     Write-Warning "PVICO_OPENAI_CONNECTIONSTRING is not set. Using default number of workers."
@@ -27,14 +32,16 @@ if ([string]::IsNullOrEmpty($Env:PVICO_OPENAI_RESOURCEGROUP)) {
 }
 
 # Define the container apps and their desired instance counts (initial values)
+# We're skipping the DB setup manager as this is deployed separately
+
 $containerApps = @{
     "worker-documentgeneration" = 8
-    "worker-chat" = 4
+    "worker-chat" = 2
     "worker-documentingestion" = 4
     "web-docgen" = 1
     "api-main" = 1
     "worker-scheduler" = 1
-    "worker-setupmanager" = 1
+    "services-setupmanager" = 1
 }
 
 # Function to get the TPM for a specific deployment

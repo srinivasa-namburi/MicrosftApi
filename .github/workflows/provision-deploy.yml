@@ -177,144 +177,152 @@ jobs:
         env:
           PVICO_ENTRA_CREDENTIALS: ${{ secrets.PVICO_ENTRA_CREDENTIALS }}
 
-      - name: Retrieve ACR Details
-        id: acr_details
+      # - name: Retrieve ACR Details
+      #   id: acr_details
+      #   run: |
+      #     RG_NAME="rg-${{ env.AZURE_ENV_NAME }}"
+      #     ACR_LOGIN_SERVER=$(az acr list -g "$RG_NAME" --query "[0].loginServer" -o tsv)
+
+      #     ACR_USERNAME=$(az acr credential show --name $(az acr list -g "$RG_NAME" --query "[0].name" -o tsv) --query "username" -o tsv)
+      #     ACR_PASSWORD=$(az acr credential show --name $(az acr list -g "$RG_NAME" --query "[0].name" -o tsv) --query "passwords[0].value" -o tsv)
+
+      #     echo "ACR_LOGIN_SERVER=$ACR_LOGIN_SERVER" >> $GITHUB_ENV
+      #     echo "ACR_USERNAME=$ACR_USERNAME" >> $GITHUB_ENV
+      #     echo "ACR_PASSWORD=$ACR_PASSWORD" >> $GITHUB_ENV
+
+      # - name: Set up Docker Buildx
+      #   uses: docker/setup-buildx-action@v3
+
+      # - name: Log in to Azure Container Registry
+      #   uses: docker/login-action@v2
+      #   with:
+      #     username: ${{ env.ACR_USERNAME }}
+      #     password: ${{ env.ACR_PASSWORD }}
+      #     registry: ${{ env.ACR_LOGIN_SERVER }}
+
+      # - name: Build and Push Docker Image
+      #   uses: docker/build-push-action@v5
+      #   with:
+      #     context: ./src
+      #     file: ./src/Migrations.Dockerfile
+      #     push: true
+      #     tags: ${{ env.ACR_LOGIN_SERVER }}/migrations:latest
+
+      # - name: Retrieve Managed Identity Name and Client ID
+      #   id: get_mi_name
+      #   run: |
+      #     RG_NAME="rg-${{ env.AZURE_ENV_NAME }}"
+      #     # Retrieve the name of the managed identity
+      #     MI_NAME=$(az identity list -g "$RG_NAME" --query "[?starts_with(name, 'mi-')].name" -o tsv)
+
+      #     # Retrieve the Client ID of the managed identity
+      #     MI_CLIENT_ID=$(az identity show --name "$MI_NAME" --resource-group "$RG_NAME" --query "clientId" -o tsv)
+
+      #     if [ -z "$MI_NAME" ]; then
+      #       echo "Managed Identity not found in the resource group $RG_NAME."
+      #       exit 1
+      #     fi
+
+      #     if [ -z "$MI_CLIENT_ID" ]; then
+      #       echo "Client ID for Managed Identity $MI_NAME not found in resource group $RG_NAME."
+      #       exit 1
+      #     fi
+
+      #     echo "MI_NAME=$MI_NAME" >> $GITHUB_ENV
+      #     echo "MI_CLIENT_ID=$MI_CLIENT_ID" >> $GITHUB_ENV
+
+      # - name: Retrieve SQL Server FQDN with Environment Tag
+      #   id: get_sql_server_fqdn
+      #   run: |
+      #     RG_NAME="rg-${{ env.AZURE_ENV_NAME }}"
+      #     ENV_NAME="${{ env.AZURE_ENV_NAME }}"
+      #     # Retrieve SQL Server FQDN with a specific tag azd-env-name matching ENV_NAME
+      #     SQL_SERVER_FQDN=$(az sql server list -g "$RG_NAME" -o json | jq -r --arg ASPIRE_NAME "sqldocgen" '.[] | select(.tags["aspire-resource-name"] == $ASPIRE_NAME) | .fullyQualifiedDomainName' | head -n 1)
+
+      #     if [ -z "$SQL_SERVER_FQDN" ]; then
+      #       echo "SQL Server with the tag 'azd-env-name=$ENV_NAME' not found in resource group $RG_NAME."
+      #       exit 1
+      #     fi
+
+      #     echo "SQL_SERVER_FQDN=$SQL_SERVER_FQDN" >> $GITHUB_ENV
+
+      # - name: Retrieve SQL Database Name from appsettings.Production.json
+      #   id: get_db_name
+      #   run: |
+      #     DB_NAME=$(jq -r '.ServiceConfiguration.SQL.DatabaseName' Microsoft.Greenlight.AppHost/appsettings.Production.json)
+
+      #     if [ -z "$DB_NAME" ]; then
+      #       echo "Database name not found in appsettings.Production.json."
+      #       exit 1
+      #     fi
+
+      #     echo "DB_NAME=$DB_NAME" >> $GITHUB_ENV
+
+      # - name: Create or Update Container Apps Job for EF Core Migrations
+      #   run: |
+      #     RG_NAME="rg-${{ env.AZURE_ENV_NAME }}"
+      #     ENV_NAME="${{ env.AZURE_ENV_NAME }}"
+      #     JOB_NAME="ef-migrations-job"
+
+      #     # Retrieve the Container Apps Environment based on the tag azd-env-name
+      #     CONTAINERAPPS_ENV=$(az containerapp env list -g "$RG_NAME" -o json | jq -r --arg ENV_NAME "$ENV_NAME" '.[] | select(.tags["azd-env-name"] == $ENV_NAME) | .id' | head -n 1)
+
+      #     # Debugging: Ensure variables are set and print their values
+      #     echo "RG_NAME: $RG_NAME"
+      #     echo "ENV_NAME: $ENV_NAME"
+      #     echo "JOB_NAME: $JOB_NAME"
+      #     echo "CONTAINERAPPS_ENV: $CONTAINERAPPS_ENV"
+
+      #     # Check if CONTAINERAPPS_ENV is empty or unset
+      #     if [ -z "$CONTAINERAPPS_ENV" ]; then
+      #       echo "Error: CONTAINERAPPS_ENV is empty. Ensure that the environment name is correct and exists in the resource group."
+      #       exit 1
+      #     fi
+
+      #     # Check if the job exists without breaking the build
+      #     if az containerapp job show --name "$JOB_NAME" --resource-group "$RG_NAME" --query "name" -o tsv 2>/dev/null; then
+      #       echo "Updating existing Container Apps Job with the latest image..."
+      #       az containerapp job update \
+      #         --name "$JOB_NAME" \
+      #         --resource-group "$RG_NAME" \
+      #         --image "${{ env.ACR_LOGIN_SERVER }}/migrations:latest" \
+      #         --replace-env-vars "SQL_SERVER_FQDN=${{ env.SQL_SERVER_FQDN }}" "DB_NAME=${{ env.DB_NAME }}" "AZURE_CLIENT_ID=${{ env.MI_CLIENT_ID }}"
+      #     else
+      #       echo "Creating a new Container Apps Job..."
+      #       az containerapp job create \
+      #         --name "$JOB_NAME" \
+      #         --resource-group "$RG_NAME" \
+      #         --environment "$CONTAINERAPPS_ENV" \
+      #         --replica-timeout 300 \
+      #         --replica-retry-limit 3 \
+      #         --replica-completion-count 1 \
+      #         --parallelism 1 \
+      #         --max-executions 1 \
+      #         --trigger-type Manual \
+      #         --image "${{ env.ACR_LOGIN_SERVER }}/migrations:latest" \
+      #         --cpu 0.5 --memory 1.0Gi \
+      #         --registry-server "${{ env.ACR_LOGIN_SERVER }}" \
+      #         --registry-username "${{ env.ACR_USERNAME }}" \
+      #         --registry-password "${{ env.ACR_PASSWORD }}" \
+      #         --env-vars "SQL_SERVER_FQDN=${{ env.SQL_SERVER_FQDN }}" "DB_NAME=${{ env.DB_NAME }}" "AZURE_CLIENT_ID=${{ env.MI_CLIENT_ID }}" \
+      #         --mi-user-assigned "${{ env.MI_NAME }}"
+      #     fi
+
+      # - name: Start EF Migrations Job
+      #   run: |
+      #     RG_NAME="rg-${{ env.AZURE_ENV_NAME }}"
+      #     az containerapp job start --name "ef-migrations-job" --resource-group "$RG_NAME"
+
+      - name: Deploy db setup manager first
         run: |
-          RG_NAME="rg-${{ env.AZURE_ENV_NAME }}"
-          ACR_LOGIN_SERVER=$(az acr list -g "$RG_NAME" --query "[0].loginServer" -o tsv)
+          export SKIP_POSTDEPLOY=true
+          azd deploy db-setupmanager --no-prompt
 
-          ACR_USERNAME=$(az acr credential show --name $(az acr list -g "$RG_NAME" --query "[0].name" -o tsv) --query "username" -o tsv)
-          ACR_PASSWORD=$(az acr credential show --name $(az acr list -g "$RG_NAME" --query "[0].name" -o tsv) --query "passwords[0].value" -o tsv)
-
-          echo "ACR_LOGIN_SERVER=$ACR_LOGIN_SERVER" >> $GITHUB_ENV
-          echo "ACR_USERNAME=$ACR_USERNAME" >> $GITHUB_ENV
-          echo "ACR_PASSWORD=$ACR_PASSWORD" >> $GITHUB_ENV
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Azure Container Registry
-        uses: docker/login-action@v2
-        with:
-          username: ${{ env.ACR_USERNAME }}
-          password: ${{ env.ACR_PASSWORD }}
-          registry: ${{ env.ACR_LOGIN_SERVER }}
-
-      - name: Build and Push Docker Image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./src
-          file: ./src/Migrations.Dockerfile
-          push: true
-          tags: ${{ env.ACR_LOGIN_SERVER }}/migrations:latest
-
-      - name: Retrieve Managed Identity Name and Client ID
-        id: get_mi_name
+      - name: Deploy Rest of Application
         run: |
-          RG_NAME="rg-${{ env.AZURE_ENV_NAME }}"
-          # Retrieve the name of the managed identity
-          MI_NAME=$(az identity list -g "$RG_NAME" --query "[?starts_with(name, 'mi-')].name" -o tsv)
+          export SKIP_POSTDEPLOY=false1
+          azd deploy --no-prompt
 
-          # Retrieve the Client ID of the managed identity
-          MI_CLIENT_ID=$(az identity show --name "$MI_NAME" --resource-group "$RG_NAME" --query "clientId" -o tsv)
-
-          if [ -z "$MI_NAME" ]; then
-            echo "Managed Identity not found in the resource group $RG_NAME."
-            exit 1
-          fi
-
-          if [ -z "$MI_CLIENT_ID" ]; then
-            echo "Client ID for Managed Identity $MI_NAME not found in resource group $RG_NAME."
-            exit 1
-          fi
-
-          echo "MI_NAME=$MI_NAME" >> $GITHUB_ENV
-          echo "MI_CLIENT_ID=$MI_CLIENT_ID" >> $GITHUB_ENV
-
-      - name: Retrieve SQL Server FQDN with Environment Tag
-        id: get_sql_server_fqdn
-        run: |
-          RG_NAME="rg-${{ env.AZURE_ENV_NAME }}"
-          ENV_NAME="${{ env.AZURE_ENV_NAME }}"
-          # Retrieve SQL Server FQDN with a specific tag azd-env-name matching ENV_NAME
-          SQL_SERVER_FQDN=$(az sql server list -g "$RG_NAME" -o json | jq -r --arg ASPIRE_NAME "sqldocgen" '.[] | select(.tags["aspire-resource-name"] == $ASPIRE_NAME) | .fullyQualifiedDomainName' | head -n 1)
-
-          if [ -z "$SQL_SERVER_FQDN" ]; then
-            echo "SQL Server with the tag 'azd-env-name=$ENV_NAME' not found in resource group $RG_NAME."
-            exit 1
-          fi
-
-          echo "SQL_SERVER_FQDN=$SQL_SERVER_FQDN" >> $GITHUB_ENV
-
-      - name: Retrieve SQL Database Name from appsettings.Production.json
-        id: get_db_name
-        run: |
-          DB_NAME=$(jq -r '.ServiceConfiguration.SQL.DatabaseName' Microsoft.Greenlight.AppHost/appsettings.Production.json)
-
-          if [ -z "$DB_NAME" ]; then
-            echo "Database name not found in appsettings.Production.json."
-            exit 1
-          fi
-
-          echo "DB_NAME=$DB_NAME" >> $GITHUB_ENV
-
-      - name: Create or Update Container Apps Job for EF Core Migrations
-        run: |
-          RG_NAME="rg-${{ env.AZURE_ENV_NAME }}"
-          ENV_NAME="${{ env.AZURE_ENV_NAME }}"
-          JOB_NAME="ef-migrations-job"
-
-          # Retrieve the Container Apps Environment based on the tag azd-env-name
-          CONTAINERAPPS_ENV=$(az containerapp env list -g "$RG_NAME" -o json | jq -r --arg ENV_NAME "$ENV_NAME" '.[] | select(.tags["azd-env-name"] == $ENV_NAME) | .id' | head -n 1)
-
-          # Debugging: Ensure variables are set and print their values
-          echo "RG_NAME: $RG_NAME"
-          echo "ENV_NAME: $ENV_NAME"
-          echo "JOB_NAME: $JOB_NAME"
-          echo "CONTAINERAPPS_ENV: $CONTAINERAPPS_ENV"
-
-          # Check if CONTAINERAPPS_ENV is empty or unset
-          if [ -z "$CONTAINERAPPS_ENV" ]; then
-            echo "Error: CONTAINERAPPS_ENV is empty. Ensure that the environment name is correct and exists in the resource group."
-            exit 1
-          fi
-
-          # Check if the job exists without breaking the build
-          if az containerapp job show --name "$JOB_NAME" --resource-group "$RG_NAME" --query "name" -o tsv 2>/dev/null; then
-            echo "Updating existing Container Apps Job with the latest image..."
-            az containerapp job update \
-              --name "$JOB_NAME" \
-              --resource-group "$RG_NAME" \
-              --image "${{ env.ACR_LOGIN_SERVER }}/migrations:latest" \
-              --replace-env-vars "SQL_SERVER_FQDN=${{ env.SQL_SERVER_FQDN }}" "DB_NAME=${{ env.DB_NAME }}" "AZURE_CLIENT_ID=${{ env.MI_CLIENT_ID }}"
-          else
-            echo "Creating a new Container Apps Job..."
-            az containerapp job create \
-              --name "$JOB_NAME" \
-              --resource-group "$RG_NAME" \
-              --environment "$CONTAINERAPPS_ENV" \
-              --replica-timeout 300 \
-              --replica-retry-limit 3 \
-              --replica-completion-count 1 \
-              --parallelism 1 \
-              --max-executions 1 \
-              --trigger-type Manual \
-              --image "${{ env.ACR_LOGIN_SERVER }}/migrations:latest" \
-              --cpu 0.5 --memory 1.0Gi \
-              --registry-server "${{ env.ACR_LOGIN_SERVER }}" \
-              --registry-username "${{ env.ACR_USERNAME }}" \
-              --registry-password "${{ env.ACR_PASSWORD }}" \
-              --env-vars "SQL_SERVER_FQDN=${{ env.SQL_SERVER_FQDN }}" "DB_NAME=${{ env.DB_NAME }}" "AZURE_CLIENT_ID=${{ env.MI_CLIENT_ID }}" \
-              --mi-user-assigned "${{ env.MI_NAME }}"
-          fi
-
-      - name: Start EF Migrations Job
-        run: |
-          RG_NAME="rg-${{ env.AZURE_ENV_NAME }}"
-          az containerapp job start --name "ef-migrations-job" --resource-group "$RG_NAME"
-
-      - name: Deploy Application
-        run: azd deploy --no-prompt
         env:
           AZURE_RESOURCE_GROUP: rg-${{ env.AZURE_ENV_NAME }}
           AZURE_CAE_WORKLOAD_TYPE: ${{ vars.AZURE_CAE_WORKLOAD_TYPE }}
