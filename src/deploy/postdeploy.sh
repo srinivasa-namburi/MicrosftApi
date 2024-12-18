@@ -9,7 +9,7 @@ resourceGroup="rg-$AZURE_ENV_NAME"
 workloadProfileType="$AZURE_CAE_WORKLOAD_TYPE"
 openai_subscription_id="$AZURE_SUBSCRIPTION_ID"
 
-if ["$SKIP_POSTDEPLOY" == "true"]; then
+if [ "$SKIP_POSTDEPLOY" == "true" ]; then
     echo "Skipping post-deploy script execution as SKIP_POSTDEPLOY is set to true."
     exit 0
 fi
