@@ -9,19 +9,32 @@ using Microsoft.Greenlight.Shared.Models;
 
 namespace Microsoft.Greenlight.Worker.Chat.Consumers;
 
-public class GenerateChatHistorySummaryConsumer : IConsumer<GenerateChatHistorySummary>
+/// <summary>
+/// Consumer class for messages of <see cref="GenerateChatHistorySummary"/>.
+/// </summary>
+/// <remarks>
+/// Initializes a new instance of the <see cref="GenerateChatHistorySummaryConsumer"/> class.
+/// </remarks>
+/// <param name="dbContext">
+/// The <see cref="DocGenerationDbContext"/>.
+/// </param>
+/// <param name="kernel">
+/// The <see cref="Kernel"/>.
+/// </param>
+public class GenerateChatHistorySummaryConsumer(DocGenerationDbContext dbContext, Kernel kernel) : IConsumer<GenerateChatHistorySummary>
 {
-    private readonly DocGenerationDbContext _dbContext;
-    private readonly Kernel _kernel;
+    private readonly DocGenerationDbContext _dbContext = dbContext;
+    private readonly Kernel _kernel = kernel;
 
-    public GenerateChatHistorySummaryConsumer(
-        DocGenerationDbContext dbContext,
-        Kernel kernel
-        )
-    {
-        _dbContext = dbContext;
-        _kernel = kernel;
-    }
+    /// <summary>
+    /// Consumes the <see cref="GenerateChatHistorySummary"/> command and generates summaries for chat history.
+    /// </summary>
+    /// <param name="context">
+    /// The <see cref="ConsumeContext"/> containing the <see cref="GenerateChatHistorySummary"/> command.
+    /// </param>
+    /// <returns>
+    /// A <see cref="Task"/> that represents the asynchronous consume operation.
+    /// </returns>
     public async Task Consume(ConsumeContext<GenerateChatHistorySummary> context)
     {
         var message = context.Message;
@@ -51,7 +64,7 @@ public class GenerateChatHistorySummaryConsumer : IConsumer<GenerateChatHistoryS
             .GroupBy(x => x.Index / 5)
             .Select(x => x.Select(v => v.Value).ToList())
             .ToList();
-      
+
 
         foreach (var batch in messagesToSummarizeInBatches)
         {

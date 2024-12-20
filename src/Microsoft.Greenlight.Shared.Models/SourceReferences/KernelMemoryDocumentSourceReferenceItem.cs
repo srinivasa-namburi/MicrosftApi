@@ -51,7 +51,16 @@ public abstract class KernelMemoryDocumentSourceReferenceItem : SourceReferenceI
     public void AddCitation(Citation citation)
     {
         // Serialize the citation to JSON and store it in the CitationJsons property
-        var jsonCitation = JsonSerializer.Serialize(citation);
+        string jsonCitation;
+        try
+        {
+            jsonCitation = JsonSerializer.Serialize(citation);
+        }
+        catch(Exception e)
+        {
+            return;
+        }
+        
         CitationJsons.Add(jsonCitation);
     }
 
@@ -68,5 +77,23 @@ public abstract class KernelMemoryDocumentSourceReferenceItem : SourceReferenceI
             }
         }
         return citations;
+    }
+
+    public double GetHighestScoringPartitionFromCitations()
+    {
+        var citations = GetCitations();
+
+        float highestScore = 0.0F;
+        foreach (var citation in citations)
+        {
+            foreach (var partition in citation.Partitions)
+            {
+                if (partition.Relevance > highestScore)
+                {
+                    highestScore = partition.Relevance;
+                }
+            }
+        }
+        return highestScore;
     }
 }

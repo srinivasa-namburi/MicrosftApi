@@ -9,12 +9,14 @@ using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Models.Review;
 using Microsoft.Greenlight.Shared.Models.SourceReferences;
+using Microsoft.Greenlight.Shared.Services.Search;
 
 namespace Microsoft.Greenlight.DocumentProcess.Shared.Search;
 
 public class ReviewKernelMemoryRepository : IReviewKernelMemoryRepository
 {
     private readonly IKernelMemoryRepository _kernelMemoryRepository;
+    private readonly IConsolidatedSearchOptionsFactory _searchOptionsFactory;
     private readonly DocGenerationDbContext _dbContext;
     private readonly ILogger<ReviewKernelMemoryRepository> _logger;
     private readonly AzureFileHelper _fileHelper;
@@ -23,6 +25,7 @@ public class ReviewKernelMemoryRepository : IReviewKernelMemoryRepository
     public ReviewKernelMemoryRepository(
         [FromKeyedServices("Reviews-IKernelMemoryRepository")]
         IKernelMemoryRepository kernelMemoryRepository, 
+        IConsolidatedSearchOptionsFactory searchOptionsFactory,
         DocGenerationDbContext dbContext, 
         ILogger<ReviewKernelMemoryRepository> logger,
         AzureFileHelper fileHelper,
@@ -30,6 +33,7 @@ public class ReviewKernelMemoryRepository : IReviewKernelMemoryRepository
     )
     {
         _kernelMemoryRepository = kernelMemoryRepository;
+        _searchOptionsFactory = searchOptionsFactory;
         _dbContext = dbContext;
         _logger = logger;
         _fileHelper = fileHelper;
@@ -87,7 +91,12 @@ public class ReviewKernelMemoryRepository : IReviewKernelMemoryRepository
             {"ReviewRequestId", reviewRequestId.ToString()}
         };
 
-        var searchResults = await _kernelMemoryRepository.SearchAsync("Reviews", "index-reviews", searchTags, searchText, top, minRelevance);
+        var searchOptions = await _searchOptionsFactory.CreateSearchOptionsForReviewsAsync(searchTags);
+        var searchResults = await _kernelMemoryRepository.SearchAsync("Reviews", searchText, searchOptions);
+
+        //var searchResults = await _kernelMemoryRepository.SearchAsync("Reviews", "index-reviews", searchTags, searchText, top, minRelevance, 
+        //    precedingPartitionCount:0, followingPartitionCount:0);
+
         _logger.LogInformation("Search completed for ReviewRequestId: {ReviewRequestId}. Number of results: {ResultsCount}", reviewRequestId, searchResults.Count);
 
         return searchResults;

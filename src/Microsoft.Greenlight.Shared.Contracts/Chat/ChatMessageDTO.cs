@@ -9,7 +9,7 @@ public class ChatMessageDTO
     public Guid ConversationId { get; set; }
     public ChatMessageSource Source { get; set; }
     public ChatMessageCreationState State { get; set; } = ChatMessageCreationState.Complete;
-    public string Message { get; set; }
+    public string? Message { get; set; }
     public string? ContentText { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public string? UserId { get; set; }

@@ -18,6 +18,10 @@ public class DynamicDocumentProcessDefinition : EntityBase, IDocumentProcessInfo
     public bool ClassifyDocuments { get; set; }
     public string? ClassificationModelName { get; set; }
 
+    public int PrecedingSearchPartitionInclusionCount { get; set; } = 0;
+    public int FollowingSearchPartitionInclusionCount { get; set; } = 0;
+    public int NumberOfCitationsToGetFromRepository { get; set; } = 12;
+    public double MinimumRelevanceForCitations { get; set; } = 0.7;
     public Guid? DocumentOutlineId { get; set; }
     public DocumentOutline? DocumentOutline { get; set; }
 

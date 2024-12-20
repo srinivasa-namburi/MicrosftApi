@@ -14,6 +14,7 @@ using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
 using Scriban;
 using Microsoft.Greenlight.Shared.Models.SourceReferences;
 using Microsoft.Greenlight.Shared.Plugins;
+using Microsoft.KernelMemory;
 
 namespace Microsoft.Greenlight.DocumentProcess.Shared.Generation;
 
@@ -34,7 +35,7 @@ public class GenericAiCompletionService : IAiCompletionService
     private readonly IDocumentProcessInfoService _documentProcessInfoService;
     private readonly IPromptInfoService _promptInfoService;
 
-    private ContentNode _contentNode;
+    private ContentNode _createdBodyContentNode;
 
     public GenericAiCompletionService(
         AiCompletionServiceParameters<GenericAiCompletionService> parameters,
@@ -53,13 +54,13 @@ public class GenericAiCompletionService : IAiCompletionService
     public async Task<List<ContentNode>> GetBodyContentNodes(
         List<DocumentProcessRepositorySourceReferenceItem> sourceDocuments,
         string sectionOrTitleNumber, string sectionOrTitleText, ContentNodeType contentNodeType,
-        string tableOfContentsString, Guid? metadataId)
+        string tableOfContentsString, Guid? metadataId, ContentNode? sectionContentNode)
     {
         var combinedBodyTextStringBuilder = new StringBuilder();
 
         var contentNodeId = Guid.NewGuid();
         var contentNodeSystemItemId = Guid.NewGuid();
-        _contentNode = new ContentNode
+        _createdBodyContentNode = new ContentNode
         {
             Id = contentNodeId,
             Text = string.Empty,
@@ -70,32 +71,33 @@ public class GenericAiCompletionService : IAiCompletionService
             {
                 Id = contentNodeSystemItemId,
                 ContentNodeId = contentNodeId,
-                SourceReferences = []
+                SourceReferences = [],
+                ComputedSectionPromptInstructions = sectionContentNode?.PromptInstructions
             }
         };
 
         foreach (var sourceDocument in sourceDocuments)
         {
-            sourceDocument.ContentNodeSystemItemId = _contentNode.ContentNodeSystemItem.Id;
+            sourceDocument.ContentNodeSystemItemId = _createdBodyContentNode.ContentNodeSystemItem.Id;
         }
 
         await foreach (var bodyContentNodeString in GetStreamingBodyContentText(sourceDocuments, sectionOrTitleNumber, sectionOrTitleText,
-                           contentNodeType, tableOfContentsString, metadataId))
+                           contentNodeType, tableOfContentsString, metadataId, sectionContentNode))
         {
             combinedBodyTextStringBuilder.Append(bodyContentNodeString);
         }
 
         var combinedBodyText = combinedBodyTextStringBuilder.ToString();
-        _contentNode.Text = combinedBodyText;
-        _contentNode.GenerationState = ContentNodeGenerationState.Completed;
+        _createdBodyContentNode.Text = combinedBodyText;
+        _createdBodyContentNode.GenerationState = ContentNodeGenerationState.Completed;
 
-        return [_contentNode];
+        return [_createdBodyContentNode];
     }
 
     public async IAsyncEnumerable<string> GetStreamingBodyContentText(
         List<DocumentProcessRepositorySourceReferenceItem> sourceDocuments,
         string sectionOrTitleNumber, string sectionOrTitleText,
-        ContentNodeType contentNodeType, string tableOfContentsString, Guid? metadataId)
+        ContentNodeType contentNodeType, string tableOfContentsString, Guid? metadataId, ContentNode? sectionContentNode)
     {
 
         var plugins = new KernelPluginCollection();
@@ -112,16 +114,24 @@ public class GenericAiCompletionService : IAiCompletionService
         _sk.PrepareSemanticKernelInstanceForGeneration(documentProcess!.ShortName);
 
         var sectionExample = new StringBuilder();
-        var firstDocuments = sourceDocuments.Take(20).ToList();
 
-        foreach (var document in firstDocuments)
+        // Each document in sourceDocuments has a list of Citations. Each Citation has a list of Partitions. Each of these partitions has a Relevance (double) score.
+        // I want to take the top 20 documents by relevance score and use them as examples in the prompt. Bubble up the highest relevance partitions to sort the documents.
+
+        var sourceDocumentsWithHighestScoringPartitions = sourceDocuments
+            .OrderByDescending(d => d.GetHighestScoringPartitionFromCitations())
+            .Take(10)
+            .ToList();
+        
+        
+        foreach (var document in sourceDocumentsWithHighestScoringPartitions)
         {
             sectionExample.AppendLine($"[EXAMPLE: Document Extract]");
             sectionExample.AppendLine(document.FullTextOutput);
             sectionExample.AppendLine($"[/EXAMPLE]");
 
             // Add the document to the ContentNodeSystemItem.SourceReferences collection
-            _contentNode.ContentNodeSystemItem?.SourceReferences.Add(document);
+            _createdBodyContentNode.ContentNodeSystemItem?.SourceReferences.Add(document);
         }
 
         var exampleString = sectionExample.ToString();
@@ -150,13 +160,13 @@ public class GenericAiCompletionService : IAiCompletionService
             string prompt;
             if (i == 0)
             {
-
                 prompt = await BuildMainPrompt(
-                    _numberOfPasses.ToString(), 
-                    fullSectionName, 
-                    customDataString, 
-                    tableOfContentsString, 
-                    exampleString);
+                    _numberOfPasses.ToString(),
+                    fullSectionName,
+                    customDataString,
+                    tableOfContentsString,
+                    exampleString,
+                    sectionContentNode.PromptInstructions);
 
                 // Remove all the Example Documents from the prompt and make a skinny prompt without it
                 // The documents are in the exampleString variable
@@ -164,7 +174,7 @@ public class GenericAiCompletionService : IAiCompletionService
                 var skinnyPrompt = prompt.Replace(exampleString, "[RAG Documents in Source Items Collection]", StringComparison.InvariantCultureIgnoreCase);
 
                 // Add the computed prompt to the content node system item
-                _contentNode.ContentNodeSystemItem!.ComputedUsedMainGenerationPrompt = skinnyPrompt;
+                _createdBodyContentNode.ContentNodeSystemItem!.ComputedUsedMainGenerationPrompt = skinnyPrompt;
 
                 originalPrompt = prompt;
             }
@@ -206,17 +216,29 @@ public class GenericAiCompletionService : IAiCompletionService
         }
     }
 
-    private async Task<string> BuildMainPrompt(
-        string numberOfPasses,
+    private async Task<string> BuildMainPrompt(string numberOfPasses,
         string fullSectionName,
         string customDataString,
         string tableOfContentsString,
-        string exampleString)
+        string exampleString,
+        string? promptInstructions)
     {
         var mainPromptInfo = await _promptInfoService.GetPromptByShortCodeAndProcessNameAsync("SectionGenerationMainPrompt", ProcessName);
         var mainPrompt = mainPromptInfo.Text;
 
         var documentProcessName = ProcessName;
+
+        string sectionSpecificPromptInstructions = "";
+        if (!string.IsNullOrEmpty(promptInstructions))
+        {
+            sectionSpecificPromptInstructions = $"""
+                                                 For this section, please take into account these additional instructions:
+                                                 [SECTIONPROMPTINSTRUCTIONS]                                                 
+                                                 {promptInstructions}
+                                                 [/SECTIONPROMPTINSTRUCTIONS]
+
+                                                 """;
+        }
 
         var template = Template.Parse(mainPrompt);
 
@@ -227,7 +249,8 @@ public class GenericAiCompletionService : IAiCompletionService
             customDataString,
             tableOfContentsString,
             exampleString,
-            documentProcessName
+            documentProcessName,
+            sectionSpecificPromptInstructions
 
         }, member => member.Name);
 
@@ -303,7 +326,7 @@ public class GenericAiCompletionService : IAiCompletionService
         var sourceReferenceItems = pluginSourceReferenceCollector.GetAll(executionId);
         if (sourceReferenceItems.Count > 0)
         {
-            _contentNode.ContentNodeSystemItem!.SourceReferences.AddRange(sourceReferenceItems);
+            _createdBodyContentNode.ContentNodeSystemItem!.SourceReferences.AddRange(sourceReferenceItems);
         }
 
         pluginSourceReferenceCollector.Clear(executionId);
@@ -341,11 +364,11 @@ public class GenericAiCompletionService : IAiCompletionService
             Console.Write(update);
             chatStringBuilder.Append(update);
         }
-        
+
         Console.WriteLine("********************************");
         Console.WriteLine("END OF SUMMARY");
         Console.WriteLine("********************************");
-        
+
         return chatStringBuilder.ToString();
     }
 }

@@ -7,6 +7,7 @@ using Microsoft.Greenlight.DocumentProcess.Shared.Generation;
 using Microsoft.Greenlight.DocumentProcess.Shared.Search;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Extensions;
+using Microsoft.Greenlight.Shared.Services.Search;
 
 namespace Microsoft.Greenlight.DocumentProcess.Belgium.NuclearLicensing.DSAR;
 
@@ -38,6 +39,7 @@ public class BelgiumNuclearLicensingDSARDocumentProcessRegistration : IDocumentP
             builder.Services.AddKeyedScoped<IBodyTextGenerator>(ProcessName + "-IBodyTextGenerator", (sp, a) =>
                 new KernelMemoryBodyTextGenerator(
                     sp.GetRequiredKeyedService<IAiCompletionService>(ProcessName + "-IAiCompletionService"),
+                    sp.GetRequiredService<IConsolidatedSearchOptionsFactory>(),
                     sp.GetRequiredService<ILogger<KernelMemoryBodyTextGenerator>>(),
                     sp.GetRequiredService<IServiceProvider>()
                 ));

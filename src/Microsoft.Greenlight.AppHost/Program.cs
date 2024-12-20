@@ -27,6 +27,7 @@ IResourceBuilder<IResourceWithConnectionString> redisResource;
 IResourceBuilder<IResourceWithConnectionString> signalr;
 IResourceBuilder<IResourceWithConnectionString> azureAiSearch;
 IResourceBuilder<IResourceWithConnectionString> blobStorage;
+IResourceBuilder<IResourceWithConnectionString> insights = null!;
 
 if (builder.ExecutionContext.IsRunMode) // For local development
 {
@@ -59,6 +60,10 @@ if (builder.ExecutionContext.IsRunMode) // For local development
         sbus = builder.AddConnectionString("sbus");
         azureAiSearch = builder.AddConnectionString("aiSearch");
         blobStorage = builder.AddConnectionString("blob-docing");
+
+        // Only add Application Insights if the connection string is set
+        if (!string.IsNullOrEmpty(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]))
+            insights = builder.AddConnectionString("insights", "APPLICATIONINSIGHTS_CONNECTION_STRING");
     }
     else
     {
@@ -69,6 +74,12 @@ if (builder.ExecutionContext.IsRunMode) // For local development
         blobStorage = builder
             .AddAzureStorage("docing")
             .AddBlobs("blob-docing");
+
+        // Add Application insights when configured to do so
+        var useAppInsights = Convert.ToBoolean(
+            builder.Configuration["ServiceConfiguration:GreenlightServices:Global:UseApplicationInsights"]);
+        if (useAppInsights)
+            insights = builder.AddAzureApplicationInsights("insights");
     }
 }
 else // For production/Azure deployment
@@ -87,6 +98,7 @@ else // For production/Azure deployment
         .AddAzureStorage("docing")
         .AddBlobs("blob-docing");
 
+    insights = builder.AddAzureApplicationInsights("insights");
 }
 
 var dbSetupManager = builder
@@ -111,7 +123,7 @@ var apiMain = builder
     .WithReference(redisResource)
     .WithReference(docGenSql)
     .WithReference(sbus)
-    .WithReference(azureAiSearch)
+    .WithReference(azureAiSearch)    
     .WaitForCompletion(dbSetupManager);
 
 var servicesSetupManager = builder
@@ -198,6 +210,15 @@ var workerChat = builder.AddProject<Projects.Microsoft_Greenlight_Worker_Chat>("
     .WithReference(redisResource)
     .WithReference(apiMain)
     .WaitForCompletion(dbSetupManager);
+
+if(insights is not null)
+{
+    apiMain.WithReference(insights);
+    workerScheduler.WithReference(insights);
+    workerDocumentGeneration.WithReference(insights);
+    workerDocumentIngestion.WithReference(insights);
+    workerChat.WithReference(insights);
+}
 
 builder.Build().Run();
 

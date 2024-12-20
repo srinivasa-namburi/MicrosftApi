@@ -5,6 +5,7 @@ using Microsoft.Greenlight.Extensions.Plugins;
 using Microsoft.Greenlight.Shared.Contracts.DTO.DocumentLibrary;
 using Microsoft.Greenlight.Shared.Models.SourceReferences;
 using Microsoft.Greenlight.Shared.Services;
+using Microsoft.Greenlight.Shared.Services.Search;
 using Microsoft.SemanticKernel;
 
 namespace Microsoft.Greenlight.Plugins.Default.DocumentLibrary;
@@ -37,13 +38,13 @@ public class DocumentLibraryPlugin : IPluginImplementation
         string documentProcessName)
     {
         documentProcessName = documentProcessName.TrimEnd('.').TrimEnd(); // removes any trailing periods or whitespace from the document process name
-        
+
         var dp = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentProcessName);
         if (dp == null)
         {
             throw new Exception("For assistant : Wrong Document Process ShortName provided - no valid document process found.");
         }
-        
+
         var documentLibrariesForDocumentProcess = await _documentLibraryInfoService.GetDocumentLibrariesByProcessIdAsync(dp.Id);
 
         var simplifiedDocumentLibraryList = new List<DocumentLibraryUsageInfo>();
@@ -115,7 +116,7 @@ public class DocumentLibraryPlugin : IPluginImplementation
                 "For assistant : Wrong Document Library ShortName provided - no valid library found. Please use the DocumentProcessShortName returned by GetDocumentLibraryInfo");
         }
 
-        var searchResults = await _kmRepository.SearchAsync(documentLibraryShortName, searchText, top, minRelevance);
+        var searchResults = await _kmRepository.SearchAsync(documentLibraryShortName, searchText);
 
         var documentLibrarySourceReferenceItems = new List<DocumentLibrarySourceReferenceItem>();
         foreach (var sourceReferenceItem in searchResults)

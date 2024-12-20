@@ -1,3 +1,5 @@
+using MassTransit.Logging;
+using MassTransit.Monitoring;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Routing;
@@ -9,6 +11,7 @@ using Microsoft.Extensions.Logging;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
+using Azure.Monitor.OpenTelemetry.AspNetCore;
 
 namespace Microsoft.Greenlight.ServiceDefaults;
 
@@ -62,7 +65,14 @@ public static class Extensions
         builder.Services.AddOpenTelemetry()
             .WithMetrics(metrics =>
             {
-                metrics.AddRuntimeInstrumentation()
+                metrics.AddMeter("Microsoft.SemanticKernel*",
+                                 "Microsoft.AspNetCore.Hosting",
+                                 "Microsoft.AspNetCore.Server.Kestrel",
+                                 InstrumentationOptions.MeterName, // MassTransit Meter
+                                 "System.Net.Http")
+                       .AddRuntimeInstrumentation()
+                       .AddAspNetCoreInstrumentation()
+                       .AddHttpClientInstrumentation()
                        .AddBuiltInMeters();
             })
             .WithTracing(tracing =>
@@ -73,7 +83,10 @@ public static class Extensions
                     tracing.SetSampler(new AlwaysOnSampler());
                 }
 
-                tracing.AddAspNetCoreInstrumentation()
+                tracing.AddSource("Microsoft.SemanticKernel*",
+                                  DiagnosticHeaders.DefaultListenerName // MassTransit ActivitySource
+                                  ) 
+                       .AddAspNetCoreInstrumentation()
                        .AddGrpcClientInstrumentation()
                        .AddHttpClientInstrumentation();
             });
@@ -99,8 +112,10 @@ public static class Extensions
         //    .WithMetrics(metrics => metrics.AddPrometheusExporter());
 
         // Uncomment the following lines to enable the Azure Monitor exporter (requires the Azure.Monitor.OpenTelemetry.Exporter package)
-        // builder.Services.AddOpenTelemetry()
-        //    .UseAzureMonitor();
+        if (!string.IsNullOrEmpty(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]))
+        {
+            builder.Services.AddOpenTelemetry().UseAzureMonitor();
+        }
 
         return builder;
     }

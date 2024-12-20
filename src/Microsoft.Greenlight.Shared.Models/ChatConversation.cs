@@ -14,5 +14,5 @@ public class ChatConversation : EntityBase
                                                'Sure, I can do that', etc.
                                                """;
 
-    public List<ChatMessage> ChatMessages { get; set; } = new List<ChatMessage>();
+    public List<ChatMessage> ChatMessages { get; set; } = [];
 }

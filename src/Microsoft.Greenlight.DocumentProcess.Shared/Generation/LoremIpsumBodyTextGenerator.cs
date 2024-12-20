@@ -7,7 +7,7 @@ namespace Microsoft.Greenlight.DocumentProcess.Shared.Generation;
 public class LoremIpsumBodyTextGenerator : IBodyTextGenerator
 {
     public async Task<List<ContentNode>> GenerateBodyText(string contentNodeTypeString, string sectionNumber, string sectionTitle,
-        string tableOfContentsString, string documentProcessName = null, Guid? metadataId = null)
+        string tableOfContentsString, string documentProcessName = null, Guid? metadataId = null, ContentNode? sectionContentNode = null)
     {
         var minNumberOfParagraphs = 4;
         var maxNumberOfParagraphs = 16;

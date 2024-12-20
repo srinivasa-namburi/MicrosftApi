@@ -17,6 +17,10 @@ public class DocumentProcessInfoProfile : Profile
             .ForMember(x => x.Description, y => y.MapFrom(source => ""))
             .ForMember(x => x.OutlineText, y => y.MapFrom(source => ""))
             .ForMember(x => x.Repositories, y => y.MapFrom(source => source.Repositories))
+            .ForMember(x => x.PrecedingSearchPartitionInclusionCount, y=>y.Ignore())
+            .ForMember(x => x.FollowingSearchPartitionInclusionCount, y => y.Ignore())
+            .ForMember(x => x.NumberOfCitationsToGetFromRepository, y => y.Ignore())
+            .ForMember(x => x.MinimumRelevanceForCitations, y => y.Ignore())
             .ForMember(x => x.LogicType,
                 y => y.MapFrom(source =>
                     Enum.Parse<DocumentProcessLogicType>(source.IngestionMethod ?? "KernelMemory")));

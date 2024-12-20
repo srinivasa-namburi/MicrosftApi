@@ -78,8 +78,6 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
         However, please be as complete as possible in your response for this pass. For this task, including this initial query,
         we will be performing {{ numberOfPasses }} passes to form a complete response. This is the first pass.
         
-        
-
         There will be additional queries asking to to expand on a combined summary of the output you provide here and
         further summaries from later responses.
 
@@ -92,6 +90,8 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
         depending on which is most appropriate to the query. The fragments might contain information from different sections, 
         not just the one you are writing ({{ fullSectionName }}). Filter out any irrelevant information and write a coherent section.
 
+        {{ sectionSpecificPromptInstructions }}
+        
         For customizing the output so that it pertains to this project, please use tool calling/functions as supplied to you
         in the list of available functions. If you need additional data, please request it using the [DETAIL: <dataType>] tag.
 

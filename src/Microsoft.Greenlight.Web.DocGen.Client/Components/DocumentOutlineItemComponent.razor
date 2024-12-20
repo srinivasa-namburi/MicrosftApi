@@ -1,0 +1,191 @@
+﻿@using MudBlazor
+@inject IDialogService DialogService
+
+<div style="display: grid; grid-template-columns: 1fr auto; align-items: center; width: 100%">
+    <div>
+        <MudTextField Label="Section Number" Style="justify-self: start; width: 25%" @bind-Value="Item.SectionNumber" />
+        <MudTooltip Inline="false" RootStyle="width: 100%" Text="@GetTooltipText(Item)">
+            <MudTextField Label="Section Title" Style="justify-self: start; width: 100%" @bind-Value="Item.SectionTitle" />
+        </MudTooltip>
+
+        @if (!Item.RenderTitleOnly)
+        {
+            <!-- Switch for prompt instructions -->
+            <MudStack Direction="Row" AlignItems="AlignItems.Start" Spacing="2" Class="mt-2">
+                <MudSwitch T="bool" Value="@HasPromptInstructionsEnabled" ValueChanged="HandleInstructionsSwitchChanged">
+                    Section-specific instructions
+                </MudSwitch>
+            </MudStack>
+        }
+
+        @if (HasPromptInstructionsEnabled && !Item.RenderTitleOnly)
+        {
+            <!-- Prompt Instructions TextField -->
+            <MudTextField Label="Prompt Instructions"
+                          Lines="3"
+                          MaxLines="5"
+                          FullWidth="true"
+                          @bind-Value="Item.PromptInstructions"
+                          Class="mt-2" />
+        }
+    </div>
+    <div style="display: flex; align-items: center; justify-content: flex-end;">
+        <MudTooltip Text="Only create this section as a heading in generated documents, with no body text. Typically used for chapter headings.">
+            <MudCheckBox T="bool" Label="Heading Only" Value="Item.RenderTitleOnly" ValueChanged="OnHeadingOnlyChanged"/>
+        </MudTooltip>
+        <MudTooltip Text="Add New Subsection">
+            <MudIconButton Icon="@Icons.Material.Filled.Add" OnClick="() => TriggerAction(DocumentOutlineItemAction.AddChild)"></MudIconButton>
+        </MudTooltip>
+        <MudTooltip Text="More Options">
+            <MudMenu Icon="@Icons.Material.Filled.MoreVert"
+                     Size="Size.Medium" Color="Color.Inherit"
+                     ActivationEvent="@MouseEvent.LeftClick"
+                     AnchorOrigin="Origin.CenterRight"
+                     TransformOrigin="Origin.CenterLeft">
+
+                <MudMenuItem Icon="@Icons.Material.Filled.Add" OnClick="() => TriggerAction(DocumentOutlineItemAction.AddChild)">Add New Subsection</MudMenuItem>
+                <MudDivider/>
+                <MudMenuItem Icon="@Icons.Material.Filled.Add" OnClick="() => TriggerAction(DocumentOutlineItemAction.AddAbove)">Add New Section Above</MudMenuItem>
+                <MudMenuItem Icon="@Icons.Material.Filled.Add" OnClick="() => TriggerAction(DocumentOutlineItemAction.AddBelow)">Add New Section Below</MudMenuItem>
+                <MudDivider/>
+                <MudMenuItem Icon="@Icons.Material.Filled.ContentCopy" OnClick="() => TriggerAction(DocumentOutlineItemAction.Copy)">Copy Section</MudMenuItem>
+                <MudDivider/>
+                <MudMenuItem Icon="@Icons.Material.Filled.ContentPaste" OnClick="() => TriggerAction(DocumentOutlineItemAction.PasteAsChild)" Disabled="@IsPasteDisabled">Paste as Subsection</MudMenuItem>
+                <MudDivider/>
+                <MudMenuItem Icon="@Icons.Material.Filled.ContentPaste" OnClick="() => TriggerAction(DocumentOutlineItemAction.PasteAbove)" Disabled="@IsPasteDisabled">Paste Section Above</MudMenuItem>
+                <MudMenuItem Icon="@Icons.Material.Filled.ContentPaste" OnClick="() => TriggerAction(DocumentOutlineItemAction.PasteBelow)" Disabled="@IsPasteDisabled">Paste Section Below</MudMenuItem>
+                <MudDivider/>
+                <MudMenuItem Icon="@Icons.Material.Filled.ArrowDropUp" OnClick="() => TriggerAction(DocumentOutlineItemAction.MoveUp)" Disabled="@IsMoveUpDisabled">Move Section Up</MudMenuItem>
+                <MudMenuItem Icon="@Icons.Material.Filled.ArrowDropDown" OnClick="() => TriggerAction(DocumentOutlineItemAction.MoveDown)" Disabled="@IsMoveDownDisabled">Move Section Down</MudMenuItem>
+                <MudDivider/>
+                <MudMenuItem Icon="@Icons.Material.Filled.Delete" OnClick="() => TriggerAction(DocumentOutlineItemAction.Delete)" Disabled="@IsDeleteDisabled">Delete Section</MudMenuItem>
+            </MudMenu>
+        </MudTooltip>
+    </div>
+</div>
+
+@code {
+    [Parameter] public DocumentOutlineItemInfo Item { get; set; }
+
+    [Parameter] public bool IsMoveUpDisabled { get; set; }
+    [Parameter] public bool IsMoveDownDisabled { get; set; }
+    [Parameter] public bool IsDeleteDisabled { get; set; }
+    [Parameter] public bool IsPasteDisabled { get; set; }
+
+    [Parameter] public Func<DocumentOutlineItemInfo, string> GetTooltipText { get; set; }
+
+    [Parameter] public EventCallback<(DocumentOutlineItemInfo item, DocumentOutlineItemAction action)> OnItemActionRequested { get; set; }
+
+    private bool HasPromptInstructionsEnabled { get; set; }
+
+    private bool _initialized;
+
+    protected override void OnParametersSet()
+    {
+        if (!_initialized)
+        {
+            // Initialize once
+            HasPromptInstructionsEnabled = !string.IsNullOrWhiteSpace(Item.PromptInstructions);
+            _initialized = true;
+        }
+    }
+
+    private async Task HandleInstructionsSwitchChanged(bool newValue)
+    {
+        bool oldValue = HasPromptInstructionsEnabled;
+
+        if (!newValue && oldValue)
+        {
+            // Turning instructions off
+            if (!string.IsNullOrWhiteSpace(Item.PromptInstructions))
+            {
+                // Confirm discarding instructions
+                var parameters = new DialogParameters
+                {
+                    ["ContentText"] = "This will discard the prompt instructions you've entered. Continue?"
+                };
+
+                var dialog = DialogService.Show<ConfirmationDialog>("Confirm", parameters);
+                var result = await dialog.Result;
+
+                if (result.Canceled)
+                {
+                    // Revert
+                    HasPromptInstructionsEnabled = oldValue;
+                    return;
+                }
+                else
+                {
+                    // Confirmed: clear instructions
+                    Item.PromptInstructions = null;
+                    HasPromptInstructionsEnabled = false;
+                }
+            }
+            else
+            {
+                // No content, just disable
+                Item.PromptInstructions = null;
+                HasPromptInstructionsEnabled = false;
+            }
+        }
+        else if (newValue && !oldValue)
+        {
+            // Turning instructions on
+            HasPromptInstructionsEnabled = true;
+        }
+        // If no content or turning off without instructions, just accept the state
+    }
+
+    private async Task OnHeadingOnlyChanged(bool newValue)
+    {
+        bool oldValue = Item.RenderTitleOnly;
+
+        if (newValue == oldValue)
+            return; // No actual change
+
+        if (newValue == true)
+        {
+            // Heading only is being turned on
+            // If instructions are enabled or there's content, confirm discarding
+            if (HasPromptInstructionsEnabled || !string.IsNullOrWhiteSpace(Item.PromptInstructions))
+            {
+                var parameters = new DialogParameters
+                {
+                    ["ContentText"] = "Enabling 'Heading Only' will discard any prompt instructions. Continue?"
+                };
+                var dialog = DialogService.Show<ConfirmationDialog>("Confirm", parameters);
+                var result = await dialog.Result;
+
+                if (result.Canceled)
+                {
+                    // Revert to old value
+                    Item.RenderTitleOnly = oldValue;
+                    return;
+                }
+                else
+                {
+                    // Confirmed: clear instructions
+                    Item.PromptInstructions = null;
+                    HasPromptInstructionsEnabled = false;
+                    Item.RenderTitleOnly = true;
+                }
+            }
+            else
+            {
+                // No instructions, just set heading only
+                Item.RenderTitleOnly = true;
+            }
+        }
+        else
+        {
+            // Heading only turned off, no special logic
+            // Instructions can now be re-enabled if desired
+            Item.RenderTitleOnly = false;
+        }
+    }
+
+    private void TriggerAction(DocumentOutlineItemAction action)
+    {
+        OnItemActionRequested.InvokeAsync((Item, action));
+    }
+}

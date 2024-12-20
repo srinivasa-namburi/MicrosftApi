@@ -1,6 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Greenlight.Shared.Contracts;
 using Microsoft.Greenlight.Shared.Models.SourceReferences;
 using Microsoft.Greenlight.Shared.Services;
+using Microsoft.Greenlight.Shared.Services.Search;
 using Microsoft.KernelMemory;
 
 namespace Microsoft.Greenlight.DocumentProcess.Shared.Search;
@@ -8,15 +10,18 @@ namespace Microsoft.Greenlight.DocumentProcess.Shared.Search;
 public class AdditionalDocumentLibraryKernelMemoryRepository : IAdditionalDocumentLibraryKernelMemoryRepository
 {
     private readonly IKernelMemoryRepository _baseKernelMemoryRepository;
+    private readonly IConsolidatedSearchOptionsFactory _searchOptionsFactory;
     private readonly IDocumentLibraryInfoService _documentLibraryInfoService;
 
     public AdditionalDocumentLibraryKernelMemoryRepository(
         [FromKeyedServices("AdditionalBase-IKernelMemoryRepository")]
         IKernelMemoryRepository baseKernelMemoryRepository,
+        IConsolidatedSearchOptionsFactory searchOptionsFactory,
         IDocumentLibraryInfoService documentLibraryInfoService
     )
     {
         _baseKernelMemoryRepository = baseKernelMemoryRepository;
+        _searchOptionsFactory = searchOptionsFactory;
         _documentLibraryInfoService = documentLibraryInfoService;
     }
     public async Task StoreContentAsync(string documentLibraryName, string indexName, Stream fileStream, string fileName,
@@ -32,8 +37,7 @@ public class AdditionalDocumentLibraryKernelMemoryRepository : IAdditionalDocume
         await _baseKernelMemoryRepository.DeleteContentAsync(documentLibraryName, indexName, fileName);
     }
 
-    public async Task<List<KernelMemoryDocumentSourceReferenceItem>> SearchAsync(string documentLibraryName, string searchText,
-        int top = 12, double minRelevance = 0.7)
+    public async Task<List<KernelMemoryDocumentSourceReferenceItem>> SearchAsync(string documentLibraryName, string searchText)
     {
         var documentLibraryInternalName = GetDocumentLibraryInternalIdentifier(documentLibraryName);
         // We need to determine the index name from the document library name
@@ -44,10 +48,10 @@ public class AdditionalDocumentLibraryKernelMemoryRepository : IAdditionalDocume
         {
             throw new Exception($"Document library {documentLibraryName} not found");
         }
+        
+        var searchOptions = await _searchOptionsFactory.CreateSearchOptionsForDocumentLibraryAsync(documentLibraryInfo);
+        var result = await SearchAsyncInIndex(documentLibraryInternalName, searchText, searchOptions);
 
-        var indexName = documentLibraryInfo.IndexName;
-
-        var result = await SearchAsyncInIndex(documentLibraryInternalName, indexName, searchText, top, minRelevance);
         return result;
     }
 
@@ -58,11 +62,11 @@ public class AdditionalDocumentLibraryKernelMemoryRepository : IAdditionalDocume
         return result;
     }
 
-    private Task<List<KernelMemoryDocumentSourceReferenceItem>> SearchAsyncInIndex(string documentLibraryName, string indexName, string searchText, int top = 12,
-        double minRelevance = 0.7)
+    private async Task<List<KernelMemoryDocumentSourceReferenceItem>> SearchAsyncInIndex(
+        string documentLibraryName, string searchText, ConsolidatedSearchOptions searchOptions)
     {
         documentLibraryName = GetDocumentLibraryInternalIdentifier(documentLibraryName);
-        var result = _baseKernelMemoryRepository.SearchAsync(documentLibraryName, indexName, searchText, top, minRelevance);
+        var result = await _baseKernelMemoryRepository.SearchAsync(documentLibraryName, searchText, searchOptions);
         return result;
     }
 

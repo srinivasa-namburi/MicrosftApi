@@ -110,7 +110,8 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
                 sectionTitle: ExtractSectionTitle(existingContentNode.Text),
                 tableOfContentsString,
                 trackedDocument.DocumentProcess,
-                message.MetadataId
+                message.MetadataId,
+                existingContentNode
             );
 
             int bodyContentNodeNumber = 1;
@@ -217,7 +218,9 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
     }
 
     private async Task<List<ContentNode>> GenerateBodyText(string contentNodeType, string sectionNumber,
-            string sectionTitle, string tableOfContentsString, string documentProcessName, Guid? metadataId = null)
+            string sectionTitle, string tableOfContentsString, string documentProcessName, 
+            Guid? metadataId = null,
+            ContentNode? sectionContentNode = null)
     {
         var bodyTextGenerator = _sp.GetRequiredServiceForDocumentProcess<IBodyTextGenerator>(documentProcessName);
 
@@ -227,7 +230,7 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
         }
 
         var result = await bodyTextGenerator.GenerateBodyText(contentNodeType, sectionNumber, sectionTitle,
-            tableOfContentsString, documentProcessName, metadataId);
+            tableOfContentsString, documentProcessName, metadataId, sectionContentNode);
         return result;
     }
 

@@ -9,7 +9,7 @@ public interface IAdditionalDocumentLibraryKernelMemoryRepository
         string? documentUrl, string? userId = null, Dictionary<string, string>? additionalTags = null);
 
     Task DeleteContentAsync(string documentLibraryName, string indexName, string fileName);
-    Task<List<KernelMemoryDocumentSourceReferenceItem>> SearchAsync(string documentLibraryName, string searchText, int top = 12,
-        double minRelevance = 0.7);
+    Task<List<KernelMemoryDocumentSourceReferenceItem>> SearchAsync(string documentLibraryName, string searchText);
     Task<MemoryAnswer?> AskAsync(string documentLibraryName, string indexName, string question);
+
 }

@@ -92,6 +92,8 @@ public static class DocumentProcessExtensions
             "AdditionalBase-IKernelMemoryRepository");
         builder.Services.AddScoped<IAdditionalDocumentLibraryKernelMemoryRepository, AdditionalDocumentLibraryKernelMemoryRepository>();
 
+        // Add the Search Options Factory
+        builder.Services.AddScoped<IConsolidatedSearchOptionsFactory, ConsolidatedSearchOptionsFactory>();
 
         
         return builder;

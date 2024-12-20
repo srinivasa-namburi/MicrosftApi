@@ -22,4 +22,8 @@ public class DocumentProcessInfo : IDocumentProcessInfo
 
     public Guid? DocumentOutlineId { get; set; }
     public string? OutlineText { get; set; }
+    public int PrecedingSearchPartitionInclusionCount { get; set; } = 0;
+    public int FollowingSearchPartitionInclusionCount { get; set; } = 0;
+    public int NumberOfCitationsToGetFromRepository { get; set; } = 50;
+    public double MinimumRelevanceForCitations { get; set; } = 0.7;
 }

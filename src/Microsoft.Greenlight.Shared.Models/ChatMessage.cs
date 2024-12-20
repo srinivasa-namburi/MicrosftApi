@@ -9,11 +9,11 @@ public class ChatMessage : EntityBase
     public ChatMessage? ReplyToChatMessage { get; set; }
     public Guid? ReplyToChatMessageId { get; set; }
     
-    public ChatConversation Conversation { get; set; }
+    public ChatConversation? Conversation { get; set; }
     public Guid ConversationId { get; set; }
 
     public ChatMessageSource Source { get; set; }
-    public string Message { get; set; }
+    public string? Message { get; set; }
     public string? ContentText { get; set; }
     public ConversationSummary? SummarizedByConversationSummary { get; set; }
     public Guid? SummarizedByConversationSummaryId { get; set; }

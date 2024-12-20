@@ -5,6 +5,7 @@ using Microsoft.KernelMemory;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.Shared.Models.SourceReferences;
+using Microsoft.Greenlight.Shared.Contracts;
 
 namespace Microsoft.Greenlight.DocumentProcess.Shared.Search;
 
@@ -109,186 +110,242 @@ public class KernelMemoryRepository : IKernelMemoryRepository
 
         await memory.DeleteDocumentAsync(fileName, indexName);
     }
-
+   
     public async Task<List<KernelMemoryDocumentSourceReferenceItem>> SearchAsync(
-        string documentLibraryName, 
-        string searchText, 
-        int top = 12, 
-        double minRelevance = 0.7)
-    {
-        string indexName = string.Empty;
-        if(documentLibraryName.StartsWith("Additional-"))
-        {
-            var documentLibrary = await _documentLibraryInfoService.GetDocumentLibraryByShortNameAsync(documentLibraryName);
-            if (documentLibrary == null)
-            {
-                _logger.LogError("Document Library {DocumentLibraryName} not found in configuration", documentLibraryName);
-                throw new Exception("Document Library " + documentLibraryName + " not found in configuration");
-            }
-
-            indexName = documentLibrary.IndexName;
-
-        }
-        else
-        {
-            var documentProcess =
-                await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentLibraryName);
-
-            if (documentProcess == null)
-            {
-                _logger.LogError("Document Process {DocumentProcessName} not found in configuration", documentLibraryName);
-                throw new Exception("Document Process " + documentLibraryName + " not found in configuration");
-            }
-
-            indexName = documentProcess.Repositories[0];
-        }
-
-        var searchResults = await SearchAsync(documentLibraryName, indexName, searchText, top, minRelevance);
-
-        return searchResults;
-    }
-
-    public async Task<List<KernelMemoryDocumentSourceReferenceItem>> SearchAsync(
-        string documentLibraryName,
-        string indexName, 
-        string searchText, 
-        int top = 12, 
-        double minRelevance = 0.7)
-    {
-        var blankParameters = new Dictionary<string, string>();
-        return await SearchAsync(documentLibraryName, indexName, blankParameters, searchText, top, minRelevance);
-    }
-
-    public async Task<List<KernelMemoryDocumentSourceReferenceItem>> SearchAsync(
-        string documentLibraryName, 
-        string indexName, 
-        Dictionary<string, string> parametersExactMatch, 
-        string searchText, 
-        int top = 12,
-        double minRelevance = 0.7)
+    string documentLibraryName,
+    string searchText,
+    ConsolidatedSearchOptions options)
     {
         var memory = await GetKernelMemoryForDocumentLibrary(documentLibraryName);
-
         if (memory == null)
         {
             _logger.LogError("Kernel Memory service not found for Document Library {DocumentLibraryName}", documentLibraryName);
             throw new Exception("Kernel Memory service not found for Document Library " + documentLibraryName);
         }
 
-        SearchResult results;
-        if (parametersExactMatch.Count <= 0)
+        // Retrieve search results
+        var results = await GetSearchResultsAsync(
+            memory,
+            options.IndexName,
+            options.ParametersExactMatch,
+            searchText,
+            options.MinRelevance,
+            options.Top);
+
+        // Determine if Document Library or Document Process, and set up factory accordingly
+        Func<Citation, KernelMemoryDocumentSourceReferenceItem> sourceReferenceItemFactory;
+        if (options.DocumentLibraryType == DocumentLibraryType.PrimaryDocumentProcessLibrary)
         {
-            results = await memory.SearchAsync(searchText,
-                index: indexName,
-                minRelevance: minRelevance,
-                limit: top);
-        }
-        else
-        {
-            var tagFilter = new List<MemoryFilter>();
-            foreach (var parameter in parametersExactMatch)
-            {
-                tagFilter.Add(new MemoryFilter().ByTag(parameter.Key, parameter.Value));
-            }
-
-            results = await memory.SearchAsync(searchText,
-                index: indexName,
-                minRelevance: minRelevance,
-                limit: top,
-                filters: tagFilter);
-        }
-
-        List<KernelMemoryDocumentSourceReferenceItem> sourceItems;
-        if (documentLibraryName.StartsWith("Additional-"))
-        {
-            var internalDocumentLibraryName = documentLibraryName.Replace("Additional-", "");
-            var documentLibrary = await _documentLibraryInfoService.GetDocumentLibraryByShortNameAsync(internalDocumentLibraryName);
-
-            if (documentLibrary == null)
-            {
-                _logger.LogError("Document Library {DocumentLibraryName} not found in configuration", internalDocumentLibraryName);
-                throw new Exception("Document Library " + internalDocumentLibraryName + " not found in configuration");
-            }
-
-            var sourceReferenceItems = new List<DocumentLibrarySourceReferenceItem>();
-
-            foreach (var citation in results.Results)
-            {
-                var sourceReferenceItem = new DocumentLibrarySourceReferenceItem
-                {
-                    DocumentLibraryShortName = internalDocumentLibraryName,
-                    IndexName = documentLibrary.IndexName
-                };
-                sourceReferenceItem.SetBasicParameters();
-                sourceReferenceItem.AddCitation(citation);
-
-                var firstPartition = citation.Partitions.FirstOrDefault();
-                if (firstPartition != null)
-                {
-                    if (firstPartition.Tags.ContainsKey("OriginalDocumentUrl"))
-                    {
-                        sourceReferenceItem.SourceReferenceLinkType = SourceReferenceLinkType.SystemNonProxiedUrl;
-                        firstPartition.Tags.TryGetValue("OriginalDocumentUrl", out var links);
-                        if (links is { Count: > 0 })
-                        {
-                            sourceReferenceItem.SourceReferenceLink = links.FirstOrDefault();
-                        }
-                    }
-                }
-
-                sourceReferenceItems.Add(sourceReferenceItem);
-            }
-
-            sourceItems = [.. sourceReferenceItems];
-
-        }
-        else
-        {
-            //We're dealing with a Document Process and need to create DocumentProcessKnowledgeRepositorySourceReferenceItems 
-            //instead of DocumentLibrarySourceReferenceItems. Otherwise, the code is the same as above.
-
-            var documentProcess = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentLibraryName);
-
+            // Document Process
+            var documentProcess =
+                await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentLibraryName);
             if (documentProcess == null)
             {
                 _logger.LogError("Document Process {DocumentProcessName} not found in configuration", documentLibraryName);
                 throw new Exception("Document Process " + documentLibraryName + " not found in configuration");
             }
 
-            var sourceReferenceItems = new List<DocumentProcessRepositorySourceReferenceItem>();
-
-            foreach (var citation in results.Results)
+            sourceReferenceItemFactory = citation => new DocumentProcessRepositorySourceReferenceItem
             {
-                var sourceReferenceItem = new DocumentProcessRepositorySourceReferenceItem
-                {
-                    DocumentProcessShortName = documentLibraryName,
-                    IndexName = documentProcess.Repositories[0]
-                };
-                sourceReferenceItem.SetBasicParameters();
-                sourceReferenceItem.AddCitation(citation);
+                DocumentProcessShortName = documentLibraryName,
+                IndexName = options.IndexName
+            };
+        }
+        else if (options.DocumentLibraryType == DocumentLibraryType.Reviews)
+        {
+            sourceReferenceItemFactory = citation => new DocumentLibrarySourceReferenceItem
+            {
+                DocumentLibraryShortName = "Reviews", 
+                IndexName = options.IndexName
+            };
+        }
+        else
+        {
+            // Additional Document Library
+            var internalDocumentLibraryName =
+                documentLibraryName.Replace("Additional-", "", StringComparison.OrdinalIgnoreCase);
 
-                var firstPartition = citation.Partitions.FirstOrDefault();
-                if (firstPartition != null)
-                {
-                    if (firstPartition.Tags.ContainsKey("OriginalDocumentUrl"))
-                    {
-                        sourceReferenceItem.SourceReferenceLinkType = SourceReferenceLinkType.SystemNonProxiedUrl;
-                        firstPartition.Tags.TryGetValue("OriginalDocumentUrl", out var links);
-                        if (links is { Count: > 0 })
-                        {
-                            sourceReferenceItem.SourceReferenceLink = links.FirstOrDefault();
-                        }
-                    }
-                }
+            var documentLibrary =
+                await _documentLibraryInfoService.GetDocumentLibraryByShortNameAsync(internalDocumentLibraryName);
 
-                sourceReferenceItems.Add(sourceReferenceItem);
+            if (documentLibrary == null)
+            {
+                _logger.LogError("Document Library {DocumentLibraryName} not found in configuration",
+                    internalDocumentLibraryName);
+                throw new Exception("Document Library " + internalDocumentLibraryName + " not found in configuration");
             }
 
-            sourceItems = [.. sourceReferenceItems];
+            sourceReferenceItemFactory = citation => new DocumentLibrarySourceReferenceItem
+            {
+                DocumentLibraryShortName = internalDocumentLibraryName,
+                IndexName = options.IndexName
+            };
         }
+
+        // Create source reference items - this may include adjacent partitions depending on incoming options
+        var sourceItems = await CreateSourceReferenceItemsAsync(
+            results,
+            memory,
+            sourceReferenceItemFactory,
+            options.PrecedingPartitionCount,
+            options.FollowingPartitionCount);
 
         return sourceItems;
     }
+
+    private async Task<SearchResult> GetSearchResultsAsync(
+        IKernelMemory memory,
+        string indexName,
+        Dictionary<string, string> parametersExactMatch,
+        string searchText,
+        double minRelevance,
+        int top)
+    {
+        if (parametersExactMatch.Count == 0)
+        {
+            return await memory.SearchAsync(searchText, index: indexName, minRelevance: minRelevance, limit: top);
+        }
+
+        var tagFilter = new List<MemoryFilter>();
+        foreach (var parameter in parametersExactMatch)
+        {
+            tagFilter.Add(new MemoryFilter().ByTag(parameter.Key, parameter.Value));
+        }
+
+        return await memory.SearchAsync(searchText, index: indexName, minRelevance: minRelevance, limit: top, filters: tagFilter);
+    }
+
+    private async Task<List<KernelMemoryDocumentSourceReferenceItem>> CreateSourceReferenceItemsAsync(
+        SearchResult results,
+        IKernelMemory memory,
+        Func<Citation, KernelMemoryDocumentSourceReferenceItem> sourceReferenceItemFactory,
+        int precedingPartitionCount,
+        int followingPartitionCount)
+    {
+        var sourceReferenceItems = new List<KernelMemoryDocumentSourceReferenceItem>();
+
+        foreach (var citation in results.Results)
+        {
+            var sourceReferenceItem = sourceReferenceItemFactory(citation);
+            sourceReferenceItem.SetBasicParameters();
+
+            // Add adjacent partitions
+            await AddAdjacentPartitionsAsync(memory, citation, precedingPartitionCount, followingPartitionCount);
+
+            // Set source reference link if available
+            var firstPartition = citation.Partitions.FirstOrDefault();
+            if (firstPartition != null && firstPartition.Tags.ContainsKey("OriginalDocumentUrl"))
+            {
+                sourceReferenceItem.SourceReferenceLinkType = SourceReferenceLinkType.SystemNonProxiedUrl;
+                if (firstPartition.Tags.TryGetValue("OriginalDocumentUrl", out var links) && links is { Count: > 0 })
+                {
+                    sourceReferenceItem.SourceReferenceLink = links.FirstOrDefault();
+                }
+            }
+
+            // Fix items where relevance is -Infinity or Infinity
+            foreach (var partition in citation.Partitions)
+            {
+                if (double.IsInfinity(partition.Relevance))
+                {
+                    partition.Relevance = 0.0F;
+                }
+            }
+
+            sourceReferenceItem.AddCitation(citation);
+
+            sourceReferenceItems.Add(sourceReferenceItem);
+        }
+
+        return sourceReferenceItems;
+    }
+
+    private async Task AddAdjacentPartitionsAsync(
+        IKernelMemory memory,
+        Citation citation,
+        int precedingPartitionCount,
+        int followingPartitionCount)
+    {
+        if (citation?.Partitions == null || citation.Partitions.Count == 0)
+            return;
+
+        if (precedingPartitionCount <= 0 && followingPartitionCount <= 0)
+            return;
+
+        var allPartitions = new List<Citation.Partition>(citation.Partitions);
+        var adjacentPartitions = new List<Citation.Partition>();
+
+        foreach (var partition in citation.Partitions)
+        {
+            var neighborsMemoryFilters = new List<MemoryFilter>();
+
+            if (precedingPartitionCount > 0)
+            {
+                for (int i = 1; i <= precedingPartitionCount; i++)
+                {
+                    var precedingPartitionNumber = partition.PartitionNumber - i;
+
+                    // Only add this filter if the preceding partition number is not already in the list of partitions
+                    if (allPartitions.All(p => p.PartitionNumber != precedingPartitionNumber))
+                    {
+                        neighborsMemoryFilters.Add(
+                            MemoryFilters.ByDocument(citation.DocumentId)
+                                .ByTag(Constants.ReservedFilePartitionNumberTag,
+                                    precedingPartitionNumber.ToString()));
+                    }
+                }
+            }
+
+            if (followingPartitionCount > 0)
+            {
+                for (int i = 1; i <= followingPartitionCount; i++)
+                {
+                    var followingPartitionNumber = partition.PartitionNumber + i;
+
+                    // Only add this filter if the following partition number is not already in the list of partitions
+                    if (allPartitions.All(p => p.PartitionNumber != followingPartitionNumber))
+                    {
+                        neighborsMemoryFilters.Add(
+                            MemoryFilters.ByDocument(citation.DocumentId)
+                                .ByTag(Constants.ReservedFilePartitionNumberTag,
+                                    followingPartitionNumber.ToString()));
+                    }
+                }
+            }
+
+            if (!neighborsMemoryFilters.Any())
+            {
+                continue;
+            }
+
+            var adjacentList = await memory.SearchAsync("", index: citation.Index, filters: neighborsMemoryFilters, limit: precedingPartitionCount + followingPartitionCount);
+
+            foreach (var adjacentCitation in adjacentList.Results)
+            {
+                // We don't have a relevance number for these partitions, so set it to the same as the original partition
+                foreach (var adjacentPartition in adjacentCitation.Partitions)
+                {
+                    adjacentPartition.Relevance = partition.Relevance;
+                }
+                adjacentPartitions.AddRange(adjacentCitation.Partitions);
+            }
+        }
+
+        // Add the adjacent partitions to the original partitions
+        foreach (var partition in adjacentPartitions.Where(p => !allPartitions.Contains(p)))
+        {
+            allPartitions.Add(partition);
+        }
+
+        // Replace the original partitions with the new partitions which includes the adjacent partitions in addition to the original partitions
+        citation.Partitions = allPartitions;
+
+
+        // Order the partitions by partition number
+        citation.Partitions = citation.Partitions.OrderBy(p => p.PartitionNumber).ToList();
+    }
+
+
 
     public async Task<MemoryAnswer?> AskAsync(string documentLibraryName, string indexName, Dictionary<string, string>? parametersExactMatch, string question)
     {

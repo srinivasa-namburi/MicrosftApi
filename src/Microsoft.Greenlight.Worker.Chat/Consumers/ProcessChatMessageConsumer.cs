@@ -18,30 +18,56 @@ using Scriban;
 
 namespace Microsoft.Greenlight.Worker.Chat.Consumers;
 
-public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
+/// <summary>
+/// Consumer class for messages of <see cref="ProcessChatMessage"/>.
+/// </summary>
+/// <remarks>
+/// Initializes a new instance of the <see cref="ProcessChatMessageConsumer"/> class.
+/// </remarks>
+/// <param name="dbContext">
+/// The <see cref="DocGenerationDbContext"/>.
+/// </param>
+/// <param name="mapper">
+/// An instance of AutoMapper - <see cref="IMapper"/>.
+/// </param>
+/// <param name="sp">
+/// The <see cref="IServiceProvider"/>.
+/// </param>
+/// <param name="promptInfoService">
+/// The <see cref="IPromptInfoService"/>.
+/// </param>
+/// <param name="logger">
+/// The <see cref="ILogger"/>.
+/// </param>
+/// <param name="documentProcessInfoService">
+/// The <see cref="IDocumentProcessInfoService"/>.
+/// </param>
+public class ProcessChatMessageConsumer(
+    DocGenerationDbContext dbContext,
+    IMapper mapper,
+    IServiceProvider sp,
+    IPromptInfoService promptInfoService,
+    ILogger<ProcessChatMessageConsumer> logger,
+    IDocumentProcessInfoService documentProcessInfoService
+        ) : IConsumer<ProcessChatMessage>
 {
     private Kernel? _kernel;
-    private readonly DocGenerationDbContext _dbContext;
-    private readonly IMapper _mapper;
-    private readonly IServiceProvider _sp;
-    private readonly IPromptInfoService _promptInfoService;
-    private readonly IDocumentProcessInfoService _documentProcessInfoService;
+    private readonly DocGenerationDbContext _dbContext = dbContext;
+    private readonly IMapper _mapper = mapper;
+    private readonly IServiceProvider _sp = sp;
+    private readonly IPromptInfoService _promptInfoService = promptInfoService;
+    private readonly ILogger<ProcessChatMessageConsumer> _logger = logger;
+    private readonly IDocumentProcessInfoService _documentProcessInfoService = documentProcessInfoService;
 
-    public ProcessChatMessageConsumer(
-        DocGenerationDbContext dbContext,
-        IMapper mapper,
-        IServiceProvider sp,
-        IPromptInfoService promptInfoService,
-        IDocumentProcessInfoService documentProcessInfoService
-        )
-    {
-        _dbContext = dbContext;
-        _mapper = mapper;
-        _sp = sp;
-        _promptInfoService = promptInfoService;
-        _documentProcessInfoService = documentProcessInfoService;
-    }
-
+    /// <summary>
+    /// Consumes the <see cref="ProcessChatMessage"/> command and proccesses chat messages from the user.
+    /// </summary>
+    /// <param name="context">
+    /// The <see cref="ConsumeContext"/> containing the <see cref="ProcessChatMessage"/> command.
+    /// </param>
+    /// <returns>
+    /// A <see cref="Task"/> that represents the asynchronous consume operation.
+    /// </returns>
     public async Task Consume(ConsumeContext<ProcessChatMessage> context)
     {
         var userMessageDto = context.Message.ChatMessageDto;
@@ -53,6 +79,7 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
         catch (OperationCanceledException e)
         {
             // If the message is a duplicate, log the error and exit (as a successful run)
+            _logger.LogWarning(e, "Duplicate message detected");
             return;
         }
         await ProcessUserMessage(userMessageDto, context);
@@ -111,16 +138,16 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
         var conversation = await _dbContext.ChatConversations
             .FirstOrDefaultAsync(x => x.Id == userMessageDto.ConversationId);
 
-        var documentProcessInfo = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(conversation.DocumentProcessName);
+        var documentProcessInfo = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(conversation!.DocumentProcessName);
 
         // Set up Semantic Kernel for the right Document Process
 
         _kernel ??= _sp.GetRequiredServiceForDocumentProcess<Kernel>(conversation.DocumentProcessName);
         if (_kernel.Plugins.Count == 0)
         {
-            await _kernel.Plugins.AddSharedAndDocumentProcessPluginsToPluginCollectionAsync(_sp, documentProcessInfo);
+            await _kernel.Plugins.AddSharedAndDocumentProcessPluginsToPluginCollectionAsync(_sp, documentProcessInfo!);
         }
-        
+
         var systemPrompt =
             await _promptInfoService.GetPromptTextByShortCodeAndProcessNameAsync(PromptNames.ChatSystemPrompt,
                 conversation.DocumentProcessName);
@@ -142,7 +169,7 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
         var userPrompt = await BuildUserPromptAsync(
             chatHistoryString,
             previousSummariesForConversationString,
-            userMessageDto.Message,
+            userMessageDto.Message!,
             conversation.DocumentProcessName);
 
         var kernelArguments = new KernelArguments(openAiSettings);
@@ -233,7 +260,7 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
     private async Task<string> CreateChatHistoryString(ConsumeContext<ProcessChatMessage> context,
         ChatMessageDTO userMessageDto, int numberOfMessagesToInclude = Int32.MaxValue)
     {
-        List<ChatMessage> chatHistory = new List<ChatMessage>();
+        List<ChatMessage> chatHistory = [];
 
         if (numberOfMessagesToInclude == Int32.MaxValue)
         {

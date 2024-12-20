@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Worker">
+﻿<Project Sdk="Microsoft.NET.Sdk.Worker">
 	<PropertyGroup>
 		<TargetFramework>net8.0</TargetFramework>
 		<Nullable>enable</Nullable>
@@ -8,6 +8,9 @@
 	</PropertyGroup>
 	<PropertyGroup>
 		<NoWarn>SKEXP0060;SKEXP0061;SKEXP0042;SKEXP0011;SKEXP0001</NoWarn>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <CodeAnalysisTreatWarningsAsErrors>true</CodeAnalysisTreatWarningsAsErrors>
 	</PropertyGroup>
 	<ItemGroup>
 		<ProjectReference Include="..\Plugins\Microsoft.Greenlight.Plugins.Default\Microsoft.Greenlight.Plugins.Default.csproj" />

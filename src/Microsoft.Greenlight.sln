@@ -93,6 +93,15 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Microsoft.Greenlight.SetupM
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "000.Setup Managers", "000.Setup Managers", "{BAB0BA13-F063-4859-92C8-DC0E086F6F72}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tests", "Tests", "{50972C3E-4FF3-4EBA-BEA6-B9B25AF9E46A}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{CDE81060-30B1-4FAD-99A5-523C1347252C}"
+	ProjectSection(SolutionItems) = preProject
+		.editorconfig = .editorconfig
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.Greenlight.Worker.Chat.Tests", "Microsoft.Greenlight.Worker.Chat.Tests\Microsoft.Greenlight.Worker.Chat.Tests.csproj", "{3C040D7D-D7B0-4C58-8E3D-DC5099157AED}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -274,6 +283,12 @@ Global
 		{89EE11AC-63B1-4FA0-B3DD-BD591E40B0E8}.Publish|Any CPU.Build.0 = Debug|Any CPU
 		{89EE11AC-63B1-4FA0-B3DD-BD591E40B0E8}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{89EE11AC-63B1-4FA0-B3DD-BD591E40B0E8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3C040D7D-D7B0-4C58-8E3D-DC5099157AED}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3C040D7D-D7B0-4C58-8E3D-DC5099157AED}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3C040D7D-D7B0-4C58-8E3D-DC5099157AED}.Publish|Any CPU.ActiveCfg = Debug|Any CPU
+		{3C040D7D-D7B0-4C58-8E3D-DC5099157AED}.Publish|Any CPU.Build.0 = Debug|Any CPU
+		{3C040D7D-D7B0-4C58-8E3D-DC5099157AED}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3C040D7D-D7B0-4C58-8E3D-DC5099157AED}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -310,6 +325,8 @@ Global
 		{3A3FB919-C0DC-46D7-903F-DC4B502107CE} = {E3971949-16AA-4C9B-BD65-62E0BE6EEAFE}
 		{CD951DF2-ECE1-4749-B970-4045FC83DBFC} = {0CED2165-8D86-45D8-8D0D-359FB0D0AC32}
 		{89EE11AC-63B1-4FA0-B3DD-BD591E40B0E8} = {BAB0BA13-F063-4859-92C8-DC0E086F6F72}
+		{50972C3E-4FF3-4EBA-BEA6-B9B25AF9E46A} = {FF5008BD-2970-41F9-8F1E-61F2DEC9AED5}
+		{3C040D7D-D7B0-4C58-8E3D-DC5099157AED} = {50972C3E-4FF3-4EBA-BEA6-B9B25AF9E46A}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {8B68A6F2-AE7F-4585-941D-282839D6E440}

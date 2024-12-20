@@ -13,6 +13,7 @@ using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Services;
+using Microsoft.Greenlight.Shared.Services.Search;
 
 namespace Microsoft.Greenlight.DocumentProcess.Dynamic;
 
@@ -53,6 +54,7 @@ public class DynamicDocumentProcessRegistration : IDocumentProcessRegistration
                 builder.Services.AddKeyedScoped<IBodyTextGenerator>(documentProcess.ShortName + "-IBodyTextGenerator", (sp, a) =>
                     new KernelMemoryBodyTextGenerator(
                         sp.GetRequiredKeyedService<IAiCompletionService>(documentProcess.ShortName + "-IAiCompletionService"),
+                        sp.GetRequiredService<IConsolidatedSearchOptionsFactory>(),
                         sp.GetRequiredService<ILogger<KernelMemoryBodyTextGenerator>>(),
                         sp.GetRequiredService<IServiceProvider>()
                     ));

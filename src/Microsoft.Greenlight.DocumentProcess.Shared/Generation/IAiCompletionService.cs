@@ -7,12 +7,13 @@ namespace Microsoft.Greenlight.DocumentProcess.Shared.Generation;
 
 public interface IAiCompletionService
 {
-    Task<List<ContentNode>> GetBodyContentNodes(
-        List<DocumentProcessRepositorySourceReferenceItem> sourceDocuments,
+    Task<List<ContentNode>> GetBodyContentNodes(List<DocumentProcessRepositorySourceReferenceItem> sourceDocuments,
         string sectionOrTitleNumber,
-        string sectionOrTitleText, ContentNodeType contentNodeType, string tableOfContentsString, Guid? metadataId);
+        string sectionOrTitleText, ContentNodeType contentNodeType, string tableOfContentsString, Guid? metadataId,
+        ContentNode? sectionContentNode);
     IAsyncEnumerable<string> GetStreamingBodyContentText(
         List<DocumentProcessRepositorySourceReferenceItem> sourceDocuments, 
         string sectionOrTitleNumber,
-        string sectionOrTitleText, ContentNodeType contentNodeType, string tableOfContentsString, Guid? metadataId);
+        string sectionOrTitleText, ContentNodeType contentNodeType, string tableOfContentsString, Guid? metadataId, 
+        ContentNode? sectionContentNode);
 }

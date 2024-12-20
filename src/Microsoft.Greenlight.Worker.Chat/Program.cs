@@ -59,8 +59,8 @@ builder.Services.AddMassTransit(x =>
           cfg.ConfigureEndpoints(context);
           cfg.ConcurrentMessageLimit = 4;
           cfg.PrefetchCount = 3;
-          cfg.UseMessageRetry(r => r.Intervals(new TimeSpan[]
-          {
+          cfg.UseMessageRetry(r => r.Intervals(
+          [
              // Set first retry to a random number between 3 and 9 seconds
              TimeSpan.FromSeconds(new Random().Next(3, 9)),
              // Set second retry to a random number between 10 and 30 seconds
@@ -68,7 +68,7 @@ builder.Services.AddMassTransit(x =>
              // Set third and final retry to a random number between 30 and 60 seconds
              TimeSpan.FromSeconds(new Random().Next(30, 60))
 
-          }));
+          ]));
       });
  });
 

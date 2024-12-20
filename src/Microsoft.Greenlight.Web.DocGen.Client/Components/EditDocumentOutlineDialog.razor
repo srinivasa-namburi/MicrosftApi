@@ -43,46 +43,14 @@
                 <ItemTemplate Context="item">
                     <MudTreeViewItem Items="@item.Children.ToHashSet()" Text="@item.SectionTitle" Expanded T="DocumentOutlineItemInfo">
                         <BodyContent>
-                            <div style="display: grid; grid-template-columns: 1fr auto; align-items: center; width: 100%">
-                                <div>
-                                    <MudTextField Label="Section Number" Style="justify-self: start; width: 25%" @bind-Value="item.SectionNumber" />
-                                    <MudTooltip Inline=false RootStyle="width: 100%" Text="@("Id: " + item.Id.ToString() + "\n Parent Id: " + item.ParentId.ToString() + "\n Level: " + item.Level.ToString() + "\n DocumentOutlineId: " + item.DocumentOutlineId.ToString() + "\n OrderIndex: " + item.OrderIndex)">
-                                        <MudTextField Label="Section Title" Style="justify-self: start; width: 100%" @bind-Value="item.SectionTitle" />
-                                    </MudTooltip>
-                                </div>
-                                <div style="display: flex; align-items: center; justify-content: flex-end;">
-                                    <MudTooltip Text="Only create this section as a heading in generated documents, with no body text. Typically used for chapter headings.">
-                                        <MudCheckBox T="bool" Label="Heading Only" @bind-Value="item.RenderTitleOnly"/>
-                                    </MudTooltip>
-                                    <MudTooltip Text="Add New Subsection">
-                                        <MudIconButton Icon="@Icons.Material.Filled.Add" OnClick="() => AddChildItem(item)"></MudIconButton>
-                                    </MudTooltip>
-                                    <MudTooltip Text="More Options">
-                                        <MudMenu Icon="@Icons.Material.Filled.MoreVert"
-                                                 Size="Size.Medium" Color="Color.Inherit"
-                                                 ActivationEvent="@MouseEvent.LeftClick"
-                                                 AnchorOrigin="Origin.CenterRight"
-                                                 TransformOrigin="Origin.CenterLeft">
-                                            <MudMenuItem Icon="@Icons.Material.Filled.Add" OnClick="() => AddChildItem(item)">Add New Subsection</MudMenuItem>
-                                            <MudDivider/>
-                                            <MudMenuItem Icon="@Icons.Material.Filled.Add" OnClick="() => AddItemAbove(item)">Add New Section Above</MudMenuItem>
-                                            <MudMenuItem Icon="@Icons.Material.Filled.Add" OnClick="() => AddItemBelow(item)">Add New Section Below</MudMenuItem>
-                                            <MudDivider/>
-                                            <MudMenuItem Icon="@Icons.Material.Filled.ContentCopy" OnClick="() => CopyItem(item)">Copy Section</MudMenuItem>
-                                            <MudDivider/>
-                                            <MudMenuItem Icon="@Icons.Material.Filled.ContentPaste" OnClick="() => PasteAsChildItem(item)" Disabled="@(CopiedDocumentOutlineItemInfo is null)">Paste as Subsection</MudMenuItem>
-                                            <MudDivider/>
-                                            <MudMenuItem Icon="@Icons.Material.Filled.ContentPaste" OnClick="() => PasteItemAtSameLevel(item, true)" Disabled="@(CopiedDocumentOutlineItemInfo is null)">Paste Section Above</MudMenuItem>
-                                            <MudMenuItem Icon="@Icons.Material.Filled.ContentPaste" OnClick="() => PasteItemAtSameLevel(item, false)" Disabled="@(CopiedDocumentOutlineItemInfo is null)">Paste Section Below</MudMenuItem>
-                                            <MudDivider/>
-                                            <MudMenuItem Icon="@Icons.Material.Filled.ArrowDropUp" OnClick="() => MoveItemUp(item)" Disabled="@(IsMoveUpDisabled(item))">Move Section Up</MudMenuItem>
-                                            <MudMenuItem Icon="@Icons.Material.Filled.ArrowDropDown" OnClick="() => MoveItemDown(item)" Disabled="@(IsMoveDownDisabled(item))">Move Section Down</MudMenuItem>
-                                            <MudDivider/>
-                                            <MudMenuItem Icon="@Icons.Material.Filled.Delete" OnClick="() => DeleteItem(item)" Disabled="@(IsLastItem(item))">Delete Section</MudMenuItem>
-                                        </MudMenu>
-                                    </MudTooltip>
-                                </div>
-                            </div>
+                            <!-- Delegating UI rendering of each item to the DocumentOutlineItemComponent -->
+                            <DocumentOutlineItemComponent Item="@item"
+                                                          IsPasteDisabled="@(CopiedDocumentOutlineItemInfo is null)"
+                                                          IsMoveUpDisabled="IsMoveUpDisabled(item)"
+                                                          IsMoveDownDisabled="IsMoveDownDisabled(item)"
+                                                          IsDeleteDisabled="IsLastItem(item)"
+                                                          GetTooltipText="GetTooltipText"
+                                                          OnItemActionRequested="HandleItemActionRequested" />
                         </BodyContent>
                     </MudTreeViewItem>
                 </ItemTemplate>
@@ -108,6 +76,7 @@
 
     private bool ShowImportSection { get; set; } = false;
     private bool ShowImportConfirmationSection { get; set; } = false;
+
     private string OutlineText { get; set; } = string.Empty;
 
     private List<DocumentOutlineItemInfo> ImportedOutlineItems { get; set; } = new();
@@ -159,11 +128,9 @@
     {
         if (string.IsNullOrWhiteSpace(OutlineText))
         {
-            // Optionally show an error message
             return;
         }
 
-        // Call the API to generate the outline items
         var newOutlineItems = await DocumentOutlineApiClient.GenerateOutlineFromTextAsync(OutlineText);
 
         if (newOutlineItems != null && newOutlineItems.Any())
@@ -175,8 +142,6 @@
         }
         else
         {
-            // Handle error or empty result
-            // Optionally show an error message
             ShowImportSection = false;
         }
     }
@@ -197,13 +162,8 @@
 
     private async Task ConfirmImport()
     {
-        // Replace the current outline items with the new ones
         CurrentDocumentOutline.OutlineItems = ImportedOutlineItems;
-
-        // Hide the confirmation section
         ShowImportConfirmationSection = false;
-
-        // Optionally update the UI or notify the user
         await InvokeAsync(StateHasChanged);
     }
 
@@ -263,22 +223,18 @@
     {
         var originalItemIds = originalItems.Select(o => o.Id).ToHashSet();
         var currentItemIds = currentItems.Select(c => c.Id).ToHashSet();
-
-        // Dictionary to track the original positions of items
         var originalPositions = originalItems.Select((item, index) => new { item.Id, index }).ToDictionary(x => x.Id, x => x.index);
 
         foreach (var currentItem in currentItems)
         {
             var originalItem = originalItems.FirstOrDefault(o => o.Id == currentItem.Id);
 
-            // Check if the item is new or has changed
             if (originalItem == null || !currentItem.Equals(originalItem))
             {
                 changedItems.Add(currentItem);
             }
             else
             {
-                // Check if the order has changed
                 if (originalPositions.TryGetValue(currentItem.Id, out var originalIndex) && originalIndex != currentItems.IndexOf(currentItem))
                 {
                     changedItems.Add(currentItem);
@@ -317,6 +273,47 @@
         MudDialog.Cancel();
     }
 
+    // Unified item action handler:
+    private void HandleItemActionRequested((DocumentOutlineItemInfo item, DocumentOutlineItemAction action) request)
+    {
+        var (item, action) = request;
+        switch (action)
+        {
+            case DocumentOutlineItemAction.AddChild:
+                AddChildItem(item);
+                break;
+            case DocumentOutlineItemAction.AddAbove:
+                AddItemAbove(item);
+                break;
+            case DocumentOutlineItemAction.AddBelow:
+                AddItemBelow(item);
+                break;
+            case DocumentOutlineItemAction.Copy:
+                CopyItem(item);
+                break;
+            case DocumentOutlineItemAction.PasteAsChild:
+                PasteAsChildItem(item);
+                break;
+            case DocumentOutlineItemAction.PasteAbove:
+                PasteItemAtSameLevel(item, true);
+                break;
+            case DocumentOutlineItemAction.PasteBelow:
+                PasteItemAtSameLevel(item, false);
+                break;
+            case DocumentOutlineItemAction.MoveUp:
+                MoveItemUp(item);
+                break;
+            case DocumentOutlineItemAction.MoveDown:
+                MoveItemDown(item);
+                break;
+            case DocumentOutlineItemAction.Delete:
+                DeleteItem(item);
+                break;
+        }
+
+        StateHasChanged();
+    }
+
     private void CopyItem(DocumentOutlineItemInfo item)
     {
         Guid newId = Guid.NewGuid();
@@ -347,13 +344,13 @@
             Guid newId = Guid.NewGuid();
             var copiedChild = new DocumentOutlineItemInfo
                 {
-                    Id = newId, // needs to change with each copy/paste
+                    Id = newId,
                     SectionNumber = child.SectionNumber,
                     SectionTitle = child.SectionTitle,
                     PromptInstructions = child.PromptInstructions,
-                    Level = parentLevel + 1, // needs to change with each copy/paste
-                    ParentId = parentId, // needs to change with each copy/paste
-                    DocumentOutlineId = child.DocumentOutlineId, // should always be null given that there is a parent item
+                    Level = parentLevel + 1,
+                    ParentId = parentId,
+                    DocumentOutlineId = child.DocumentOutlineId,
                     Children = CopyItemRecursiveHelper(child.Children, newId, parentLevel + 1),
                     OrderIndex = child.OrderIndex,
                 };
@@ -364,13 +361,13 @@
 
     private void PasteAsChildItem(DocumentOutlineItemInfo parentItem)
     {
-        // to allow infinite pastes of same section, must change Id with each paste
+        if (CopiedDocumentOutlineItemInfo == null) return;
+
         Guid newId = Guid.NewGuid();
         CopiedDocumentOutlineItemInfo.Id = newId;
         CopiedDocumentOutlineItemInfo.ParentId = parentItem.Id;
         CopiedDocumentOutlineItemInfo.Level = parentItem.Level + 1;
-        CopiedDocumentOutlineItemInfo.DocumentOutlineId = null; // if it had a document outline id (i.e. was at the top level), remove
-
+        CopiedDocumentOutlineItemInfo.DocumentOutlineId = null;
         CopiedDocumentOutlineItemInfo.Children = CopyItemRecursiveHelper(CopiedDocumentOutlineItemInfo.Children, newId, CopiedDocumentOutlineItemInfo.Level);
 
         parentItem.Children.Add(CopiedDocumentOutlineItemInfo);
@@ -378,23 +375,16 @@
 
     private void PasteItemAtSameLevel(DocumentOutlineItemInfo item, bool isAbove)
     {
-        // if pasting above current item, add 0 to indexOfItem; if pasting below current item, add 1 to indexOfItem
-        int pasteIndexAddend = isAbove ? 0 : 1;
+        if (CopiedDocumentOutlineItemInfo == null) return;
 
-        // to allow infinite pastes of same section, must change Id with each paste
+        int pasteIndexAddend = isAbove ? 0 : 1;
         Guid newId = Guid.NewGuid();
         CopiedDocumentOutlineItemInfo.Id = newId;
-
         CopiedDocumentOutlineItemInfo.Level = item.Level;
-        DocumentOutlineItemInfo? parentOutlineItemInfo = null;
 
-        // if parent id of the current item is not null, then it must be a child item of the main CurrentDocumentOutline
-        if (item.ParentId is not null)
+        if (item.ParentId is Guid parentId)
         {
-            System.Guid parentId = (System.Guid)item.ParentId;
-            parentOutlineItemInfo = FindItemByIdRecursive(CurrentDocumentOutline.OutlineItems, parentId);
-
-            // ensure DocumentOutlineId is null and ParentId is the same as current item
+            var parentOutlineItemInfo = FindItemByIdRecursive(CurrentDocumentOutline.OutlineItems, parentId);
             CopiedDocumentOutlineItemInfo.DocumentOutlineId = null;
             CopiedDocumentOutlineItemInfo.ParentId = parentId;
             CopiedDocumentOutlineItemInfo.Children = CopyItemRecursiveHelper(CopiedDocumentOutlineItemInfo.Children, newId, CopiedDocumentOutlineItemInfo.Level);
@@ -402,10 +392,8 @@
             int indexOfItem = parentOutlineItemInfo.Children.IndexOf(item);
             parentOutlineItemInfo.Children.Insert(indexOfItem + pasteIndexAddend, CopiedDocumentOutlineItemInfo);
         }
-        // else if parent id of the current item is null, then it must be at the root CurrentDocumentOutline
         else
         {
-            // ensure DocumentOutlineId is that of the item and ParentId is null
             CopiedDocumentOutlineItemInfo.DocumentOutlineId = item.DocumentOutlineId;
             CopiedDocumentOutlineItemInfo.ParentId = null;
             CopiedDocumentOutlineItemInfo.Children = CopyItemRecursiveHelper(CopiedDocumentOutlineItemInfo.Children, newId, CopiedDocumentOutlineItemInfo.Level);
@@ -424,12 +412,10 @@
                 Level = item.Level,
                 SectionTitle = ""
             };
-        DocumentOutlineItemInfo? parentOutlineItemInfo = null;
-        if (item.ParentId is not null)
-        {
-            System.Guid parentId = (System.Guid)item.ParentId;
-            parentOutlineItemInfo = FindItemByIdRecursive(CurrentDocumentOutline.OutlineItems, parentId);
 
+        if (item.ParentId is Guid parentId)
+        {
+            var parentOutlineItemInfo = FindItemByIdRecursive(CurrentDocumentOutline.OutlineItems, parentId);
             int indexOfItem = parentOutlineItemInfo.Children.IndexOf(item);
             parentOutlineItemInfo.Children.Insert(indexOfItem, newItem);
         }
@@ -450,12 +436,9 @@
                 Level = item.Level,
                 SectionTitle = ""
             };
-        DocumentOutlineItemInfo? parentOutlineItemInfo = null;
-        if (item.ParentId is not null)
+        if (item.ParentId is Guid parentId)
         {
-            System.Guid parentId = (System.Guid)item.ParentId;
-            parentOutlineItemInfo = FindItemByIdRecursive(CurrentDocumentOutline.OutlineItems, parentId);
-
+            var parentOutlineItemInfo = FindItemByIdRecursive(CurrentDocumentOutline.OutlineItems, parentId);
             int indexOfItem = parentOutlineItemInfo.Children.IndexOf(item);
             parentOutlineItemInfo.Children.Insert(indexOfItem + 1, newItem);
         }
@@ -469,64 +452,42 @@
 
     private bool IsMoveUpDisabled(DocumentOutlineItemInfo item)
     {
-        int indexOfItem = 0;
-        DocumentOutlineItemInfo? parentOutlineItemInfo = null;
-        if (item.ParentId is not null)
+        int indexOfItem;
+        if (item.ParentId is Guid parentId)
         {
-            System.Guid parentId = (System.Guid)item.ParentId;
-            parentOutlineItemInfo = FindItemByIdRecursive(CurrentDocumentOutline.OutlineItems, parentId);
+            var parentOutlineItemInfo = FindItemByIdRecursive(CurrentDocumentOutline.OutlineItems, parentId);
             indexOfItem = parentOutlineItemInfo.Children.IndexOf(item);
         }
         else
         {
             indexOfItem = CurrentDocumentOutline.OutlineItems.IndexOf(item);
         }
-
-        if (indexOfItem == 0)
-        {
-            return true;
-        }
-        else
-        {
-            return false;
-        }
+        return indexOfItem == 0;
     }
 
     private bool IsMoveDownDisabled(DocumentOutlineItemInfo item)
     {
-        int indexOfItem = -1;
-        int maxIndex = 0;
-        DocumentOutlineItemInfo? parentOutlineItemInfo = null;
-        if (item.ParentId is not null)
+        int indexOfItem;
+        int maxIndex;
+        if (item.ParentId is Guid parentId)
         {
-            System.Guid parentId = (System.Guid)item.ParentId;
-            parentOutlineItemInfo = FindItemByIdRecursive(CurrentDocumentOutline.OutlineItems, parentId);
+            var parentOutlineItemInfo = FindItemByIdRecursive(CurrentDocumentOutline.OutlineItems, parentId);
             indexOfItem = parentOutlineItemInfo.Children.IndexOf(item);
-            maxIndex = parentOutlineItemInfo.Children.Count();
+            maxIndex = parentOutlineItemInfo.Children.Count;
         }
         else
         {
             indexOfItem = CurrentDocumentOutline.OutlineItems.IndexOf(item);
-            maxIndex = CurrentDocumentOutline.OutlineItems.Count();
+            maxIndex = CurrentDocumentOutline.OutlineItems.Count;
         }
-
-        if (indexOfItem == maxIndex - 1)
-        {
-            return true;
-        }
-        else
-        {
-            return false;
-        }
+        return indexOfItem == maxIndex - 1;
     }
 
     private void MoveItemUp(DocumentOutlineItemInfo item)
     {
-        DocumentOutlineItemInfo? parentOutlineItemInfo = null;
-        if (item.ParentId is not null)
+        if (item.ParentId is Guid parentId)
         {
-            System.Guid parentId = (System.Guid)item.ParentId;
-            parentOutlineItemInfo = FindItemByIdRecursive(CurrentDocumentOutline.OutlineItems, parentId);
+            var parentOutlineItemInfo = FindItemByIdRecursive(CurrentDocumentOutline.OutlineItems, parentId);
             int indexOfItem = parentOutlineItemInfo.Children.IndexOf(item);
             parentOutlineItemInfo.Children.Remove(item);
             parentOutlineItemInfo.Children.Insert(indexOfItem - 1, item);
@@ -541,11 +502,9 @@
 
     private void MoveItemDown(DocumentOutlineItemInfo item)
     {
-        DocumentOutlineItemInfo? parentOutlineItemInfo = null;
-        if (item.ParentId is not null)
+        if (item.ParentId is Guid parentId)
         {
-            System.Guid parentId = (System.Guid)item.ParentId;
-            parentOutlineItemInfo = FindItemByIdRecursive(CurrentDocumentOutline.OutlineItems, parentId);
+            var parentOutlineItemInfo = FindItemByIdRecursive(CurrentDocumentOutline.OutlineItems, parentId);
             int indexOfItem = parentOutlineItemInfo.Children.IndexOf(item);
             parentOutlineItemInfo.Children.Remove(item);
             parentOutlineItemInfo.Children.Insert(indexOfItem + 1, item);
@@ -560,14 +519,14 @@
 
     private DocumentOutlineItemInfo? FindItemByIdRecursive(List<DocumentOutlineItemInfo> rootItemList, Guid itemId)
     {
-        foreach (var item in rootItemList)
+        foreach (var i in rootItemList)
         {
-            if (item.Id == itemId)
+            if (i.Id == itemId)
             {
-                return item;
+                return i;
             }
 
-            var foundItem = FindItemByIdRecursive(item.Children, itemId);
+            var foundItem = FindItemByIdRecursive(i.Children, itemId);
             if (foundItem != null)
             {
                 return foundItem;
@@ -591,8 +550,7 @@
 
     private bool IsLastItem(DocumentOutlineItemInfo item)
     {
-        // if there is only one main section, do not allow user to delete it
-        return (CurrentDocumentOutline.OutlineItems.Contains(item) && CurrentDocumentOutline.OutlineItems.Count() == 1);
+        return (CurrentDocumentOutline.OutlineItems.Contains(item) && CurrentDocumentOutline.OutlineItems.Count == 1);
     }
 
     private void DeleteItem(DocumentOutlineItemInfo item)
@@ -605,15 +563,15 @@
 
     private bool DeleteItemHelperRecursive(List<DocumentOutlineItemInfo> items, DocumentOutlineItemInfo itemToDelete)
     {
-        foreach (DocumentOutlineItemInfo item in items)
+        foreach (var it in items.ToList())
         {
-            if (item.Id == itemToDelete.Id)
+            if (it.Id == itemToDelete.Id)
             {
-                items.Remove(item);
+                items.Remove(it);
                 return true;
             }
 
-            if (DeleteItemHelperRecursive(item.Children, itemToDelete))
+            if (DeleteItemHelperRecursive(it.Children, itemToDelete))
             {
                 return true;
             }
@@ -626,11 +584,19 @@
     {
         List<DocumentOutlineItemInfo> children = parentItem.Children;
 
-        for (int i = 0; i < children.Count(); i++)
+        for (int i = 0; i < children.Count; i++)
         {
             children[i].OrderIndex = i;
-
             UpdateOrderIndex(children[i]);
         }
+    }
+
+    private string GetTooltipText(DocumentOutlineItemInfo item)
+    {
+        return "Id: " + item.Id.ToString() +
+               "\n Parent Id: " + item.ParentId.ToString() +
+               "\n Level: " + item.Level.ToString() +
+               "\n DocumentOutlineId: " + item.DocumentOutlineId.ToString() +
+               "\n OrderIndex: " + item.OrderIndex;
     }
 }

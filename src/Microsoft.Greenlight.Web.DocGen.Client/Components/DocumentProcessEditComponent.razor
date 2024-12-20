@@ -6,22 +6,52 @@
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
     <MudPaper Class="pa-4">
-        <MudTextField @bind-Value="_process.ShortName" Label="Short Name" Disabled="_isEditMode" OnBlur="ValidateAndFormatShortName" />
-        <MudTextField @bind-Value="_process.Description" Label="Description" />
-        <MudTextField @bind-Value="_process.BlobStorageContainerName" Label="Blob Storage Container Name" />
-        <MudTextField @bind-Value="_process.BlobStorageAutoImportFolderName" Label="Auto Import Folder Name" />
-        <MudTextField @bind-Value="_indexName"
-                      Label="Repository Index Name"
-                      Disabled="_isEditMode"
-                      OnInternalInputChanged="UpdateRepositories" />
-        <MudCheckBox T="bool" Label="Classify Documents" ValueChanged="@(e => OnClassifyDocumentsCheckboxChanged(e))" />
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudText Typo="Typo.h6">Basic Information</MudText>
+                <MudTextField @bind-Value="_process.ShortName" Label="Short Name" Disabled="_isEditMode" OnBlur="ValidateAndFormatShortName" />
+                <MudTextField @bind-Value="_process.Description" Label="Description" />
+                <MudTextField @bind-Value="_process.BlobStorageContainerName" Label="Blob Storage Container Name" />
+                <MudTextField @bind-Value="_process.BlobStorageAutoImportFolderName" Label="Auto Import Folder Name" />
+                <MudTextField @bind-Value="_indexName"
+                              Label="Repository Index Name"
+                              Disabled="_isEditMode"
+                              OnInternalInputChanged="UpdateRepositories" />
+            </MudItem>
 
-        @if (_process.ClassifyDocuments)
-        {
-            <MudTextField @bind-Value="_process.ClassificationModelName" Label="Classification Model Name" />
-        }
+            <MudItem xs="12" md="6">
+                <MudText Typo="Typo.h6">Document Retrieval Settings</MudText>
 
-        <MudDivider />
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudSlider T="int" @bind-Value="_process.PrecedingSearchPartitionInclusionCount" Min="0" Max="10" TickMarks="true" ValueLabel="true" Immediate="true">
+                        # of Preceding Partitions to retrieve
+                    </MudSlider>
+                    <MudNumericField @bind-Value="_process.PrecedingSearchPartitionInclusionCount" Min="0" Max="10" Immediate="true" Style="width:80px;" />
+                </MudStack>
+
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudSlider T="int" @bind-Value="_process.FollowingSearchPartitionInclusionCount" Min="0" Max="10" TickMarks="true" ValueLabel="true" Immediate="true">
+                        # of Following Partitions to retrieve
+                    </MudSlider>
+                    <MudNumericField @bind-Value="_process.FollowingSearchPartitionInclusionCount" Min="0" Max="10" Immediate="true" Style="width:80px;" />
+                </MudStack>
+
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudSlider T="int" @bind-Value="_process.NumberOfCitationsToGetFromRepository" Min="0" Max="100" TickMarks="false" ValueLabel="true" Immediate="true">
+                        # Number of Citations to retrieve
+                    </MudSlider>
+                    <MudNumericField @bind-Value="_process.NumberOfCitationsToGetFromRepository" Min="0" Max="100" Immediate="true" Style="width:80px;" />
+                </MudStack>
+
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudSlider T="double" @bind-Value="_minimumRelevancePercentage" Min="0" Max="100" Step="10" TickMarks="true" TickMarkLabels="@_minimumRelevanceStepLabels" ValueLabel="true" Immediate="true">
+                        Minimum Relevance (%)
+                    </MudSlider>
+                    <MudNumericField @bind-Value="_minimumRelevancePercentage" Min="0" Max="100" Step="10" Immediate="true" Style="width:80px;" />
+                </MudStack>
+
+            </MudItem>
+        </MudGrid>
 
         <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveProcess">Save</MudButton>
 
@@ -32,8 +62,6 @@
         <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="Cancel">Cancel</MudButton>
     </MudPaper>
 
- 
-    
     <!-- Document Libraries Association -->
     @if (_isEditMode)
     {
@@ -126,7 +154,17 @@
     private List<PromptInfo> _prompts = new();
 
     private string _indexName = string.Empty;
+    private double _minimumRelevancePercentage
+    {
+        get => _process?.MinimumRelevanceForCitations * 100 ?? 0;
+        set
+        {
+            if (_process != null)
+                _process.MinimumRelevanceForCitations = value / 100;
+        }
+    }
 
+    private string[] _minimumRelevanceStepLabels = Enumerable.Range(0, 11).Select(i => $"{i * 10}%").ToArray();
     // Plugin-related fields
     private List<DynamicPluginInfo> _availablePlugins = new();
     private List<PluginAssociationViewModel> _associatedPlugins = new();
@@ -363,15 +401,6 @@
         catch (Exception ex)
         {
             Snackbar.Add($"Error disassociating document library: {ex.Message}", Severity.Error);
-        }
-    }
-
-    private void OnClassifyDocumentsCheckboxChanged(bool value)
-    {
-        _process.ClassifyDocuments = value;
-        if (!value)
-        {
-            _process.ClassificationModelName = string.Empty;
         }
     }
 
