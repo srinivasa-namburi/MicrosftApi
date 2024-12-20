@@ -34,7 +34,6 @@ module resources 'resources.bicep' = {
     principalId: principalId
   }
 }
-
 module aiSearch 'aiSearch/aiSearch.module.bicep' = {
   name: 'aiSearch'
   scope: rg
@@ -51,6 +50,14 @@ module docing 'docing/docing.module.bicep' = {
     location: location
     principalId: resources.outputs.MANAGED_IDENTITY_PRINCIPAL_ID
     principalType: 'ServicePrincipal'
+  }
+}
+module insights 'insights/insights.module.bicep' = {
+  name: 'insights'
+  scope: rg
+  params: {
+    location: location
+    logAnalyticsWorkspaceId: resources.outputs.AZURE_LOG_ANALYTICS_WORKSPACE_ID
   }
 }
 module redis 'redis/redis.module.bicep' = {
@@ -100,6 +107,7 @@ output AZURE_CONTAINER_APPS_ENVIRONMENT_ID string = resources.outputs.AZURE_CONT
 output AZURE_CONTAINER_APPS_ENVIRONMENT_DEFAULT_DOMAIN string = resources.outputs.AZURE_CONTAINER_APPS_ENVIRONMENT_DEFAULT_DOMAIN
 output AISEARCH_CONNECTIONSTRING string = aiSearch.outputs.connectionString
 output DOCING_BLOBENDPOINT string = docing.outputs.blobEndpoint
+output INSIGHTS_APPINSIGHTSCONNECTIONSTRING string = insights.outputs.appInsightsConnectionString
 output REDIS_CONNECTIONSTRING string = redis.outputs.connectionString
 output SBUS_SERVICEBUSENDPOINT string = sbus.outputs.serviceBusEndpoint
 output SIGNALR_HOSTNAME string = signalr.outputs.hostName
