@@ -1,6 +1,4 @@
 using AutoMapper;
-using DocumentFormat.OpenXml.Wordprocessing;
-using MassTransit.Courier;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
@@ -9,6 +7,9 @@ using Microsoft.Greenlight.Shared.Models.DocumentProcess;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
+/// <summary>
+/// Controller for managing document outlines.
+/// </summary>
 [Route("/api/document-outline")]
 [Route("/api/document-outlines")]
 public class DocumentOutlineController : BaseController
@@ -16,15 +17,28 @@ public class DocumentOutlineController : BaseController
     private readonly DocGenerationDbContext _dbContext;
     private readonly IMapper _mapper;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DocumentOutlineController"/> class.
+    /// </summary>
+    /// <param name="dbContext">The database context.</param>
+    /// <param name="mapper">The AutoMapper instance.</param>
     public DocumentOutlineController(
         DocGenerationDbContext dbContext,
         IMapper mapper
-        )
+    )
     {
         _dbContext = dbContext;
         _mapper = mapper;
     }
 
+    /// <summary>
+    /// Gets all document outlines.
+    /// </summary>
+    /// <returns>A list of document outlines.
+    /// Produces Status Codes:
+    ///     200 OK: When completed sucessfully
+    ///     404 Not found: When no document outlines are available
+    /// </returns>
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -39,9 +53,18 @@ public class DocumentOutlineController : BaseController
         }
 
         var outlines = _mapper.Map<List<DocumentOutlineInfo>>(documentOutlines);
-        return Ok();
+        return Ok(outlines);
     }
 
+    /// <summary>
+    /// Gets a document outline by its ID.
+    /// </summary>
+    /// <param name="id">The ID of the document outline.</param>
+    /// <returns>The document outline.
+    /// Produces Status Codes:
+    ///     200 OK: When completed sucessfully
+    ///     404 Not found: When no document outlines are found using the Id provided
+    /// </returns>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -68,6 +91,16 @@ public class DocumentOutlineController : BaseController
         return Ok(outline);
     }
 
+    /// <summary>
+    /// Updates a document outline.
+    /// </summary>
+    /// <param name="id">The ID of the document outline.</param>
+    /// <param name="changeRequest">The change request containing the updated information.</param>
+    /// <returns>The updated document outline.
+    /// Produces Status Codes:
+    ///     200 OK: When completed sucessfully
+    ///     404 Not found: When no document outlines are found using the Id provided
+    /// </returns>
     [HttpPost("{id:guid}/changes")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -166,6 +199,14 @@ public class DocumentOutlineController : BaseController
         return Ok(outline);
     }
 
+    /// <summary>
+    /// Creates a new document outline.
+    /// </summary>
+    /// <param name="documentOutline">The document outline information.</param>
+    /// <returns>The created document outline.
+    /// Produces Status Codes:
+    ///     201 Created: When the document outline was sucessfully created
+    /// </returns>
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -180,19 +221,28 @@ public class DocumentOutlineController : BaseController
         return Created("/api/document-outline/{newDocumentOutline.Id}", newDocumentOutline);
     }
 
+    /// <summary>
+    /// Generates an outline from text.
+    /// </summary>
+    /// <param name="textDto">The text DTO containing the outline text.</param>
+    /// <returns>A list of document outline items.
+    /// Produces Status Codes:
+    ///     200 OK: When completed sucessfully
+    ///     400 Bad Request: When there is no Text provided in the SimpleTextDTO object provided
+    /// </returns>
     [HttpPost("generate-from-text")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [Produces(typeof(List<DocumentOutlineItemInfo>))]
     [Consumes("application/json")]
-    public async Task<ActionResult<List<DocumentOutlineItemInfo>>> GenerateOutlineFromText(SimpleTextDTO textDto)
+    public ActionResult<List<DocumentOutlineItemInfo>> GenerateOutlineFromText(SimpleTextDTO textDto)
     {
         var outlineText = textDto.Text;
 
         if (string.IsNullOrWhiteSpace(outlineText))
         {
             return BadRequest("Outline text cannot be empty.");
-        }    
+        }
 
         // the outline text is a json string with \n for line feeds that need to be turned into a regular string with regular line feeds
         outlineText = outlineText.Replace("\\n", "\n");
@@ -210,7 +260,7 @@ public class DocumentOutlineController : BaseController
 
         // Re-create the string with the outline text - each line separated by a newline
         outlineText = string.Join("\n", documentOutlineLines);
-        
+
         // This renders the Outline Items based on the text
         var outline = new DocumentOutline
         {
@@ -221,10 +271,16 @@ public class DocumentOutlineController : BaseController
 
         CleanSectionTitles(infoOutline);
         SetOrderAndLevelProperties(infoOutline);
-       
+
         return Ok(infoOutline);
     }
 
+    /// <summary>
+    /// Sets the order and level properties for the outline items.
+    /// </summary>
+    /// <param name="infoOutline">The list of document outline items.</param>
+    /// <param name="level">The current level.</param>
+    /// <param name="order">The current order.</param>
     private static void SetOrderAndLevelProperties(List<DocumentOutlineItemInfo> infoOutline, int level = 0, int order = 0)
     {
         foreach (var item in infoOutline)
@@ -240,7 +296,11 @@ public class DocumentOutlineController : BaseController
         }
     }
 
-    private void CleanSectionTitles(List<DocumentOutlineItemInfo> items)
+    /// <summary>
+    /// Cleans the section titles of the outline items.
+    /// </summary>
+    /// <param name="items">The list of document outline items.</param>
+    private static void CleanSectionTitles(List<DocumentOutlineItemInfo> items)
     {
         foreach (var item in items)
         {

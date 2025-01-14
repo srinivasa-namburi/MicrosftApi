@@ -3,15 +3,26 @@ using Microsoft.Extensions.Configuration;
 
 namespace Microsoft.Greenlight.Shared.Helpers;
 
+/// <summary>
+/// Helper class to obtain Azure credentials.
+/// </summary>
 public class AzureCredentialHelper
 {
     private readonly IConfiguration _configuration;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="AzureCredentialHelper"/> class.
+    /// </summary>
+    /// <param name="configuration">The configuration instance.</param>
     public AzureCredentialHelper(IConfiguration configuration)
     {
         _configuration = configuration;
     }
 
+    /// <summary>
+    /// Gets the Azure credential based on the configuration.
+    /// </summary>
+    /// <returns>A <see cref="DefaultAzureCredential"/> instance.</returns>
     public DefaultAzureCredential GetAzureCredential()
     {
         DefaultAzureCredential? credential;

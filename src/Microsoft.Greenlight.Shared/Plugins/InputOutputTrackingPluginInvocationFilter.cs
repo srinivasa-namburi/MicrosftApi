@@ -30,6 +30,13 @@ public class InputOutputTrackingPluginInvocationFilter : IFunctionInvocationFilt
             await next(context);
             return;
         }
+
+        if (context.Function.PluginName.Contains("ContentState"))
+        {
+            await next(context);
+            return;
+        }
+
         var pluginSourceReferenceItem = new PluginSourceReferenceItem();
 
         if (_executionId != Guid.Empty)

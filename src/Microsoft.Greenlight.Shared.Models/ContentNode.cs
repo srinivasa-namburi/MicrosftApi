@@ -3,30 +3,87 @@ using Microsoft.Greenlight.Shared.Enums;
 
 namespace Microsoft.Greenlight.Shared.Models;
 
+/// <summary>
+/// Represents a content node in the system.
+/// </summary>
 public class ContentNode : EntityBase
 {
+    /// <summary>
+    /// Text of the content node.
+    /// </summary>
     public string Text { get; set; } = string.Empty;
-    public ContentNodeType Type { get; set; }
-    public ContentNodeGenerationState? GenerationState { get; set; }
-    public List<ContentNode> Children { get; set; } = new List<ContentNode>();
 
+    /// <summary>
+    /// Type of the content node.
+    /// </summary>
+    public ContentNodeType Type { get; set; }
+
+    /// <summary>
+    /// Generation state of the content node.
+    /// </summary>
+    public ContentNodeGenerationState? GenerationState { get; set; }
+
+    /// <summary>
+    /// Children of the content node.
+    /// </summary>
+    public List<ContentNode> Children { get; set; } = [];
+
+    /// <summary>
+    /// Parent of the content node.
+    /// </summary>
     [JsonIgnore]
     public ContentNode? Parent { get; set; }
+
+    /// <summary>
+    /// Unique parent ID of the content node.
+    /// </summary>
     public Guid? ParentId { get; set; }
+
+    /// <summary>
+    /// Value indicating whether to render title only.
+    /// </summary>
     public bool RenderTitleOnly { get; set; } = false;
+
+    /// <summary>
+    /// Prompt instructions for the content node.
+    /// </summary>
     public string? PromptInstructions { get; set; }
 
+    /// <summary>
+    /// Unique ID for ingested document.
+    /// </summary>
     public Guid? IngestedDocumentId { get; set; }
+
+    /// <summary>
+    /// Ingested document associated with the content node.
+    /// </summary>
     [JsonIgnore]
     public virtual IngestedDocument? IngestedDocument { get; set; }
-    
+
+    /// <summary>
+    /// Unique ID for generated document.
+    /// </summary>
     public Guid? GeneratedDocumentId { get; set; }
+
+    /// <summary>
+    /// Generated document associated with the content node.
+    /// </summary>
     [JsonIgnore]
     public virtual GeneratedDocument? GeneratedDocument { get; set; }
 
+    /// <summary>
+    /// Unique ID for the content node system item.
+    /// </summary>
     public Guid? ContentNodeSystemItemId { get; set; }
+
+    /// <summary>
+    /// Content node system item associated with the content node.
+    /// </summary>
     [JsonIgnore]
     public virtual ContentNodeSystemItem? ContentNodeSystemItem { get; set; }
 
-    public List<BoundingRegion>? BoundingRegions { get; set; } = new List<BoundingRegion>();
+    /// <summary>
+    /// Bounding regions of the content node.
+    /// </summary>
+    public List<BoundingRegion>? BoundingRegions { get; set; } = [];
 }

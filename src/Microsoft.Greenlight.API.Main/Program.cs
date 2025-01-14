@@ -101,7 +101,7 @@ var frontEndUrl = builder.Configuration["services:web-docgen:https:0"];
 
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("CorsPolicy", builder => builder.WithOrigins(frontEndUrl)
+    options.AddPolicy("CorsPolicy", builder => builder.WithOrigins(frontEndUrl!)
         .AllowAnyHeader()
         .AllowAnyMethod()
         .AllowCredentials()
@@ -149,7 +149,7 @@ var webSocketOptions = new WebSocketOptions()
     KeepAliveInterval = TimeSpan.FromSeconds(120)
 };
 
-webSocketOptions.AllowedOrigins.Add(frontEndUrl);
+webSocketOptions.AllowedOrigins.Add(frontEndUrl!);
 app.UseWebSockets(webSocketOptions);
 
 app.UseCors("CorsPolicy");

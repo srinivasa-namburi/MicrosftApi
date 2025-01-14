@@ -8,6 +8,10 @@ using Microsoft.Greenlight.Shared.Enums;
 
 namespace Microsoft.Greenlight.Worker.DocumentIngestion.Consumers;
 
+
+/// <summary>
+/// Consumer class for handling the reindexing of all completed documents.
+/// </summary>
 public class ReindexAllCompletedDocumentsConsumer : IConsumer<ReindexAllCompletedDocuments>
 {
     private readonly ILogger<ReindexAllCompletedDocumentsConsumer> _logger;
@@ -15,6 +19,13 @@ public class ReindexAllCompletedDocumentsConsumer : IConsumer<ReindexAllComplete
     private readonly IServiceProvider _sp;
     private readonly ServiceConfigurationOptions _options;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ReindexAllCompletedDocumentsConsumer"/> class.
+    /// </summary>
+    /// <param name="logger">The logger instance.</param>
+    /// <param name="dbContext">The database context instance.</param>
+    /// <param name="options">The service configuration options.</param>
+    /// <param name="sp">The service provider instance.</param>
     public ReindexAllCompletedDocumentsConsumer(
         ILogger<ReindexAllCompletedDocumentsConsumer> logger,
         DocGenerationDbContext dbContext,
@@ -26,6 +37,12 @@ public class ReindexAllCompletedDocumentsConsumer : IConsumer<ReindexAllComplete
         _sp = sp;
         _options = options.Value;
     }
+
+    /// <summary>
+    /// Consumes the <see cref="ReindexAllCompletedDocuments"/> message and reindexes all completed documents.
+    /// </summary>
+    /// <param name="context">The consume context.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     public async Task Consume(ConsumeContext<ReindexAllCompletedDocuments> context)
     {
         var completedDocuments = _dbContext.IngestedDocuments.Where(d => d.IngestionState == IngestionState.Complete);
@@ -40,10 +57,10 @@ public class ReindexAllCompletedDocumentsConsumer : IConsumer<ReindexAllComplete
         foreach (var documentProcess in documentProcesses)
         {
             using var scope = _sp.CreateScope();
-            var ragRepository = scope.ServiceProvider.GetKeyedService<IRagRepository>(documentProcess.Name + "-IRagRepository");
+            var ragRepository = scope.ServiceProvider.GetKeyedService<IRagRepository>(documentProcess!.Name + "-IRagRepository");
 
             var documentProcessDocuments = completedDocuments.Where(d => d.DocumentProcess == documentProcess.Name);
-            
+
             if (ragRepository == null)
             {
                 _logger.LogError("ReindexAllCompletedDocumentsConsumer: IRagRepository for DocumentProcess {DocumentProcess} not found.", documentProcess.Name);

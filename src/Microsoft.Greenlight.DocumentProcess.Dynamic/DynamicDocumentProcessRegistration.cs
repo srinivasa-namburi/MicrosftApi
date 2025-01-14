@@ -6,13 +6,13 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.DocumentProcess.Dynamic.Generation;
 using Microsoft.Greenlight.DocumentProcess.Shared;
 using Microsoft.Greenlight.DocumentProcess.Shared.Generation;
+using Microsoft.Greenlight.DocumentProcess.Shared.Generation.Agentic;
 using Microsoft.Greenlight.DocumentProcess.Shared.Search;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Extensions;
-using Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.Shared.Services.Search;
 
 namespace Microsoft.Greenlight.DocumentProcess.Dynamic;
@@ -31,7 +31,7 @@ public class DynamicDocumentProcessRegistration : IDocumentProcessRegistration
         var mapper = scope.ServiceProvider.GetRequiredService<IMapper>();
 
         var documentProcesses = dbContext.DynamicDocumentProcessDefinitions
-            .Where(x=>x.LogicType == DocumentProcessLogicType.KernelMemory)
+            .Where(x => x.LogicType == DocumentProcessLogicType.KernelMemory)
             .Include(x => x.DocumentOutline)
             .ToList();
 
@@ -42,12 +42,31 @@ public class DynamicDocumentProcessRegistration : IDocumentProcessRegistration
             builder.AddKeyedKernelMemoryForDocumentProcess(options, documentProcess);
             builder.Services.AddKeyedScoped<IKernelMemoryRepository, KernelMemoryRepository>(
                 documentProcess.ShortName + "-IKernelMemoryRepository");
-            
-            builder.Services.AddKeyedScoped<IAiCompletionService>(documentProcess.ShortName + "-IAiCompletionService", (sp, a) =>
-                new GenericAiCompletionService(
-                    sp.GetRequiredService<AiCompletionServiceParameters<GenericAiCompletionService>>(),
-                    documentProcess.ShortName
-                ));
+
+            switch (documentProcess.CompletionServiceType)
+            {
+                case DocumentProcessCompletionServiceType.GenericAiCompletionService:
+                    builder.Services.AddKeyedScoped<IAiCompletionService>(documentProcess.ShortName + "-IAiCompletionService", (sp, a) =>
+                        new GenericAiCompletionService(
+                            sp.GetRequiredService<AiCompletionServiceParameters<GenericAiCompletionService>>(),
+                            documentProcess.ShortName
+                        ));
+                    break;
+                case DocumentProcessCompletionServiceType.AgentAiCompletionService:
+                    builder.Services.AddKeyedScoped<IAiCompletionService>(documentProcess.ShortName + "-IAiCompletionService", (sp, a) =>
+                        new AgentAiCompletionService(
+                            sp.GetRequiredService<AiCompletionServiceParameters<AgentAiCompletionService>>(),
+                            documentProcess.ShortName
+                        ));
+                    break;
+                default:
+                    builder.Services.AddKeyedScoped<IAiCompletionService>(documentProcess.ShortName + "-IAiCompletionService", (sp, a) =>
+                        new GenericAiCompletionService(
+                            sp.GetRequiredService<AiCompletionServiceParameters<GenericAiCompletionService>>(),
+                            documentProcess.ShortName
+                        ));
+                    break;
+            }
 
             if (options.GreenlightServices.DocumentGeneration.CreateBodyTextNodes)
             {
@@ -61,7 +80,7 @@ public class DynamicDocumentProcessRegistration : IDocumentProcessRegistration
             }
         }
         // END Dynamic services
-        
+
         // Shared Dynamic Services that are resolved via "Dynamic" - this is the fallback when a service for a specific document process is not found
         builder.Services.AddKeyedScoped<IDocumentOutlineService, DynamicDocumentOutlineService>(ProcessName + "-IDocumentOutlineService");
         // End Shared Dynamic Services

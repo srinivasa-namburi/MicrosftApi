@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using Azure;
+﻿using Azure;
 using Microsoft.Greenlight.DocumentProcess.Shared.Search;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Extensions;
@@ -7,19 +6,29 @@ using Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.Shared.Services.Search;
 
 namespace Microsoft.Greenlight.SetupManager.Services;
-
+/// <summary>
+/// This service is responsible for setting up the necessary indexes for the 
+/// Document Processes and Document Libraries.
+/// </summary>
+/// <param name="sp">The service provider instance used to resolve dependencies.</param>
+/// <param name="logger">The logger instance used for logging information and errors.</param>
+/// <param name="searchClientFactory">The factory instance used to create search clients for indexing.</param>
 public class SetupServicesInitializerService(
-    IServiceProvider sp,
-    ILogger<SetupServicesInitializerService> logger,
-    SearchClientFactory searchClientFactory) : BackgroundService
+        IServiceProvider sp,
+        ILogger<SetupServicesInitializerService> logger,
+        SearchClientFactory searchClientFactory) : BackgroundService
 {
     private readonly IServiceProvider _sp = sp;
     private readonly ILogger<SetupServicesInitializerService> _logger = logger;
 
     private readonly SearchClientFactory _searchClientFactory = searchClientFactory;
-
     public const string ActivitySourceName = "Services";
 
+    /// <summary>
+    /// Executes the background service to initialize setup services.
+    /// </summary>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     protected override async Task ExecuteAsync(CancellationToken cancellationToken)
     {
         using var scope = _sp.CreateScope();
@@ -27,18 +36,18 @@ public class SetupServicesInitializerService(
         var documentProcessInfoService = scope.ServiceProvider.GetRequiredService<IDocumentProcessInfoService>();
         var documentLibraryInfoService = scope.ServiceProvider.GetRequiredService<IDocumentLibraryInfoService>();
         var additionalDocumentLibraryKernelMemoryRepository =
-            scope.ServiceProvider.GetRequiredService<IAdditionalDocumentLibraryKernelMemoryRepository>();
+                scope.ServiceProvider.GetRequiredService<IAdditionalDocumentLibraryKernelMemoryRepository>();
 
         await CreateKernelMemoryIndexes(documentProcessInfoService, documentLibraryInfoService,
-            additionalDocumentLibraryKernelMemoryRepository, cancellationToken);
+                additionalDocumentLibraryKernelMemoryRepository, cancellationToken);
     }
 
 
     private async Task CreateKernelMemoryIndexes(
-        IDocumentProcessInfoService documentProcessInfoService,
-        IDocumentLibraryInfoService documentLibraryInfoService,
-        IAdditionalDocumentLibraryKernelMemoryRepository additionalDocumentLibraryKernelMemoryRepository,
-        CancellationToken cancellationToken)
+            IDocumentProcessInfoService documentProcessInfoService,
+            IDocumentLibraryInfoService documentLibraryInfoService,
+            IAdditionalDocumentLibraryKernelMemoryRepository additionalDocumentLibraryKernelMemoryRepository,
+            CancellationToken cancellationToken)
     {
         var documentProcesses = await documentProcessInfoService.GetCombinedDocumentProcessInfoListAsync();
         var kernelMemoryDocumentProcesses = documentProcesses.Where(x => x.LogicType == DocumentProcessLogicType.KernelMemory).ToList();
@@ -55,7 +64,7 @@ public class SetupServicesInitializerService(
         foreach (var documentProcess in kernelMemoryDocumentProcesses)
         {
             var kernelMemoryRepository = _sp
-                .GetServiceForDocumentProcess<IKernelMemoryRepository>(documentProcess.ShortName);
+                    .GetServiceForDocumentProcess<IKernelMemoryRepository>(documentProcess.ShortName);
 
             if (kernelMemoryRepository == null)
             {

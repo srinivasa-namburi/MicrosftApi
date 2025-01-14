@@ -1,0 +1,159 @@
+@using Azure
+@using Azure.Core.GeoJson
+@using Azure.Maps.Search
+@using System.Threading
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+
+@inject IJSRuntime JSRuntime
+@inject IConfigurationApiClient ConfigurationApiClient
+
+@inherits ComponentBase
+
+@code {
+    [Parameter, EditorRequired] public LocationInformation? DocumentGenerationRequestLocation { get; set; }
+    [Parameter] public EventCallback<LocationInformation> DocumentGenerationRequestLocationChanged { get; set; }
+
+    private class CustomAddressResultItem
+    {
+        public string? Id { get; set; }
+        public string? DisplayAddress { get; set; }
+        public LocationInformation? Location { get; set; }
+    }
+
+    private CustomAddressResultItem? CurrentItem { get; set; }
+
+    private async Task CurrentItemChanged(CustomAddressResultItem NewCurrentItem)
+    {
+        if (NewCurrentItem?.Location is not null)
+        {
+            DocumentGenerationRequestLocation = NewCurrentItem.Location;
+            await DocumentGenerationRequestLocationChanged.InvokeAsync(DocumentGenerationRequestLocation);
+
+            await JSRuntime.InvokeVoidAsync(
+                "initializeMap",
+                SubscriptionKey,
+                DocumentGenerationRequestLocation.Latitude,
+                DocumentGenerationRequestLocation.Longitude
+            );
+        }
+    }
+
+}
+
+<MudStack Row="false">
+    <MudAutocomplete 
+        T="CustomAddressResultItem"
+        Label="Search map"
+        Value="@CurrentItem"
+        ValueChanged="CurrentItemChanged"
+        SearchFuncWithCancel="@Search"
+        ToStringFunc="@(item => item is null ? null : $"{item.DisplayAddress}")"
+        Variant="Variant.Outlined"
+        CoerceValue="true"
+        DisableUnderLine="true"
+        ShowProgressIndicator="true"
+        Margin="Margin.Normal"
+        AdornmentIcon="@Icons.Material.Filled.Search"
+        AdornmentColor="Color.Primary"
+        HelperText="Move the pin to the approximate location of your plant." />
+
+    <div id="map" style="position:relative;width:100%;min-width:290px;height:600px;"></div>
+
+    <MudStack id="coordinateBox" @onchange="HandleMarkerDragChange" Row="true">
+        <MudField Label="Latitude"
+                  DisableUnderLine="true"
+                  Variant="Variant.Filled"
+                  Margin="Margin.Normal"
+                  FullWidth="true">
+            <p id="latitude">
+                @DocumentGenerationRequestLocation.Latitude
+            </p>
+        </MudField>
+        <MudField Label="Longitude"
+                  DisableUnderLine="true"
+                  Variant="Variant.Filled"
+                  Margin="Margin.Normal"
+                  FullWidth="true">
+            <p id="longitude">
+                @DocumentGenerationRequestLocation.Longitude
+            </p>
+        </MudField>
+    </MudStack>
+</MudStack>
+
+@code {
+    private string? SubscriptionKey;
+    private AzureKeyCredential? credential;
+    private MapsSearchClient? client;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            SubscriptionKey = await ConfigurationApiClient.GetAzureMapsKeyAsync();
+            credential = new AzureKeyCredential(SubscriptionKey);
+            client = new MapsSearchClient(credential);
+
+            if (DocumentGenerationRequestLocation is not null)
+            {
+                await JSRuntime.InvokeVoidAsync(
+                    "initializeMap",
+                    SubscriptionKey,
+                    (float)DocumentGenerationRequestLocation.Latitude,
+                    (float)DocumentGenerationRequestLocation.Longitude
+                );
+            }
+        }
+    }
+
+    private async Task<IEnumerable<CustomAddressResultItem?>> Search(string searchText, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(searchText)) return Enumerable.Empty<CustomAddressResultItem?>();
+
+        try
+        {
+            var searchAddressOptions = new SearchAddressOptions
+                {
+                    Coordinates = new GeoPosition(
+                        DocumentGenerationRequestLocation?.Longitude ?? 0,
+                        DocumentGenerationRequestLocation?.Latitude ?? 0
+                    ),
+                    IsTypeAhead = true,
+                    Top = 5
+                };
+
+            var searchResult = await client!.SearchAddressAsync(searchText, searchAddressOptions, cancellationToken);
+            return searchResult.Value.Results.Select(item => new CustomAddressResultItem
+                {
+                    Id = item.Id,
+                    DisplayAddress = item.Address.FreeformAddress,
+                    Location = new LocationInformation
+                    {
+                        Latitude = item.Position.Latitude,
+                        Longitude = item.Position.Longitude
+                    }
+                });
+        }
+        catch
+        {
+            // Handle exceptions gracefully
+            return [];
+        }
+    }
+
+    private async Task HandleMarkerDragChange()
+    {
+        var latitudeString = await JSRuntime.InvokeAsync<string>("getInnerText", "latitude");
+        var longitudeString = await JSRuntime.InvokeAsync<string>("getInnerText", "longitude");
+
+        if (double.TryParse(latitudeString, out double latitude) &&
+            double.TryParse(longitudeString, out double longitude))
+        {
+            DocumentGenerationRequestLocation.Latitude = latitude;
+            DocumentGenerationRequestLocation.Longitude = longitude;
+            await DocumentGenerationRequestLocationChanged.InvokeAsync(DocumentGenerationRequestLocation);
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+}

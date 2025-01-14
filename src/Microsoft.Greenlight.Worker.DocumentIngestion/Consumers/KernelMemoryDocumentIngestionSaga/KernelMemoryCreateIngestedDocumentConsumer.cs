@@ -1,7 +1,5 @@
 using MassTransit;
-using Microsoft.Extensions.Options;
 using Microsoft.Greenlight.DocumentProcess.Shared.Search;
-using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.Messages.DocumentIngestion.Commands;
 using Microsoft.Greenlight.Shared.Contracts.Messages.DocumentIngestion.Events;
 using Microsoft.Greenlight.Shared.Enums;
@@ -11,9 +9,11 @@ using Microsoft.Greenlight.Shared.Services;
 
 namespace Microsoft.Greenlight.Worker.DocumentIngestion.Consumers.KernelMemoryDocumentIngestionSaga;
 
+/// <summary>
+/// Consumer for handling the creation of ingested documents in kernel memory.
+/// </summary>
 public class KernelMemoryCreateIngestedDocumentConsumer : IConsumer<KernelMemoryCreateIngestedDocument>
 {
-    private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
     private IKernelMemoryRepository? _kernelMemoryRepository;
     private IAdditionalDocumentLibraryKernelMemoryRepository? _documentLibraryKmRepository;
     private readonly ILogger<KernelMemoryCreateIngestedDocumentConsumer> _logger;
@@ -22,27 +22,44 @@ public class KernelMemoryCreateIngestedDocumentConsumer : IConsumer<KernelMemory
     private readonly IDocumentProcessInfoService _documentProcessInfoService;
     private readonly IDocumentLibraryInfoService _documentLibraryInfoService;
 
-
+    /// <summary>
+    /// Initializes a new instance of the <see cref="KernelMemoryCreateIngestedDocumentConsumer"/> class.
+    /// </summary>
+    /// <param name="logger">The logger instance.</param>
+    /// <param name="azureFileHelper">The Azure file helper instance.</param>
+    /// <param name="sp">The service provider instance.</param>
+    /// <param name="documentProcessInfoService">The document process info service instance.</param>
+    /// <param name="documentLibraryInfoService">The document library info service instance.</param>
     public KernelMemoryCreateIngestedDocumentConsumer(
-        IOptions<ServiceConfigurationOptions> serviceConfigurationOptions, 
-        ILogger<KernelMemoryCreateIngestedDocumentConsumer> logger, 
+        ILogger<KernelMemoryCreateIngestedDocumentConsumer> logger,
         AzureFileHelper azureFileHelper,
         IServiceProvider sp,
         IDocumentProcessInfoService documentProcessInfoService,
         IDocumentLibraryInfoService documentLibraryInfoService
         )
     {
-        _serviceConfigurationOptions = serviceConfigurationOptions.Value;
         _logger = logger;
         _azureFileHelper = azureFileHelper;
         _sp = sp;
         _documentProcessInfoService = documentProcessInfoService;
         _documentLibraryInfoService = documentLibraryInfoService;
     }
+
+    /// <summary>
+    /// Consumes the specified context.
+    /// </summary>
+    /// <param name="context">The consume context.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     public async Task Consume(ConsumeContext<KernelMemoryCreateIngestedDocument> context)
     {
-        // Run a different process based on the document library type
+        if (context.Message.DocumentLibraryShortName == null)
+        {
+            _logger.LogError("KernelMemoryCreateIngestedDocumentConsumer : Encountered message with null document library short name - aborting ingestion");
+            await context.Publish(new KernelMemoryDocumentIngestionFailed(context.Message.CorrelationId));
+            return;
+        }
 
+        // Run a different process based on the document library type
         if (context.Message.DocumentLibraryType == DocumentLibraryType.PrimaryDocumentProcessLibrary)
         {
             await ProcessPrimaryDocumentProcessIngestion(context);
@@ -51,15 +68,19 @@ public class KernelMemoryCreateIngestedDocumentConsumer : IConsumer<KernelMemory
         {
             await ProcessAdditionalDocumentLibraryIngestion(context);
         }
-            
     }
 
+    /// <summary>
+    /// Processes the ingestion for additional document libraries.
+    /// </summary>
+    /// <param name="context">The consume context.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     private async Task ProcessAdditionalDocumentLibraryIngestion(ConsumeContext<KernelMemoryCreateIngestedDocument> context)
     {
         var message = context.Message;
         _logger.LogInformation("KernelMemoryCreateIngestedDocumentConsumer : Received message with ID : {CorrelationID} for Additional Document Library {DocumentLibraryName}", message.CorrelationId, message.DocumentLibraryShortName);
 
-        var documentLibraryInfo = await _documentLibraryInfoService.GetDocumentLibraryByShortNameAsync(message.DocumentLibraryShortName);
+        var documentLibraryInfo = await _documentLibraryInfoService.GetDocumentLibraryByShortNameAsync(message.DocumentLibraryShortName!);
 
         if (documentLibraryInfo == null)
         {
@@ -87,23 +108,28 @@ public class KernelMemoryCreateIngestedDocumentConsumer : IConsumer<KernelMemory
         }
 
         await _documentLibraryKmRepository.StoreContentAsync(
-        message.DocumentLibraryShortName,
+            message.DocumentLibraryShortName!,
             documentLibraryInfo.IndexName,
             fileStream,
             message.FileName,
-            message.OriginalDocumentUrl, 
+            message.OriginalDocumentUrl,
             message.UploadedByUserOid);
 
         await context.Publish(new KernelMemoryDocumentCreated(message.CorrelationId));
     }
 
+    /// <summary>
+    /// Processes the ingestion for primary document processes.
+    /// </summary>
+    /// <param name="context">The consume context.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     private async Task ProcessPrimaryDocumentProcessIngestion(ConsumeContext<KernelMemoryCreateIngestedDocument> context)
     {
         var message = context.Message;
         _logger.LogInformation("KernelMemoryCreateIngestedDocumentConsumer : Received message with ID : {CorrelationID} for Document Process {DocumentProcessName}", message.CorrelationId, message.DocumentLibraryShortName);
 
         var documentProcessInfo =
-            await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(message.DocumentLibraryShortName);
+            await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(message.DocumentLibraryShortName!);
 
         if (documentProcessInfo == null)
         {
@@ -112,7 +138,7 @@ public class KernelMemoryCreateIngestedDocumentConsumer : IConsumer<KernelMemory
             return;
         }
 
-        _kernelMemoryRepository = _sp.GetServiceForDocumentProcess<IKernelMemoryRepository>(message.DocumentLibraryShortName);
+        _kernelMemoryRepository = _sp.GetServiceForDocumentProcess<IKernelMemoryRepository>(message.DocumentLibraryShortName!);
         if (_kernelMemoryRepository == null)
         {
             _logger.LogError("KernelMemoryCreateIngestedDocumentConsumer : Unable to retrieve Kernel Memory repository for Document Process {DocumentProcessName}, aborting ingestion processing for Document ID {CorrelationID}", message.DocumentLibraryShortName, message.CorrelationId);
@@ -129,11 +155,11 @@ public class KernelMemoryCreateIngestedDocumentConsumer : IConsumer<KernelMemory
         }
 
         await _kernelMemoryRepository.StoreContentAsync(
-            message.DocumentLibraryShortName,
+            message.DocumentLibraryShortName!,
             documentProcessInfo.Repositories[0],
             fileStream,
             message.FileName,
-            message.OriginalDocumentUrl, 
+            message.OriginalDocumentUrl,
             message.UploadedByUserOid);
 
         await context.Publish(new KernelMemoryDocumentCreated(message.CorrelationId));

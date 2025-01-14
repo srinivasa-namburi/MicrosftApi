@@ -2,14 +2,30 @@ using System.Text.Json.Serialization;
 
 namespace Microsoft.Greenlight.Shared.Contracts.DTO;
 
+/// <summary>
+/// Represents the outline information of a document.
+/// </summary>
 public class DocumentOutlineInfo()
 {
+    /// <summary>
+    /// Unique identifier of the document outline.
+    /// </summary>
     public Guid Id { get; set; }
+
+    /// <summary>
+    /// Unique identifier of the document process definition.
+    /// </summary>
     public Guid DocumentProcessDefinitionId { get; set; }
 
+    /// <summary>
+    /// Gets the full text representation of the document outline.
+    /// </summary>
     [JsonIgnore]
     public string FullText => RenderOutlineItemsAsText();
 
+    /// <summary>
+    /// List of outline items in the document.
+    /// </summary>
     public List<DocumentOutlineItemInfo> OutlineItems { get; set; } = [];
 
     private string RenderOutlineItemsAsText()
@@ -29,7 +45,7 @@ public class DocumentOutlineInfo()
         return text;
     }
 
-    private string RenderOutlineItemAsText(DocumentOutlineItemInfo outlineItem, int i)
+    private static string RenderOutlineItemAsText(DocumentOutlineItemInfo outlineItem, int i)
     {
         var text = "";
         text += new string(' ', i * 2) + outlineItem.SectionNumber + " " + outlineItem.SectionTitle + "\n";
@@ -40,21 +56,28 @@ public class DocumentOutlineInfo()
 
         return text;
     }
-
+    /// <summary>
+    /// Determines whether the specified object is equal to the other object using Document Outline ID, Document
+    /// Process Definition ID, and Outline Items.
+    /// </summary>
+    /// <param name="obj">The object to compare to the other <see cref="DocumentOutlineInfo"/> object.</param>
+    /// <returns>true if the specified object is equal to the other object; otherwise, false.</returns>
     public override bool Equals(object? obj)
     {
         if (obj is not DocumentOutlineInfo other)
             return false;
 
         return Id == other.Id &&
-               DocumentProcessDefinitionId == other.DocumentProcessDefinitionId && 
+               DocumentProcessDefinitionId == other.DocumentProcessDefinitionId &&
                OutlineItems.SequenceEqual<DocumentOutlineItemInfo>(other.OutlineItems);
     }
 
+    /// <summary>
+    /// Serves as the default hash function using Document Outline ID and Document Process Definition ID.
+    /// </summary>
+    /// <returns>A hash code for the current object.</returns>
     public override int GetHashCode()
     {
         return HashCode.Combine(Id, DocumentProcessDefinitionId);
     }
-
-
 }

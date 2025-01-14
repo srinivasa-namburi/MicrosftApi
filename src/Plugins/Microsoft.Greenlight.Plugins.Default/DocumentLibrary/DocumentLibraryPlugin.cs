@@ -31,7 +31,7 @@ public class DocumentLibraryPlugin : IPluginImplementation
     }
     [KernelFunction("GetDocumentLibraryInfo")]
     [Description("Returns a list of all available document libraries with information about their contents and when to use them. " +
-                 "Use to determine your knowledge capabilities")]
+                 "Use to determine your knowledge capabilities. For generation assistance for a particular document, use native_KmDocsPlugin.")]
 
     public async Task<List<DocumentLibraryUsageInfo>> GetDocumentLibraryInfoAsync(
         [Description("The DocumentProcessName of the document process to filter the document libraries by. This is required.")]

@@ -3,6 +3,9 @@ using System.Text.RegularExpressions;
 
 namespace Microsoft.Greenlight.Shared.Models.DocumentProcess;
 
+/// <summary>
+/// Represents a document outline.
+/// </summary>
 public class DocumentOutline : EntityBase
 {
     /// <summary>
@@ -10,14 +13,20 @@ public class DocumentOutline : EntityBase
     /// Use either numbering (1, 1.1, 1.1.1, etc.) or hashes (#, ##, ###, etc.) to indicate hierarchy.
     /// Each line must begin with the section number or a set of asterisks, followed by a space, and then the section title.
     /// </summary>
-
     public string FullText
     {
         get => RenderOutlineItemsAsText();
         set => ParseOutlineItemsFromText(value);
     }
 
+    /// <summary>
+    /// Unique identifier of the document process definition.
+    /// </summary>
     public Guid DocumentProcessDefinitionId { get; set; }
+
+    /// <summary>
+    /// Dynamic document process definition associated with this document outline.
+    /// </summary>
     [JsonIgnore]
     public DynamicDocumentProcessDefinition? DocumentProcessDefinition { get; set; }
 
@@ -26,9 +35,12 @@ public class DocumentOutline : EntityBase
     /// </summary>
     public virtual List<DocumentOutlineItem> OutlineItems { get; set; }
 
+    /// <summary>
+    /// Determines if the outline uses numbers or hashes to indicate hierarchy.
+    /// </summary>
+    /// <returns>True if the outline uses numbers, otherwise false.</returns>
     public bool TextUsesNumbers()
     {
-        // Determine if the outline uses numbers or hashes to indicate hierarchy
         var sampleOutlineItem = OutlineItems.FirstOrDefault(x => x.Level == 0);
         return !string.IsNullOrEmpty(sampleOutlineItem!.SectionNumber);
     }
@@ -83,7 +95,6 @@ public class DocumentOutline : EntityBase
                 }
             }
         }
-
     }
 
     private string RenderOutlineItemsAsText()
@@ -103,15 +114,20 @@ public class DocumentOutline : EntityBase
         return text;
     }
 
-    private string RenderOutlineItemAsText(DocumentOutlineItem outlineItem, int i)
+    /// <summary>
+    /// Renders a single outline item as text.
+    /// </summary>
+    /// <param name="outlineItem">The outline item to render.</param>
+    /// <param name="indentLevel">The indentation level.</param>
+    /// <returns>The text representation of the outline item.</returns>
+    private string RenderOutlineItemAsText(DocumentOutlineItem outlineItem, int indentLevel)
     {
         var text = "";
-        text += new string(' ', i * 2) + outlineItem.SectionNumber + " " + outlineItem.SectionTitle + "\n";
+        text += new string(' ', indentLevel * 2) + outlineItem.SectionNumber + " " + outlineItem.SectionTitle + "\n";
         foreach (var child in outlineItem.Children)
         {
-            text += RenderOutlineItemAsText(child, i + 1);
+            text += RenderOutlineItemAsText(child, indentLevel + 1);
         }
         return text;
-
     }
 }

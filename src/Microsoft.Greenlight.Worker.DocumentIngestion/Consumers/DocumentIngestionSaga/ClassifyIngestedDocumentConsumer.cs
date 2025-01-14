@@ -1,5 +1,4 @@
 using System.Globalization;
-using Humanizer;
 using MassTransit;
 using Microsoft.Extensions.Options;
 using Microsoft.Greenlight.DocumentProcess.Shared.Ingestion.Classification.Classifiers;
@@ -14,46 +13,49 @@ using Microsoft.Greenlight.Shared.Models.Classification;
 
 namespace Microsoft.Greenlight.Worker.DocumentIngestion.Consumers.DocumentIngestionSaga;
 
-public class ClassifyIngestedDocumentConsumer : IConsumer<ClassifyIngestedDocument>
+/// <summary>
+/// Consumer class for classifying ingested documents.
+/// </summary>
+public class ClassifyIngestedDocumentConsumer(
+    ILogger<ClassifyIngestedDocumentConsumer> logger,
+    IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
+    DocGenerationDbContext dbContext,
+    AzureFileHelper azureFileHelper,
+    IServiceProvider serviceProvider
+        ) : IConsumer<ClassifyIngestedDocument>
 {
-    private readonly ILogger<ClassifyIngestedDocumentConsumer> _logger;
-    private IDocumentClassifier? _classifier;
-    private readonly DocGenerationDbContext _dbContext;
-    private readonly AzureFileHelper _azureFileHelper;
-    private readonly IServiceProvider _serviceProvider;
-    private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
-    private DocumentProcessOptions? _documentProcessOptions;
+    private readonly ILogger<ClassifyIngestedDocumentConsumer> _logger = logger;
+    private readonly DocGenerationDbContext _dbContext = dbContext;
+    private readonly AzureFileHelper _azureFileHelper = azureFileHelper;
+    private readonly IServiceProvider _serviceProvider = serviceProvider;
+    private readonly ServiceConfigurationOptions _serviceConfigurationOptions = serviceConfigurationOptions.Value;
 
-    public ClassifyIngestedDocumentConsumer(
-        ILogger<ClassifyIngestedDocumentConsumer> logger,
-        IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
-        DocGenerationDbContext dbContext,
-        AzureFileHelper azureFileHelper,
-        IServiceProvider serviceProvider
-        )
-    {
-        _serviceConfigurationOptions = serviceConfigurationOptions.Value;
-        _logger = logger;
-        _dbContext = dbContext;
-        _azureFileHelper = azureFileHelper;
-        _serviceProvider = serviceProvider;
-    }
-
+    /// <summary>
+    /// Consumes the ClassifyIngestedDocument message and classifies the document.
+    /// </summary>
+    /// <param name="context">The consume context containing the message.</param>
     public async Task Consume(ConsumeContext<ClassifyIngestedDocument> context)
     {
         var message = context.Message;
         var scope = _serviceProvider.CreateScope();
 
-        _documentProcessOptions = _serviceConfigurationOptions.GreenlightServices.DocumentProcesses.SingleOrDefault(x => x?.Name == message.DocumentProcessName);
+        var documentProcessOptions = _serviceConfigurationOptions.GreenlightServices.DocumentProcesses.SingleOrDefault(x => x?.Name == message.DocumentProcessName);
 
-        if (_documentProcessOptions == null)
+        if (documentProcessOptions == null)
         {
             _logger.LogWarning("ClassifyIngestedDocumentConsumer: Document process options not found for {ProcessName}", message.DocumentProcessName);
             await context.Publish(new IngestedDocumentClassificationFailed(message.CorrelationId));
             return;
         }
 
-        _classifier = scope.ServiceProvider.GetKeyedService<IDocumentClassifier>(message.DocumentProcessName+"-IDocumentClassifier");
+        var classifier = scope.ServiceProvider.GetKeyedService<IDocumentClassifier>(message.DocumentProcessName + "-IDocumentClassifier");
+
+        if (classifier == null)
+        {
+            _logger.LogWarning("ClassifyIngestedDocumentConsumer: Classifier not found for {ProcessName}", message.DocumentProcessName);
+            await context.Publish(new IngestedDocumentClassificationFailed(message.CorrelationId));
+            return;
+        }
 
         _logger.LogInformation("ClassifyIngestedDocumentConsumer: Classifying {ProcessName} document {FileName} with correlation id {CorrelationId}", message.DocumentProcessName, message.FileName, message.CorrelationId);
 
@@ -74,10 +76,10 @@ public class ClassifyIngestedDocumentConsumer : IConsumer<ClassifyIngestedDocume
 
         // Currently, we only classify documents that do not have a plugin association
         // For other documents, we only classify them if the option is enabled in the owning Document Process.
-        if (_documentProcessOptions.ClassifyDocuments && ingestedDocument.Plugin == null && _classifier != null)
+        if (documentProcessOptions.ClassifyDocuments && ingestedDocument.Plugin == null && classifier != null)
         {
             _logger.LogInformation("ClassifyIngestedDocumentConsumer: Classifying Ingested Document {DocumentId}", ingestedDocument.Id);
-            classificationResult = await ClassifyDocument(message, ingestedDocument, temporaryAccessUrl);
+            classificationResult = await ClassifyDocument(classifier, documentProcessOptions, ingestedDocument, temporaryAccessUrl);
         }
         else
         {
@@ -112,12 +114,22 @@ public class ClassifyIngestedDocumentConsumer : IConsumer<ClassifyIngestedDocume
         }
     }
 
-    private async Task<DocumentClassificationResult?> ClassifyDocument(ClassifyIngestedDocument message, IngestedDocument document, string temporaryAccessUrl)
+    /// <summary>
+    /// Classifies the document using the specified classifier.
+    /// </summary>
+    /// <param name="classifier">The document classifier.</param>
+    /// <param name="documentProcessOptions">The document process options.</param>
+    /// <param name="document">The ingested document.</param>
+    /// <param name="temporaryAccessUrl">The temporary access URL for the document.</param>
+    /// <returns>The classification result.</returns>
+    private async Task<DocumentClassificationResult?> ClassifyDocument(
+        IDocumentClassifier classifier,
+        DocumentProcessOptions documentProcessOptions,
+        IngestedDocument document, string temporaryAccessUrl)
     {
-
-        var classificationResult = await _classifier.ClassifyDocumentFromUri(
+        var classificationResult = await classifier.ClassifyDocumentFromUri(
                temporaryAccessUrl,
-               _documentProcessOptions.ClassificationModelName!);
+               documentProcessOptions.ClassificationModelName!);
 
         if (classificationResult == null) return classificationResult;
 

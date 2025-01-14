@@ -2,7 +2,6 @@ using AutoMapper;
 using MassTransit;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Greenlight.DocumentProcess.Shared.Prompts;
 using Microsoft.Greenlight.Shared.Contracts.Chat;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Commands;
 using Microsoft.Greenlight.Shared.Data.Sql;
@@ -12,6 +11,9 @@ using Microsoft.Greenlight.Shared.Prompts;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
+/// <summary>
+/// Controller for handling chat-related operations.
+/// </summary>
 public class ChatController : BaseController
 {
     private readonly DocGenerationDbContext _dbContext;
@@ -19,11 +21,19 @@ public class ChatController : BaseController
     private readonly IPublishEndpoint _publishEndpoint;
     private readonly IServiceProvider _sp;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ChatController"/> class.
+    /// </summary>
+    /// <param name="dbContext">The database context.</param>
+    /// <param name="mapper">The AutoMapper instance.</param>
+    /// <param name="publishEndpoint">The publish endpoint for messaging.</param>
+    /// <param name="sp">The service provider.</param>
     public ChatController(
         DocGenerationDbContext dbContext,
         IMapper mapper,
         IPublishEndpoint publishEndpoint,
-        IServiceProvider sp)
+        IServiceProvider sp
+    )
     {
         _dbContext = dbContext;
         _mapper = mapper;
@@ -31,6 +41,14 @@ public class ChatController : BaseController
         _sp = sp;
     }
 
+    /// <summary>
+    /// Sends a chat message.
+    /// </summary>
+    /// <param name="chatMessageDto">The chat message DTO.</param>
+    /// <returns>An <see cref="IActionResult"/> representing the result of the operation.
+    /// Produces Status Codes:
+    ///     200 OK: When completed sucessfully
+    /// </returns>
     [HttpPost("")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -41,6 +59,17 @@ public class ChatController : BaseController
         return Ok();
     }
 
+    /// <summary>
+    /// Gets chat messages for a specific conversation.
+    /// </summary>
+    /// <param name="documentProcessName">The name of the document process.</param>
+    /// <param name="conversationId">The ID of the conversation.</param>
+    /// <returns>An <see cref="IActionResult"/> containing the chat messages.
+    /// Produces Status Codes:
+    ///     200 OK: When completed sucessfully
+    ///     400 Bad Request: When a required parameter is not provided. 
+    ///     404 Not found: When no chat messages are found for the provided Conversation Id
+    /// </returns>
     [HttpGet("{documentProcessName}/{conversationId}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -67,19 +96,26 @@ public class ChatController : BaseController
             return NotFound();
         }
 
-        foreach (var chatMessageModel in chatMessageModels){
-           var chatMessageDto = _mapper.Map<ChatMessageDTO>(chatMessageModel);
-           if (chatMessageModel.AuthorUserInformation != null)
-           {
-               chatMessageDto.UserId = chatMessageModel.AuthorUserInformation.ProviderSubjectId;
-               chatMessageDto.UserFullName = chatMessageModel.AuthorUserInformation.FullName;
-           }
-           chatMessages.Add(chatMessageDto);
+        foreach (var chatMessageModel in chatMessageModels)
+        {
+            var chatMessageDto = _mapper.Map<ChatMessageDTO>(chatMessageModel);
+            if (chatMessageModel.AuthorUserInformation != null)
+            {
+                chatMessageDto.UserId = chatMessageModel.AuthorUserInformation.ProviderSubjectId;
+                chatMessageDto.UserFullName = chatMessageModel.AuthorUserInformation.FullName;
+            }
+            chatMessages.Add(chatMessageDto);
         }
 
         return Ok(chatMessages);
     }
 
+    /// <summary>
+    /// Creates a new chat conversation.
+    /// </summary>
+    /// <param name="documentProcessName">The name of the document process.</param>
+    /// <param name="conversationId">The ID of the conversation.</param>
+    /// <returns>The created <see cref="ChatConversation"/>.</returns>
     private async Task<ChatConversation> CreateChatConversationAsync(string documentProcessName, Guid conversationId)
     {
         var conversation = new ChatConversation

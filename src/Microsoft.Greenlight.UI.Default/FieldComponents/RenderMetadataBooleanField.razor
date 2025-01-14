@@ -1,0 +1,33 @@
+﻿    @if (FieldInfo.FieldType == DynamicDocumentProcessMetaDataFieldType.BooleanCheckbox)
+    {
+        <MudCheckBox @bind-Value="FieldValue"
+                     Label="@FieldInfo.DisplayName"
+                     Required="FieldInfo.IsRequired" />
+    }
+    else if (FieldInfo.FieldType == DynamicDocumentProcessMetaDataFieldType.BooleanSwitchToggle)
+    {
+        <MudSwitch @bind-Value="FieldValue"
+                   Label="@FieldInfo.DisplayName"
+                   Required="FieldInfo.IsRequired" />
+    }
+
+@code {
+    [Parameter]
+    public DocumentProcessMetadataFieldInfo FieldInfo { get; set; } = default!;
+
+    [Parameter]
+    public EventCallback<(string FieldName, object? Value)> OnChanged { get; set; }
+
+    [CascadingParameter]
+    public Dictionary<string, object?> ParentMetadataModel { get; set; } = default!;
+
+    private bool FieldValue
+    {
+        get => ParentMetadataModel.TryGetValue(FieldInfo.Name, out var value) && value is bool b && b;
+        set
+        {
+            ParentMetadataModel[FieldInfo.Name] = value;
+            OnChanged.InvokeAsync((FieldInfo.Name, value));
+        }
+    }
+}

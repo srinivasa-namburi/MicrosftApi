@@ -1,5 +1,4 @@
 using System.ClientModel;
-using System.Diagnostics.CodeAnalysis;
 using Aspire.Azure.Messaging.ServiceBus;
 using Aspire.Azure.Search.Documents;
 using Aspire.Azure.Storage.Blobs;
@@ -7,7 +6,6 @@ using Azure.AI.OpenAI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Options;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Exporters;
@@ -28,9 +26,18 @@ namespace Microsoft.Greenlight.Shared.Extensions;
 #pragma warning disable SKEXP0010
 #pragma warning disable SKEXP0001
 
+/// <summary>
+/// Provides extension methods for adding Greenlight services to the host application builder.
+/// </summary>
 public static class BuilderExtensions
 {
-
+    /// <summary>
+    /// Adds Greenlight services to the host application builder.
+    /// </summary>
+    /// <param name="builder">The host application builder.</param>
+    /// <param name="credentialHelper">The Azure credential helper.</param>
+    /// <param name="serviceConfigurationOptions">The service configuration options.</param>
+    /// <returns>The updated host application builder.</returns>
     public static IHostApplicationBuilder AddGreenlightServices(this IHostApplicationBuilder builder, AzureCredentialHelper credentialHelper, ServiceConfigurationOptions serviceConfigurationOptions)
     {
         builder.Services.AddAutoMapper(typeof(DocumentProcessInfoProfile));
@@ -96,6 +103,14 @@ public static class BuilderExtensions
         return builder;
     }
 
+    /// <summary>
+    /// Adds a Redis client to the host application builder.
+    /// </summary>
+    /// <param name="builder">The host application builder.</param>
+    /// <param name="redisConnectionStringName">The name of the Redis connection string.</param>
+    /// <param name="credentialHelper">The Azure credential helper.</param>
+    /// <param name="serviceConfigurationOptions">The service configuration options.</param>
+    /// <returns>The updated host application builder.</returns>
     public static IHostApplicationBuilder AddGreenLightRedisClient(this IHostApplicationBuilder builder,
         string redisConnectionStringName, AzureCredentialHelper credentialHelper,
         ServiceConfigurationOptions serviceConfigurationOptions)
@@ -125,18 +140,41 @@ public static class BuilderExtensions
         return builder;
     }
 
+    /// <summary>
+    /// Gets a service for the specified document process.
+    /// </summary>
+    /// <typeparam name="T">The type of the service to get.</typeparam>
+    /// <param name="sp">The service provider.</param>
+    /// <param name="documentProcessInfo">The document process information.</param>
+    /// <returns>The service instance if found; otherwise, null.</returns>
     public static T? GetServiceForDocumentProcess<T>(this IServiceProvider sp, DocumentProcessInfo documentProcessInfo)
     {
         var service = sp.GetServiceForDocumentProcess<T>(documentProcessInfo.ShortName);
         return service;
     }
 
+    /// <summary>
+    /// Gets a required service for the specified document process.
+    /// </summary>
+    /// <typeparam name="T">The type of the service to get.</typeparam>
+    /// <param name="sp">The service provider.</param>
+    /// <param name="documentProcessInfo">The document process information.</param>
+    /// <returns>The service instance if found; otherwise, throws an InvalidOperationException.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the service is not found for the specified document process.</exception>
     public static T GetRequiredServiceForDocumentProcess<T>(this IServiceProvider sp, DocumentProcessInfo documentProcessInfo)
     {
         var service = sp.GetRequiredServiceForDocumentProcess<T>(documentProcessInfo.ShortName);
         return service;
     }
 
+    /// <summary>
+    /// Gets a required service for the specified document process.
+    /// </summary>
+    /// <typeparam name="T">The type of the service to get.</typeparam>
+    /// <param name="sp">The service provider.</param>
+    /// <param name="documentProcessName">The name of the document process.</param>
+    /// <returns>The service instance if found; otherwise, throws an InvalidOperationException.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the service is not found for the specified document process.</exception>
     public static T GetRequiredServiceForDocumentProcess<T>(this IServiceProvider sp, string documentProcessName)
     {
         var service = sp.GetServiceForDocumentProcess<T>(documentProcessName);
@@ -146,6 +184,15 @@ public static class BuilderExtensions
         }
         return service;
     }
+
+    /// <summary>
+    /// Gets a service for the specified document process.
+    /// </summary>
+    /// <typeparam name="T">The type of the service to get.</typeparam>
+    /// <param name="sp">The service provider.</param>
+    /// <param name="documentProcessName">The name of the document process.</param>
+    /// <returns>The service instance if found; otherwise, null.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the document process info is not found and the document process name is not "Reviews".</exception>
     public static T? GetServiceForDocumentProcess<T>(this IServiceProvider sp, string documentProcessName)
     {
         T? service = default;

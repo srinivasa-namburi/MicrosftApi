@@ -12,21 +12,28 @@ using Microsoft.Greenlight.Shared.Responses;
 
 namespace Microsoft.Greenlight.Worker.DocumentIngestion.Consumers.DocumentIngestionSaga;
 
+/// <summary>
+/// Consumer class for processing ingested documents.
+/// </summary>
 public class ProcessIngestedDocumentConsumer : IConsumer<ProcessIngestedDocument>
 {
     private readonly DocGenerationDbContext _dbContext;
-    private IPdfPipeline _pipeline;
     private readonly ILogger<ProcessIngestedDocumentConsumer> _logger;
     private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
     private readonly IServiceProvider _serviceProvider;
-    private DocumentProcessOptions? _documentProcessOptions;
-    
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ProcessIngestedDocumentConsumer"/> class.
+    /// </summary>
+    /// <param name="dbContext">The database context.</param>
+    /// <param name="serviceConfigurationOptions">The service configuration options.</param>
+    /// <param name="logger">The logger instance.</param>
+    /// <param name="serviceProvider">The service provider.</param>
     public ProcessIngestedDocumentConsumer(
         DocGenerationDbContext dbContext,
         IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
         ILogger<ProcessIngestedDocumentConsumer> logger,
         IServiceProvider serviceProvider)
-
     {
         _dbContext = dbContext;
         _logger = logger;
@@ -34,14 +41,19 @@ public class ProcessIngestedDocumentConsumer : IConsumer<ProcessIngestedDocument
         _serviceProvider = serviceProvider;
     }
 
+    /// <summary>
+    /// Consumes the specified context.
+    /// </summary>
+    /// <param name="context">The consume context.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     public async Task Consume(ConsumeContext<ProcessIngestedDocument> context)
     {
         var message = context.Message;
         var scope = _serviceProvider.CreateScope();
-        
-        _documentProcessOptions = _serviceConfigurationOptions.GreenlightServices.DocumentProcesses.SingleOrDefault(x => x?.Name == message.DocumentProcessName);
 
-        if (_documentProcessOptions == null)
+        var documentProcessOptions = _serviceConfigurationOptions.GreenlightServices.DocumentProcesses.SingleOrDefault(x => x?.Name == message.DocumentProcessName);
+
+        if (documentProcessOptions == null)
         {
             _logger.LogWarning("ProcessIngestedDocumentConsumer: Document process options not found for {ProcessName}", message.DocumentProcessName);
             await context.Publish(new IngestedDocumentProcessingFailed(message.CorrelationId));
@@ -51,15 +63,16 @@ public class ProcessIngestedDocumentConsumer : IConsumer<ProcessIngestedDocument
         // If a plugin owns the document, we need to get the pipeline for that plugin.
         // Otherwise, we get the pipeline for the document process.
 
+        IPdfPipeline pipeline;
         if (message.Plugin == null)
         {
-            _pipeline = scope.ServiceProvider.GetRequiredKeyedService<IPdfPipeline>(message.DocumentProcessName +"-IPdfPipeline");
+            pipeline = scope.ServiceProvider.GetRequiredKeyedService<IPdfPipeline>(message.DocumentProcessName + "-IPdfPipeline");
         }
         else
         {
-            _pipeline = scope.ServiceProvider.GetRequiredKeyedService<IPdfPipeline>(message.Plugin + "-Plugin-IPdfPipeline");
+            pipeline = scope.ServiceProvider.GetRequiredKeyedService<IPdfPipeline>(message.Plugin + "-Plugin-IPdfPipeline");
         }
-        
+
         var ingestedDocument = await _dbContext.IngestedDocuments.FindAsync(context.Message.CorrelationId);
         if (ingestedDocument == null)
         {
@@ -71,7 +84,7 @@ public class ProcessIngestedDocumentConsumer : IConsumer<ProcessIngestedDocument
         ingestedDocument.IngestionState = IngestionState.Processing;
         await _dbContext.SaveChangesAsync();
 
-        await ProcessDocument(message, ingestedDocument);
+        await ProcessDocument(message, ingestedDocument, documentProcessOptions, pipeline);
 
         if (ingestedDocument.IngestionState == IngestionState.ClassificationUnsupported)
         {
@@ -85,13 +98,25 @@ public class ProcessIngestedDocumentConsumer : IConsumer<ProcessIngestedDocument
         await context.Publish(new IngestedDocumentProcessed(context.Message.CorrelationId));
     }
 
-    private async Task ProcessDocument(ProcessIngestedDocument message, IngestedDocument ingestedDocument)
+    /// <summary>
+    /// Processes the document.
+    /// </summary>
+    /// <param name="message">The message.</param>
+    /// <param name="ingestedDocument">The ingested document.</param>
+    /// <param name="documentProcessOptions">The document process options.</param>
+    /// <param name="pipeline">The PDF pipeline.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
+    private async Task ProcessDocument(
+        ProcessIngestedDocument message,
+        IngestedDocument ingestedDocument,
+        DocumentProcessOptions documentProcessOptions,
+        IPdfPipeline pipeline)
     {
-        _logger.LogInformation("ProcessIngestedDocumentConsumer: Processing {documentProcessName} document {CorrelationId}: {FileName}", _documentProcessOptions!.Name, message.CorrelationId, ingestedDocument.FileName);
-        
-        var pipelineResponse = await _pipeline.RunAsync(ingestedDocument, _documentProcessOptions);
+        _logger.LogInformation("ProcessIngestedDocumentConsumer: Processing {documentProcessName} document {CorrelationId}: {FileName}", documentProcessOptions!.Name, message.CorrelationId, ingestedDocument.FileName);
 
-        if ( pipelineResponse.UnsupportedClassification)
+        var pipelineResponse = await pipeline.RunAsync(ingestedDocument, documentProcessOptions);
+
+        if (pipelineResponse.UnsupportedClassification)
         {
             ingestedDocument.IngestionState = IngestionState.ClassificationUnsupported;
             _dbContext.Update(ingestedDocument);
@@ -99,9 +124,14 @@ public class ProcessIngestedDocumentConsumer : IConsumer<ProcessIngestedDocument
         }
 
         await CommonProcessing(pipelineResponse, ingestedDocument);
-
     }
 
+    /// <summary>
+    /// Common processing logic for the pipeline response and ingested document.
+    /// </summary>
+    /// <param name="pipelineResponse">The pipeline response.</param>
+    /// <param name="ingestedDocument">The ingested document.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     private async Task CommonProcessing(IngestionPipelineResponse pipelineResponse, IngestedDocument ingestedDocument)
     {
         if (pipelineResponse.Tables != null && _serviceConfigurationOptions.GreenlightServices.DocumentIngestion.ProcessTables)
@@ -126,7 +156,7 @@ public class ProcessIngestedDocumentConsumer : IConsumer<ProcessIngestedDocument
                 var tableBoundingRegion = tableBoundingRegions.First();
                 var tablePage = tableBoundingRegion.Page;
 
-                var bodyTextNode = FindBodyTextNodeAboveTable(contentNodes, table, tablePage, tableBoundingRegion);
+                var bodyTextNode = FindBodyTextNodeAboveTable(contentNodes, tablePage, tableBoundingRegion);
 
                 if (bodyTextNode == null)
                 {
@@ -154,29 +184,35 @@ public class ProcessIngestedDocumentConsumer : IConsumer<ProcessIngestedDocument
         }
 
         await _dbContext.SaveChangesAsync();
-
-
     }
 
-    private ContentNode? FindBodyTextNodeAboveTable(List<ContentNode> contentNodes, Table table, int tablePage, BoundingRegion tableBoundingRegion)
+    /// <summary>
+    /// Finds the body text node directly above the table.
+    /// </summary>
+    /// <param name="contentNodes">The content nodes.</param>
+    /// <param name="tablePage">The table page.</param>
+    /// <param name="tableBoundingRegion">The table bounding region.</param>
+    /// <returns>The body text node above the table, if found; otherwise, null.</returns>
+    private static ContentNode? FindBodyTextNodeAboveTable(List<ContentNode> contentNodes, int tablePage, BoundingRegion tableBoundingRegion)
     {
         ContentNode? bodyTextNode = null;
 
         var bodyTextNodes = contentNodes.Flatten(node => node.Children)
-            .Where(x => x.Type == ContentNodeType.BodyText);
+            .Where(x => x.Type == ContentNodeType.BodyText &&
+                        x.BoundingRegions?.FirstOrDefault()?.BoundingPolygons?.Count > 2);
 
-        var samePageNodes = bodyTextNodes.Where(x => x.BoundingRegions.First().Page == tablePage).ToList();
-        var earlierPageNodes = bodyTextNodes.Where(x => x.BoundingRegions.First().Page < tablePage).ToList();
+        var samePageNodes = bodyTextNodes.Where(x => x.BoundingRegions!.First().Page == tablePage).ToList();
+        var earlierPageNodes = bodyTextNodes.Where(x => x.BoundingRegions!.First().Page < tablePage).ToList();
 
-        if (samePageNodes.Any())
+        if (samePageNodes.Count > 0)
         {
             // If there are BodyText nodes on the same page as the table, find the one that has the bottom-right Y coordinate [2] directly above
             // the top-left Y coordinate of the table [0].
 
-            var orderedSamePageNodes = samePageNodes.OrderBy(x => x.BoundingRegions.First().BoundingPolygons[2].Y);
+            var orderedSamePageNodes = samePageNodes.OrderBy(x => x.BoundingRegions!.First().BoundingPolygons![2].Y);
 
             var nodeAboveTable = orderedSamePageNodes.LastOrDefault(
-                x => x.BoundingRegions.First().BoundingPolygons[2].Y < tableBoundingRegion.BoundingPolygons[0].Y);
+                x => x.BoundingRegions!.First().BoundingPolygons![2].Y < tableBoundingRegion.BoundingPolygons![0].Y);
 
             if (nodeAboveTable == null)
             {
@@ -185,22 +221,24 @@ public class ProcessIngestedDocumentConsumer : IConsumer<ProcessIngestedDocument
             }
             bodyTextNode = nodeAboveTable;
         }
-        else if (earlierPageNodes.Any())
+        else if (earlierPageNodes.Count > 0)
         {
-            // If there are no BodyText nodes on the same page as the table, use the last one on an earlier page and insert the table 
-            // reference at the end of the text of that one.
             bodyTextNode = earlierPageNodes.LastOrDefault();
         }
         return bodyTextNode;
     }
 
-    private List<ContentNode> CondenseContentTree(List<ContentNode> contentTree)
+    /// <summary>
+    /// Condenses the content tree by merging contiguous body text nodes.
+    /// </summary>
+    /// <param name="contentTree">The content tree.</param>
+    /// <returns>The condensed content tree.</returns>
+    private static List<ContentNode> CondenseContentTree(List<ContentNode> contentTree)
     {
         var condensedTree = new List<ContentNode>();
 
         for (int i = 0; i < contentTree.Count; i++)
         {
-
             ContentNode currentNode = contentTree[i];
 
             if (currentNode.Type == ContentNodeType.Title || currentNode.Type == ContentNodeType.Heading)
@@ -217,14 +255,12 @@ public class ProcessIngestedDocumentConsumer : IConsumer<ProcessIngestedDocument
             }
             else if (currentNode.Type == ContentNodeType.BodyText)
             {
-
                 ContentNode? parentNode = currentNode.Parent;
 
                 if (parentNode != null)
                 {
                     // Merge contiguous body text nodes
                     var mergedText = currentNode.Text;
-                    var boundingRegions = currentNode.BoundingRegions;
                     var j = i + 1;
                     while (j < contentTree.Count && contentTree[j].Type == ContentNodeType.BodyText)
                     {
@@ -254,6 +290,4 @@ public class ProcessIngestedDocumentConsumer : IConsumer<ProcessIngestedDocument
 
         return condensedTree;
     }
-
-
 }

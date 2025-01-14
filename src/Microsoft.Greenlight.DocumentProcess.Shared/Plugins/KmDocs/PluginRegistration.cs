@@ -28,6 +28,7 @@ public class PluginRegistration : IPluginRegistration
         foreach (var documentProcess in dynamicDocumentProcessDefinitions)
         {
             var documentProcessInfo = mapper.Map<DocumentProcessInfo>(documentProcess);
+
             serviceCollection.AddKeyedSingleton<KmDocsPlugin>(documentProcess.ShortName + "-KmDocsPlugin",
                 (provider, o) => new KmDocsPlugin(provider, documentProcessInfo));
         }

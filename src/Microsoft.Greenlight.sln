@@ -19,6 +19,9 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "3. Plugins", "3. Plugins", "{7EABCC9F-BAB5-4394-8B76-433A33055F59}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "4. Document Processes", "4. Document Processes", "{24DA4DEF-D3AD-4D2B-8526-513082EBB3DF}"
+	ProjectSection(SolutionItems) = preProject
+		Microsoft.Greenlight.Worker.DocumentIngestion\Consumers\ReindexAllCompletedDocumentsConsumer.cs = Microsoft.Greenlight.Worker.DocumentIngestion\Consumers\ReindexAllCompletedDocumentsConsumer.cs
+	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Microsoft.Greenlight.DocumentProcess.Shared", "Microsoft.Greenlight.DocumentProcess.Shared\Microsoft.Greenlight.DocumentProcess.Shared.csproj", "{7985819A-B9E5-4324-9F21-C8E45DD1245C}"
 EndProject
@@ -36,16 +39,11 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Microsoft.Greenlight.Web.Do
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Microsoft.Greenlight.Worker.DocumentIngestion", "Microsoft.Greenlight.Worker.DocumentIngestion\Microsoft.Greenlight.Worker.DocumentIngestion.csproj", "{AAB9E058-6E73-44BF-8FFC-B09696BADF2A}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Microsoft.Greenlight.SetupManager.DB", "Microsoft.Greenlight.SetupManager.DB\Microsoft.Greenlight.SetupManager.DB.csproj", "{8A2FC390-59E2-47B5-9BD3-9BE03EB5C60F}"
-EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Microsoft.Greenlight.Worker.Scheduler", "Microsoft.Greenlight.Worker.Scheduler\Microsoft.Greenlight.Worker.Scheduler.csproj", "{1F5351C6-8E57-43B0-AB6D-999DECF395BD}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Microsoft.Greenlight.Plugins.Default", "Plugins\Microsoft.Greenlight.Plugins.Default\Microsoft.Greenlight.Plugins.Default.csproj", "{FBBD830F-295A-431A-A767-3E5C0CAAC96A}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Microsoft.Greenlight.AppHost", "Microsoft.Greenlight.AppHost\Microsoft.Greenlight.AppHost.csproj", "{1D9ED487-BC1C-4E99-BB68-D11D0154501F}"
-	ProjectSection(ProjectDependencies) = postProject
-		{89EE11AC-63B1-4FA0-B3DD-BD591E40B0E8} = {89EE11AC-63B1-4FA0-B3DD-BD591E40B0E8}
-	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Microsoft.Greenlight.Worker.Chat", "Microsoft.Greenlight.Worker.Chat\Microsoft.Greenlight.Worker.Chat.csproj", "{D92C05E8-F943-4A4A-BEC9-C8707C203904}"
 EndProject
@@ -91,6 +89,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Build", "Build", "{CD951DF2
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Microsoft.Greenlight.SetupManager.Services", "Microsoft.Greenlight.SetupManager.Services\Microsoft.Greenlight.SetupManager.Services.csproj", "{89EE11AC-63B1-4FA0-B3DD-BD591E40B0E8}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.Greenlight.AppHost.Tests", "Microsoft.Greenlight.AppHost.Tests\Microsoft.Greenlight.AppHost.Tests.csproj", "{79CDBE2E-A821-44C8-8F0E-D9D1C6475178}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tests", "Tests", "{424C3195-4BD5-41A9-8426-8DF7970658B2}"
+EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "000.Setup Managers", "000.Setup Managers", "{BAB0BA13-F063-4859-92C8-DC0E086F6F72}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tests", "Tests", "{50972C3E-4FF3-4EBA-BEA6-B9B25AF9E46A}"
@@ -101,6 +103,30 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.Greenlight.Worker.Chat.Tests", "Microsoft.Greenlight.Worker.Chat.Tests\Microsoft.Greenlight.Worker.Chat.Tests.csproj", "{3C040D7D-D7B0-4C58-8E3D-DC5099157AED}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.Greenlight.Worker.DocumentIngestion.Tests", "Microsoft.Greenlight.Worker.DocumentIngestion.Tests\Microsoft.Greenlight.Worker.DocumentIngestion.Tests.csproj", "{2E932067-9B25-40B9-800D-8FC1C9D9D4E6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.Greenlight.Shared.Testing", "Microsoft.Greenlight.Shared.Testing\Microsoft.Greenlight.Shared.Testing.csproj", "{DD864E33-9561-4651-AD2D-7E8093C8725A}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tests", "Tests", "{A5F5EE42-56F5-4A37-82F6-7EDAF7D7EB48}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.Greenlight.Shared.Configuration.Tests", "Microsoft.Greenlight.Shared.Configuration.Tests\Microsoft.Greenlight.Shared.Configuration.Tests.csproj", "{E1B143E9-A7C4-422E-ABD0-3C79341BB0D2}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tests", "Tests", "{F85B5003-AB19-4A77-B993-9008980A65C3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.Greenlight.SetupManager.Services.Tests", "Microsoft.Greenlight.SetupManager.Services.Tests\Microsoft.Greenlight.SetupManager.Services.Tests.csproj", "{1EB676DF-B039-497B-A1C5-D190C71A522C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.Greenlight.Worker.Scheduler.Tests", "Microsoft.Greenlight.Worker.SchedulerTests\Microsoft.Greenlight.Worker.Scheduler.Tests.csproj", "{0FC0D2E5-8056-46CE-B930-0993AFFF3578}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.Greenlight.SetupManager.DB", "Microsoft.Greenlight.SetupManager.DB\Microsoft.Greenlight.SetupManager.DB.csproj", "{B5F5F9A7-494C-43F5-8589-AE97471442D1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.Greenlight.API.Main.Tests", "Microsoft.Greenlight.API.Main.Tests\Microsoft.Greenlight.API.Main.Tests.csproj", "{BA58B309-FF52-4547-ADFA-0D3825150ECA}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tests", "Tests", "{A61AFB9E-3915-4695-A28E-FC5C4750B23F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.Greenlight.Extensions.Plugins.Tests", "Microsoft.Greenlight.Extensions.Plugins.Tests\Microsoft.Greenlight.Extensions.Plugins.Tests.csproj", "{CD753561-BDC4-4520-9B8F-819944E1E41F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.Greenlight.Shared.Tests", "Microsoft.Greenlight.Shared.Tests\Microsoft.Greenlight.Shared.Tests.csproj", "{49F36FA5-EA47-4862-A0C6-9C336F57B41A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -157,12 +183,6 @@ Global
 		{AAB9E058-6E73-44BF-8FFC-B09696BADF2A}.Publish|Any CPU.Build.0 = Debug|Any CPU
 		{AAB9E058-6E73-44BF-8FFC-B09696BADF2A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{AAB9E058-6E73-44BF-8FFC-B09696BADF2A}.Release|Any CPU.Build.0 = Release|Any CPU
-		{8A2FC390-59E2-47B5-9BD3-9BE03EB5C60F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{8A2FC390-59E2-47B5-9BD3-9BE03EB5C60F}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{8A2FC390-59E2-47B5-9BD3-9BE03EB5C60F}.Publish|Any CPU.ActiveCfg = Debug|Any CPU
-		{8A2FC390-59E2-47B5-9BD3-9BE03EB5C60F}.Publish|Any CPU.Build.0 = Debug|Any CPU
-		{8A2FC390-59E2-47B5-9BD3-9BE03EB5C60F}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{8A2FC390-59E2-47B5-9BD3-9BE03EB5C60F}.Release|Any CPU.Build.0 = Release|Any CPU
 		{1F5351C6-8E57-43B0-AB6D-999DECF395BD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{1F5351C6-8E57-43B0-AB6D-999DECF395BD}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1F5351C6-8E57-43B0-AB6D-999DECF395BD}.Publish|Any CPU.ActiveCfg = Debug|Any CPU
@@ -283,12 +303,72 @@ Global
 		{89EE11AC-63B1-4FA0-B3DD-BD591E40B0E8}.Publish|Any CPU.Build.0 = Debug|Any CPU
 		{89EE11AC-63B1-4FA0-B3DD-BD591E40B0E8}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{89EE11AC-63B1-4FA0-B3DD-BD591E40B0E8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{79CDBE2E-A821-44C8-8F0E-D9D1C6475178}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{79CDBE2E-A821-44C8-8F0E-D9D1C6475178}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{79CDBE2E-A821-44C8-8F0E-D9D1C6475178}.Publish|Any CPU.ActiveCfg = Debug|Any CPU
+		{79CDBE2E-A821-44C8-8F0E-D9D1C6475178}.Publish|Any CPU.Build.0 = Debug|Any CPU
+		{79CDBE2E-A821-44C8-8F0E-D9D1C6475178}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{79CDBE2E-A821-44C8-8F0E-D9D1C6475178}.Release|Any CPU.Build.0 = Release|Any CPU
 		{3C040D7D-D7B0-4C58-8E3D-DC5099157AED}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{3C040D7D-D7B0-4C58-8E3D-DC5099157AED}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3C040D7D-D7B0-4C58-8E3D-DC5099157AED}.Publish|Any CPU.ActiveCfg = Debug|Any CPU
 		{3C040D7D-D7B0-4C58-8E3D-DC5099157AED}.Publish|Any CPU.Build.0 = Debug|Any CPU
 		{3C040D7D-D7B0-4C58-8E3D-DC5099157AED}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{3C040D7D-D7B0-4C58-8E3D-DC5099157AED}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2E932067-9B25-40B9-800D-8FC1C9D9D4E6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2E932067-9B25-40B9-800D-8FC1C9D9D4E6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2E932067-9B25-40B9-800D-8FC1C9D9D4E6}.Publish|Any CPU.ActiveCfg = Debug|Any CPU
+		{2E932067-9B25-40B9-800D-8FC1C9D9D4E6}.Publish|Any CPU.Build.0 = Debug|Any CPU
+		{2E932067-9B25-40B9-800D-8FC1C9D9D4E6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2E932067-9B25-40B9-800D-8FC1C9D9D4E6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DD864E33-9561-4651-AD2D-7E8093C8725A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DD864E33-9561-4651-AD2D-7E8093C8725A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DD864E33-9561-4651-AD2D-7E8093C8725A}.Publish|Any CPU.ActiveCfg = Debug|Any CPU
+		{DD864E33-9561-4651-AD2D-7E8093C8725A}.Publish|Any CPU.Build.0 = Debug|Any CPU
+		{DD864E33-9561-4651-AD2D-7E8093C8725A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DD864E33-9561-4651-AD2D-7E8093C8725A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E1B143E9-A7C4-422E-ABD0-3C79341BB0D2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E1B143E9-A7C4-422E-ABD0-3C79341BB0D2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E1B143E9-A7C4-422E-ABD0-3C79341BB0D2}.Publish|Any CPU.ActiveCfg = Debug|Any CPU
+		{E1B143E9-A7C4-422E-ABD0-3C79341BB0D2}.Publish|Any CPU.Build.0 = Debug|Any CPU
+		{E1B143E9-A7C4-422E-ABD0-3C79341BB0D2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E1B143E9-A7C4-422E-ABD0-3C79341BB0D2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1EB676DF-B039-497B-A1C5-D190C71A522C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1EB676DF-B039-497B-A1C5-D190C71A522C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1EB676DF-B039-497B-A1C5-D190C71A522C}.Publish|Any CPU.ActiveCfg = Debug|Any CPU
+		{1EB676DF-B039-497B-A1C5-D190C71A522C}.Publish|Any CPU.Build.0 = Debug|Any CPU
+		{1EB676DF-B039-497B-A1C5-D190C71A522C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1EB676DF-B039-497B-A1C5-D190C71A522C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0FC0D2E5-8056-46CE-B930-0993AFFF3578}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0FC0D2E5-8056-46CE-B930-0993AFFF3578}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0FC0D2E5-8056-46CE-B930-0993AFFF3578}.Publish|Any CPU.ActiveCfg = Debug|Any CPU
+		{0FC0D2E5-8056-46CE-B930-0993AFFF3578}.Publish|Any CPU.Build.0 = Debug|Any CPU
+		{0FC0D2E5-8056-46CE-B930-0993AFFF3578}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0FC0D2E5-8056-46CE-B930-0993AFFF3578}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B5F5F9A7-494C-43F5-8589-AE97471442D1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B5F5F9A7-494C-43F5-8589-AE97471442D1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B5F5F9A7-494C-43F5-8589-AE97471442D1}.Publish|Any CPU.ActiveCfg = Debug|Any CPU
+		{B5F5F9A7-494C-43F5-8589-AE97471442D1}.Publish|Any CPU.Build.0 = Debug|Any CPU
+		{B5F5F9A7-494C-43F5-8589-AE97471442D1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B5F5F9A7-494C-43F5-8589-AE97471442D1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BA58B309-FF52-4547-ADFA-0D3825150ECA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BA58B309-FF52-4547-ADFA-0D3825150ECA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BA58B309-FF52-4547-ADFA-0D3825150ECA}.Publish|Any CPU.ActiveCfg = Debug|Any CPU
+		{BA58B309-FF52-4547-ADFA-0D3825150ECA}.Publish|Any CPU.Build.0 = Debug|Any CPU
+		{BA58B309-FF52-4547-ADFA-0D3825150ECA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BA58B309-FF52-4547-ADFA-0D3825150ECA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CD753561-BDC4-4520-9B8F-819944E1E41F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CD753561-BDC4-4520-9B8F-819944E1E41F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CD753561-BDC4-4520-9B8F-819944E1E41F}.Publish|Any CPU.ActiveCfg = Debug|Any CPU
+		{CD753561-BDC4-4520-9B8F-819944E1E41F}.Publish|Any CPU.Build.0 = Debug|Any CPU
+		{CD753561-BDC4-4520-9B8F-819944E1E41F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CD753561-BDC4-4520-9B8F-819944E1E41F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{49F36FA5-EA47-4862-A0C6-9C336F57B41A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{49F36FA5-EA47-4862-A0C6-9C336F57B41A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{49F36FA5-EA47-4862-A0C6-9C336F57B41A}.Publish|Any CPU.ActiveCfg = Debug|Any CPU
+		{49F36FA5-EA47-4862-A0C6-9C336F57B41A}.Publish|Any CPU.Build.0 = Debug|Any CPU
+		{49F36FA5-EA47-4862-A0C6-9C336F57B41A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{49F36FA5-EA47-4862-A0C6-9C336F57B41A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -302,7 +382,6 @@ Global
 		{70F30D48-204C-45AE-B39A-C39A910FF68A} = {F7F3832D-1C01-4B76-A055-072964D03A2B}
 		{5FB3C7FE-6B5B-4A1F-969D-237390F06B38} = {F7F3832D-1C01-4B76-A055-072964D03A2B}
 		{AAB9E058-6E73-44BF-8FFC-B09696BADF2A} = {FF5008BD-2970-41F9-8F1E-61F2DEC9AED5}
-		{8A2FC390-59E2-47B5-9BD3-9BE03EB5C60F} = {BAB0BA13-F063-4859-92C8-DC0E086F6F72}
 		{1F5351C6-8E57-43B0-AB6D-999DECF395BD} = {FF5008BD-2970-41F9-8F1E-61F2DEC9AED5}
 		{FBBD830F-295A-431A-A767-3E5C0CAAC96A} = {7EABCC9F-BAB5-4394-8B76-433A33055F59}
 		{1D9ED487-BC1C-4E99-BB68-D11D0154501F} = {D4460E03-6678-477D-B13C-7870EDD82671}
@@ -325,8 +404,22 @@ Global
 		{3A3FB919-C0DC-46D7-903F-DC4B502107CE} = {E3971949-16AA-4C9B-BD65-62E0BE6EEAFE}
 		{CD951DF2-ECE1-4749-B970-4045FC83DBFC} = {0CED2165-8D86-45D8-8D0D-359FB0D0AC32}
 		{89EE11AC-63B1-4FA0-B3DD-BD591E40B0E8} = {BAB0BA13-F063-4859-92C8-DC0E086F6F72}
+		{79CDBE2E-A821-44C8-8F0E-D9D1C6475178} = {424C3195-4BD5-41A9-8426-8DF7970658B2}
+		{424C3195-4BD5-41A9-8426-8DF7970658B2} = {D4460E03-6678-477D-B13C-7870EDD82671}
 		{50972C3E-4FF3-4EBA-BEA6-B9B25AF9E46A} = {FF5008BD-2970-41F9-8F1E-61F2DEC9AED5}
 		{3C040D7D-D7B0-4C58-8E3D-DC5099157AED} = {50972C3E-4FF3-4EBA-BEA6-B9B25AF9E46A}
+		{2E932067-9B25-40B9-800D-8FC1C9D9D4E6} = {50972C3E-4FF3-4EBA-BEA6-B9B25AF9E46A}
+		{DD864E33-9561-4651-AD2D-7E8093C8725A} = {D7FBA9F4-51F7-4DEA-B08C-1CB6E379010B}
+		{A5F5EE42-56F5-4A37-82F6-7EDAF7D7EB48} = {D7FBA9F4-51F7-4DEA-B08C-1CB6E379010B}
+		{E1B143E9-A7C4-422E-ABD0-3C79341BB0D2} = {A5F5EE42-56F5-4A37-82F6-7EDAF7D7EB48}
+		{F85B5003-AB19-4A77-B993-9008980A65C3} = {BAB0BA13-F063-4859-92C8-DC0E086F6F72}
+		{1EB676DF-B039-497B-A1C5-D190C71A522C} = {F85B5003-AB19-4A77-B993-9008980A65C3}
+		{0FC0D2E5-8056-46CE-B930-0993AFFF3578} = {50972C3E-4FF3-4EBA-BEA6-B9B25AF9E46A}
+		{B5F5F9A7-494C-43F5-8589-AE97471442D1} = {BAB0BA13-F063-4859-92C8-DC0E086F6F72}
+		{BA58B309-FF52-4547-ADFA-0D3825150ECA} = {50972C3E-4FF3-4EBA-BEA6-B9B25AF9E46A}
+		{A61AFB9E-3915-4695-A28E-FC5C4750B23F} = {E3971949-16AA-4C9B-BD65-62E0BE6EEAFE}
+		{CD753561-BDC4-4520-9B8F-819944E1E41F} = {A61AFB9E-3915-4695-A28E-FC5C4750B23F}
+		{49F36FA5-EA47-4862-A0C6-9C336F57B41A} = {A5F5EE42-56F5-4A37-82F6-7EDAF7D7EB48}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {8B68A6F2-AE7F-4585-941D-282839D6E440}

@@ -2,15 +2,27 @@
 
 namespace Microsoft.Greenlight.Shared.Helpers
 {
+    /// <summary>
+    /// Provides helper methods for administrative tasks.
+    /// </summary>
     public static class AdminHelper
     {
         private static IConfiguration? _configuration;
 
+        /// <summary>
+        /// Initializes the AdminHelper with the specified configuration.
+        /// </summary>
+        /// <param name="configuration">The configuration to use.</param>
         public static void Initialize(IConfiguration configuration)
         {
             _configuration = configuration;
         }
 
+        /// <summary>
+        /// Determines whether the application is running in a production environment.
+        /// </summary>
+        /// <returns><c>true</c> if the application is running in a production environment; otherwise, <c>false</c>.</returns>
+        /// <exception cref="InvalidOperationException">Thrown if the AdminHelper is not initialized.</exception>
         public static bool IsRunningInProduction()
         {
             if (_configuration == null)

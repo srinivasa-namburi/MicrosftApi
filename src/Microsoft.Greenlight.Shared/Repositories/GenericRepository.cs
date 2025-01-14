@@ -124,7 +124,7 @@ public class GenericRepository<T> where T : EntityBase
         await Cache.KeyDeleteAsync(cacheKey);
     }
 
-    public async Task SaveChangesAsync()
+    public virtual async Task SaveChangesAsync()
     {
         await _dbContext.SaveChangesAsync();
     }

@@ -14,6 +14,9 @@ using Swashbuckle.AspNetCore.Annotations;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
+/// <summary>
+/// Controller for managing plugins.
+/// </summary>
 public class PluginsController : BaseController
 {
     private readonly IPluginService _pluginService;
@@ -22,12 +25,21 @@ public class PluginsController : BaseController
     private readonly AzureFileHelper _fileHelper;
     private readonly IPublishEndpoint _publishEndpoint;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="PluginsController"/> class.
+    /// </summary>
+    /// <param name="pluginService">The plugin service.</param>
+    /// <param name="dbContext">The database context.</param>
+    /// <param name="mapper">The mapper.</param>
+    /// <param name="fileHelper">The file helper.</param>
+    /// <param name="publishEndpoint">The publish endpoint.</param>
     public PluginsController(
-        IPluginService pluginService, 
-        DocGenerationDbContext dbContext, 
+        IPluginService pluginService,
+        DocGenerationDbContext dbContext,
         IMapper mapper,
         AzureFileHelper fileHelper,
-        IPublishEndpoint publishEndpoint)
+        IPublishEndpoint publishEndpoint
+    )
     {
         _pluginService = pluginService;
         _dbContext = dbContext;
@@ -36,6 +48,13 @@ public class PluginsController : BaseController
         _publishEndpoint = publishEndpoint;
     }
 
+    /// <summary>
+    /// Gets all plugins.
+    /// </summary>
+    /// <returns>A list of all plugins.
+    /// Produces Status Codes:
+    ///     200 OK: When completed sucessfully
+    /// </returns>
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [Produces("application/json")]
@@ -46,6 +65,15 @@ public class PluginsController : BaseController
         return Ok(pluginInfos);
     }
 
+    /// <summary>
+    /// Gets a plugin by its identifier.
+    /// </summary>
+    /// <param name="pluginId">The plugin identifier.</param>
+    /// <returns>The plugin information.
+    /// Produces Status Codes:
+    ///     200 OK: When completed sucessfully
+    ///     404 Not Found: When the plugin information was not found using the plugin id provided
+    /// </returns>
     [HttpGet("{pluginId:guid}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [Produces("application/json")]
@@ -60,6 +88,14 @@ public class PluginsController : BaseController
         return Ok(pluginInfo);
     }
 
+    /// <summary>
+    /// Gets plugins by document process identifier.
+    /// </summary>
+    /// <param name="documentProcessId">The document process identifier.</param>
+    /// <returns>A list of plugins associated with the document process.
+    /// Produces Status Codes:
+    ///     200 OK: When completed sucessfully
+    /// </returns>
     [HttpGet("/api/document-processes/{documentProcessId:guid}/plugins")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [Produces("application/json")]
@@ -69,7 +105,20 @@ public class PluginsController : BaseController
         var pluginInfos = _mapper.Map<List<DynamicPluginInfo>>(plugins);
         return Ok(pluginInfos);
     }
-    
+
+    /// <summary>
+    /// Associates a plugin with a document process.
+    /// </summary>
+    /// <param name="pluginId">The plugin identifier.</param>
+    /// <param name="documentProcessId">The document process identifier.</param>
+    /// <param name="version">The plugin version.</param>
+    /// <returns>An action result.
+    /// Produces Status Codes:
+    ///     200 OK: When completed sucessfully
+    ///     400 Bad Request: When either the plugin could not be found or the document process could not be found, 
+    ///     the version provided does not conform to the major.minor.patch format, 
+    ///     or the plugin version provided could not be found
+    /// </returns>
     [HttpPost("{pluginId:guid}/{version}/associate/{documentProcessId:guid}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> AssociateWithDocumentProcess(Guid pluginId, Guid documentProcessId, string version)
@@ -85,6 +134,15 @@ public class PluginsController : BaseController
         }
     }
 
+    /// <summary>
+    /// Disassociates a plugin from a document process.
+    /// </summary>
+    /// <param name="pluginId">The plugin identifier.</param>
+    /// <param name="documentProcessId">The document process identifier.</param>
+    /// <returns>An action result.
+    /// Produces Status Codes:
+    ///     200 OK: When completed sucessfully
+    /// </returns>
     [HttpPost("{pluginId:guid}/disassociate/{documentProcessId:guid}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> DisassociateFromDocumentProcess(Guid pluginId, Guid documentProcessId)
@@ -94,11 +152,24 @@ public class PluginsController : BaseController
             await _pluginService.DisassociatePluginFromDocumentProcessAsync(pluginId, documentProcessId);
             return Ok();
         }
-        catch (InvalidOperationException ex)
+        catch (InvalidOperationException ex) 
         {
             return BadRequest(ex.Message);
         }
     }
+
+    /// <summary>
+    /// Uploads a plugin.
+    /// </summary>
+    /// <param name="file">The plugin file.</param>
+    /// <returns>The uploaded plugin information.
+    /// Produces Status Codes:
+    ///     200 OK: When completed sucessfully
+    ///     400 Bad Request: When no file is provided, an invalid file type is provided, 
+    ///     the format of the file name doesn't conform to PluginName_version.zip, 
+    ///     the version provided does not conform to the major.minor.patch format, 
+    ///     500 Bad Request: When uncaught exceptions are thrown
+    /// </returns>
     [HttpPost("upload")]
     [DisableRequestSizeLimit]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -107,7 +178,6 @@ public class PluginsController : BaseController
     [SwaggerIgnore]
     public async Task<IActionResult> UploadPlugin([FromForm] IFormFile file)
     {
-        
         if (file == null || file.Length == 0)
         {
             return BadRequest("No plugin file uploaded.");
@@ -147,7 +217,7 @@ public class PluginsController : BaseController
 
             await using var stream = file.OpenReadStream();
             var blobUrl = await _fileHelper.UploadFileToBlobAsync(
-                stream, blobFileName, containerName, overwriteIfExists:true);
+                stream, blobFileName, containerName, overwriteIfExists: true);
 
             // Save or update plugin information in the database
             var plugin = await _dbContext.DynamicPlugins
@@ -168,8 +238,9 @@ public class PluginsController : BaseController
             }
 
             // Check if this version already exists
+            plugin.Versions ??= new List<DynamicPluginVersion>();
             var existingVersion = plugin.Versions.FirstOrDefault(v => v.Equals(pluginVersion));
-            if (existingVersion != null)
+            if (existingVersion is not null)
             {
                 // Overwrite the existing version
                 plugin.Versions.Remove(existingVersion);
@@ -188,7 +259,7 @@ public class PluginsController : BaseController
 
             return Ok(pluginInfo);
         }
-        catch (Exception ex)
+        catch
         {
             // Log the exception as needed
             return StatusCode(StatusCodes.Status500InternalServerError, "An error occurred while uploading the plugin.");

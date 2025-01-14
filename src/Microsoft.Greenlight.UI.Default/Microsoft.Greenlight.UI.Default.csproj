@@ -7,12 +7,10 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-	  <None Remove="GenerateForm.razor.css" />
 	  <None Remove="GenerateForm.razor.js" />
 	</ItemGroup>
 
 	<ItemGroup>
-	  <Content Include="GenerateForm.razor.css" />
 	  <Content Include="GenerateForm.razor.js" />
 	</ItemGroup>
 

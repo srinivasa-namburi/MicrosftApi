@@ -1,27 +1,32 @@
 using Azure;
 using Azure.Storage.Blobs;
 using MassTransit;
-using Microsoft.Extensions.Options;
-using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Contracts.Messages.DocumentIngestion.Commands;
 using Microsoft.Greenlight.Shared.Enums;
-using Microsoft.Greenlight.Shared.Migrations;
 using Microsoft.Greenlight.Shared.Services;
 
 namespace Microsoft.Greenlight.Worker.DocumentIngestion.Consumers;
 
+/// <summary>
+/// Consumer that handles the ingestion of documents from an auto-import path.
+/// </summary>
 public class IngestDocumentsFromAutoImportPathConsumer : IConsumer<IngestDocumentsFromAutoImportPath>
 {
     private readonly BlobServiceClient _blobServiceClient;
     private readonly ILogger<IngestDocumentsFromAutoImportPathConsumer> _logger;
     private readonly IDocumentProcessInfoService _documentProcessInfoService;
     private readonly IDocumentLibraryInfoService _documentLibraryInfoService;
-    private readonly ServiceConfigurationOptions _options;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="IngestDocumentsFromAutoImportPathConsumer"/> class.
+    /// </summary>
+    /// <param name="blobServiceClient">The Blob service client.</param>
+    /// <param name="logger">The logger instance.</param>
+    /// <param name="documentProcessInfoService">The document process info service.</param>
+    /// <param name="documentLibraryInfoService">The document library info service.</param>
     public IngestDocumentsFromAutoImportPathConsumer(
         BlobServiceClient blobServiceClient,
-        IOptions<ServiceConfigurationOptions> options,
         ILogger<IngestDocumentsFromAutoImportPathConsumer> logger,
         IDocumentProcessInfoService documentProcessInfoService,
         IDocumentLibraryInfoService documentLibraryInfoService)
@@ -30,8 +35,13 @@ public class IngestDocumentsFromAutoImportPathConsumer : IConsumer<IngestDocumen
         _logger = logger;
         _documentProcessInfoService = documentProcessInfoService;
         _documentLibraryInfoService = documentLibraryInfoService;
-        _options = options.Value;
     }
+
+    /// <summary>
+    /// Consumes the message to ingest documents from the auto-import path.
+    /// </summary>
+    /// <param name="context">The consume context containing the message.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     public async Task Consume(ConsumeContext<IngestDocumentsFromAutoImportPath> context)
     {
         var ingestPath = "ingest";
@@ -39,6 +49,12 @@ public class IngestDocumentsFromAutoImportPathConsumer : IConsumer<IngestDocumen
 
         string documentLibraryShortName;
         string containerName;
+
+        if (message.DocumentLibraryShortName == null)
+        {
+            _logger.LogError("IngestDocumentsFromAutoImportPathConsumer: Encountered auto-import message with null document library short name - aborting import");
+            return;
+        }
 
         if (message.DocumentLibraryType == DocumentLibraryType.AdditionalDocumentLibrary)
         {
@@ -66,15 +82,16 @@ public class IngestDocumentsFromAutoImportPathConsumer : IConsumer<IngestDocumen
             containerName = documentProcess.BlobStorageContainerName;
         }
 
-        
+
         var targetContainerClient = _blobServiceClient.GetBlobContainerClient(containerName);
-        var blobsPageable = _blobServiceClient.GetBlobContainerClient(context.Message.BlobContainerName).GetBlobsAsync(prefix: context.Message.FolderPath);
+        var sourceContainerClient = _blobServiceClient.GetBlobContainerClient(context.Message.BlobContainerName);
+        var blobsPageable = sourceContainerClient.GetBlobsAsync(prefix: context.Message.FolderPath);
 
         await foreach (var blobPage in blobsPageable.AsPages())
         {
             blobPage.Values.ToList().ForEach(async blob =>
             {
-                var sourceBlobClient = _blobServiceClient.GetBlobContainerClient(context.Message.BlobContainerName).GetBlobClient(blob.Name);
+                var sourceBlobClient = sourceContainerClient.GetBlobClient(blob.Name);
 
                 var todayString = DateTime.Now.ToString("yyyy-MM-dd");
 
@@ -83,7 +100,7 @@ public class IngestDocumentsFromAutoImportPathConsumer : IConsumer<IngestDocumen
 
                 try
                 {
-                    await targetBlobClient.StartCopyFromUriAsync(sourceBlobClient.Uri);
+                   await targetBlobClient.StartCopyFromUriAsync(sourceBlobClient.Uri);
                 }
                 catch (RequestFailedException exception)
                 {
@@ -107,7 +124,7 @@ public class IngestDocumentsFromAutoImportPathConsumer : IConsumer<IngestDocumen
                         : "IngestDocumentsFromAutoImportPathConsumer: Document Library {DocumentLibraryName} : Copied blob {blobName} from {sourceContainer} to {targetContainer}",
                     message.DocumentLibraryShortName, blob.Name, message.BlobContainerName, targetContainerClient.Name);
 
-                
+
                 var request = new DocumentIngestionRequest()
                 {
                     Id = Guid.NewGuid(),

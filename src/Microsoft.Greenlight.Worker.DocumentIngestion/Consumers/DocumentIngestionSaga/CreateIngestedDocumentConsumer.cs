@@ -11,22 +11,26 @@ using Microsoft.Greenlight.Shared.Enums;
 
 namespace Microsoft.Greenlight.Worker.DocumentIngestion.Consumers.DocumentIngestionSaga;
 
-public class CreateIngestedDocumentConsumer : IConsumer<CreateIngestedDocument>
+/// <summary>
+/// Consumer class for creating ingested documents.
+/// </summary>
+/// <param name="dbContext">The database context.</param>
+/// <param name="logger">The logger instance.</param>
+/// <param name="azureFileHelper">The Azure file helper instance.</param>
+public class CreateIngestedDocumentConsumer(
+    DocGenerationDbContext dbContext,
+    ILogger<CreateIngestedDocumentConsumer> logger,
+    AzureFileHelper azureFileHelper) : IConsumer<CreateIngestedDocument>
 {
-    private readonly DocGenerationDbContext _dbContext;
-    private readonly ILogger<CreateIngestedDocumentConsumer> _logger;
-    private readonly AzureFileHelper _azureFileHelper;
+    private readonly DocGenerationDbContext _dbContext = dbContext;
+    private readonly ILogger<CreateIngestedDocumentConsumer> _logger = logger;
+    private readonly AzureFileHelper _azureFileHelper = azureFileHelper;
 
-    public CreateIngestedDocumentConsumer(
-        DocGenerationDbContext dbContext,
-        ILogger<CreateIngestedDocumentConsumer> logger,
-        AzureFileHelper azureFileHelper
-        )
-    {
-        _dbContext = dbContext;
-        _logger = logger;
-        _azureFileHelper = azureFileHelper;
-    }
+    /// <summary>
+    /// Consumes the CreateIngestedDocument message and processes the document ingestion.
+    /// </summary>
+    /// <param name="context">The consume context containing the CreateIngestedDocument message.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     public async Task Consume(ConsumeContext<CreateIngestedDocument> context)
     {
         var document = new IngestedDocument
@@ -60,7 +64,7 @@ public class CreateIngestedDocumentConsumer : IConsumer<CreateIngestedDocument>
                  d.IngestionState != IngestionState.ClassificationUnsupported)
             .ToList();
 
-        if (documentsToDelete.Any())
+        if (documentsToDelete.Count > 0)
         {
             _logger.LogInformation(
                 "CreateIngestedDocumentConsumer: CorrelationId: {CorrelationId} Found earlier, incomplete ingestions for file {FileName} with the same file hash. Overwriting them.", context.Message.CorrelationId, document.FileName);
@@ -79,7 +83,7 @@ public class CreateIngestedDocumentConsumer : IConsumer<CreateIngestedDocument>
                 var contentNodes = await _dbContext.ContentNodes.Where(c => c.IngestedDocumentId == existingDocument.Id).ToListAsync();
                 await RecursivelyRemoveContentNodesFromDatabase(contentNodes);
             }
-            
+
             _dbContext.IngestedDocuments.RemoveRange(existingDocuments);
             await _dbContext.SaveChangesAsync();
         }
@@ -106,6 +110,11 @@ public class CreateIngestedDocumentConsumer : IConsumer<CreateIngestedDocument>
             });
     }
 
+    /// <summary>
+    /// Recursively removes content nodes from the database.
+    /// </summary>
+    /// <param name="contentNodes">The list of content nodes to remove.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     private async Task RecursivelyRemoveContentNodesFromDatabase(List<ContentNode> contentNodes)
     {
         foreach (var contentNode in contentNodes)

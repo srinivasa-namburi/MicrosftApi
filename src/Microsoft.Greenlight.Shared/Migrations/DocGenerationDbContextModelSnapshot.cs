@@ -541,6 +541,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<bool>("ClassifyDocuments")
                         .HasColumnType("bit");
 
+                    b.Property<int>("CompletionServiceType")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
 
@@ -593,6 +596,70 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .IsUnique();
 
                     b.ToTable("DynamicDocumentProcessDefinitions", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.DocumentProcess.DynamicDocumentProcessMetaDataField", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DefaultPossibleValue")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("DefaultValue")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("DescriptionToolTip")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("DynamicDocumentProcessDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("FieldType")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("HasPossibleValues")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsRequired")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PossibleValues")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DynamicDocumentProcessDefinitionId");
+
+                    b.HasIndex("DynamicDocumentProcessDefinitionId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("DynamicDocumentProcessMetaDataFields", (string)null);
                 });
 
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.DocumentProcess.PromptDefinition", b =>
@@ -1619,6 +1686,16 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Navigation("Parent");
                 });
 
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.DocumentProcess.DynamicDocumentProcessMetaDataField", b =>
+                {
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.DocumentProcess.DynamicDocumentProcessDefinition", "DynamicDocumentProcessDefinition")
+                        .WithMany("MetaDataFields")
+                        .HasForeignKey("DynamicDocumentProcessDefinitionId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("DynamicDocumentProcessDefinition");
+                });
+
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.DocumentProcess.PromptImplementation", b =>
                 {
                     b.HasOne("Microsoft.Greenlight.Shared.Models.DocumentProcess.DynamicDocumentProcessDefinition", "DocumentProcessDefinition")
@@ -1824,6 +1901,8 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Navigation("AdditionalDocumentLibraries");
 
                     b.Navigation("DocumentOutline");
+
+                    b.Navigation("MetaDataFields");
 
                     b.Navigation("Plugins");
 

@@ -1,5 +1,4 @@
 using System.Reflection;
-using AutoMapper;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Greenlight.Extensions.Plugins;
@@ -9,12 +8,20 @@ using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Plugins;
-using StackExchange.Redis;
 
 namespace Microsoft.Greenlight.Shared.Extensions
 {
+    /// <summary>
+    /// Provides extension methods for plugin registration and management.
+    /// </summary>
     public static class PluginExtensions
     {
+        /// <summary>
+        /// Registers static plugins from the specified assemblies.
+        /// </summary>
+        /// <param name="builder">The host application builder.</param>
+        /// <param name="options">The service configuration options.</param>
+        /// <returns>The updated host application builder.</returns>
         public static IHostApplicationBuilder RegisterStaticPlugins(this IHostApplicationBuilder builder, ServiceConfigurationOptions options)
         {
             string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
@@ -26,7 +33,7 @@ namespace Microsoft.Greenlight.Shared.Extensions
             string[] documentProcessAssemblyPaths = Directory.GetFiles(baseDirectory, "Microsoft.Greenlight.DocumentProcess.*.dll")
                 .ToArray();
 
-            var configuredDocumentProcesses = options.GreenlightServices.DocumentProcesses.Select(documentProcess => documentProcess.Name).ToList();
+            var configuredDocumentProcesses = options.GreenlightServices.DocumentProcesses.Select(documentProcess => documentProcess!.Name).ToList();
 
             documentProcessAssemblyPaths = documentProcessAssemblyPaths
                 .Where(path => configuredDocumentProcesses.Any(documentProcess => path.Contains(documentProcess)))
@@ -39,7 +46,12 @@ namespace Microsoft.Greenlight.Shared.Extensions
             return builder;
         }
 
-
+        /// <summary>
+        /// Registers plugins from the specified assembly paths.
+        /// </summary>
+        /// <param name="builder">The host application builder.</param>
+        /// <param name="assemblyPaths">The assembly paths for the plugins.</param>
+        /// <returns>The updated host application builder.</returns>
         private static IHostApplicationBuilder RegisterPluginsForAssemblies(this IHostApplicationBuilder builder,
             IEnumerable<string> assemblyPaths)
         {
@@ -73,15 +85,22 @@ namespace Microsoft.Greenlight.Shared.Extensions
             return builder;
         }
 
+        /// <summary>
+        /// Adds registered plugins to the kernel plugin collection.
+        /// </summary>
+        /// <param name="kernelPlugins">The kernel plugin collection.</param>
+        /// <param name="serviceProvider">The service provider.</param>
+        /// <param name="excludePluginType">Optional type of plugin to exclude.</param>
         public static void AddRegisteredPluginsToKernelPluginCollection(
             this KernelPluginCollection kernelPlugins,
             IServiceProvider serviceProvider,
-            Type excludePluginType = null)
+            Type? excludePluginType = null)
         {
             var pluginTypes = AppDomain.CurrentDomain.GetAssemblies()
                 .Where(x =>
-                    x.FullName.StartsWith("Microsoft.Greenlight.Plugins") ||
-                    x.FullName.StartsWith("Microsoft.Greenlight.DocumentProcess"))
+                    x.FullName is not null &&
+                    (x.FullName.StartsWith("Microsoft.Greenlight.Plugins") ||
+                    x.FullName.StartsWith("Microsoft.Greenlight.DocumentProcess")))
                 .SelectMany(a => a.GetTypes())
                 .Where(t => typeof(IPluginImplementation).IsAssignableFrom(t) && !t.IsAbstract && t.IsClass)
                 .ToList();
@@ -99,15 +118,29 @@ namespace Microsoft.Greenlight.Shared.Extensions
             }
         }
 
+        /// <summary>
+        /// Adds shared and document process plugins to the kernel plugin collection.
+        /// </summary>
+        /// <param name="kernelPlugins">The kernel plugin collection.</param>
+        /// <param name="serviceProvider">The service provider.</param>
+        /// <param name="documentProcessOptions">The document process options.</param>
+        /// <param name="excludedPluginTypes">An optional list of plugin types to exclude.</param>
         public static void AddSharedAndDocumentProcessPluginsToPluginCollection(
             this KernelPluginCollection kernelPlugins,
             IServiceProvider serviceProvider,
-            DocumentProcessOptions documentProcess,
+            DocumentProcessOptions documentProcessOptions,
             List<Type>? excludedPluginTypes = null)
         {
-            AddSharedAndStaticDocumentProcessPluginsToPluginCollection(kernelPlugins, serviceProvider, documentProcess.Name, excludedPluginTypes);
+            AddSharedAndStaticDocumentProcessPluginsToPluginCollection(kernelPlugins, serviceProvider, documentProcessOptions.Name, excludedPluginTypes);
         }
 
+        /// <summary>
+        /// Adds shared and document process plugins to the kernel plugin collection.
+        /// </summary>
+        /// <param name="kernelPlugins">The kernel plugin collection.</param>
+        /// <param name="serviceProvider">The service provider.</param>
+        /// <param name="documentProcess">The document process information.</param>
+        /// <param name="excludedPluginTypes">An optional list of plugin types to exclude.</param>
         public static void AddSharedAndDocumentProcessPluginsToPluginCollection(
             this KernelPluginCollection kernelPlugins,
             IServiceProvider serviceProvider,
@@ -128,6 +161,14 @@ namespace Microsoft.Greenlight.Shared.Extensions
             }
         }
 
+        /// <summary>
+        /// Adds shared and document process plugins to the kernel plugin collection asynchronously.
+        /// </summary>
+        /// <param name="kernelPlugins">The kernel plugin collection.</param>
+        /// <param name="serviceProvider">The service provider.</param>
+        /// <param name="documentProcess">The document process information.</param>
+        /// <param name="excludedPluginTypes">An optional list of plugin types to exclude.</param>
+        /// <returns></returns>
         public static async Task AddSharedAndDocumentProcessPluginsToPluginCollectionAsync(
             this KernelPluginCollection kernelPlugins,
             IServiceProvider serviceProvider,
@@ -149,14 +190,14 @@ namespace Microsoft.Greenlight.Shared.Extensions
              this KernelPluginCollection kernelPlugins,
              IServiceProvider serviceProvider,
              DocumentProcessInfo documentProcess,
-             List<Type> excludedPluginTypes)
+             List<Type>? excludedPluginTypes)
         {
             AddSharedPluginsToPluginCollection(kernelPlugins, serviceProvider, excludedPluginTypes);
 
             var sharedStaticPlugins = GetPluginsByAssemblyPrefix("Microsoft.Greenlight.DocumentProcess.Shared")
                 .ToList();
 
-            //Only load dynamic plugins if we can find the DynamicPluginManager in the DI container
+            // Only load dynamic plugins if we can find the DynamicPluginManager in the DI container
             var dynamicPlugins = new List<Type>();
             if (serviceProvider.GetServices<DynamicPluginManager>().Any())
             {
@@ -188,7 +229,7 @@ namespace Microsoft.Greenlight.Shared.Extensions
                             {
                                 pluginInstance = serviceProvider.GetRequiredKeyedService(pluginType,
                                     documentProcess.ShortName + "-" + pluginType.Name);
-                                pluginRegistrationKey = documentProcess.ShortName.Replace(".", "_").Replace("-", "_") + "_" + pluginType.Name;
+                                pluginRegistrationKey = documentProcess.ShortName.Replace(".", "_").Replace("-","_").Replace(" ","_") + "__" + pluginType.Name;
                             }
                             catch
                             {
@@ -197,7 +238,7 @@ namespace Microsoft.Greenlight.Shared.Extensions
                         }
                         catch
                         {
-                            pluginInstance = serviceProvider.GetService(pluginType);
+                            pluginInstance = serviceProvider.GetRequiredService(pluginType);
                         }
 
                         if (pluginInstance == null)
@@ -309,7 +350,7 @@ namespace Microsoft.Greenlight.Shared.Extensions
         private static void AddSharedPluginsToPluginCollection(
             KernelPluginCollection kernelPlugins,
             IServiceProvider serviceProvider,
-            List<Type> excludedPluginTypes)
+            List<Type>? excludedPluginTypes)
         {
             var basePlugins = GetPluginsByAssemblyPrefix("Microsoft.Greenlight.Plugins");
             var sharedDocumentProcessPlugins = GetPluginsByAssemblyPrefix("Microsoft.Greenlight.DocumentProcess.Shared");
@@ -342,7 +383,7 @@ namespace Microsoft.Greenlight.Shared.Extensions
         private static List<Type> GetPluginsByAssemblyPrefix(string assemblyPrefix)
         {
             return AppDomain.CurrentDomain.GetAssemblies()
-                .Where(x => x.FullName.StartsWith(assemblyPrefix))
+                .Where(x => x.FullName is not null && x.FullName.StartsWith(assemblyPrefix))
                 .SelectMany(a => a.GetTypes())
                 .Where(t => typeof(IPluginImplementation).IsAssignableFrom(t) && !t.IsAbstract && t.IsClass)
                 .ToList();

@@ -90,6 +90,30 @@ public class DocumentProcessApiClient : BaseServiceClient<DocumentProcessApiClie
         return result;
     }
 
+    public async Task <List<DocumentProcessMetadataFieldInfo>> GetDocumentProcessMetadataFieldsAsync(Guid processId)
+    {
+        var url = $"/api/document-processes/{processId}/metadata-fields";
+        var response = await SendGetRequestMessage(url);
+        // If we get a 404, it means that no metadata fields exist - return an empty list
+        if (response?.StatusCode == HttpStatusCode.NotFound)
+        {
+            return [];
+        }
+        response?.EnsureSuccessStatusCode();
+        // Return all DocumentInfo found
+        var result = await response?.Content.ReadFromJsonAsync<List<DocumentProcessMetadataFieldInfo>>()! ?? [];
+        return result;
+    }
+
+    public async Task<List<DocumentProcessMetadataFieldInfo>> StoreMetaDataFieldsForDocumentProcess(Guid processId, List<DocumentProcessMetadataFieldInfo> metadataFields)
+    {
+        var url = $"/api/document-processes/{processId}/metadata-fields";
+        var response = await SendPostRequestMessage(url, metadataFields);
+        response?.EnsureSuccessStatusCode();
+        var result = await response?.Content.ReadFromJsonAsync<List<DocumentProcessMetadataFieldInfo>>()! ?? [];
+        return result;
+    }
+
     public async Task<DocumentProcessInfo?> CreateDynamicDocumentProcessDefinitionAsync(DocumentProcessInfo? documentProcessInfo)
     {
         var url = "/api/document-processes";

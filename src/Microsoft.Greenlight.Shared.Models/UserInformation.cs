@@ -1,15 +1,38 @@
 namespace Microsoft.Greenlight.Shared.Models;
 
+/// <summary>
+/// Represents user information with authentication details.
+/// </summary>
 public class UserInformation : EntityBase
 {
-    public string FullName { get; set; } 
-    public string ProviderSubjectId { get; set; }
-    public AuthenticationProvider Provider { get; set; } = AuthenticationProvider.AzureAD;
-    public string? Email { get; set; } 
+    /// <summary>
+    /// Full name of the user.
+    /// </summary>
+    public required string FullName { get; set; }
 
+    /// <summary>
+    /// Provider subject identifier.
+    /// </summary>
+    public required string ProviderSubjectId { get; set; }
+
+    /// <summary>
+    /// Authentication provider used by the user.
+    /// </summary>
+    public AuthenticationProvider Provider { get; set; } = AuthenticationProvider.AzureAD;
+
+    /// <summary>
+    /// Email of the user.
+    /// </summary>
+    public string? Email { get; set; }
 }
 
+/// <summary>
+/// Represents the authentication provider.
+/// </summary>
 public enum AuthenticationProvider
 {
+    /// <summary>
+    /// Azure Active Directory.
+    /// </summary>
     AzureAD
 }

@@ -6,18 +6,33 @@ using Microsoft.Greenlight.Shared.Models.Plugins;
 
 namespace Microsoft.Greenlight.SetupManager.DB;
 
+/// <summary>
+/// The service used to setup the database and seed data.
+/// </summary>
+/// <param name="sp">The <see cref="IServiceProvider"/> for resolving dependencies.</param>
+/// <param name="logger">The <see cref="ILogger"/> used for logging.</param>
+/// <param name="lifetime">The <see cref="IHostApplicationLifetime"/> used for shutting down the application.</param>
 public class SetupDataInitializerService(
     IServiceProvider sp,
     ILogger<SetupDataInitializerService> logger,
     IHostApplicationLifetime lifetime) : BackgroundService
 {
+    /// <summary>
+    /// The name of the activity source used for telemetry logging.
+    /// </summary>
+    public const string ActivitySourceName = "Migrations";
+
     private readonly IServiceProvider _sp = sp;
     private readonly ILogger<SetupDataInitializerService> _logger = logger;
     private readonly IHostApplicationLifetime _lifetime = lifetime;
-
-    public const string ActivitySourceName = "Migrations";
     private readonly ActivitySource _activitySource = new(ActivitySourceName);
 
+    /// <summary>
+    /// The method that is called when the <see cref="SetupDataInitializerService"/> starts.
+    /// </summary>
+    /// <param name="cancellationToken">
+    /// Triggered when <see cref="IHostedService.StopAsync(CancellationToken)"/> is called.</param>
+    /// <returns>>A <see cref="Task"/> that represents the long running operations.</returns>
     protected override async Task ExecuteAsync(CancellationToken cancellationToken)
     {
         using var scope = _sp.CreateScope();
@@ -33,19 +48,23 @@ public class SetupDataInitializerService(
 
     private async Task InitializeDatabaseAsync(DocGenerationDbContext dbContext, CancellationToken cancellationToken)
     {
-        using var activity = _activitySource.StartActivity("Initializing Document Generation Database", ActivityKind.Client);
+        using var activity =
+            _activitySource.StartActivity("Initializing Document Generation Database", ActivityKind.Client);
         var sw = Stopwatch.StartNew();
 
         var strategy = dbContext.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(dbContext.Database.MigrateAsync, cancellationToken);
         sw.Stop();
-        _logger.LogInformation("Document Generation Database initialized in {ElapsedMilliseconds}ms", sw.ElapsedMilliseconds);
+        _logger.LogInformation(
+            "Document Generation Database initialized in {ElapsedMilliseconds}ms", sw.ElapsedMilliseconds);
+
         activity!.Stop();
     }
 
     private async Task SeedAsync(DocGenerationDbContext dbContext, CancellationToken cancellationToken)
     {
-        using var activity = _activitySource.StartActivity("Seeding Document Generation Database", ActivityKind.Client);
+        using var activity =
+            _activitySource.StartActivity("Seeding Document Generation Database", ActivityKind.Client);
         _logger.LogInformation("Seeding Document Generation Database started");
         var sw = Stopwatch.StartNew();
 
@@ -55,7 +74,9 @@ public class SetupDataInitializerService(
         //await Seed2024_10_01_CreateDummyPlugin(dbContext, cancellationToken);
 
         sw.Stop();
-        _logger.LogInformation("Seeding Document Generation Database completed in {ElapsedMilliseconds}ms", sw.ElapsedMilliseconds);
+        _logger.LogInformation(
+            "Seeding Document Generation Database completed in {ElapsedMilliseconds}ms", sw.ElapsedMilliseconds);
+
         activity!.Stop();
     }
 
@@ -63,7 +84,8 @@ public class SetupDataInitializerService(
         CancellationToken cancellationToken)
     {
         // Set Document Process to "US.NuclearLicensing" on IngestedDocuments where DocumentProcess is null
-        // First, get a count of the number of IngestedDocuments where DocumentProcess is null. If it's 0, we don't need to do anything.
+        // First, get a count of the number of IngestedDocuments where DocumentProcess is null. If it's 0, we don't
+        // need to do anything.
 
         var count = await dbContext.IngestedDocuments
             .Where(x => x.DocumentProcess == null)
@@ -71,12 +93,15 @@ public class SetupDataInitializerService(
 
         if (count == 0)
         {
-            _logger.LogInformation("No IngestedDocuments found where DocumentProcess is null. Skipping seeding logic.");
+            _logger.LogInformation(
+                "No IngestedDocuments found where DocumentProcess is null. Skipping seeding logic.");
             return;
         }
 
 
-        _logger.LogInformation("Seeding : Setting Document Process to 'US.NuclearLicensing' on {Count} IngestedDocuments where DocumentProcess is null", count);
+        _logger.LogInformation(
+            "Seeding : Setting Document Process to 'US.NuclearLicensing' on {Count} IngestedDocuments where DocumentProcess is null",
+            count);
 
         await dbContext.Database.ExecuteSqlRawAsync(
             "UPDATE IngestedDocuments SET DocumentProcess = {0} WHERE DocumentProcess IS NULL",
@@ -89,9 +114,11 @@ public class SetupDataInitializerService(
         CancellationToken cancellationToken)
     {
         // Remove any ChatMessages that are not associated with a ChatConversation
-        // First, get a count of the number of ChatMessages that are not associated with a ChatConversation. If it's 0, we don't need to do anything.
+        // First, get a count of the number of ChatMessages that are not associated with a ChatConversation. If it's 0,
+        // we don't need to do anything.
 
-        // The ChatMessages currently have a ConversationId in the model that is not nullable, so we can't have a null ConversationId.
+        // The ChatMessages currently have a ConversationId in the model that is not nullable, so we can't have a null
+        // ConversationId.
         // Therefore, we need to execute a raw SQL query to find ChatMessages where the ConversationId is null
 
         var count = await dbContext.ChatMessages
@@ -117,7 +144,8 @@ public class SetupDataInitializerService(
         CancellationToken cancellationToken)
     {
         // Remove any ChatConversations that have no associated ChatMessages
-        // First, get a count of the number of ChatConversations that have no associated ChatMessages. If it's 0, we don't need to do anything.
+        // First, get a count of the number of ChatConversations that have no associated ChatMessages. If it's 0, we
+        // don't need to do anything.
 
         // The ChatConversations currently have a list of ChatMessages in the model,
         // so we can use LINQ to find ChatConversations with no associated ChatMessages
@@ -131,11 +159,14 @@ public class SetupDataInitializerService(
 
         if (count == 0)
         {
-            _logger.LogInformation("No (old) ChatConversations found with no associated ChatMessages. Skipping cleanup logic.");
+            _logger.LogInformation(
+                "No (old) ChatConversations found with no associated ChatMessages. Skipping cleanup logic.");
             return;
         }
 
-        _logger.LogInformation("Cleaning up : Removing {Count} ChatConversations with no associated ChatMessages that are older than 7 days", count);
+        _logger.LogInformation(
+            "Cleaning up : Removing {Count} ChatConversations with no associated ChatMessages that are older than 7 days",
+            count);
 
         var chatConversations = await dbContext.ChatConversations
             .Where(x => x.ChatMessages.Count == 0)
@@ -174,7 +205,10 @@ public class SetupDataInitializerService(
         {
             dbContext.DynamicPlugins.Add(plugin);
             await dbContext.SaveChangesAsync(cancellationToken);
-            _logger.LogInformation("Plugin {PluginName} with version {PluginVersion} created.", plugin.Name, plugin.LatestVersion);
+            _logger.LogInformation(
+                "Plugin {PluginName} with version {PluginVersion} created.",
+                plugin.Name,
+                plugin.LatestVersion);
         }
     }
 }

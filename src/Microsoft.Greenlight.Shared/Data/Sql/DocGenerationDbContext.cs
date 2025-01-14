@@ -1,4 +1,3 @@
-using System.Linq.Expressions;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
@@ -13,10 +12,17 @@ using Microsoft.Greenlight.Shared.SagaState;
 
 namespace Microsoft.Greenlight.Shared.Data.Sql;
 
+/// <summary>
+/// The database context for the document generation system.
+/// </summary>
 public class DocGenerationDbContext : DbContext
 {
     private readonly DbContextOptions<DocGenerationDbContext> _dbContextOptions;
 
+    /// <summary>
+    /// Creates a new instance of the <see cref="DocGenerationDbContext"/> class.
+    /// </summary>
+    /// <param name="dbContextOptions">The database context options.</param>
     public DocGenerationDbContext(
         DbContextOptions<DocGenerationDbContext> dbContextOptions
         )
@@ -25,6 +31,10 @@ public class DocGenerationDbContext : DbContext
         _dbContextOptions = dbContextOptions;
     }
 
+    /// <summary>
+    /// Configures the database context.
+    /// </summary>
+    /// <param name="optionsBuilder">The options builder.</param>
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         if (!optionsBuilder.IsConfigured)
@@ -33,12 +43,21 @@ public class DocGenerationDbContext : DbContext
         }
     }
 
+    /// <summary>
+    /// Saves changes to the database.
+    /// </summary>
+    /// <returns>The number of state entries written to the database.</returns>
     public override int SaveChanges()
     {
         UpdateTimestamps();
         return base.SaveChanges();
     }
 
+    /// <summary>
+    /// Saves changes to the database asynchronously.
+    /// </summary>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The number of state entries written to the database.</returns>
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         UpdateTimestamps();
@@ -63,6 +82,10 @@ public class DocGenerationDbContext : DbContext
         }
     }
 
+    /// <summary>
+    /// Configures the model for the database context.
+    /// </summary>
+    /// <param name="modelBuilder">The model builder.</param>
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -84,7 +107,7 @@ public class DocGenerationDbContext : DbContext
             v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions)null!) ?? new List<string>());
 
         var stringListComparer = new ValueComparer<List<string>>(
-            (c1, c2) => c1.SequenceEqual(c2),
+            (c1, c2) => c1!.SequenceEqual(c2!),
             c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
             c => c.ToList());
 
@@ -195,7 +218,7 @@ public class DocGenerationDbContext : DbContext
                 v => string.Join(";", v.Select(x => x.ToString())),
                 v => v.Split(";", StringSplitOptions.RemoveEmptyEntries).Select(DynamicPluginVersion.Parse).ToList(),
                 new ValueComparer<List<DynamicPluginVersion>>(
-                    (c1, c2) => c1.SequenceEqual(c2),
+                    (c1, c2) => c1!.SequenceEqual(c2!),
                     c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
                     c => c.ToList()
                 )
@@ -404,15 +427,38 @@ public class DocGenerationDbContext : DbContext
         modelBuilder.Entity<DynamicPluginDocumentProcess>()
             .Property(dp => dp.Version)
             .HasConversion(
-                v => v.ToString(),
+                v => v!.ToString(),
                 v => DynamicPluginVersion.Parse(v),
                 new ValueComparer<DynamicPluginVersion>(
-                    (c1, c2) => c1.CompareTo(c2) == 0,
+                    (c1, c2) => c1!.CompareTo(c2!) == 0,
                     c => c.GetHashCode(),
                     c => c
                 )
             );
 
+        modelBuilder.Entity<DynamicDocumentProcessMetaDataField>()
+            .ToTable("DynamicDocumentProcessMetaDataFields");
+
+        modelBuilder.Entity<DynamicDocumentProcessMetaDataField>()
+            .HasIndex(nameof(DynamicDocumentProcessMetaDataField.DynamicDocumentProcessDefinitionId))
+            .IsUnique(false);
+
+        modelBuilder.Entity<DynamicDocumentProcessMetaDataField>()
+            .HasIndex(nameof(DynamicDocumentProcessMetaDataField.DynamicDocumentProcessDefinitionId), nameof(DynamicDocumentProcessMetaDataField.Name))
+            .IsUnique();
+
+        modelBuilder.Entity<DynamicDocumentProcessMetaDataField>()
+            .HasOne(x => x.DynamicDocumentProcessDefinition)
+            .WithMany(x => x.MetaDataFields)
+            .HasForeignKey(x => x.DynamicDocumentProcessDefinitionId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<DynamicDocumentProcessMetaDataField>()
+            .Property(e => e.PossibleValues)
+            .HasConversion(stringListToJsonConverter)
+            .Metadata.SetValueComparer(stringListComparer);
+        
         modelBuilder.Entity<DynamicDocumentProcessDefinition>()
             .ToTable("DynamicDocumentProcessDefinitions");
 
@@ -435,6 +481,13 @@ public class DocGenerationDbContext : DbContext
             .Property(e => e.Repositories)
             .HasConversion(stringListToJsonConverter)
             .Metadata.SetValueComparer(stringListComparer);
+
+        modelBuilder.Entity<DynamicDocumentProcessDefinition>()
+            .HasMany(x=>x.MetaDataFields)
+            .WithOne(x => x.DynamicDocumentProcessDefinition)
+            .HasForeignKey(x => x.DynamicDocumentProcessDefinitionId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Cascade);
         
         modelBuilder.Entity<PromptDefinition>()
             .ToTable("PromptDefinitions");
@@ -756,45 +809,159 @@ public class DocGenerationDbContext : DbContext
             .IsUnique(false);
 
     }
-
+    
+    /// <summary>
+    /// Gets or sets the source reference items.
+    /// </summary>
     public DbSet<SourceReferenceItem> SourceReferenceItems { get; set; }
+
+    /// <summary>
+    /// Gets or sets the content node system items.
+    /// </summary>
     public DbSet<ContentNodeSystemItem> ContentNodeSystemItems { get; set; }
 
+    /// <summary>
+    /// Gets or sets the generated documents.
+    /// </summary>
     public DbSet<GeneratedDocument> GeneratedDocuments { get; set; }
+
+    /// <summary>
+    /// Gets or sets the exported document links.
+    /// </summary>
     public DbSet<ExportedDocumentLink> ExportedDocumentLinks { get; set; }
 
+    /// <summary>
+    /// Gets or sets the document metadata.
+    /// </summary>
     public DbSet<DocumentMetadata> DocumentMetadata { get; set; }
+
+    /// <summary>
+    /// Gets or sets the content nodes.
+    /// </summary>
     public DbSet<ContentNode> ContentNodes { get; set; }
 
+    /// <summary>
+    /// Gets or sets the ingested documents.
+    /// </summary>
     public DbSet<IngestedDocument> IngestedDocuments { get; set; }
 
+    /// <summary>
+    /// Gets or sets the tables.
+    /// </summary>
     public DbSet<Table> Tables { get; set; }
+
+    /// <summary>
+    /// Gets or sets the table cells.
+    /// </summary>
     public DbSet<TableCell> TableCells { get; set; }
+
+    /// <summary>
+    /// Gets or sets the bounding regions.
+    /// </summary>
     public DbSet<BoundingRegion> BoundingRegions { get; set; }
+
+    /// <summary>
+    /// Gets or sets the bounding polygons.
+    /// </summary>
     public DbSet<BoundingPolygon> BoundingPolygons { get; set; }
 
+    /// <summary>
+    /// Gets or sets the chat conversations.
+    /// </summary>
     public DbSet<ChatConversation> ChatConversations { get; set; }
+
+    /// <summary>
+    /// Gets or sets the chat messages.
+    /// </summary>
     public DbSet<ChatMessage> ChatMessages { get; set; }
+
+    /// <summary>
+    /// Gets or sets the converstation summaries.
+    /// </summary>
     public DbSet<ConversationSummary> ConversationSummaries { get; set; }
 
+    /// <summary>
+    /// Gets or sets the user information.
+    /// </summary>
     public DbSet<UserInformation> UserInformations { get; set; }
 
+    /// <summary>
+    /// Gets or sets the dynamic document process definitions.
+    /// </summary>
     public DbSet<DynamicDocumentProcessDefinition> DynamicDocumentProcessDefinitions { get; set; }
 
+    /// <summary>
+    /// Gets or sets the dynamic document process meta data fields.
+    /// </summary>
+    public DbSet<DynamicDocumentProcessMetaDataField> DynamicDocumentProcessMetaDataFields { get; set; }
+
+    /// <summary>
+    /// Gets or sets the document outlines.
+    /// </summary>
     public DbSet<DocumentOutline> DocumentOutlines { get; set; }
+
+    /// <summary>
+    /// Gets or sets the document outline items.
+    /// </summary>
     public DbSet<DocumentOutlineItem> DocumentOutlineItems { get; set; }
 
+    /// <summary>
+    /// Gets or sets the prompt definitions.
+    /// </summary>
     public DbSet<PromptDefinition> PromptDefinitions { get; set; }
+
+    /// <summary>
+    /// Gets or sets the prompt variable definitions.
+    /// </summary>
     public DbSet<PromptVariableDefinition> PromptVariableDefinitions { get; set; }
 
+    /// <summary>
+    /// Gets or sets the prompt implementations.
+    /// </summary>
     public DbSet<PromptImplementation> PromptImplementations { get; set; }
+
+    /// <summary>
+    /// Gets or sets the review definitions.
+    /// </summary>
     public DbSet<ReviewDefinition> ReviewDefinitions { get; set; }
+
+    /// <summary>
+    /// Gets or sets the review questions.
+    /// </summary>
     public DbSet<ReviewQuestion> ReviewQuestions { get; set; }
+
+    /// <summary>
+    /// Gets or sets the review definition document process definitions.
+    /// </summary>
     public DbSet<ReviewDefinitionDocumentProcessDefinition> ReviewDefinitionDocumentProcessDefinitions { get; set; }
+
+    /// <summary>
+    /// Gets or sets the review instances.
+    /// </summary>
     public DbSet<ReviewInstance> ReviewInstances { get; set; }
+
+    /// <summary>
+    /// Gets or sets the review question answers.
+    /// </summary>
     public DbSet<ReviewQuestionAnswer> ReviewQuestionAnswers { get; set; }
+
+    /// <summary>
+    /// Gets or sets the dynamic plugins.
+    /// </summary>
     public DbSet<DynamicPlugin> DynamicPlugins { get; set; }
+
+    /// <summary>
+    /// Gets or sets the dynamic plugin document processes.
+    /// </summary>
     public DbSet<DynamicPluginDocumentProcess> DynamicPluginDocumentProcesses { get; set; }
+
+    /// <summary>
+    /// Gets or sets the document libraries.
+    /// </summary>
     public DbSet<DocumentLibrary> DocumentLibraries { get; set; }
+
+    /// <summary>
+    /// Gets or sets the document library document process associations.
+    /// </summary>
     public DbSet<DocumentLibraryDocumentProcessAssociation> DocumentLibraryDocumentProcessAssociations { get; set; }
 }

@@ -4,11 +4,24 @@ using Microsoft.KernelMemory;
 
 namespace Microsoft.Greenlight.Shared.Models.SourceReferences;
 
+/// <summary>
+/// Represents a reference item for Kernel Memory documents.
+/// </summary>
 public abstract class KernelMemoryDocumentSourceReferenceItem : SourceReferenceItem
 {
+    /// <summary>
+    /// Index name within the kernel memory where documents are stored.
+    /// </summary>
     public string? IndexName { get; set; }
+
+    /// <summary>
+    /// List of citation JSON strings.
+    /// </summary>
     public List<string> CitationJsons { get; set; } = [];
 
+    /// <summary>
+    /// Provides a full text output of all the content retrieved.
+    /// </summary>
     [Description("Provides a full text output of all the content retrieved.")]
     public string FullTextOutput
     {
@@ -26,47 +39,74 @@ public abstract class KernelMemoryDocumentSourceReferenceItem : SourceReferenceI
             return fullText;
         }
     }
+
+    /// <summary>
+    /// Provides a JSON output of the internal structure of the content. 
+    /// Not to be output directly to prompt or end user.
+    /// </summary>
     [Description("Provides a JSON output of the internal structure of the content. Not to be output directly to prompt or end user.")]
     public override string? SourceOutput
     {
         get => JsonSerializer.Serialize(GetCitations());
-        set => AddCitations(JsonSerializer.Deserialize<List<Citation>>(value));
+        set
+        {
+            if (value != null)
+            {
+                var citations = JsonSerializer.Deserialize<List<Citation>>(value);
+                if (citations != null)
+                {
+                    AddCitations(citations);
+                }
+            }
+        }
     }
 
+    /// <summary>
+    /// Sets the basic parameters for the source reference item.
+    /// </summary>
     public override void SetBasicParameters()
     {
         SourceReferenceLinkType = Enums.SourceReferenceLinkType.SystemNonProxiedUrl;
         Description = "Document fragments from Kernel Memory document source";
     }
 
+    /// <summary>
+    /// Adds a collection of citations to the reference item.
+    /// </summary>
+    /// <param name="citations">The collection of citations to add.</param>
     public void AddCitations(ICollection<Citation> citations)
     {
-        // Serialize the citations to JSON and store them in the CitationJsons property
         foreach (var citation in citations)
         {
             AddCitation(citation);
         }
     }
 
+    /// <summary>
+    /// Adds a single citation to the reference item.
+    /// </summary>
+    /// <param name="citation">The citation to add.</param>
     public void AddCitation(Citation citation)
     {
-        // Serialize the citation to JSON and store it in the CitationJsons property
         string jsonCitation;
         try
         {
             jsonCitation = JsonSerializer.Serialize(citation);
         }
-        catch(Exception e)
+        catch (Exception)
         {
             return;
         }
-        
+
         CitationJsons.Add(jsonCitation);
     }
 
+    /// <summary>
+    /// Gets the list of citations from the reference item.
+    /// </summary>
+    /// <returns>The list of citations.</returns>
     public List<Citation> GetCitations()
     {
-        // Deserialize the citations from JSON and return them
         var citations = new List<Citation>();
         foreach (var jsonCitation in CitationJsons)
         {
@@ -79,6 +119,10 @@ public abstract class KernelMemoryDocumentSourceReferenceItem : SourceReferenceI
         return citations;
     }
 
+    /// <summary>
+    /// Gets the highest scoring partition from the citations.
+    /// </summary>
+    /// <returns>The highest relevance score.</returns>
     public double GetHighestScoringPartitionFromCitations()
     {
         var citations = GetCitations();

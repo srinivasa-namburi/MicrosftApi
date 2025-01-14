@@ -4,6 +4,9 @@
 		<TargetFramework>net8.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
+		<EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<CodeAnalysisTreatWarningsAsErrors>true</CodeAnalysisTreatWarningsAsErrors>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -56,6 +59,9 @@
 		<PackageReference Include="Microsoft.KernelMemory.SemanticKernelPlugin" Version="0.94.241201.1" />
 		<PackageReference Include="Microsoft.SemanticKernel" Version="1.32.0" />
 		<PackageReference Include="Microsoft.SemanticKernel.Abstractions" Version="1.32.0" />
+		<PackageReference Include="Microsoft.SemanticKernel.Agents.Abstractions" Version="1.32.0-alpha" />
+		<PackageReference Include="Microsoft.SemanticKernel.Agents.Core" Version="1.32.0-alpha" />
+		<PackageReference Include="Microsoft.SemanticKernel.Agents.OpenAI" Version="1.32.0-alpha" />
 		<PackageReference Include="Microsoft.SemanticKernel.Connectors.AzureOpenAI" Version="1.32.0" />
 		<PackageReference Include="Microsoft.SemanticKernel.PromptTemplates.Handlebars" Version="1.32.0" />
 		<PackageReference Include="Microsoft.SemanticKernel.Plugins.OpenApi" Version="1.11.1-alpha" />

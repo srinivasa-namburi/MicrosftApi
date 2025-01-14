@@ -1,0 +1,26 @@
+﻿<MudDatePicker @bind-Date="FieldValue"
+               Label="@FieldInfo.DisplayName"
+               Required="FieldInfo.IsRequired"
+               Variant="Variant.Filled"
+               Margin="Margin.Normal" />
+
+@code {
+    [Parameter]
+    public DocumentProcessMetadataFieldInfo FieldInfo { get; set; } = default!;
+
+    [Parameter]
+    public EventCallback<(string FieldName, object? Value)> OnChanged { get; set; }
+
+    [CascadingParameter]
+    public Dictionary<string, object?> ParentMetadataModel { get; set; } = default!;
+
+    private DateTime? FieldValue
+    {
+        get => ParentMetadataModel.TryGetValue(FieldInfo.Name, out var value) ? value as DateTime? : null;
+        set
+        {
+            ParentMetadataModel[FieldInfo.Name] = value;
+            OnChanged.InvokeAsync((FieldInfo.Name, value));
+        }
+    }
+}

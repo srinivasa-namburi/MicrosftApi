@@ -7,30 +7,54 @@ using Microsoft.Greenlight.Shared.Models;
 
 namespace Microsoft.Greenlight.Shared.Helpers;
 
+/// <summary>
+/// Helper class for managing Azure Blob Storage operations.
+/// </summary>
 public class AzureFileHelper
 {
     private readonly BlobServiceClient _blobServiceClient;
     private readonly DocGenerationDbContext _dbContext;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="AzureFileHelper"/> class.
+    /// </summary>
+    /// <param name="blobServiceClient">The BlobServiceClient instance.</param>
+    /// <param name="dbContext">The database context.</param>
     public AzureFileHelper(BlobServiceClient blobServiceClient, DocGenerationDbContext dbContext)
     {
         _blobServiceClient = blobServiceClient;
         _dbContext = dbContext;
     }
 
+    /// <summary>
+    /// Uploads a file to Azure Blob Storage.
+    /// </summary>
+    /// <param name="stream">The file stream.</param>
+    /// <param name="fileName">The name of the file.</param>
+    /// <param name="containerName">The name of the container.</param>
+    /// <param name="overwriteIfExists">Whether to overwrite the file if it exists.</param>
+    /// <returns>The URL of the uploaded file.</returns>
     public async Task<string> UploadFileToBlobAsync(Stream stream, string fileName, string containerName, bool overwriteIfExists)
     {
         var container = _blobServiceClient.GetBlobContainerClient(containerName);
         await container.CreateIfNotExistsAsync();
-        
+
         var blobClient = container.GetBlobClient(fileName);
 
         // Upload the blob - overwrite if it already exists
         await blobClient.UploadAsync(stream, overwrite: overwriteIfExists);
-        
+
         return blobClient.Uri.ToString();
     }
 
+    /// <summary>
+    /// Saves file information to the database.
+    /// </summary>
+    /// <param name="absoluteUrl">The absolute URL of the file.</param>
+    /// <param name="containerName">The name of the container.</param>
+    /// <param name="fileName">The name of the file.</param>
+    /// <param name="generatedDocumentId">The ID of the generated document.</param>
+    /// <returns>The saved ExportedDocumentLink entity.</returns>
     public async Task<ExportedDocumentLink> SaveFileInfoAsync(string absoluteUrl, string containerName, string fileName, Guid? generatedDocumentId = null)
     {
         var documentType = containerName switch
@@ -38,7 +62,7 @@ public class AzureFileHelper
             "document-export" => FileDocumentType.ExportedDocument,
             "document-assets" => FileDocumentType.DocumentAsset,
             "reviews" => FileDocumentType.Review,
-            
+
             _ => FileDocumentType.ExportedDocument
         };
 
@@ -58,12 +82,13 @@ public class AzureFileHelper
         return entityEntry.Entity;
     }
 
+    /// <summary>
+    /// Retrieves a file as a stream from a full blob URL.
+    /// </summary>
+    /// <param name="fullBlobUrl">The full URL of the blob.</param>
+    /// <returns>The file stream.</returns>
     public async Task<Stream?> GetFileAsStreamFromFullBlobUrlAsync(string fullBlobUrl)
     {
-
-        // Sample URL string : https://vicodevwedocing.blob.core.windows.net/ingest-nrc/ingest/2024-02-24/ML13115A763.pdf
-        // From this URL, we need to extract the container name and the blob path. The blob path should be everything after the container name.
-
         var url = new Uri(fullBlobUrl);
         var containerName = url.Segments[1].TrimEnd('/');
         var blobPath = fullBlobUrl.Replace(url.Scheme + "://" + url.Host + "/" + containerName + "/", "");
@@ -72,7 +97,7 @@ public class AzureFileHelper
         blobPath = WebUtility.UrlDecode(blobPath);
 
         // Remove the SAS token if it exists at the end of the blobPath
-        if (blobPath.Contains("?"))
+        if (blobPath.Contains('?'))
         {
             blobPath = blobPath.Substring(0, blobPath.IndexOf('?'));
         }
@@ -82,9 +107,14 @@ public class AzureFileHelper
 
         var download = await blobClient.OpenReadAsync();
         return download;
-
     }
 
+    /// <summary>
+    /// Retrieves a file as a stream from a container and blob name.
+    /// </summary>
+    /// <param name="container">The name of the container.</param>
+    /// <param name="blobName">The name of the blob.</param>
+    /// <returns>The file stream.</returns>
     public async Task<Stream?> GetFileAsStreamFromContainerAndBlobName(string container, string blobName)
     {
         // If the blobName contains the container name at the beginning, remove it
@@ -105,7 +135,12 @@ public class AzureFileHelper
         var download = await blobClient.OpenReadAsync();
         return download;
     }
-    
+
+    /// <summary>
+    /// Gets a proxied URL for a blob.
+    /// </summary>
+    /// <param name="blobUrl">The URL of the blob.</param>
+    /// <returns>The proxied URL.</returns>
     public string GetProxiedBlobUrl(string blobUrl)
     {
         var fileDownloadActionUrl = "/api/file/download/";
@@ -115,6 +150,11 @@ public class AzureFileHelper
         return fileDownloadActionUrl + blobUrl;
     }
 
+    /// <summary>
+    /// Gets a proxied URL for an asset blob.
+    /// </summary>
+    /// <param name="assetIdString">The asset ID as a string.</param>
+    /// <returns>The proxied URL.</returns>
     public string GetProxiedAssetBlobUrl(string assetIdString)
     {
         var fileDownloadActionUrl = "/api/file/download/asset/";
@@ -124,6 +164,11 @@ public class AzureFileHelper
         return fileDownloadActionUrl + assetIdString;
     }
 
+    /// <summary>
+    /// Gets a proxied URL for an asset blob.
+    /// </summary>
+    /// <param name="assetIdGuid">The asset ID as a GUID.</param>
+    /// <returns>The proxied URL.</returns>
     public string GetProxiedAssetBlobUrl(Guid assetIdGuid)
     {
         return GetProxiedAssetBlobUrl(assetIdGuid.ToString());

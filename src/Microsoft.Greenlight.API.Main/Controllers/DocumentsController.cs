@@ -4,7 +4,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Identity.Web;
 using Microsoft.KernelMemory.Pipeline;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
-using Microsoft.Greenlight.Shared.Contracts.Messages.DocumentIngestion.Commands;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Exporters;
 using Microsoft.Greenlight.Shared.Helpers;
@@ -15,22 +14,33 @@ using Microsoft.Greenlight.Shared.Contracts.DTO.Document;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
+/// <summary>
+/// Controller for managing document-related operations.
+/// </summary>
 [Route("/api/documents")]
-public class DocumentsController : BaseController
+public partial class DocumentsController : BaseController
 {
-
     private readonly IPublishEndpoint _publishEndpoint;
     private readonly DocGenerationDbContext _dbContext;
     private readonly IDocumentExporter _wordDocumentExporter;
     private readonly AzureFileHelper _fileHelper;
     private readonly IMapper _mapper;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DocumentsController"/> class.
+    /// </summary>
+    /// <param name="publishEndpoint">The publish endpoint for sending messages.</param>
+    /// <param name="dbContext">The database context for document generation.</param>
+    /// <param name="wordDocumentExporter">The document exporter for Word documents.</param>
+    /// <param name="fileHelper">The Azure file helper for managing files.</param>
+    /// <param name="mapper">The AutoMapper instance for mapping objects.</param>
     public DocumentsController(
         IPublishEndpoint publishEndpoint,
         DocGenerationDbContext dbContext,
         [FromKeyedServices("IDocumentExporter-Word")]
         IDocumentExporter wordDocumentExporter,
-        AzureFileHelper fileHelper, IMapper mapper)
+        AzureFileHelper fileHelper, IMapper mapper
+    )
     {
         _publishEndpoint = publishEndpoint;
         _dbContext = dbContext;
@@ -39,6 +49,14 @@ public class DocumentsController : BaseController
         _mapper = mapper;
     }
 
+    /// <summary>
+    /// Generates multiple documents based on the provided DTO.
+    /// </summary>
+    /// <param name="generateDocumentsDto">The DTO containing the documents to generate.</param>
+    /// <returns>An accepted result if the documents are being generated.
+    /// Produces Status Codes:
+    ///     202 Accepted: When the request to generate documents has been posted to the workers to perform
+    /// </returns>
     [HttpPost("generatemultiple")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -56,6 +74,14 @@ public class DocumentsController : BaseController
         return Accepted();
     }
 
+    /// <summary>
+    /// Generates a single document based on the provided DTO.
+    /// </summary>
+    /// <param name="generateDocumentDto">The DTO containing the document to generate.</param>
+    /// <returns>An accepted result if the document is being generated.
+    /// Produces Status Codes:
+    ///     202 Accepted: When the request to generate documents has been posted to the workers to perform
+    /// </returns>
     [HttpPost("generate")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -70,6 +96,14 @@ public class DocumentsController : BaseController
         return Accepted();
     }
 
+    /// <summary>
+    /// Gets the full generated document by its ID.
+    /// </summary>
+    /// <param name="documentId">The ID of the document to retrieve.</param>
+    /// <returns>The full generated document information.
+    /// Produces Status Codes:
+    ///     200 OK: When completed sucessfully
+    /// </returns>
     [HttpGet("{documentId}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -87,6 +121,11 @@ public class DocumentsController : BaseController
         return Ok(documentInfo);
     }
 
+    /// <summary>
+    /// Assembles the full document including its content nodes.
+    /// </summary>
+    /// <param name="documentGuid">The GUID of the document to assemble.</param>
+    /// <returns>The assembled document.</returns>
     private async Task<GeneratedDocument?> AssembleFullDocument(Guid documentGuid)
     {
         var document = await _dbContext.GeneratedDocuments
@@ -117,7 +156,7 @@ public class DocumentsController : BaseController
         // Initialize Children collections
         foreach (var node in allContentNodes)
         {
-            node.Children = new List<ContentNode>();
+            node.Children = [];
         }
 
         // Link parents and children
@@ -134,12 +173,17 @@ public class DocumentsController : BaseController
         return document;
     }
 
+    /// <summary>
+    /// Gets all descendant content nodes for the given parent IDs.
+    /// </summary>
+    /// <param name="parentIds">The list of parent IDs to get descendants for.</param>
+    /// <returns>The list of all descendant content nodes.</returns>
     private async Task<List<ContentNode>> GetAllDescendantContentNodesAsync(List<Guid> parentIds)
     {
         var allDescendants = new List<ContentNode>();
         var currentLevelIds = parentIds;
 
-        while (currentLevelIds.Any())
+        while (currentLevelIds.Count != 0)
         {
             // Load the children of the current level
             var childNodes = await _dbContext.ContentNodes
@@ -148,7 +192,7 @@ public class DocumentsController : BaseController
                 .Where(cn => cn.ParentId.HasValue && currentLevelIds.Contains(cn.ParentId.Value))
                 .ToListAsync();
 
-            if (!childNodes.Any())
+            if (childNodes.Count == 0)
             {
                 break;
             }
@@ -162,6 +206,15 @@ public class DocumentsController : BaseController
         return allDescendants;
     }
 
+    /// <summary>
+    /// Gets the prepared document link for the given document ID.
+    /// </summary>
+    /// <param name="documentId">The ID of the document to get the link for.</param>
+    /// <returns>The prepared document link.
+    /// Produces Status Codes:
+    ///     200 OK: When completed sucessfully
+    ///     404 Not Found: When no document links can be found using the document id provided
+    /// </returns>
     [HttpGet("{documentId}/export-link")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -182,6 +235,16 @@ public class DocumentsController : BaseController
         return assetUrl;
     }
 
+    /// <summary>
+    /// Gets the document export file for the given document ID and exporter type.
+    /// </summary>
+    /// <param name="documentId">The ID of the document to export.</param>
+    /// <param name="exporterType">The type of exporter to use (default is "Word").</param>
+    /// <returns>The exported document file.
+    /// Produces Status Codes:
+    ///     200 OK: When completed sucessfully
+    ///     404 Not Found: When the document can't be found using the document id provided
+    /// </returns>
     [HttpGet("{documentId}/word-export")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -193,11 +256,11 @@ public class DocumentsController : BaseController
         {
             return NotFound();
         }
-        
+
         IDocumentExporter exporter;
 
         // Capitalize the first letter of the exporter type, lowercase the rest
-        exporterType = exporterType.First().ToString().ToUpper() + exporterType.Substring(1).ToLower();
+        exporterType = exporterType.First().ToString().ToUpper() + exporterType[1..].ToLower();
 
         switch (exporterType)
         {
@@ -208,7 +271,7 @@ public class DocumentsController : BaseController
                 return BadRequest();
         }
 
-        var titleNumberingRegex = new Regex(IDocumentExporter.TitleNumberingRegex);
+        var titleNumberingRegex = TitleNumberingRegexPattern();
 
         var documentGuid = Guid.Parse(documentId);
         var documentHasNumbering = _dbContext.ContentNodes
@@ -221,10 +284,21 @@ public class DocumentsController : BaseController
 
         var exportStream = await exporter.ExportDocumentAsync(document, documentHasNumbering);
 
-
         return File(exportStream, "application/octet-stream", $"{document.Title}.docx");
     }
 
+    [GeneratedRegex(IDocumentExporter.TitleNumberingRegex)]
+    private static partial Regex TitleNumberingRegexPattern();
+
+    /// <summary>
+    /// Gets the permalink for the document export for the given document ID.
+    /// </summary>
+    /// <param name="documentId">The ID of the document to get the permalink for.</param>
+    /// <returns>The permalink for the document export.
+    /// Produces Status Codes:
+    ///     200 OK: When completed sucessfully
+    ///     404 Not Found: When the document can't be found using the Id provided
+    /// </returns>
     [HttpGet("{documentId}/word-export/permalink")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -232,7 +306,7 @@ public class DocumentsController : BaseController
     public async Task<ActionResult<string>> GetDocumentExportPermalink(string documentId)
     {
         var document = await AssembleFullDocument(Guid.Parse(documentId));
-        
+
         if (document == null)
         {
             return NotFound();
@@ -261,10 +335,17 @@ public class DocumentsController : BaseController
 
         var assetUrl = _fileHelper.GetProxiedAssetBlobUrl(documentExportedLink.Id);
         return assetUrl;
-        //var accessUrl = _fileHelper.GetProxiedBlobUrl(blobUri);
-        //return accessUrl;
     }
 
+    /// <summary>
+    /// Deletes the document with the given ID.
+    /// </summary>
+    /// <param name="documentId">The ID of the document to delete.</param>
+    /// <returns>No content if the document was deleted successfully.
+    /// Produces Status Codes:
+    ///     204 No Content: When completed sucessfully
+    ///     404 Not Found: When the document can't be found using the Id provided
+    /// </returns>
     [HttpDelete("{documentId}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -304,20 +385,24 @@ public class DocumentsController : BaseController
         return NoContent();
     }
 
+    /// <summary>
+    /// Recursively deletes child content nodes for the given parent node.
+    /// </summary>
+    /// <param name="parentNode">The parent node to delete children for.</param>
     private async Task DeleteChildContentNodesRecursively(ContentNode parentNode)
     {
         // Load children of the current node
         var children = await _dbContext.ContentNodes
             .Where(c => c.ParentId == parentNode.Id)
-            .Include(x=>x.ContentNodeSystemItem)
-            .ThenInclude(x=>x!.SourceReferences)
+            .Include(x => x.ContentNodeSystemItem)
+            .ThenInclude(x => x!.SourceReferences)
             .ToListAsync();
 
         foreach (var child in children)
         {
             // Recursively delete grandchildren
             await DeleteChildContentNodesRecursively(child);
-            
+
             if (child.ContentNodeSystemItem != null)
             {
                 foreach (var sourceReference in child.ContentNodeSystemItem.SourceReferences)
@@ -332,6 +417,14 @@ public class DocumentsController : BaseController
         }
     }
 
+    /// <summary>
+    /// Gets the list of generated documents.
+    /// </summary>
+    /// <returns>The list of generated documents.
+    /// Produces Status Codes:
+    ///     200 OK: When completed sucessfully
+    ///     404 Not Found: When there are documents found
+    /// </returns>
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

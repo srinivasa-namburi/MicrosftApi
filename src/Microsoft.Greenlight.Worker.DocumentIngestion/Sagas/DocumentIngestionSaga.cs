@@ -1,21 +1,23 @@
 using MassTransit;
-using Microsoft.Extensions.Options;
-using Microsoft.Greenlight.Shared.Configuration;
-using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Contracts.Messages.DocumentIngestion.Commands;
 using Microsoft.Greenlight.Shared.Contracts.Messages.DocumentIngestion.Events;
 using Microsoft.Greenlight.Shared.SagaState;
 
 namespace Microsoft.Greenlight.Worker.DocumentIngestion.Sagas;
 
+
+/// <summary>
+/// Represents the state machine for the document ingestion saga.
+/// </summary>
 public class DocumentIngestionSaga : MassTransitStateMachine<DocumentIngestionSagaState>
 {
-    private readonly ServiceConfigurationOptions _serviceConfiguration;
-
-    public DocumentIngestionSaga(IOptions<ServiceConfigurationOptions> serviceConfigurationOptions)
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DocumentIngestionSaga"/> class.
+    /// </summary>
+#pragma warning disable CS8618 // The MassTransit framework will initialize the event members of this class.
+    public DocumentIngestionSaga()
+#pragma warning restore CS8618 // The MassTransit framework will initialize the event members of this class.
     {
-        _serviceConfiguration = serviceConfigurationOptions.Value;
-
         InstanceState(x => x.CurrentState);
 
         Event(() => ClassicDocumentIngestionRequested,
@@ -50,7 +52,10 @@ public class DocumentIngestionSaga : MassTransitStateMachine<DocumentIngestionSa
             })
             .Publish(context => new ClassifyIngestedDocument(context.Saga.CorrelationId)
             {
+#pragma warning disable CS8601 // Possible null reference assignment.
+                // DocumentLibraryShortName is marked as nullable for EF, but has a default value defined in the class
                 DocumentProcessName = context.Saga.DocumentLibraryShortName,
+#pragma warning restore CS8601 // Possible null reference assignment.
                 OriginalDocumentUrl = context.Saga.OriginalDocumentUrl,
                 FileName = context.Saga.FileName,
                 UploadedByUserOid = context.Saga.UploadedByUserOid,
@@ -113,28 +118,69 @@ public class DocumentIngestionSaga : MassTransitStateMachine<DocumentIngestionSa
 
     }
 
+    /// <summary>
+    /// Gets the event that occurs when a document is classified.
+    /// </summary>
     public Event<IngestedDocumentClassified> IngestedDocumentClassified { get; private set; }
+
+    /// <summary>
+    /// Gets the event that occurs when document classification fails.
+    /// </summary>
     public Event<IngestedDocumentClassificationFailed> IngestedDocumentClassificationFailed { get; private set; }
+
+    /// <summary>
+    /// Gets the event that occurs when document processing fails.
+    /// </summary>
     public Event<IngestedDocumentProcessingFailed> IngestedDocumentProcessingFailed { get; private set; }
+
+    /// <summary>
+    /// Gets the event that occurs when document processing is stopped due to unsupported classification.
+    /// </summary>
     public Event<IngestedDocumentProcessingStoppedByUnsupportedClassification> IngestedDocumentProcessingStoppedByUnsupportedClassification { get; private set; }
+
+    /// <summary>
+    /// Gets the event that occurs when a document is processed.
+    /// </summary>
     public Event<IngestedDocumentProcessed> IngestedDocumentProcessed { get; private set; }
+
+    /// <summary>
+    /// Gets the event that occurs when a document is indexed.
+    /// </summary>
     public Event<IngestedDocumentIndexed> IngestedDocumentIndexed { get; private set; }
+
+    /// <summary>
+    /// Gets the event that occurs when a document is created in the database.
+    /// </summary>
     public Event<IngestedDocumentCreatedInDatabase> IngestedDocumentCreatedInDatabase { get; private set; }
+
+    /// <summary>
+    /// Gets the event that occurs when a document is rejected.
+    /// </summary>
     public Event<IngestedDocumentRejected> IngestedDocumentRejected { get; private set; }
 
+    /// <summary>
+    /// Gets the event that occurs when a classic document ingestion request is made.
+    /// </summary>
     public Event<ClassicDocumentIngestionRequest> ClassicDocumentIngestionRequested { get; private set; }
 
+    /// <summary>
+    /// Gets or sets the state representing the classifying phase.
+    /// </summary>
     public State Classifying { get; set; } = null!;
+
+    /// <summary>
+    /// Gets or sets the state representing the creating phase.
+    /// </summary>
     public State Creating { get; set; } = null!;
+
+    /// <summary>
+    /// Gets or sets the state representing the processing phase.
+    /// </summary>
     public State Processing { get; set; } = null!;
+
+    /// <summary>
+    /// Gets or sets the state representing the indexing phase.
+    /// </summary>
     public State Indexing { get; set; } = null!;
-
-    private string GetIngestionMethod(string documentProcessName)
-    {
-        var documentProcess = _serviceConfiguration.GreenlightServices.DocumentProcesses
-            .FirstOrDefault(process => process?.Name == documentProcessName);
-
-        return documentProcess?.IngestionMethod ?? string.Empty;
-    }
 }
 

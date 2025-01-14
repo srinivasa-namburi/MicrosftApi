@@ -1,33 +1,42 @@
 using AutoMapper;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Greenlight.DocumentProcess.Shared.Search;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Data.Sql;
-using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Models.Review;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
+/// <summary>
+/// Controller for managing reviews.
+/// </summary>
 [Route("/api/review")]
 public class ReviewController : BaseController
 {
     private readonly DocGenerationDbContext _dbContext;
-    private readonly IReviewKernelMemoryRepository _reviewKmRepository;
     private readonly IMapper _mapper;
 
-
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ReviewController"/> class.
+    /// </summary>
+    /// <param name="dbContext">The database context.</param>
+    /// <param name="mapper">The AutoMapper instance.</param>
     public ReviewController(
         DocGenerationDbContext dbContext,
-        IReviewKernelMemoryRepository reviewKmRepository,
-        AzureFileHelper fileHelper,
-        IMapper mapper)
+        IMapper mapper
+    )
     {
         _dbContext = dbContext;
-        _reviewKmRepository = reviewKmRepository;
         _mapper = mapper;
     }
 
+    /// <summary>
+    /// Gets the list of reviews.
+    /// </summary>
+    /// <returns>A list of <see cref="ReviewDefinitionInfo"/>.
+    /// Produces Status Codes:
+    ///     200 Ok: When completed sucessfully
+    /// </returns>
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -40,6 +49,15 @@ public class ReviewController : BaseController
         return Ok(reviewInfos);
     }
 
+    /// <summary>
+    /// Gets a review by its identifier.
+    /// </summary>
+    /// <param name="id">The review identifier.</param>
+    /// <returns>A <see cref="ReviewDefinitionInfo"/>.
+    /// Produces Status Codes:
+    ///     200 Ok: When completed sucessfully
+    ///     404 Not Found: When the review could not be found using the Id provided
+    /// </returns>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -61,6 +79,14 @@ public class ReviewController : BaseController
         return Ok(reviewInfo);
     }
 
+    /// <summary>
+    /// Creates a new review.
+    /// </summary>
+    /// <param name="reviewInfo">The review information.</param>
+    /// <returns>The created <see cref="ReviewDefinitionInfo"/>.
+    /// Produces Status Codes:
+    ///     201 Created: When completed sucessfully
+    /// </returns>
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -76,6 +102,15 @@ public class ReviewController : BaseController
         return Created($"/api/review/{reviewInfo.Id}", reviewInfo);
     }
 
+    /// <summary>
+    /// Updates an existing review.
+    /// </summary>
+    /// <param name="id">The review identifier.</param>
+    /// <param name="changeRequest">The change request containing updated review information.</param>
+    /// <returns>The updated <see cref="ReviewDefinitionInfo"/>.
+    /// Produces Status Codes:
+    ///     202 Accepted: When completed sucessfully
+    /// </returns>
     [HttpPut("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -91,16 +126,15 @@ public class ReviewController : BaseController
 
         if (changeRequest.ReviewDefinition != null)
         {
-            _dbContext.Entry(existingReview).CurrentValues.SetValues(changeRequest.ReviewDefinition);
-            _dbContext.Entry(existingReview).State = EntityState.Modified;
-            _dbContext.Update(existingReview);
+            _dbContext.Entry(existingReview!).CurrentValues.SetValues(changeRequest.ReviewDefinition);
+            _dbContext.Entry(existingReview!).State = EntityState.Modified;
+            _dbContext.Update(existingReview!);
         }
 
         if (changeRequest.ChangedOrAddedQuestions.Count > 0)
         {
             foreach (var questionInfo in changeRequest.ChangedOrAddedQuestions)
             {
-
                 if (questionInfo.Id == Guid.Empty)
                 {
                     // New Question because there is no ID
@@ -157,6 +191,15 @@ public class ReviewController : BaseController
         return Ok(reviewInfo);
     }
 
+    /// <summary>
+    /// Deletes a review by its identifier.
+    /// </summary>
+    /// <param name="id">The review identifier.</param>
+    /// <returns>An <see cref="IActionResult"/> indicating the result of the operation.
+    /// Produces Status Codes:
+    ///     202 Accepted: When completed sucessfully
+    ///     404 Not Found: When the review could not be found using the id provided
+    /// </returns>
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

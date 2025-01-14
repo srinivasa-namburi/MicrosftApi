@@ -17,6 +17,12 @@
                               Label="Repository Index Name"
                               Disabled="_isEditMode"
                               OnInternalInputChanged="UpdateRepositories" />
+                <MudSelect T="DocumentProcessCompletionServiceType?" @bind-Value="_process.CompletionServiceType" Label="AI Completion Service Type">
+                    @foreach (var completionType in Enum.GetValues<DocumentProcessCompletionServiceType>())
+                    {
+                        <MudSelectItem Value="@(completionType as DocumentProcessCompletionServiceType?)">@completionType.ToString()</MudSelectItem>
+                    }
+                </MudSelect>
             </MudItem>
 
             <MudItem xs="12" md="6">
@@ -53,13 +59,30 @@
             </MudItem>
         </MudGrid>
 
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveProcess">Save</MudButton>
-
-        @if (ProcessId != null)
+        @if (ProcessId != null && _isEditMode)
         {
-            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="OpenDocumentOutlineEditor">Document Outline Editor</MudButton>
+            <MudSpacer />
+
+            <MudGrid Spacing="2" Class="mt-2 mb-2">
+                <MudItem>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="OpenDocumentOutlineEditor">Document Outline Editor</MudButton>
+                </MudItem>
+                <MudItem>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="OpenMetadataFieldEditor">Metadata Fields Editor</MudButton>
+                </MudItem>
+            </MudGrid>
+
         }
-        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="Cancel">Cancel</MudButton>
+        <MudSpacer />
+
+        <MudGrid Spacing="2" Class="mt-2 mb-2">
+            <MudItem>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveProcess">Save</MudButton>
+            </MudItem>
+            <MudItem>
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="Cancel">Cancel</MudButton>
+            </MudItem>
+        </MudGrid>
     </MudPaper>
 
     <!-- Document Libraries Association -->
@@ -291,6 +314,23 @@
 
         var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
         DialogService.Show<EditDocumentOutlineDialog>("Document Outline Editor", parameters, options);
+    }
+
+    private async Task OpenMetadataFieldEditor()
+    {
+        var parameters = new DialogParameters
+        {
+            { "DocumentProcessId", _process.Id },
+            { "DocumentProcessName", _process.ShortName}
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.ExtraExtraLarge, FullScreen = true};
+        var dialog = await DialogService.ShowAsync<EditMetadataFieldsDialog>("Metadata Fields Editor", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            //_process.MetadataFields = result.Data;
+        }
     }
 
     private void ValidateAndFormatShortName()

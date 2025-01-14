@@ -19,7 +19,7 @@ public class PromptDefinitionRepository : GenericRepository<PromptDefinition>
         SetCacheDuration(DefaultCacheDuration);
     }
 
-    public async Task<List<PromptDefinition>> GetAllPromptDefinitionsAsync(bool useCache = true)
+    public virtual async Task<List<PromptDefinition>> GetAllPromptDefinitionsAsync(bool useCache = true)
     {
         if (useCache)
         {
@@ -70,7 +70,7 @@ public class PromptDefinitionRepository : GenericRepository<PromptDefinition>
         }
     }
 
-    public new async Task AddAsync(PromptDefinition newDefinition, bool saveChanges = true)
+    public virtual new async Task AddAsync(PromptDefinition newDefinition, bool saveChanges = true)
     {
         await base.AddAsync(newDefinition, saveChanges);
 

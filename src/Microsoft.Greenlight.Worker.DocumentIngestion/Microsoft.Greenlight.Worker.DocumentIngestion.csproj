@@ -5,6 +5,9 @@
 		<ImplicitUsings>true</ImplicitUsings>
 		<ErrorOnDuplicatePublishOutputFiles>false</ErrorOnDuplicatePublishOutputFiles>
 		<UserSecretsId>dotnet-Microsoft.Greenlight.Worker.DocumentIngestion-932692d6-6396-4f71-a544-a8ad4a38f52d</UserSecretsId>
+		<EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<CodeAnalysisTreatWarningsAsErrors>true</CodeAnalysisTreatWarningsAsErrors>
 	</PropertyGroup>
 	<PropertyGroup>
 		<NoWarn>SKEXP0060;SKEXP0061;SKEXP0042;SKEXP0011;SKEXP0001</NoWarn>
@@ -24,5 +27,8 @@
 		<Folder Include="Consumers\KernelMemoryDocumentIngestionSaga\" />
 		<Folder Include="Properties\" />
 		<Folder Include="Sagas\" />
+	</ItemGroup>
+	<ItemGroup>
+	  <PackageReference Include="MSTest.TestFramework" Version="3.6.4" />
 	</ItemGroup>
 </Project>

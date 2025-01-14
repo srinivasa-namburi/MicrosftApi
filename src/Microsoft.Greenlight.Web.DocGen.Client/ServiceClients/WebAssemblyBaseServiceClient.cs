@@ -3,7 +3,9 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Web.Shared.ServiceClients;
+using System.Net.Http.Json;
 
 namespace Microsoft.Greenlight.Web.DocGen.Client.ServiceClients;
 

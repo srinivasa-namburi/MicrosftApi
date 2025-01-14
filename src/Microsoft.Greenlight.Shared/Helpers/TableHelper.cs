@@ -5,16 +5,28 @@ using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Models;
 
 namespace Microsoft.Greenlight.Shared.Helpers;
+/// <summary>
+/// Provides helper methods for rendering tables as HTML and replacing table references in documents.
+/// </summary>
 public class TableHelper
 {
     private readonly DocGenerationDbContext _dbContext;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="TableHelper"/> class.
+    /// </summary>
+    /// <param name="dbContext">The database context to use for retrieving tables.</param>
     public TableHelper(DocGenerationDbContext dbContext)
     {
         _dbContext = dbContext;
     }
 
-    public string RenderTableAsHtml(Table table)
+    /// <summary>
+    /// Renders the specified table as an HTML string.
+    /// </summary>
+    /// <param name="table">The table to render.</param>
+    /// <returns>An HTML string representing the table.</returns>
+    public static string RenderTableAsHtml(Table table)
     {
         var tableStringBuilder = new StringBuilder();
         tableStringBuilder.Append("<table>");
@@ -68,6 +80,11 @@ public class TableHelper
         return tableStringBuilder.ToString();
     }
 
+    /// <summary>
+    /// Replaces table references in the document content with their HTML representations.
+    /// </summary>
+    /// <param name="documentContent">The document content containing table references.</param>
+    /// <returns>The document content with table references replaced by HTML.</returns>
     public string ReplaceTableReferencesWithHtml(string documentContent)
     {
         // Table References look like this: "[TABLE_REFERENCE:4053b7b4-40b0-46b5-9cde-733f2b6ffb39]"
@@ -91,9 +108,9 @@ public class TableHelper
         }
 
         // Get the tables from the database and use the RenderTableAsHtml method to get the HTML representation.
-        
+
         var tables = _dbContext.Tables.Where(t => tableIds.Contains(t.Id))
-            .Include(t=>t.Cells)
+            .Include(t => t.Cells)
             .AsSplitQuery()
             .ToList();
 
@@ -102,9 +119,7 @@ public class TableHelper
             var tableHtml = RenderTableAsHtml(table);
             documentContent = documentContent.Replace($"[TABLE_REFERENCE: {table.Id}]", tableHtml);
         }
-       
+
         return documentContent;
-
-
     }
 }

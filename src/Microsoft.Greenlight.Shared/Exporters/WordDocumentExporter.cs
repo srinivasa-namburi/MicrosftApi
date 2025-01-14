@@ -17,20 +17,35 @@ using TableCell = DocumentFormat.OpenXml.Wordprocessing.TableCell;
 
 namespace Microsoft.Greenlight.Shared.Exporters;
 
+/// <summary>
+/// Export a document to Word format.
+/// </summary>
 public class WordDocumentExporter : IDocumentExporter
 {
     private DocGenerationDbContext _dbContext { get; }
     private int _numberingIdCounter = 3; // Starts from 3 as 1 is reserved for bullets and 2 for headers
-    private Dictionary<int, int> _numberingLevelCounters = new Dictionary<int, int>();
     private bool _documentHeaderHasNumbering = false;
     private readonly IMapper _mapper;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="WordDocumentExporter"/> class.
+    /// </summary>
+    /// <param name="dbContext">The database context.</param>
+    /// <param name="mapper">The mapper used to map content nodes to content node info.</param>
     public WordDocumentExporter(DocGenerationDbContext dbContext, IMapper mapper)
     {
         _dbContext = dbContext;
         _mapper = mapper;
     }
 
+    /// <summary>
+    /// Exports the document asynchronously by document ID.
+    /// </summary>
+    /// <param name="generatedDocumentId">The ID of the generated document.</param>
+    /// <returns>
+    /// A task that represents the asynchronous operation.
+    /// The task result contains the stream of the exported document, or null if the document is not found.
+    /// </returns>
     public async Task<Stream?> ExportDocumentAsync(Guid generatedDocumentId)
     {
         var document = await _dbContext.GeneratedDocuments
@@ -64,40 +79,52 @@ public class WordDocumentExporter : IDocumentExporter
         return await ExportDocumentAsync(document, documentHasNumbering);
     }
 
+    /// <summary>
+    /// Exports the document asynchronously.
+    /// </summary>
+    /// <param name="generatedDocument">The generated document.</param>
+    /// <param name="documentHeaderHasNumbering">Indicates if the document has numbering.</param>
+    /// <returns>
+    /// A task that represents the asynchronous operation. 
+    /// The task result contains the stream of the exported document.
+    /// </returns>
     public async Task<Stream> ExportDocumentAsync(GeneratedDocument generatedDocument, bool documentHeaderHasNumbering)
     {
-        _documentHeaderHasNumbering = documentHeaderHasNumbering;
-
-        var stream = new MemoryStream();
-        using (var wordDocument = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document, true))
+        return await Task.Run(() =>
         {
-            var mainPart = wordDocument.AddMainDocumentPart();
-            mainPart.Document = new Document();
-            var body = mainPart.Document.AppendChild(new Body());
+            _documentHeaderHasNumbering = documentHeaderHasNumbering;
 
-            AddStylesToDocument(wordDocument);
-            AddNumberingDefinitions(wordDocument);
-
-            // Todo: content of header and footer should be dynamic. It is semi-static now.
-            AddHeaderAndFooterToDocument(mainPart, generatedDocument.Title, "Revision 1");
-
-            var contentNodeInfos = _mapper.Map<List<ContentNodeInfo>>(generatedDocument.ContentNodes);
-            ContentNodeSorter.SortContentNodes(contentNodeInfos);
-            
-            var reverseMap = _mapper.Map<List<ContentNode>>(contentNodeInfos);
-
-            foreach (var contentNode in reverseMap)
+            var stream = new MemoryStream();
+            using (var wordDocument = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document, true))
             {
-                AppendContentNode(body, contentNode, 0);
+                var mainPart = wordDocument.AddMainDocumentPart();
+                mainPart.Document = new Document();
+                var body = mainPart.Document.AppendChild(new Body());
+
+                AddStylesToDocument(wordDocument);
+                AddNumberingDefinitions(wordDocument);
+
+                // Todo: content of header and footer should be dynamic. It is semi-static now.
+                AddHeaderAndFooterToDocument(mainPart, generatedDocument.Title, "Revision 1");
+
+                var contentNodeInfos = _mapper.Map<List<ContentNodeInfo>>(generatedDocument.ContentNodes);
+                ContentNodeSorter.SortContentNodes(contentNodeInfos);
+
+                var reverseMap = _mapper.Map<List<ContentNode>>(contentNodeInfos);
+
+                foreach (var contentNode in reverseMap)
+                {
+                    AppendContentNode(body, contentNode, 0);
+                }
+
+                mainPart.Document.Save();
+
+                AddTableOfContents(wordDocument);
             }
 
-            mainPart.Document.Save();
-
-            AddTableOfContents(wordDocument);
-        }
-
-        stream.Seek(0, SeekOrigin.Begin);
-        return stream;
+            stream.Seek(0, SeekOrigin.Begin);
+            return stream;
+        });
     }
 
     private void AppendContentNode(Body body, ContentNode contentNode, int level)
@@ -170,7 +197,11 @@ public class WordDocumentExporter : IDocumentExporter
                     elements.AddRange(ConvertList(node, true, 0));
                     break;
                 case "img":
-                    elements.Add(ConvertImage(node));
+                    var img = ConvertImage(node);
+                    if (img is not null)
+                    {
+                        elements.Add(img);
+                    }
                     break;
                 case "h1":
                 case "h2":
@@ -185,7 +216,7 @@ public class WordDocumentExporter : IDocumentExporter
         return elements;
     }
 
-    private Paragraph ConvertParagraph(HtmlNode node)
+    private static Paragraph ConvertParagraph(HtmlNode node)
     {
         var paragraph = new Paragraph();
         var run = new Run();
@@ -209,7 +240,7 @@ public class WordDocumentExporter : IDocumentExporter
         return paragraph;
     }
 
-    private Drawing ConvertImage(HtmlNode node)
+    private static Drawing? ConvertImage(HtmlNode node)
     {
         var imageUrl = node.GetAttributeValue("src", null);
         if (imageUrl == null)
@@ -221,7 +252,7 @@ public class WordDocumentExporter : IDocumentExporter
         return drawing;
     }
 
-    private Table ConvertTable(HtmlNode node)
+    private static Table ConvertTable(HtmlNode node)
     {
         var table = new Table();
 
@@ -349,7 +380,7 @@ public class WordDocumentExporter : IDocumentExporter
     /// <param name="mainPart">main document part</param>
     /// <param name="headerText">header text to add</param>
     /// <param name="footerText">footer text to add</param>
-    private void AddHeaderAndFooterToDocument(MainDocumentPart mainPart, string headerText, string footerText)
+    private static void AddHeaderAndFooterToDocument(MainDocumentPart mainPart, string headerText, string footerText)
     {
         // Add a header part to the document
         var headerPart = mainPart.HeaderParts.FirstOrDefault();
@@ -456,14 +487,14 @@ public class WordDocumentExporter : IDocumentExporter
         mainPart.Document.Body.Append(sectionProps);
     }
 
-    private void AddTableOfContents(WordprocessingDocument wordDoc)
+    private static void AddTableOfContents(WordprocessingDocument wordDoc)
     {
         var tocTitleParagraph = new Paragraph(
-       new ParagraphProperties(
+        new ParagraphProperties(
            new ParagraphStyleId() { Val = "Heading1" } // Use a heading style for the title
-       ),
+        ),
        new Run(new Text("Table of Contents"))
-   );
+        );
 
         // Create a new SdtBlock for the TOC
         var sdtBlock = new SdtBlock(
@@ -485,9 +516,9 @@ public class WordDocumentExporter : IDocumentExporter
         );
 
         // Add the TOC title and the TOC to the document body
-        var body = wordDoc.MainDocumentPart.Document.Body;
-        body.PrependChild(sdtBlock);
-        body.PrependChild(tocTitleParagraph);
+        var body = wordDoc.MainDocumentPart!.Document.Body;
+        body!.PrependChild(sdtBlock);
+        body!.PrependChild(tocTitleParagraph);
 
         var settingsPart = wordDoc.MainDocumentPart.DocumentSettingsPart;
         if (settingsPart == null)
@@ -610,9 +641,9 @@ public class WordDocumentExporter : IDocumentExporter
         numberingPart.Numbering = numbering;
     }
 
-    private void AddStylesToDocument(WordprocessingDocument wordDocument)
+    private static void AddStylesToDocument(WordprocessingDocument wordDocument)
     {
-        var stylesPart = wordDocument.MainDocumentPart.AddNewPart<StyleDefinitionsPart>();
+        var stylesPart = wordDocument.MainDocumentPart!.AddNewPart<StyleDefinitionsPart>();
         var styles = new Styles();
 
         // Title style (with light blue color)
@@ -703,7 +734,7 @@ public class WordDocumentExporter : IDocumentExporter
         stylesPart.Styles = styles;
     }
 
-    private string ConvertMarkdownToHtml(string markdown)
+    private static string ConvertMarkdownToHtml(string markdown)
     {
         var pipeline = new MarkdownPipelineBuilder()
                         .UseAdvancedExtensions() // Enable tables, lists, and other advanced features

@@ -12,9 +12,13 @@ var envAzureConfigurationSection = builder.Configuration.GetSection("Azure");
 var envKestrelConfigurationSection = builder.Configuration.GetSection("Kestrel");
 
 // Used to determine service configuration.
-var durableDevelopment = Convert.ToBoolean(builder.Configuration["ServiceConfiguration:GreenlightServices:DocumentGeneration:DurableDevelopmentServices"]);
+var durableDevelopment =
+    Convert.ToBoolean(
+        builder.Configuration["ServiceConfiguration:GreenlightServices:DocumentGeneration:DurableDevelopmentServices"]
+    );
 
-// Set the Parameters:SqlPassword Key is user secrets (right click AppHost project, select User Secrets, add the key and value)
+// Set the Parameters:SqlPassword Key is user secrets (right click AppHost project, select User Secrets, add the key
+// and value)
 // Example: "Parameters:sqlPassword": "password"
 
 // Change from ADO
@@ -37,11 +41,25 @@ if (builder.ExecutionContext.IsRunMode) // For local development
             .WithDataVolume("pvico-redis-vol")
             .WithLifetime(ContainerLifetime.Persistent);
 
-        docGenSql = builder
+        // Use Azure SQL Server for local development.
+        // Especially useful for ARM/AMD based machines that can't run SQL Server in a container
+        var useAzureSqlServer = Convert.ToBoolean(
+            builder.Configuration["ServiceConfiguration:GreenlightServices:Global:UseAzureSqlServer"]);
+
+        if (useAzureSqlServer)
+        {
+            docGenSql = builder
+             .AddAzureSqlServer("sqldocgen")
+             .AddDatabase(sqlDatabaseName!);
+        }
+        else
+        {
+            docGenSql = builder
             .AddSqlServer("sqldocgen", password: sqlPassword, port: 9001)
             .WithDataVolume("pvico-sql-docgen-vol")
             .WithLifetime(ContainerLifetime.Persistent)
             .AddDatabase(sqlDatabaseName!);
+        }
     }
     else // Don't persist data and queue content - it will be deleted on restart!
     {
@@ -52,8 +70,10 @@ if (builder.ExecutionContext.IsRunMode) // For local development
         redisResource = builder.AddRedis("redis", 16379);
     }
 
-    // The following resources are either deployed through the Aspire Azure Resource Manager or connected via connection string.
-    // Use the connection string to connect to the resources is the configuration key "Azure:SubscriptionId" is not set.
+    // The following resources are either deployed through the Aspire Azure Resource Manager or connected via
+    // connection string.
+    // Use the connection string to connect to the resources is the configuration key "Azure:SubscriptionId" is not
+    // set.
     if (string.IsNullOrEmpty(builder.Configuration["Azure:SubscriptionId"]))
     {
         signalr = builder.AddConnectionString("signalr");
@@ -85,19 +105,11 @@ if (builder.ExecutionContext.IsRunMode) // For local development
 else // For production/Azure deployment
 {
     docGenSql = builder.AddAzureSqlServer("sqldocgen").AddDatabase(sqlDatabaseName!);
-
-    redisResource = builder.AddAzureRedis("redis");
-    
+    redisResource = builder.AddAzureRedis("redis");    
     sbus = builder.AddAzureServiceBus("sbus");
-    
-    azureAiSearch = builder.AddAzureSearch("aiSearch");
-    
-    signalr = builder.AddAzureSignalR("signalr");
-    
-    blobStorage = builder
-        .AddAzureStorage("docing")
-        .AddBlobs("blob-docing");
-
+    azureAiSearch = builder.AddAzureSearch("aiSearch");    
+    signalr = builder.AddAzureSignalR("signalr");    
+    blobStorage = builder.AddAzureStorage("docing").AddBlobs("blob-docing");
     insights = builder.AddAzureApplicationInsights("insights");
 }
 
@@ -123,7 +135,7 @@ var apiMain = builder
     .WithReference(redisResource)
     .WithReference(docGenSql)
     .WithReference(sbus)
-    .WithReference(azureAiSearch)    
+    .WithReference(azureAiSearch)
     .WaitForCompletion(dbSetupManager);
 
 var servicesSetupManager = builder
@@ -228,12 +240,16 @@ static void AppHostConfigurationSetup(IDistributedApplicationBuilder distributed
 
     if (distributedApplicationBuilder.ExecutionContext.IsRunMode)
     {
-        distributedApplicationBuilder.Configuration.AddJsonFile("appsettings.Development.json", optional: true, reloadOnChange: true);
+        distributedApplicationBuilder
+            .Configuration
+            .AddJsonFile("appsettings.Development.json", optional: true, reloadOnChange: true);
         distributedApplicationBuilder.Configuration.AddUserSecrets<Program>();
     }
     else
     {
-        distributedApplicationBuilder.Configuration.AddJsonFile("appsettings.Production.json", optional: true, reloadOnChange: true);
+        distributedApplicationBuilder
+            .Configuration
+            .AddJsonFile("appsettings.Production.json", optional: true, reloadOnChange: true);
     }
 
     distributedApplicationBuilder.Configuration.AddEnvironmentVariables();

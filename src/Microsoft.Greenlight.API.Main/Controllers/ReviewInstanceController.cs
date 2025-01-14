@@ -5,31 +5,45 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Review.Commands;
 using Microsoft.Greenlight.Shared.Data.Sql;
-using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Models.Review;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
+/// <summary>
+/// Controller for managing review instances.
+/// </summary>
 [Route("/api/review-instance")]
 public class ReviewInstanceController : BaseController
 {
     private readonly DocGenerationDbContext _dbContext;
-    private readonly AzureFileHelper _fileHelper;
     private readonly IMapper _mapper;
     private readonly IPublishEndpoint _publishEndpoint;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ReviewInstanceController"/> class.
+    /// </summary>
+    /// <param name="dbContext">The database context.</param>
+    /// <param name="mapper">The AutoMapper instance.</param>
+    /// <param name="publishEndpoint">The MassTransit publish endpoint.</param>
     public ReviewInstanceController(
         DocGenerationDbContext dbContext,
-        AzureFileHelper fileHelper,
         IMapper mapper,
-        IPublishEndpoint publishEndpoint)
+        IPublishEndpoint publishEndpoint
+    )
     {
         _dbContext = dbContext;
-        _fileHelper = fileHelper;
         _mapper = mapper;
         _publishEndpoint = publishEndpoint;
     }
 
+    /// <summary>
+    /// Gets all review instances.
+    /// </summary>
+    /// <returns>A list of review instances.
+    /// Produces Status Codes:
+    ///     200 Ok: When completed sucessfully
+    ///     404 Not Found: When no review instances could be found
+    /// </returns>
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -47,6 +61,15 @@ public class ReviewInstanceController : BaseController
         return Ok(reviewInstanceDtos);
     }
 
+    /// <summary>
+    /// Gets a review instance by its ID.
+    /// </summary>
+    /// <param name="reviewInstanceId">The review instance ID.</param>
+    /// <returns>The review instance.
+    /// Produces Status Codes:
+    ///     200 Ok: When completed sucessfully
+    ///     404 Not Found: When the review instance could not be found using the review instance id provided
+    /// </returns>
     [HttpGet("{reviewInstanceId:guid}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -64,6 +87,15 @@ public class ReviewInstanceController : BaseController
         return Ok(reviewInstanceDto);
     }
 
+    /// <summary>
+    /// Gets the answers for a review instance.
+    /// </summary>
+    /// <param name="reviewInstanceId">The review instance ID.</param>
+    /// <returns>A list of review question answers.
+    /// Produces Status Codes:
+    ///     200 Ok: When completed sucessfully
+    ///     404 Not Found: When the review instance could not be found using the review instance id provided
+    /// </returns>
     [HttpGet("{reviewInstanceId:guid}/answers")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -73,7 +105,7 @@ public class ReviewInstanceController : BaseController
     {
         var reviewInstance = await _dbContext.ReviewInstances
             .AsNoTracking()
-            .FirstOrDefaultAsync(x=>x.Id == reviewInstanceId);
+            .FirstOrDefaultAsync(x => x.Id == reviewInstanceId);
 
         if (reviewInstance == null)
         {
@@ -81,7 +113,7 @@ public class ReviewInstanceController : BaseController
         }
 
         var reviewInstanceAnswers = await _dbContext.ReviewQuestionAnswers
-            .Include(x=>x.OriginalReviewQuestion)
+            .Include(x => x.OriginalReviewQuestion)
             .Where(x => x.ReviewInstanceId == reviewInstanceId)
             .AsNoTracking()
             .ToListAsync();
@@ -90,6 +122,16 @@ public class ReviewInstanceController : BaseController
         return Ok(reviewQuestionAnswerList);
     }
 
+    /// <summary>
+    /// Creates a new review instance.
+    /// </summary>
+    /// <param name="reviewInstanceInfo">The review instance information.</param>
+    /// <returns>The created review instance.
+    /// Produces Status Codes:
+    ///     200 Ok: When completed sucessfully
+    ///     400 Bad Request: When the review defintion id on the review instance is not found,
+    ///     or the export link id on the review instance is not found
+    /// </returns>
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -132,10 +174,18 @@ public class ReviewInstanceController : BaseController
         return Ok(resultDto);
     }
 
+    /// <summary>
+    /// Submits an execution request for a review instance.
+    /// </summary>
+    /// <param name="reviewInstanceId">The review instance ID.</param>
+    /// <returns>The review instance information.
+    /// Produces Status Codes:
+    ///     202 Accepted: When the execution request is submitted sucessfully
+    ///     404 Not Found: When the review instance could not be found using the review instance id provided
+    /// </returns>
     [HttpPost("{reviewInstanceId:guid}/execute")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    
     public async Task<ActionResult<ReviewInstanceInfo>> SubmitExecutionRequestForReviewInstance(Guid reviewInstanceId)
     {
         var reviewInstance = await _dbContext.ReviewInstances.FindAsync(reviewInstanceId);

@@ -1,5 +1,4 @@
 using AutoMapper;
-using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.KernelMemory.Pipeline;
@@ -11,29 +10,42 @@ using Swashbuckle.AspNetCore.Annotations;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
+/// <summary>
+/// Controller for handling file operations such as upload and download.
+/// </summary>
 [Route("/api/file")]
 public class FileController : BaseController
 {
     private readonly AzureFileHelper _fileHelper;
     private readonly DocGenerationDbContext _dbContext;
     private readonly IMapper _mapper;
-    private readonly IDocumentLibraryInfoService _documentLibraryInfoService;
     private readonly IDocumentProcessInfoService _documentLibraryProcessService;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="FileController"/> class.
+    /// </summary>
+    /// <param name="fileHelper">The file helper for Azure operations.</param>
+    /// <param name="dbContext">The database context.</param>
+    /// <param name="mapper">The AutoMapper instance.</param>
+    /// <param name="documentLibraryProcessService">The document library process service.</param>
     public FileController(
-        AzureFileHelper fileHelper, 
-        DocGenerationDbContext dbContext, 
+        AzureFileHelper fileHelper,
+        DocGenerationDbContext dbContext,
         IMapper mapper,
-        IDocumentLibraryInfoService documentLibraryInfoService,
-        IDocumentProcessInfoService documentLibraryProcessService)
+        IDocumentProcessInfoService documentLibraryProcessService
+    )
     {
         _fileHelper = fileHelper;
         _dbContext = dbContext;
         _mapper = mapper;
-        _documentLibraryInfoService = documentLibraryInfoService;
         _documentLibraryProcessService = documentLibraryProcessService;
     }
 
+    /// <summary>
+    /// Downloads a file from the specified URL.
+    /// </summary>
+    /// <param name="fileUrl">The URL of the file to download.</param>
+    /// <returns>The file stream if found, otherwise NotFound.</returns>
     [HttpGet("download/{fileUrl}")]
     public async Task<IActionResult> DownloadFile(string fileUrl)
     {
@@ -45,14 +57,20 @@ public class FileController : BaseController
             return NotFound();
         }
 
-        // Optional: Set the content type if you know it. Here, application/octet-stream is a generic type for binary data.
+        // Optional: Set the content type if you know it. Here, application/octet-stream
+        // is a generic type for binary data.
         var contentType = new MimeTypesDetection().GetFileType(decodedFileUrl);
-        
-        // the file name is everything after the final '/' character. It consists of the Document ID, a dash, a random GUID and then the file extension after a period.
-        var fileName = decodedFileUrl.Substring(decodedFileUrl.LastIndexOf('/') + 1);
+        // the file name is everything after the final '/' character. It consists of the
+        // Document ID, a dash, a random GUID and then the file extension after a period.
+        var fileName = decodedFileUrl[(decodedFileUrl.LastIndexOf('/') + 1)..];
         return File(stream, contentType, fileName);
     }
 
+    /// <summary>
+    /// Downloads a file by its link ID.
+    /// </summary>
+    /// <param name="linkId">The link ID of the file to download.</param>
+    /// <returns>The file stream if found, otherwise NotFound.</returns>
     [HttpGet("download/asset/{linkId}")]
     public async Task<IActionResult> DownloadFileById(string linkId)
     {
@@ -61,7 +79,7 @@ public class FileController : BaseController
         {
             return NotFound();
         }
-        
+
         var decodedFileUrl = Uri.UnescapeDataString(file.AbsoluteUrl);
 
         var stream = await _fileHelper.GetFileAsStreamFromFullBlobUrlAsync(decodedFileUrl);
@@ -70,14 +88,28 @@ public class FileController : BaseController
             return NotFound();
         }
 
-        // Optional: Set the content type if you know it. Here, application/octet-stream is a generic type for binary data.
+        // Optional: Set the content type if you know it. Here, application/octet-stream is a
+        // generic type for binary data.
         var contentType = new MimeTypesDetection().GetFileType(decodedFileUrl);
-
-        // the file name is everything after the final '/' character. It consists of the Document ID, a dash, a random GUID and then the file extension after a period.
-        var fileName = decodedFileUrl.Substring(decodedFileUrl.LastIndexOf('/') + 1);
+        var fileName = decodedFileUrl[(decodedFileUrl.LastIndexOf('/') + 1)..];
+        // the file name is everything after the final '/' character. It consists of the Document ID,
+        // a dash, a random GUID and then the file extension after a period.
         return File(stream, contentType, fileName);
     }
 
+    /// <summary>
+    /// Uploads a file to the specified container with a random file name.
+    /// </summary>
+    /// <param name="containerName">The name of the container.</param>
+    /// <param name="fileName">The name of the file.</param>
+    /// <param name="file">The file to upload.</param>
+    /// <returns>The access URL of the uploaded file.
+    /// Produces Status Codes:
+    ///     200 OK: When completed sucessfully
+    ///     400 Bad Request: When there is no file provided to upload, 
+    ///         the Container Name provided is invalid, 
+    ///         or the file name is missing
+    /// </returns>
     [HttpPost("upload/{containerName}/{fileName}")]
     [DisableRequestSizeLimit]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -109,24 +141,32 @@ public class FileController : BaseController
         }
 
         // Read the file stream
-        using (var stream = file.OpenReadStream())
-        {
-            // Generate a random file name for the backend in blob storage
-            var blobFileName = Guid.NewGuid() + Path.GetExtension(fileName);
+        using var stream = file.OpenReadStream();
+        // Generate a random file name for the backend in blob storage
+        var blobFileName = Guid.NewGuid() + Path.GetExtension(fileName);
+        // Upload the file to blob storage
+        var blobUrl = await _fileHelper.UploadFileToBlobAsync(stream, blobFileName, containerName, true);
+        // Save the file information in the database
+        var exportedDocumentLink = await _fileHelper.SaveFileInfoAsync(blobUrl, containerName, fileName);
+        // Get the access URL for the file
+        var fileAccessUrl = _fileHelper.GetProxiedAssetBlobUrl(exportedDocumentLink.Id);
 
-            // Upload the file to blob storage
-            var blobUrl = await _fileHelper.UploadFileToBlobAsync(stream, blobFileName, containerName, true);
-
-            // Save the file information in the database
-            var exportedDocumentLink = await _fileHelper.SaveFileInfoAsync(blobUrl, containerName, fileName);
-
-            // Get the access URL for the file
-            var fileAccessUrl = _fileHelper.GetProxiedAssetBlobUrl(exportedDocumentLink.Id);
-
-            return Ok(fileAccessUrl);
-        }
+        return Ok(fileAccessUrl);
     }
 
+    /// <summary>
+    /// Uploads a file to the specified container with the provided file name.
+    /// </summary>
+    /// <param name="containerName">The name of the container.</param>
+    /// <param name="fileName">The name of the file.</param>
+    /// <param name="file">The file to upload.</param>
+    /// <returns>The access URL of the uploaded file.
+    /// Produces Status Codes:
+    ///     200 OK: When completed sucessfully
+    ///     400 Bad Request: When there is no file provided to upload, 
+    ///         the Container Name provided is invalid, 
+    ///         or the file name is missing
+    /// </returns>
     [HttpPost("upload/direct/{containerName}/{fileName}")]
     [DisableRequestSizeLimit]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -158,21 +198,30 @@ public class FileController : BaseController
         }
 
         // Read the file stream
-        using (var stream = file.OpenReadStream())
-        {
-            // Use the provided file name as the blob file name
-            var blobFileName = fileName;
+        using var stream = file.OpenReadStream();
+        // Use the provided file name as the blob file name
+        var blobFileName = fileName;
+        // Upload the file to blob storage
+        var blobUrl = await _fileHelper.UploadFileToBlobAsync(stream, blobFileName, containerName, true);
+        // Get the access URL for the file
+        var fileAccessUrl = _fileHelper.GetProxiedBlobUrl(blobUrl);
 
-            // Upload the file to blob storage
-            var blobUrl = await _fileHelper.UploadFileToBlobAsync(stream, blobFileName, containerName, true);
-
-            // Get the access URL for the file
-            var fileAccessUrl = _fileHelper.GetProxiedBlobUrl(blobUrl);
-
-            return Ok(fileAccessUrl);
-        }
+        return Ok(fileAccessUrl);
     }
 
+    /// <summary>
+    /// Uploads a file to the specified container and returns file information.
+    /// </summary>
+    /// <param name="containerName">The name of the container.</param>
+    /// <param name="fileName">The name of the file.</param>
+    /// <param name="file">The file to upload.</param>
+    /// <returns>The information of the uploaded file.
+    /// Produces Status Codes:
+    ///     200 OK: When completed sucessfully
+    ///     400 Bad Request: When there is no file provided to upload, 
+    ///         the Container Name provided is invalid, 
+    ///         or the file name is missing
+    /// </returns>
     [HttpPost("upload/{containerName}/{fileName}/file-info")]
     [DisableRequestSizeLimit]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -200,23 +249,27 @@ public class FileController : BaseController
         }
 
         // Read the file stream
-        await using (var stream = file.OpenReadStream())
-        {
-            // Generate a random file name for the backend in blob storage
-            var blobFileName = Guid.NewGuid() + Path.GetExtension(fileName);
+        await using var stream = file.OpenReadStream();
+        // Generate a random file name for the backend in blob storage
+        var blobFileName = Guid.NewGuid() + Path.GetExtension(fileName);
+        // Upload the file to the blob storage
+        var blobUrl = await _fileHelper.UploadFileToBlobAsync(stream, blobFileName, containerName, true);
+        // Save the file information in the database
+        var exportedDocumentLink = await _fileHelper.SaveFileInfoAsync(blobUrl, containerName, fileName);
+        var fileInfo = _mapper.Map<ExportedDocumentLinkInfo>(exportedDocumentLink);
 
-            // Upload the file to the blob storage
-            var blobUrl = await _fileHelper.UploadFileToBlobAsync(stream, blobFileName, containerName, true);
-
-            // Save the file information in the database
-            var exportedDocumentLink = await _fileHelper.SaveFileInfoAsync(blobUrl, containerName, fileName);
-            
-            var fileInfo = _mapper.Map<ExportedDocumentLinkInfo>(exportedDocumentLink);
-
-            return Ok(fileInfo);
-        }
+        return Ok(fileInfo);
     }
 
+    /// <summary>
+    /// Gets the file information by its access URL.
+    /// </summary>
+    /// <param name="fileAccessUrl">The access URL of the file.</param>
+    /// <returns>The information of the file if found, otherwise NotFound.
+    /// Produces Status Codes:
+    ///     200 OK: When completed sucessfully
+    ///     404 Not Found: When the file info could not be found using the url provided
+    /// </returns>
     [HttpGet("file-info/{fileAccessUrl}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -224,14 +277,12 @@ public class FileController : BaseController
     public async Task<ActionResult<ExportedDocumentLinkInfo>> GetFileInfo(string fileAccessUrl)
     {
         //The asset id is the last part of the URL. It's a Guid. The string may be URL encoded.
-
-        
         var decodedFileUrl = Uri.UnescapeDataString(fileAccessUrl);
         var assetId = decodedFileUrl.Substring(decodedFileUrl.LastIndexOf('/') + 1);
-        
+
         var fileInfoModel = await _dbContext.ExportedDocumentLinks
             .AsNoTracking()
-            .Include(x=>x.GeneratedDocument)
+            .Include(x => x.GeneratedDocument)
             .FirstOrDefaultAsync(edl => edl.Id == Guid.Parse(assetId));
 
         if (fileInfoModel == null)
@@ -244,6 +295,11 @@ public class FileController : BaseController
         return Ok(fileInfo);
     }
 
+    /// <summary>
+    /// Validates if the container name is valid.
+    /// </summary>
+    /// <param name="containerName">The name of the container.</param>
+    /// <returns>True if the container name is valid, otherwise false.</returns>
     private async Task<bool> IsValidContainerNameAsync(string containerName)
     {
         if (containerName == "document-export" || containerName == "document-assets" || containerName == "reviews")
@@ -253,7 +309,6 @@ public class FileController : BaseController
 
         // Validate dynamically if container name might be part of either a document library or a document process
         var allDocumentProcesses = await _documentLibraryProcessService.GetCombinedDocumentProcessInfoListAsync();
-
         var documentProcess = allDocumentProcesses.FirstOrDefault(x => x.BlobStorageContainerName == containerName);
 
         if (documentProcess != null)

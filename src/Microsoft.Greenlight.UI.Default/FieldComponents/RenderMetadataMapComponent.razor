@@ -1,0 +1,40 @@
+﻿<MapComponent DocumentGenerationRequestLocation="FieldValue" DocumentGenerationRequestLocationChanged="Callback" />
+
+@code {
+    [Parameter]
+    public DocumentProcessMetadataFieldInfo FieldInfo { get; set; } = default!;
+
+    [Parameter]
+    public EventCallback<(string FieldName, object? Value)> OnChanged { get; set; }
+
+    [CascadingParameter]
+    public Dictionary<string, object?> ParentMetadataModel { get; set; } = default!;
+
+    private LocationInformation FieldValue
+    {
+        get
+        {
+            if (!ParentMetadataModel.TryGetValue(FieldInfo.Name, out var value) || value is not LocationInformation location)
+            {
+                location = new LocationInformation
+                    {
+                        Latitude = 47.6740,
+                        Longitude = -122.1215,
+                    };
+                ParentMetadataModel[FieldInfo.Name] = location;
+            }
+            return location;
+        }
+        set
+        {
+            ParentMetadataModel[FieldInfo.Name] = value;
+            OnChanged.InvokeAsync((FieldInfo.Name, value));
+        }
+    }
+
+    private void Callback(LocationInformation obj)
+    {
+        FieldValue = obj;
+    }
+
+}

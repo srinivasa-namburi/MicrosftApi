@@ -1,9 +1,18 @@
 namespace Microsoft.Greenlight.Shared.Models;
 
+/// <summary>
+/// Represents a chat conversation, including the document process name, system prompt, and chat messages.
+/// </summary>
 public class ChatConversation : EntityBase
 {
+    /// <summary>
+    /// Name of the document process.
+    /// </summary>
     public string DocumentProcessName { get; set; } = "US.NuclearLicensing";
 
+    /// <summary>
+    /// System prompt for the chat conversation.
+    /// </summary>
     public string SystemPrompt { get; set; } = """
                                                This is a chat between an intelligent AI bot specializing in assisting with producing 
                                                environmental reports for Small Modular nuclear Reactors (''SMR'') and one or more 
@@ -14,5 +23,8 @@ public class ChatConversation : EntityBase
                                                'Sure, I can do that', etc.
                                                """;
 
+    /// <summary>
+    /// List of chat messages in the conversation.
+    /// </summary>
     public List<ChatMessage> ChatMessages { get; set; } = [];
 }

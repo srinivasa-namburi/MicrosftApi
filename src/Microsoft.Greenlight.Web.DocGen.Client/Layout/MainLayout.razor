@@ -68,18 +68,7 @@
             .WithAutomaticReconnect()
             .Build();
 
-
-        HubConnection.On<SignalRKeepAlive>(
-            "ReceiveSignalRKeepAliveReceivedNotification",
-            HubReceiveSignalRKeepAliveReceivedNotificationHandler);
-
-
         await HubConnection.StartAsync();
-    }
-
-    private void HubReceiveSignalRKeepAliveReceivedNotificationHandler(SignalRKeepAlive obj)
-    {
-        this.Logger.LogDebug("KeepAlive SignalR received from API");
     }
 
 }

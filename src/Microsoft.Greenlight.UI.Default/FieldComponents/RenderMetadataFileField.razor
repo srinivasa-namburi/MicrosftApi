@@ -1,0 +1,27 @@
+﻿@using Microsoft.AspNetCore.Components.Forms
+
+<!-- Your file input logic here -->
+<MudFileUpload @bind-Files="FieldValue"
+               Label="@FieldInfo.DisplayName"
+               Required="FieldInfo.IsRequired" />
+
+@code {
+    [Parameter]
+    public DocumentProcessMetadataFieldInfo FieldInfo { get; set; } = default!;
+
+    [Parameter]
+    public EventCallback<(string FieldName, object? Value)> OnChanged { get; set; }
+
+    [CascadingParameter]
+    public Dictionary<string, object?> ParentMetadataModel { get; set; } = default!;
+
+    private IBrowserFile[]? FieldValue
+    {
+        get => ParentMetadataModel.TryGetValue(FieldInfo.Name, out var value) ? value as IBrowserFile[] : null;
+        set
+        {
+            ParentMetadataModel[FieldInfo.Name] = value;
+            OnChanged.InvokeAsync((FieldInfo.Name, value));
+        }
+    }
+}

@@ -1,0 +1,184 @@
+@using System.Collections.ObjectModel
+@inject IDialogService DialogService
+@inject IDocumentProcessApiClient DocumentProcessApiClient
+
+<MudDialog>
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+            @{
+                var title = "Edit Metadata Fields - " + DocumentProcessName ?? "Document Process";
+
+                <MudText Typo="Typo.h6">@title</MudText>
+            }
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ShowAddForm">Add</MudButton>
+        </MudStack>
+    </TitleContent>
+
+    <DialogContent>
+        @if (IsAddFormVisible)
+        {
+            <MudList Clickable="false" DisableGutters="true" Class="mb-4">
+                <MudListItem>
+                    <MudText Typo="Typo.subtitle1">Add New Field</MudText>
+                    <!-- New field is always in edit mode -->
+                    <DocumentProcessMetadataFieldForm FieldInfo="newField"
+                                                      IsEditMode="true"
+                                                      OnSave="AddField"
+                                                      OnCancel="HideAddForm" />
+                </MudListItem>
+            </MudList>
+        }
+
+        @if (MetadataFields?.Any() == true)
+        {
+            <MudDropContainer T="DocumentProcessMetadataFieldInfo"
+                              @ref="_mudDropContainer"
+                              Items="MetadataFields"
+                              ItemDropped="OnItemDropped"
+                              ItemsSelector="ItemsSelector">
+                <ChildContent>
+                    <MudList Clickable="false" DisableGutters="true">
+                        <MudDropZone T="DocumentProcessMetadataFieldInfo"
+                                     Identifier="metadata-fields"
+                                     AllowReorder="true" />
+                    </MudList>
+                </ChildContent>
+                <ItemRenderer>
+                    <MudListItem @key="context.Id">
+                        <!-- Two-way binding for IsEditMode, keyed by context.Id -->
+                        <DocumentProcessMetadataFieldForm FieldInfo="context"
+                                                          @bind-IsEditMode="editingStates[context.Id]"
+                                                          OnSave="UpdateField"
+                                                          OnDelete="DeleteField" />
+                    </MudListItem>
+                </ItemRenderer>
+            </MudDropContainer>
+        }
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save">Save</MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="Cancel">Cancel</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    MudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter]
+    public Guid DocumentProcessId { get; set; }
+
+    [Parameter]
+    public string? DocumentProcessName { get; set; }
+
+    private ObservableCollection<DocumentProcessMetadataFieldInfo> MetadataFields { get; set; } = new();
+
+    // Tracks whether the "Add" form is visible
+    private bool IsAddFormVisible { get; set; } = false;
+
+    // The new field being added
+    private DocumentProcessMetadataFieldInfo newField = new();
+
+    private MudDropContainer<DocumentProcessMetadataFieldInfo> _mudDropContainer = default!;
+
+    // Dictionary to store edit-mode states for each field
+    private Dictionary<Guid, bool> editingStates = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (DocumentProcessId != Guid.Empty)
+        {
+            var fields = await DocumentProcessApiClient.GetDocumentProcessMetadataFieldsAsync(DocumentProcessId);
+            MetadataFields = new ObservableCollection<DocumentProcessMetadataFieldInfo>(fields.OrderBy(x => x.Order));
+
+            // Initialize editing states for existing fields
+            editingStates = MetadataFields.ToDictionary(f => f.Id, _ => false);
+        }
+    }
+
+    private void ShowAddForm()
+    {
+        // Show the inline "Add" form
+        IsAddFormVisible = true;
+        newField = new DocumentProcessMetadataFieldInfo();
+    }
+
+    private void HideAddForm()
+    {
+        // Hide the inline "Add" form
+        IsAddFormVisible = false;
+    }
+
+    private void AddField(DocumentProcessMetadataFieldInfo field)
+    {
+        field.Id = Guid.NewGuid();
+        field.DynamicDocumentProcessDefinitionId = DocumentProcessId;
+        field.Order = MetadataFields.Count;
+
+        MetadataFields.Add(field);
+
+        // Initialize edit-mode for the newly added field (if desired)
+        editingStates[field.Id] = false;
+
+        IsAddFormVisible = false;
+        ReorderFields();
+    }
+
+    private void DeleteField(DocumentProcessMetadataFieldInfo field)
+    {
+        if (MetadataFields.Remove(field))
+        {
+            // Remove from dictionary as well
+            editingStates.Remove(field.Id);
+            ReorderFields();
+        }
+    }
+
+    private void UpdateField(DocumentProcessMetadataFieldInfo field)
+    {
+        var index = MetadataFields.IndexOf(MetadataFields.FirstOrDefault(f => f.Id == field.Id));
+        if (index != -1)
+        {
+            MetadataFields[index] = field;
+            ReorderFields();
+        }
+    }
+
+    private void OnItemDropped(MudItemDropInfo<DocumentProcessMetadataFieldInfo> dropInfo)
+    {
+        var item = dropInfo.Item;
+        var newIndex = dropInfo.IndexInZone;
+
+        MetadataFields.Remove(item);
+        MetadataFields.Insert(newIndex, item);
+
+        ReorderFields();
+    }
+
+    private void ReorderFields()
+    {
+        for (int i = 0; i < MetadataFields.Count; i++)
+        {
+            MetadataFields[i].Order = i;
+        }
+
+        _mudDropContainer?.Refresh();
+        StateHasChanged();
+    }
+
+    private bool ItemsSelector(DocumentProcessMetadataFieldInfo item, string dropZoneIdentifier) =>
+        dropZoneIdentifier == "metadata-fields";
+
+    private async Task Save()
+    {
+        var orderedFields = MetadataFields.ToList();
+        await DocumentProcessApiClient.StoreMetaDataFieldsForDocumentProcess(DocumentProcessId, orderedFields);
+        MudDialog.Close(DialogResult.Ok(orderedFields));
+    }
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+}

@@ -17,16 +17,18 @@ public class DocumentProcessInfoProfile : Profile
             .ForMember(x => x.Description, y => y.MapFrom(source => ""))
             .ForMember(x => x.OutlineText, y => y.MapFrom(source => ""))
             .ForMember(x => x.Repositories, y => y.MapFrom(source => source.Repositories))
-            .ForMember(x => x.PrecedingSearchPartitionInclusionCount, y=>y.Ignore())
+            .ForMember(x => x.PrecedingSearchPartitionInclusionCount, y => y.Ignore())
             .ForMember(x => x.FollowingSearchPartitionInclusionCount, y => y.Ignore())
             .ForMember(x => x.NumberOfCitationsToGetFromRepository, y => y.Ignore())
             .ForMember(x => x.MinimumRelevanceForCitations, y => y.Ignore())
+            .ForMember(x => x.CompletionServiceType, y => y.Ignore())
             .ForMember(x => x.LogicType,
                 y => y.MapFrom(source =>
                     Enum.Parse<DocumentProcessLogicType>(source.IngestionMethod ?? "KernelMemory")));
 
         CreateMap<DocumentProcessInfo, DynamicDocumentProcessDefinition>()
             .ForMember(x => x.LogicType, y => y.MapFrom(source => source.LogicType.ToString()))
+            .ForMember(x => x.CompletionServiceType, y => y.MapFrom(source => source.CompletionServiceType ?? DocumentProcessCompletionServiceType.GenericAiCompletionService))
             .ForMember(dest => dest.Repositories, opt => opt.MapFrom(src => src.Repositories))
             .ForMember(x => x.Plugins, y => y.DoNotUseDestinationValue());
 
@@ -34,7 +36,6 @@ public class DocumentProcessInfoProfile : Profile
             .ForMember(dest => dest.Repositories, opt => opt.MapFrom(src => src.Repositories))
             .ForMember(x => x.OutlineText, y => y.MapFrom(source => source.DocumentOutline!.FullText ?? string.Empty))
             .ForMember(x => x.DocumentOutlineId, DocumentOutlineIdCheck);
-
     }
 
     private void DocumentOutlineIdCheck(IMemberConfigurationExpression<DynamicDocumentProcessDefinition, DocumentProcessInfo, Guid?> obj)

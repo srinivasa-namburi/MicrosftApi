@@ -30,7 +30,7 @@ public class SearchClientFactory
         _serviceConfigurationOptions = serviceConfigurationOptions.Value;
     }
 
-    public SearchIndexClient GetSearchIndexClientForIndex(string indexName)
+    public virtual SearchIndexClient GetSearchIndexClientForIndex(string indexName)
     {
         searchIndexClients ??= new Dictionary<string, SearchIndexClient>();
 

@@ -61,7 +61,6 @@ public class KernelMemoryInstanceFactory : IKernelMemoryInstanceFactory
 
     private async Task<IKernelMemory> GetKernelMemoryInstanceForDocumentLibrary(DocumentLibraryInfo documentLibraryInfo)
     {
-
         var documentLibraryShortName = documentLibraryInfo.ShortName;
         if (_instanceContainer.KernelMemoryInstances.TryGetValue(documentLibraryInfo.ShortName, out var library))
         {

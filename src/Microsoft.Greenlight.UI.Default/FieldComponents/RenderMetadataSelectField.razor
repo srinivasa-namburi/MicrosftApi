@@ -1,0 +1,60 @@
+﻿@if (IsMultiSelect())
+{
+    <MudSelect T="string" SelectedValues="MultiSelectFieldValue"
+               Label="@FieldInfo.DisplayName"
+               Required="FieldInfo.IsRequired"
+               Variant="Variant.Filled"
+               Margin="Margin.Normal"
+               MultiSelection="true">
+        @foreach (var option in FieldInfo.PossibleValues)
+        {
+            <MudSelectItem Value="@option">@option</MudSelectItem>
+        }
+    </MudSelect>
+}
+else
+{
+    <MudSelect T="string" @bind-Value="SingleSelectFieldValue"
+               Label="@FieldInfo.DisplayName"
+               Required="FieldInfo.IsRequired"
+               Variant="Variant.Filled"
+               Margin="Margin.Normal">
+        @foreach (var option in FieldInfo.PossibleValues)
+        {
+            <MudSelectItem Value="@option">@option</MudSelectItem>
+        }
+    </MudSelect>
+}
+
+@code {
+    [Parameter]
+    public DocumentProcessMetadataFieldInfo FieldInfo { get; set; } = default!;
+
+    [Parameter]
+    public EventCallback<(string FieldName, object? Value)> OnChanged { get; set; }
+
+    [CascadingParameter]
+    public Dictionary<string, object?> ParentMetadataModel { get; set; } = default!;
+
+    private List<string> MultiSelectFieldValue
+    {
+        get => ParentMetadataModel.GetValueOrDefault(FieldInfo.Name) as List<string> ?? new List<string>();
+        set
+        {
+            ParentMetadataModel[FieldInfo.Name] = value;
+            OnChanged.InvokeAsync((FieldInfo.Name, value));
+        }
+    }
+
+    private string SingleSelectFieldValue
+    {
+        get => ParentMetadataModel.GetValueOrDefault(FieldInfo.Name) as string ?? string.Empty;
+        set
+        {
+            ParentMetadataModel[FieldInfo.Name] = value;
+            OnChanged.InvokeAsync((FieldInfo.Name, value));
+        }
+    }
+
+    private bool IsMultiSelect() => FieldInfo.FieldType == DynamicDocumentProcessMetaDataFieldType.MultiSelectWithPossibleValues;
+}

@@ -1,31 +1,34 @@
 using MassTransit;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
-using Microsoft.Greenlight.Shared.Configuration;
-using Microsoft.Greenlight.Shared.Contracts.Messages.DocumentIngestion.Commands;
 using Microsoft.Greenlight.Shared.Data.Sql;
 
 namespace Microsoft.Greenlight.Worker.Scheduler;
 
+/// <summary>
+/// Worker service that periodically cleans up exported document links from the database.
+/// </summary>
 public class ScheduledExportedDocumentCleanupWorker : BackgroundService
 {
     private readonly ILogger<ScheduledBlobAutoImportWorker> _logger;
     private readonly IServiceProvider _sp;
-    private readonly ServiceConfigurationOptions _options;
 
-
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ScheduledExportedDocumentCleanupWorker"/> class.
+    /// </summary>
+    /// <param name="logger">The logger instance.</param>
+    /// <param name="sp">The service provider.</param>
     public ScheduledExportedDocumentCleanupWorker(
         ILogger<ScheduledBlobAutoImportWorker> logger,
-        IOptions<ServiceConfigurationOptions> options,
-        IServiceProvider sp
-        
-       )
+        IServiceProvider sp)
     {
         _logger = logger;
         _sp = sp;
-        _options = options.Value;
     }
 
+    /// <summary>
+    /// Executes the background service operation.
+    /// </summary>
+    /// <param name="stoppingToken">The cancellation token.</param>
+    /// <returns>A task that represents the background service operation.</returns>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var scope = _sp.CreateScope();
@@ -53,7 +56,7 @@ public class ScheduledExportedDocumentCleanupWorker : BackgroundService
             //         FileName = edl.FileName
 
             //     }, stoppingToken));
-            
+
             await Task.Delay(taskDelayDefaultMilliseconds, stoppingToken);
         }
     }

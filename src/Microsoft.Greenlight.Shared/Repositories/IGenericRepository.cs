@@ -1,9 +1,9 @@
 using System.Linq.Expressions;
 using Microsoft.Greenlight.Shared.Models;
 
-namespace Microsoft.Greenlight.Shared.Data;
+namespace Microsoft.Greenlight.Shared.Repositories;
 
-public interface IGenericRepository<T> where T: EntityBase
+public interface IGenericRepository<T> where T : EntityBase
 {
     Task<T?> GetByIdAsync(Guid id, bool includeDependents = false);
     Task<IQueryable<T>> GetAllAsync();

@@ -94,7 +94,7 @@ public class GenericAiCompletionService : IAiCompletionService
         return [_createdBodyContentNode];
     }
 
-    public async IAsyncEnumerable<string> GetStreamingBodyContentText(
+    private async IAsyncEnumerable<string> GetStreamingBodyContentText(
         List<DocumentProcessRepositorySourceReferenceItem> sourceDocuments,
         string sectionOrTitleNumber, string sectionOrTitleText,
         ContentNodeType contentNodeType, string tableOfContentsString, Guid? metadataId, ContentNode? sectionContentNode)

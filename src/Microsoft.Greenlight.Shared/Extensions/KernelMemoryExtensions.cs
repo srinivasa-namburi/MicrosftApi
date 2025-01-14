@@ -12,11 +12,22 @@ using Microsoft.Greenlight.Shared.Helpers;
 
 namespace Microsoft.Greenlight.Shared.Extensions;
 
+/// <summary>
+/// Provides extension methods for configuring Kernel Memory in the application.
+/// </summary>
 public static class KernelMemoryExtensions
 {
     private const int PartitionSize = 1200;
     private const int MaxTokensPerLine = 100;
 
+    /// <summary>
+    /// Adds keyed Kernel Memory for document processing given document process options.
+    /// </summary>
+    /// <param name="builder">The host application builder.</param>
+    /// <param name="serviceConfigurationOptions">The service configuration options.</param>
+    /// <param name="documentProcessOptions">The document process options.</param>
+    /// <param name="key">The optional key.</param>
+    /// <returns>The updated host application builder.</returns>
     public static IHostApplicationBuilder AddKeyedKernelMemoryForDocumentProcess(
         this IHostApplicationBuilder builder,
         ServiceConfigurationOptions serviceConfigurationOptions,
@@ -27,17 +38,32 @@ public static class KernelMemoryExtensions
         return AddKeyedKernelMemoryForDocumentProcess(builder, serviceConfigurationOptions, documentProcessName, key);
     }
 
+    /// <summary>
+    /// Adds keyed Kernel Memory for document processing given document process info.
+    /// </summary>
+    /// <param name="builder">The host application builder.</param>
+    /// <param name="serviceConfigurationOptions">The service configuration options.</param>
+    /// <param name="documentProcessInfo">The document process information.</param>
+    /// <param name="key">The optional key.</param>
+    /// <returns>The updated host application builder.</returns>
     public static IHostApplicationBuilder AddKeyedKernelMemoryForDocumentProcess(
         this IHostApplicationBuilder builder,
         ServiceConfigurationOptions serviceConfigurationOptions,
         DocumentProcessInfo documentProcessInfo,
-        string? key = null
-    )
+        string? key = null)
     {
         var documentProcessName = documentProcessInfo.ShortName;
         return AddKeyedKernelMemoryForDocumentProcess(builder, serviceConfigurationOptions, documentProcessName, key);
     }
 
+    /// <summary>
+    /// Adds keyed Kernel Memory for document processing given a document process name.
+    /// </summary>
+    /// <param name="builder">The host application builder.</param>
+    /// <param name="serviceConfigurationOptions">The service configuration options.</param>
+    /// <param name="documentProcessName">The document process name.</param>
+    /// <param name="key">The optional key.</param>
+    /// <returns>The updated host application builder.</returns>
     public static IHostApplicationBuilder AddKeyedKernelMemoryForDocumentProcess(
         this IHostApplicationBuilder builder,
         ServiceConfigurationOptions serviceConfigurationOptions,
@@ -59,15 +85,28 @@ public static class KernelMemoryExtensions
         return builder;
     }
 
+    /// <summary>
+    /// Adds Kernel Memory for reviews.
+    /// </summary>
+    /// <param name="builder">The host application builder.</param>
+    /// <param name="serviceConfigurationOptions">The service configuration options.</param>
+    /// <returns>The updated host application builder.</returns>
     public static IHostApplicationBuilder AddKernelMemoryForReviews(
         this IHostApplicationBuilder builder,
-        ServiceConfigurationOptions serviceConfigurationOptions
-    )
+        ServiceConfigurationOptions serviceConfigurationOptions)
     {
         builder.AddKeyedKernelMemoryForDocumentProcess(serviceConfigurationOptions, "Reviews");
         return builder;
     }
 
+    /// <summary>
+    /// Gets the Kernel Memory instance for the document library.
+    /// </summary>
+    /// <param name="serviceProvider">The service provider.</param>
+    /// <param name="serviceConfigurationOptions">The service configuration options.</param>
+    /// <param name="documentLibraryInfo">The document library information.</param>
+    /// <param name="key">The optional key.</param>
+    /// <returns>The Kernel Memory instance.</returns>
     public static IKernelMemory GetKernelMemoryInstanceForDocumentLibrary(
         this IServiceProvider serviceProvider,
         ServiceConfigurationOptions serviceConfigurationOptions,
@@ -75,14 +114,13 @@ public static class KernelMemoryExtensions
         string? key = null)
     {
         var documentLibraryShortName = documentLibraryInfo.ShortName;
-        var indexName = documentLibraryInfo.IndexName ?? throw new ArgumentException("IndexName must be provided in DocumentLibraryInfo");
+        var indexName = documentLibraryInfo.IndexName;
 
-        var blobContainerName =  documentLibraryShortName.ToLower().Replace(" ", "-").Replace(".", "-") + "-km-blobs";
+        var blobContainerName = documentLibraryShortName.ToLower().Replace(" ", "-").Replace(".", "-") + "-km-blobs";
 
         var kernelMemory = CreateKernelMemoryInstance(
             serviceProvider,
             serviceConfigurationOptions,
-            documentLibraryShortName,
             blobContainerName,
             indexName
            );
@@ -90,25 +128,24 @@ public static class KernelMemoryExtensions
         return kernelMemory;
     }
 
-
     private static IKernelMemory CreateKernelMemoryInstance(
         IServiceProvider serviceProvider,
         ServiceConfigurationOptions serviceConfigurationOptions,
-        string documentLibraryName,
         string blobContainerName,
-        string indexName = ""
-    )
+        string indexName = "")
     {
         var azureCredentialHelper = serviceProvider.GetRequiredService<AzureCredentialHelper>();
         var configuration = serviceProvider.GetRequiredService<IConfiguration>();
-        var baseSearchClient = serviceProvider.GetService<SearchIndexClient>();
+        var baseSearchClient = serviceProvider.GetRequiredService<SearchIndexClient>();
 
         // Get OpenAI connection string
         var openAiConnString = configuration.GetConnectionString("openai-planner") ?? throw new InvalidOperationException("OpenAI connection string not found.");
 
         // Extract Endpoint and Key
-        var openAiEndpoint = openAiConnString.Split(";").FirstOrDefault(x => x.Contains("Endpoint="))?.Split("=")[1];
-        var openAiKey = openAiConnString.Split(";").FirstOrDefault(x => x.Contains("Key="))?.Split("=")[1];
+        var openAiEndpoint = openAiConnString.Split(";").FirstOrDefault(x => x.Contains("Endpoint="))?.Split("=")[1]
+            ?? throw new ArgumentException("OpenAI endpoint must be provided in the configuration.");
+        var openAiKey = openAiConnString.Split(";").FirstOrDefault(x => x.Contains("Key="))?.Split("=")[1]
+            ?? throw new ArgumentException("OpenAI key must be provided in the configuration.");
 
         var openAiEmbeddingConfig = new AzureOpenAIConfig()
         {
@@ -195,5 +232,4 @@ public static class KernelMemoryExtensions
 
         return kernelMemory;
     }
-
 }

@@ -8,6 +8,9 @@ using Microsoft.Greenlight.Shared.Services;
 
 namespace Microsoft.Greenlight.Worker.Scheduler;
 
+/// <summary>
+/// Worker service that handles scheduled blob auto-import tasks.
+/// </summary>
 public class ScheduledBlobAutoImportWorker : BackgroundService
 {
     private readonly ILogger<ScheduledBlobAutoImportWorker> _logger;
@@ -17,13 +20,21 @@ public class ScheduledBlobAutoImportWorker : BackgroundService
     private readonly IDocumentLibraryInfoService _documentLibraryInfoService;
     private readonly ServiceConfigurationOptions _options;
 
-
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ScheduledBlobAutoImportWorker"/> class.
+    /// </summary>
+    /// <param name="logger">The logger instance.</param>
+    /// <param name="options">The service configuration options.</param>
+    /// <param name="blobServiceClient">The blob service client.</param>
+    /// <param name="sp">The service provider.</param>
+    /// <param name="documentProcessInfoService">The document process info service.</param>
+    /// <param name="documentLibraryInfoService">The document library info service.</param>
     public ScheduledBlobAutoImportWorker(
         ILogger<ScheduledBlobAutoImportWorker> logger,
         IOptions<ServiceConfigurationOptions> options,
         BlobServiceClient blobServiceClient,
         IServiceProvider sp,
-        IDocumentProcessInfoService documentProcessInfoService, 
+        IDocumentProcessInfoService documentProcessInfoService,
         IDocumentLibraryInfoService documentLibraryInfoService)
     {
         _logger = logger;
@@ -34,6 +45,11 @@ public class ScheduledBlobAutoImportWorker : BackgroundService
         _options = options.Value;
     }
 
+    /// <summary>
+    /// Executes the scheduled blob auto-import tasks.
+    /// </summary>
+    /// <param name="stoppingToken">The cancellation token.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (_options.GreenlightServices.DocumentIngestion.ScheduledIngestion == false)
@@ -65,6 +81,15 @@ public class ScheduledBlobAutoImportWorker : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Processes blobs for document processes.
+    /// </summary>
+    /// <param name="stoppingToken">The cancellation token.</param>
+    /// <param name="taskDelayAfterNullDocumentProcessFound">The delay after no document process is found.</param>
+    /// <param name="taskDelayAfterImportMilliseconds">The delay after import in milliseconds.</param>
+    /// <param name="publishEndpoint">The publish endpoint.</param>
+    /// <param name="taskDelay">The task delay.</param>
+    /// <returns>A task that represents the asynchronous operation, with a result of the task delay.</returns>
     private async Task<int> ProcessBlobsForDocumentProcesses(CancellationToken stoppingToken,
         int taskDelayAfterNullDocumentProcessFound, int taskDelayAfterImportMilliseconds, IPublishEndpoint publishEndpoint,
         int taskDelay)
@@ -75,7 +100,7 @@ public class ScheduledBlobAutoImportWorker : BackgroundService
         {
             _logger.LogWarning("ScheduledBlobAutoImportWorker: No Document Processes exist - delaying execution for 5 minutes");
             taskDelay = taskDelayAfterNullDocumentProcessFound;
-            return taskDelay;  
+            return taskDelay;
         }
 
         foreach (var documentProcess in documentProcesses)
@@ -93,7 +118,7 @@ public class ScheduledBlobAutoImportWorker : BackgroundService
             {
                 taskDelay = taskDelayAfterImportMilliseconds;
                 _logger.LogWarning("ScheduleBlobAutoImportWorker: New files found for document process {documentProcessName}. Delaying next run for {taskDelay}ms after submission", documentProcess.ShortName, taskDelay);
-            
+
                 await publishEndpoint.Publish(new IngestDocumentsFromAutoImportPath(Guid.NewGuid())
                 {
                     BlobContainerName = container,
@@ -107,6 +132,15 @@ public class ScheduledBlobAutoImportWorker : BackgroundService
         return taskDelay;
     }
 
+    /// <summary>
+    /// Processes blobs for document libraries.
+    /// </summary>
+    /// <param name="stoppingToken">The cancellation token.</param>
+    /// <param name="taskDelayAfterNullDocumentProcessFound">The delay after no document process is found.</param>
+    /// <param name="taskDelayAfterImportMilliseconds">The delay after import in milliseconds.</param>
+    /// <param name="publishEndpoint">The publish endpoint.</param>
+    /// <param name="taskDelay">The task delay.</param>
+    /// <returns> A task that represents the asynchronous operation, with a result of the task delay.</returns>
     private async Task<int> ProcessBlobsForDocumentLibraries(CancellationToken stoppingToken,
         int taskDelayAfterNullDocumentProcessFound, int taskDelayAfterImportMilliseconds,
         IPublishEndpoint publishEndpoint,
@@ -123,6 +157,7 @@ public class ScheduledBlobAutoImportWorker : BackgroundService
         {
             var container = documentLibrary.BlobStorageContainerName;
             var folder = documentLibrary.BlobStorageAutoImportFolderName;
+
             if (string.IsNullOrEmpty(folder) || string.IsNullOrEmpty(container))
             {
                 _logger.LogWarning("ScheduledBlobAutoImportWorker: Skipping document library {documentLibraryName} as it has no auto-import folder or container configured", documentLibrary.ShortName);
@@ -144,7 +179,12 @@ public class ScheduledBlobAutoImportWorker : BackgroundService
         return taskDelay;
     }
 
-
+    /// <summary>
+    /// Checks if there are new files in the specified container path.
+    /// </summary>
+    /// <param name="containerName">The container name.</param>
+    /// <param name="folderPath">The folder path.</param>
+    /// <returns>True if there are new files, otherwise false.</returns>
     private bool NewFilesInContainerPath(string containerName, string folderPath)
     {
         var containerClient = _blobServiceClient.GetBlobContainerClient(containerName);

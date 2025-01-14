@@ -1,7 +1,5 @@
 // Copyright (c) Microsoft. All rights reserved.
 
-using System.Text;
-using System.Text.Json;
 using Azure.AI.OpenAI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -13,25 +11,34 @@ using Microsoft.Greenlight.Shared.Models;
 
 namespace Microsoft.Greenlight.Shared.Helpers;
 
-// Class for Content Tree Processing
+/// <summary>
+/// Class for Content Tree Processing
+/// </summary>
 public class ContentTreeProcessor : IContentTreeProcessor
 {
     private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
     private readonly AzureOpenAIClient _openAiClient;
-    
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ContentTreeProcessor"/> class.
+    /// </summary>
+    /// <param name="serviceConfigurationOptions">The service configuration options.</param>
+    /// <param name="openAiClient">The Azure OpenAI client.</param>
     public ContentTreeProcessor(
-        IOptions<ServiceConfigurationOptions> serviceConfigurationOptions, 
+        IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
         [FromKeyedServices("openai-planner")] AzureOpenAIClient openAiClient)
     {
         _openAiClient = openAiClient;
         _serviceConfigurationOptions = serviceConfigurationOptions.Value;
     }
 
-
+    /// <summary>
+    /// Recursively finds all Section Headings under this ContentNode.
+    /// </summary>
+    /// <param name="contentNode">The content node to start searching from.</param>
+    /// <param name="sectionHeadings">The list to store found section headings.</param>
     public void FindSectionHeadings(ContentNode contentNode, List<ContentNode> sectionHeadings)
     {
-        //Recursively find all Section Headings under this ContentNode
         foreach (var child in contentNode.Children)
         {
             if (child.Type == ContentNodeType.Heading)
@@ -42,11 +49,14 @@ public class ContentTreeProcessor : IContentTreeProcessor
             this.FindSectionHeadings(child, sectionHeadings);
         }
     }
-    
+
+    /// <summary>
+    /// Counts all content nodes in the content tree below this node.
+    /// </summary>
+    /// <param name="contentNode">The content node to start counting from.</param>
+    /// <returns>The total number of content nodes.</returns>
     public int CountContentNodes(ContentNode contentNode)
     {
-        // Count all content nodes in the content tree below this node
-        // Traverse the Children property of the ContentNode and recursively call this method
         var count = 1;
         foreach (var child in contentNode.Children)
         {
@@ -56,6 +66,11 @@ public class ContentTreeProcessor : IContentTreeProcessor
         return count;
     }
 
+    /// <summary>
+    /// Finds the last Title or Heading node in the content tree.
+    /// </summary>
+    /// <param name="contentTree">The content tree to search.</param>
+    /// <returns>The last Title or Heading node, or null if none found.</returns>
     public ContentNode? FindLastTitleOrHeading(List<ContentNode> contentTree)
     {
         for (int i = contentTree.Count - 1; i >= 0; i--)
@@ -63,49 +78,10 @@ public class ContentTreeProcessor : IContentTreeProcessor
             var node = contentTree[i];
             if (node.Type == ContentNodeType.Title || node.Type == ContentNodeType.Heading)
             {
-                // If node has children, recursively find the last Title or Heading node
                 var lastChild = this.FindLastTitleOrHeading(node.Children);
                 return lastChild ?? node;
             }
         }
         return null;
     }
-
-    private IEnumerable<ContentNode> GetFlattenedContentNodes(IEnumerable<ContentNode> contentNodeChildren)
-    {
-        foreach (var contentNode in contentNodeChildren)
-        {
-            yield return contentNode;
-            foreach (var child in this.GetFlattenedContentNodes(contentNode.Children))
-            {
-                yield return child;
-            }
-        }
-    }
-
-    private async Task<List<ContentNode>> GetListOfContentNodesToRemoveFromReferenceChapterListAsync(List<ContentNode> contentTree, List<string> chapterIdentifiers)
-    {
-        var identifiedNodes = new List<ContentNode>();
-        foreach (var chapterIdentifier in chapterIdentifiers)
-        {
-            this.FindContentNodesMatchingChapterIdentifier(contentTree, chapterIdentifier, identifiedNodes);
-        }
-
-        return identifiedNodes;
-    }
-
-    private void FindContentNodesMatchingChapterIdentifier(List<ContentNode> contentNodes, string chapterIdentifier, List<ContentNode> identifiedNodes)
-    {
-        foreach (var contentNode in contentNodes)
-        {
-            if (string.Equals(contentNode.Text, chapterIdentifier, StringComparison.OrdinalIgnoreCase))
-            {
-                Console.WriteLine($"Removing reference chapter: {contentNode.Text}");
-                identifiedNodes.Add(contentNode);
-            }
-
-            this.FindContentNodesMatchingChapterIdentifier(contentNode.Children, chapterIdentifier, identifiedNodes);
-        }
-    }
-
 }

@@ -15,8 +15,20 @@ using Azure.Monitor.OpenTelemetry.AspNetCore;
 
 namespace Microsoft.Greenlight.ServiceDefaults;
 
+/// <summary>
+/// Provides extension methods for configuring default services for projects.
+/// </summary>
 public static class Extensions
 {
+    /// <summary>
+    /// Adds default services to the <see cref="IHostApplicationBuilder"/>
+    /// </summary>
+    /// <param name="builder">
+    /// The <see cref="IHostApplicationBuilder"/> to add the default services to.
+    /// </param>
+    /// <returns>
+    /// The <see cref="IHostApplicationBuilder"/> with the added default services.
+    /// </returns>
     public static IHostApplicationBuilder AddServiceDefaults(this IHostApplicationBuilder builder)
     {
         builder.ConfigureOpenTelemetry();
@@ -42,8 +54,10 @@ public static class Extensions
 
             http.ConfigurePrimaryHttpMessageHandler(() =>
             {
-                var handler = new HttpClientHandler();
-                handler.MaxRequestContentBufferSize = 10 * 1024 * 1024 * 20; // 200 MB
+                var handler = new HttpClientHandler
+                {
+                    MaxRequestContentBufferSize = 10 * 1024 * 1024 * 20 // 200 MB
+                };
                 return handler;
             });
 
@@ -54,6 +68,15 @@ public static class Extensions
         return builder;
     }
 
+    /// <summary>
+    /// Configures OpenTelemetry for the <see cref="IHostApplicationBuilder"/>.
+    /// </summary>
+    /// <param name="builder">
+    /// The <see cref="IHostApplicationBuilder"/> to configure OpenTelemetry for.
+    /// </param>
+    /// <returns>
+    /// The <see cref="IHostApplicationBuilder"/> with OpenTelemetry configured.
+    /// </returns>
     public static IHostApplicationBuilder ConfigureOpenTelemetry(this IHostApplicationBuilder builder)
     {
         builder.Logging.AddOpenTelemetry(logging =>
@@ -85,7 +108,7 @@ public static class Extensions
 
                 tracing.AddSource("Microsoft.SemanticKernel*",
                                   DiagnosticHeaders.DefaultListenerName // MassTransit ActivitySource
-                                  ) 
+                                  )
                        .AddAspNetCoreInstrumentation()
                        .AddGrpcClientInstrumentation()
                        .AddHttpClientInstrumentation();
@@ -120,6 +143,15 @@ public static class Extensions
         return builder;
     }
 
+    /// <summary>
+    /// Adds default health checks to the <see cref="IHostApplicationBuilder"/>.
+    /// </summary>
+    /// <param name="builder">
+    /// The <see cref="IHostApplicationBuilder"/> to add the default health checks to.
+    /// </param>
+    /// <returns>
+    /// The <see cref="IHostApplicationBuilder"/> with the added default health checks.
+    /// </returns>
     public static IHostApplicationBuilder AddDefaultHealthChecks(this IHostApplicationBuilder builder)
     {
         builder.Services.AddHealthChecks()
@@ -129,6 +161,15 @@ public static class Extensions
         return builder;
     }
 
+    /// <summary>
+    /// Maps default health check endpoints for the <see cref="WebApplication"/>.
+    /// </summary>
+    /// <param name="app">
+    /// The <see cref="WebApplication"/> to map the default health check endpoints to.
+    /// </param>
+    /// <returns>
+    /// The <see cref="WebApplication"/> with the mapped default health check endpoints.
+    /// </returns>
     public static WebApplication MapDefaultEndpoints(this WebApplication app)
     {
         // Uncomment the following line to enable the Prometheus endpoint (requires the OpenTelemetry.Exporter.Prometheus.AspNetCore package)

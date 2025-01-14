@@ -1,0 +1,34 @@
+﻿<MudTextField @bind-Value="FieldValue"
+              Label="@FieldInfo.DisplayName"
+              Required="FieldInfo.IsRequired"
+              Immediate="true"
+              Variant="Variant.Filled"
+              Margin="Margin.Normal"
+              Lines="@GetLines()"
+              AutoGrow="@IsMultiline()"
+              MaxLines="6" />
+
+@code {
+    [Parameter]
+    public DocumentProcessMetadataFieldInfo FieldInfo { get; set; } = default!;
+
+    [Parameter]
+    public EventCallback<(string FieldName, object? Value)> OnChanged { get; set; }
+
+    [CascadingParameter]
+    public Dictionary<string, object?> ParentMetadataModel { get; set; } = default!;
+
+    private string FieldValue
+    {
+        get => ParentMetadataModel.TryGetValue(FieldInfo.Name, out var value) ? value?.ToString() ?? string.Empty : string.Empty;
+        set
+        {
+            ParentMetadataModel[FieldInfo.Name] = value;
+            OnChanged.InvokeAsync((FieldInfo.Name, value));
+        }
+    }
+
+    private int GetLines() => FieldInfo.FieldType == DynamicDocumentProcessMetaDataFieldType.MultilineText ? 3 : 1;
+
+    private bool IsMultiline() => FieldInfo.FieldType == DynamicDocumentProcessMetaDataFieldType.MultilineText;
+}

@@ -1,0 +1,363 @@
+﻿@using System.Globalization
+@using System.Text.RegularExpressions
+
+<style>
+    .metadata-field-editor .mud-tooltip-root {
+        width: 100%;
+    }
+
+    .metadata-field-editor .mud-input-control {
+        width: 100%;
+    }
+
+    .metadata-field-editor .mud-grid .mud-item .mud-tooltip-root {
+        display: block;
+        width: 100%;
+    }
+
+    .metadata-field-editor .mud-tooltip {
+        position: absolute;
+        z-index: 1500;
+    }
+
+    .metadata-field-editor .sentiment-reasoning-tooltip {
+        max-width: 225px !important;
+        white-space: normal !important;
+        height: auto !important;
+        line-height: 1.5 !important;
+    }
+
+        .metadata-field-editor .sentiment-reasoning-tooltip .mud-tooltip-root {
+            font-size: 16px !important;
+            padding: 8px !important;
+        }
+</style>
+
+<MudPaper Class="pa-2 mb-2 metadata-field-editor">
+    @if (IsEditMode)
+    {
+        <!-- Edit Mode -->
+        <MudGrid Spacing="2">
+            <!-- Name -->
+            <MudItem xs="12" sm="6">
+                <MudTooltip Text="Name of the field. Used as the key in the metadata dictionary/json."
+                            Class="sentiment-reasoning-tooltip w-100"
+                            Placement="Placement.Bottom"
+                            Arrow="true"
+                            Inline="false">
+                    <MudTextField Label="Name"
+                                  @bind-Value="_localFieldInfo.Name"
+                                  Required="true"
+                                  Immediate="true"
+                                  OnBlur="FormatNameField" />
+                </MudTooltip>
+            </MudItem>
+
+            <!-- Display Name -->
+            <MudItem xs="12" sm="6">
+                <MudTooltip Text="Display name of the field."
+                            Class="sentiment-reasoning-tooltip w-100"
+                            Placement="Placement.Bottom"
+                            Arrow="true"
+                            Inline="false">
+                    <MudTextField Label="Display Name"
+                                  @bind-Value="_localFieldInfo.DisplayName"
+                                  Required="true"
+                                  Immediate="true" />
+                </MudTooltip>
+            </MudItem>
+
+            <!-- Description/Tooltip -->
+            <MudItem xs="12">
+                <MudTooltip Text="Description of the field."
+                            Class="sentiment-reasoning-tooltip w-100"
+                            Placement="Placement.Bottom"
+                            Arrow="true"
+                            Inline="false">
+                    <MudTextField Label="Description/Tooltip"
+                                  @bind-Value="_localFieldInfo.DescriptionToolTip"
+                                  Lines="3"
+                                  Immediate="true" />
+                </MudTooltip>
+            </MudItem>
+
+            <!-- Field Type -->
+            <MudItem xs="12" sm="6">
+                <MudTooltip Text="Field type."
+                            Class="sentiment-reasoning-tooltip w-100"
+                            Placement="Placement.Bottom"
+                            Arrow="true"
+                            Inline="false">
+                    <MudSelect T="DynamicDocumentProcessMetaDataFieldType"
+                               Label="Field Type"
+                               Value="_localFieldInfo.FieldType"
+                               Required="true"
+                               ValueChanged="OnFieldTypeChanged">
+                        @foreach (var fieldType in Enum.GetValues<DynamicDocumentProcessMetaDataFieldType>())
+                        {
+                            <MudSelectItem Value="@fieldType">@fieldType.ToString()</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudTooltip>
+            </MudItem>
+
+            <!-- Is Required -->
+            <MudItem xs="6" sm="3">
+                <MudTooltip Text="Whether the field is required."
+                            Class="sentiment-reasoning-tooltip w-100"
+                            Placement="Placement.Bottom"
+                            Arrow="true"
+                            Inline="false">
+                    <MudSwitch Label="Is Required"
+                               @bind-Checked="_localFieldInfo.IsRequired" />
+                </MudTooltip>
+            </MudItem>
+
+            <!-- Order -->
+            <MudItem xs="6" sm="3">
+                <MudTooltip Text="Order of the field."
+                            Class="sentiment-reasoning-tooltip w-100"
+                            Placement="Placement.Bottom"
+                            Arrow="true"
+                            Inline="false">
+                    <MudNumericField T="int"
+                                     Label="Order"
+                                     @bind-Value="_localFieldInfo.Order"
+                                     Required="true"
+                                     Immediate="true" />
+                </MudTooltip>
+            </MudItem>
+
+            @if (!ShowPossibleValues)
+            {
+                <!-- Default Value -->
+                <MudItem xs="12" sm="6">
+                    <MudTooltip Text="Default value for the field."
+                                Class="sentiment-reasoning-tooltip w-100"
+                                Placement="Placement.Bottom"
+                                Arrow="true"
+                                Inline="false">
+                        <MudTextField Label="Default Value"
+                                      @bind-Value="_localFieldInfo.DefaultValue"
+                                      Immediate="true" />
+                    </MudTooltip>
+                </MudItem>
+            }
+
+            @if (ShowPossibleValues)
+            {
+                <!-- Possible Values -->
+                <MudItem xs="12" sm="6">
+                    <MudTooltip Text="List of possible values for the field."
+                                Class="sentiment-reasoning-tooltip w-100"
+                                Placement="Placement.Bottom"
+                                Arrow="true"
+                                Inline="false">
+                        <div>
+                            <MudText Typo="Typo.subtitle1">Possible Values</MudText>
+                            <MudChipSet AllClosable="true"
+                                        OnClose="RemovePossibleValue"
+                                        Class="mb-2">
+                                @foreach (var value in _localFieldInfo.PossibleValues)
+                                {
+                                    <MudChip Text="@value" Deletable="true" />
+                                }
+                            </MudChipSet>
+                            <MudTextField Label="Add New Value"
+                                          @bind-Value="newPossibleValue"
+                                          Immediate="true"
+                                          OnKeyDown="OnPossibleValueKeyDown"
+                                          Adornment="Adornment.End"
+                                          AdornmentIcon="@Icons.Material.Filled.Add"
+                                          OnAdornmentClick="AddPossibleValue"
+                                          Placeholder="Enter value and press Enter or click Add" />
+                        </div>
+                    </MudTooltip>
+                </MudItem>
+
+                <!-- Default Possible Value -->
+                <MudItem xs="12" sm="6">
+                    <MudTooltip Text="Default possible value for the field."
+                                Class="sentiment-reasoning-tooltip w-100"
+                                Placement="Placement.Bottom"
+                                Arrow="true"
+                                Inline="false">
+                        <MudSelect T="string"
+                                   Label="Default Possible Value"
+                                   @bind-Value="_localFieldInfo.DefaultPossibleValue">
+                            @foreach (var value in _localFieldInfo.PossibleValues)
+                            {
+                                <MudSelectItem Value="@value">@value</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudTooltip>
+                </MudItem>
+            }
+        </MudGrid>
+
+        <div style="text-align: right; margin-top: 16px;">
+            <MudStack Row="true" Spacing="2">
+                <MudButton OnClick="HandleSubmit" Variant="Variant.Filled" Color="Color.Primary">Save</MudButton>
+                <MudButton OnClick="CancelEdit" Variant="Variant.Text" Color="Color.Default">Cancel</MudButton>
+            </MudStack>
+        </div>
+    }
+    else
+    {
+        <!-- View Mode -->
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.subtitle1">@FieldInfo.DisplayName</MudText>
+                <MudText Typo="Typo.body2">@FieldInfo.DescriptionToolTip</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" Class="d-flex justify-end">
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" OnClick="EnableEditMode" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="DeleteField" />
+            </MudItem>
+        </MudGrid>
+    }
+</MudPaper>
+
+@code {
+    [Parameter]
+    public DocumentProcessMetadataFieldInfo FieldInfo { get; set; } = new();
+
+    // The two properties that enable two-way binding
+    [Parameter]
+    public bool IsEditMode { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> IsEditModeChanged { get; set; }
+
+    [Parameter]
+    public EventCallback<DocumentProcessMetadataFieldInfo> OnSave { get; set; }
+
+    [Parameter]
+    public EventCallback<DocumentProcessMetadataFieldInfo> OnDelete { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    private DocumentProcessMetadataFieldInfo _localFieldInfo = new();
+    private string newPossibleValue = string.Empty;
+
+    private bool ShowPossibleValues =>
+        _localFieldInfo.FieldType == DynamicDocumentProcessMetaDataFieldType.MultiSelectWithPossibleValues ||
+        _localFieldInfo.FieldType == DynamicDocumentProcessMetaDataFieldType.SelectDropdown ||
+        _localFieldInfo.FieldType == DynamicDocumentProcessMetaDataFieldType.SelectRadioButton;
+
+    protected override void OnInitialized()
+    {
+        // Make a working copy so we don't modify the parent object directly
+        _localFieldInfo = FieldInfo.Clone();
+        UpdatePossibleValuesState();
+    }
+
+    private void EnableEditMode()
+    {
+        IsEditMode = true;
+        // Notify parent that we changed the IsEditMode value
+        IsEditModeChanged.InvokeAsync(true);
+        _localFieldInfo = FieldInfo.Clone();
+        UpdatePossibleValuesState();
+    }
+
+    private async Task HandleSubmit()
+    {
+        // Copy local changes to the original FieldInfo
+        FieldInfo = _localFieldInfo.Clone();
+        await OnSave.InvokeAsync(FieldInfo);
+
+        // Turn edit mode off
+        IsEditMode = false;
+        await IsEditModeChanged.InvokeAsync(false);
+    }
+
+    private async Task CancelEdit()
+    {
+        // Revert to the original
+        _localFieldInfo = FieldInfo.Clone();
+
+        IsEditMode = false;
+        await IsEditModeChanged.InvokeAsync(false);
+
+        if (OnCancel.HasDelegate)
+        {
+            await OnCancel.InvokeAsync();
+        }
+    }
+
+    private async Task DeleteField()
+    {
+        await OnDelete.InvokeAsync(FieldInfo);
+    }
+
+    private void FormatNameField()
+    {
+        if (string.IsNullOrWhiteSpace(_localFieldInfo.Name))
+            return;
+
+        // Capitalize each word
+        _localFieldInfo.Name = CultureInfo.CurrentCulture.TextInfo.ToTitleCase(_localFieldInfo.Name);
+
+        // Remove spaces and special characters
+        _localFieldInfo.Name = new string(_localFieldInfo.Name.Where(char.IsLetterOrDigit).ToArray());
+
+        // Update DisplayName if empty
+        if (string.IsNullOrWhiteSpace(_localFieldInfo.DisplayName))
+        {
+            var displayName = Regex.Replace(_localFieldInfo.Name, "([A-Z])", " $1").Trim();
+            _localFieldInfo.DisplayName = displayName;
+        }
+    }
+
+    private void AddPossibleValue()
+    {
+        if (!string.IsNullOrWhiteSpace(newPossibleValue)
+            && !_localFieldInfo.PossibleValues.Contains(newPossibleValue))
+        {
+            _localFieldInfo.PossibleValues.Add(newPossibleValue);
+            newPossibleValue = string.Empty;
+        }
+    }
+
+    private void RemovePossibleValue(MudChip chip)
+    {
+        if (chip?.Text is not null)
+        {
+            _localFieldInfo.PossibleValues.Remove(chip.Text);
+            if (_localFieldInfo.DefaultPossibleValue == chip.Text)
+            {
+                _localFieldInfo.DefaultPossibleValue = null;
+            }
+        }
+    }
+
+    private void OnPossibleValueKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+        {
+            AddPossibleValue();
+        }
+    }
+
+    private void OnFieldTypeChanged(DynamicDocumentProcessMetaDataFieldType newFieldType)
+    {
+        _localFieldInfo.FieldType = newFieldType;
+        UpdatePossibleValuesState();
+    }
+
+    private void UpdatePossibleValuesState()
+    {
+        if (ShowPossibleValues)
+        {
+            _localFieldInfo.HasPossibleValues = true;
+        }
+        else
+        {
+            _localFieldInfo.HasPossibleValues = false;
+            _localFieldInfo.PossibleValues.Clear();
+            _localFieldInfo.DefaultPossibleValue = null;
+        }
+    }
+}
