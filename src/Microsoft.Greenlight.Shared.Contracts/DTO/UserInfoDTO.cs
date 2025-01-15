@@ -1,3 +1,5 @@
+using Microsoft.Greenlight.Shared.Enums;
+
 namespace Microsoft.Greenlight.Shared.Contracts.DTO;
 
 /// <summary>
@@ -14,4 +16,9 @@ public record UserInfoDTO(string ProviderSubjectId, string FullName)
     /// Unique identifier of the user.
     /// </summary>
     public Guid Id { get; set; }
+
+    /// <summary>
+    /// User's theme preference.
+    /// </summary>
+    public ThemePreference ThemePreference { get; set; } = ThemePreference.System;
 };

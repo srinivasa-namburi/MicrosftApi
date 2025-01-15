@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
+using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Web.Shared.ServiceClients;
 using System.Net;
+using System.Net.Http;
 using System.Net.Http.Json;
 
 namespace Microsoft.Greenlight.Web.DocGen.Client.ServiceClients;
@@ -34,6 +36,19 @@ public class AuthorizationApiClient : WebAssemblyBaseServiceClient<Authorization
 
         // Return user info if found - otherwise return null
         return await response?.Content.ReadFromJsonAsync<UserInfoDTO>()!;
+    }
+
+    public async Task<ThemePreference> GetThemePreferenceAsync(string providerSubjectId)
+    {
+        var response = await SendGetRequestMessage($"/api/authorization/theme/{providerSubjectId}");
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<ThemePreference>();
+    }
+
+    public async Task SetThemePreferenceAsync(ThemePreferenceDTO themePreferenceDto)
+    {
+        var response = await SendPostRequestMessage("/api/authorization/theme", themePreferenceDto);
+        response.EnsureSuccessStatusCode();
     }
 
     public async Task<string> GetApiAddressAsync()

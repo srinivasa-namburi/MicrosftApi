@@ -1,5 +1,8 @@
+@inject IAuthorizationApiClient AuthorizationApiClient
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
 <CascadingValue Value=false Name="UsePopoverProvider">
-    <MudThemeProvider @ref="@_mudThemeProvider" @bind-IsDarkMode="@IsDarkMode" Theme="MyTheme"></MudThemeProvider>
+    <MudThemeProvider @ref="_mudThemeProvider" @bind-IsDarkMode="@IsDarkMode" Theme="MyTheme"></MudThemeProvider>
 </CascadingValue>
 
 @code {
@@ -7,21 +10,133 @@
         {
             Palette = new PaletteLight()
             {
-                // Primary = "#594AE2",
-                // AppbarBackground = "#594AE2",
-                
+                Primary = "#316DD5",
+                Secondary = "#056676",
+                Tertiary = "#737373",
+                Background = "#FAFAFA",
+                Surface = "#F3F3F3",
+                DrawerBackground = "#F3F3F3",
+                DrawerText = "#333333",
+                AppbarBackground = "#316DD5",
+                AppbarText = "#FFFFFF",
+                TextPrimary = "#333333",
+                TextSecondary = "#555555",
+                ActionDefault = "#333333",
+                ActionDisabled = "rgba(0,0,0,0.26)",
+                ActionDisabledBackground = "rgba(0,0,0,0.12)",
+                Error = "#D13438",
+                Success = "#107C10",
+                Warning = "#BF8700",
+                Info = "#0078D4"
             },
             PaletteDark = new PaletteDark()
             {
-                // Primary = "#594AE2",
-                // AppbarBackground = "#594AE2"
+                Primary = "#316DD5",
+                Secondary = "#078089",
+                Tertiary = "#737373",
+                Background = "#2C2C2C",
+                Surface = "#373737",
+                DrawerBackground = "#333333",
+                DrawerText = "#DDDDDD",
+                AppbarBackground = "#2F2F2F",
+                AppbarText = "#E2E2E2",
+                TextPrimary = "#E2E2E2",
+                TextSecondary = "rgba(255,255,255,0.75)",
+                ActionDefault = "#E2E2E2",
+                ActionDisabled = "rgba(255,255,255,0.26)",
+                ActionDisabledBackground = "rgba(255,255,255,0.12)",
+                Error = "#D13438",
+                Success = "#107C10",
+                Warning = "#BF8700",
+                Info = "#0078D4"
+            },
+            LayoutProperties = new LayoutProperties()
+            {
+                DefaultBorderRadius = "6px"
+            },
+            Typography = new Typography()
+            {
+                Default = new Default
+                {
+                    FontFamily = new[] { "Segoe UI", "Helvetica", "Arial", "sans-serif" },
+                    FontSize = "0.95rem"
+                },
+                H1 = new H1
+                {
+                    FontSize = "2.5rem",
+                    FontWeight = 700,
+                    LetterSpacing = "-0.02em"
+                },
+                H2 = new H2
+                {
+                    FontSize = "2rem",
+                    FontWeight = 600
+                },
+                H3 = new H3
+                {
+                    FontSize = "1.75rem",
+                    FontWeight = 600
+                },
+                H4 = new H4
+                {
+                    FontSize = "1.5rem",
+                    FontWeight = 600
+                },
+                H5 = new H5
+                {
+                    FontSize = "1.25rem",
+                    FontWeight = 600
+                },
+                H6 = new H6
+                {
+                    FontSize = "1.125rem",
+                    FontWeight = 600
+                },
+                Subtitle1 = new Subtitle1
+                {
+                    FontSize = "1rem",
+                    FontWeight = 500
+                },
+                Subtitle2 = new Subtitle2
+                {
+                    FontSize = "0.875rem",
+                    FontWeight = 500
+                },
+                Body1 = new Body1
+                {
+                    FontSize = "1rem",
+                    FontWeight = 400
+                },
+                Body2 = new Body2
+                {
+                    FontSize = "0.875rem",
+                    FontWeight = 400
+                },
+                Button = new Button
+                {
+                    FontSize = "0.875rem",
+                    FontWeight = 600,
+                    TextTransform = "none"
+                },
+                Overline = new Overline
+                {
+                    FontSize = "0.75rem",
+                    FontWeight = 500,
+                    LetterSpacing = "0.1em",
+                    TextTransform = "uppercase"
+                },
+                Caption = new Caption
+                {
+                    FontSize = "0.75rem",
+                    FontWeight = 400
+                }
             }
         };
 
-    
-
-    bool _drawerOpen = true;
+    private bool _drawerOpen = true;
     private bool _isDarkMode;
+    private UserInfoDTO? _currentUser;
+    private bool _isInitialized;
 
     [Parameter]
     public bool IsDarkMode
@@ -33,6 +148,7 @@
             {
                 _isDarkMode = value;
                 IsDarkModeChanged.InvokeAsync(value);
+                SetThemePreference();
             }
         }
     }
@@ -40,7 +156,7 @@
     [Parameter]
     public EventCallback<bool> IsDarkModeChanged { get; set; }
 
-    private MudThemeProvider _mudThemeProvider;
+    private MudThemeProvider _mudThemeProvider = new();
 
     private async Task<bool> GetDarkMode()
     {
@@ -52,12 +168,49 @@
         _drawerOpen = !_drawerOpen;
     }
 
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var providerSubjectId = user.FindFirst(claim => claim.Type == "sub")?.Value;
+            if (providerSubjectId != null)
+            {
+                _currentUser = await AuthorizationApiClient.GetUserInfoAsync(providerSubjectId);
+
+                if (_currentUser != null)
+                {
+                    var themePreference = await AuthorizationApiClient.GetThemePreferenceAsync(providerSubjectId);
+                    IsDarkMode = themePreference == ThemePreference.Dark;
+                    _isInitialized = true;
+                }
+            }
+        }
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
+        if (firstRender && !_isInitialized)
         {
             IsDarkMode = await GetDarkMode();
+            _isInitialized = true;
             StateHasChanged();
+        }
+    }
+
+    private async Task SetThemePreference()
+    {
+        if (_currentUser != null)
+        {
+            var themePreferenceDto = new ThemePreferenceDTO
+                {
+                    ProviderSubjectId = _currentUser.ProviderSubjectId,
+                    ThemePreference = _isDarkMode ? ThemePreference.Dark : ThemePreference.Light
+                };
+
+            await AuthorizationApiClient.SetThemePreferenceAsync(themePreferenceDto);
         }
     }
 }

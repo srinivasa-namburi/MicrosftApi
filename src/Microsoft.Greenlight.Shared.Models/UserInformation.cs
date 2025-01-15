@@ -1,3 +1,5 @@
+using Microsoft.Greenlight.Shared.Enums;
+
 namespace Microsoft.Greenlight.Shared.Models;
 
 /// <summary>
@@ -24,6 +26,11 @@ public class UserInformation : EntityBase
     /// Email of the user.
     /// </summary>
     public string? Email { get; set; }
+
+    /// <summary>
+    /// User's theme preference.
+    /// </summary>
+    public ThemePreference ThemePreference { get; set; } = ThemePreference.System;
 }
 
 /// <summary>

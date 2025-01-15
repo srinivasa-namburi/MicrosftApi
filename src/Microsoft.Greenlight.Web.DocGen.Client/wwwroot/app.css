@@ -13,12 +13,35 @@
     --bs-nav-link-hover-color: var(--mud-palette-primary-darken) !important;
 }
 
+/* Slight borders on elevated controls */
+.light-mode .mud-paper,
+.light-mode .mud-list
+.light-mode .mud-card {
+    border: 1px solid #b0b0b0;
+}
+
+/* A bit more shadow on MudPaper controls */
+.light-mode .mud-paper {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Heavier font weight for form controls */
+.mud-input,
+.mud-select,
+.mud-text-field,
+.mud-select-item,
+.mud-checkbox,
+.mud-slider,
+.mud-radio {
+    font-weight: 450;
+}
+
 ol {
     margin-left: 0; /* Remove extra margin from the list */
     padding-left: 25px; /* Adjust padding to control the position of the list numbers */
     list-style-position: outside; /* Position numbers outside the text block */
-    padding-bottom:15px;
-    padding-top:0;
+    padding-bottom: 15px;
+    padding-top: 0;
 }
 
     ol li {
@@ -27,8 +50,8 @@ ol {
         text-indent: 0; /* Ensure no hanging indent */
         padding-left: 0; /* Align text directly under the first line */
         position: relative;
-        line-height:1.4;
-        padding-top:0px;
+        line-height: 1.4;
+        padding-top: 0px;
     }
 
         ol li::marker {
@@ -39,16 +62,16 @@ ul {
     margin-left: 0; /* Remove extra left margin */
     padding-bottom: 10px;
     padding-left: 25px; /* Adjust padding to position bullets */
-    margin-top:0;
-    padding-top:0;
-    margin-bottom:0;
+    margin-top: 0;
+    padding-top: 0;
+    margin-bottom: 0;
     list-style-type: disc; /* Display bullets */
     list-style-position: outside; /* Position bullets outside the text block */
 }
 
     ul li {
         margin: 0; /* Remove any default margins */
-        padding-top:2px;
+        padding-top: 2px;
         /*padding: 0;*/ /* Remove extra padding */
         line-height: 1.5; /* Optional: Adjust line height for readability */
         padding-left: 3px; /* Align subsequent lines with the first line's text */
@@ -64,17 +87,16 @@ h1, h2, h3, h4, h5, h6 {
     margin: 0;
 }
 
-table{
-    padding-bottom:20px;
-    padding-top:0px;
-    margin-bottom:0px;
-    
+table {
+    padding-bottom: 20px;
+    padding-top: 0px;
+    margin-bottom: 0px;
 }
 
-table th{
-    text-align:left;
-    border-bottom:2px solid;
-}
+    table th {
+        text-align: left;
+        border-bottom: 2px solid;
+    }
 
 .sentiment-reasoning-tooltip {
     max-width: 225px !important;

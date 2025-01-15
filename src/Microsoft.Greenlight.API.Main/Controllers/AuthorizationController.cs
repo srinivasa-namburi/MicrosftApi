@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Data.Sql;
+using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Models;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
@@ -101,5 +102,63 @@ public class AuthorizationController : BaseController
         var userInfoDto = _mapper.Map<UserInfoDTO>(userInformation);
 
         return Ok(userInfoDto);
+    }
+
+    /// <summary>
+    /// Gets user theme preference information.
+    /// </summary>
+    /// <param name="providerSubjectId">The provider subject ID.</param>
+    /// <returns>An <see cref="ActionResult{UserInfoDTO}"/> containing the user information.
+    /// Produces Status Codes:
+    ///     200 OK: When completed sucessfully
+    ///     404 Not Found: When a Provider Subject Id is not found
+    /// </returns>
+    [HttpGet("theme/{providerSubjectId}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [Consumes("application/text")]
+    public async Task<ActionResult<ThemePreference>> GetThemePreference(string providerSubjectId)
+    {
+        var userInformation = await _dbContext.UserInformations
+            .FirstOrDefaultAsync(x => x.ProviderSubjectId == providerSubjectId);
+
+        if (userInformation == null)
+        {
+            return NotFound();
+        }
+
+        return Ok(userInformation.ThemePreference);
+    }
+
+
+    /// <summary>
+    /// Sets the theme preference for the user.
+    /// </summary>
+    /// <param name="themePreferenceDto"></param>
+    /// <returns>
+    /// An <see cref="IActionResult"/> representing the result of the operation.
+    /// Produces Status Codes:
+    ///     200 OK: When completed sucessfully
+    ///     404 Not Found: When a Provider Subject Id is not found
+    /// </returns>
+    [HttpPost("theme")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [Consumes("application/json")]
+    public async Task<IActionResult> SetThemePreference([FromBody] ThemePreferenceDTO themePreferenceDto)
+    {
+        var userInformation = await _dbContext.UserInformations
+            .FirstOrDefaultAsync(x => x.ProviderSubjectId == themePreferenceDto.ProviderSubjectId);
+
+        if (userInformation == null)
+        {
+            return NotFound();
+        }
+
+        userInformation.ThemePreference = (ThemePreference)themePreferenceDto.ThemePreference!;
+        _dbContext.UserInformations.Update(userInformation);
+        await _dbContext.SaveChangesAsync();
+
+        return Ok();
     }
 }
