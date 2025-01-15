@@ -76,7 +76,6 @@ public static class KernelMemoryExtensions
         var kernelMemory = CreateKernelMemoryInstance(
             serviceProvider,
             serviceConfigurationOptions,
-            documentProcessName,
             blobContainerName
             );
 
