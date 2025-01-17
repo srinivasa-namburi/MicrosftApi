@@ -18,24 +18,41 @@ public class InputOutputTrackingPluginInvocationFilter : IFunctionInvocationFilt
     public async Task OnFunctionInvocationAsync(FunctionInvocationContext context,
         Func<FunctionInvocationContext, Task> next)
     {
+        // Don't track ContentState function calls as there are internal calls that we don't want to track.
+        if (context.Function.PluginName != null && context.Function.PluginName.Contains("ContentState"))
+        {
+            await next(context);
+            return;
+        }
+
         // Don't track system functions or functions that don't have an execution ID associated with them.
+        // We have two methods of determining the System-ExecutionId. 
+        // This first method is for functions that are called from GenericAiCompletionService
         if (context.Function.PluginName == null)
         {
             // We're executing the main function call. We can get the Execution ID from the context.
             if (context.Arguments.Any(a => a.Key == "System-ExecutionId"))
             {
-                var value = context.Arguments["System-ExecutionId"].ToString();
-                _executionId = Guid.Parse(value);
+                var value = context.Arguments["System-ExecutionId"]!.ToString();
+                _executionId = Guid.Parse(value!);
             }
+
+            // For this way of determining execution ID, we skip tracking the execution for the rest of this
+            // initial (system) function call.
             await next(context);
             return;
         }
 
-        if (context.Function.PluginName.Contains("ContentState"))
+        // This second method is for functions that are called from the AgentAiCompletionService
+        // This method doesn't require us to skip tracking the execution for the rest of the function call, since the execution id
+        // is passed with every agent function call.
+        if (context.Kernel.Data.TryGetValue("System-ExecutionId", out object? systemExecutionIdValue))
         {
-            await next(context);
-            return;
+            var value = systemExecutionIdValue!.ToString();
+            _executionId = Guid.Parse(value!);
         }
+
+
 
         var pluginSourceReferenceItem = new PluginSourceReferenceItem();
 
@@ -91,8 +108,6 @@ public class InputOutputTrackingPluginInvocationFilter : IFunctionInvocationFilt
 
         if (_executionId != Guid.Empty)
         {
-
-
             // Set the output of the function as the source output
             if (context.Result.ValueType == typeof(string))
             {

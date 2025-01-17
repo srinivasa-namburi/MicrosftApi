@@ -4,7 +4,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
-using Microsoft.Greenlight.Shared.Contracts.DTO.DocumentLibrary;
 using Microsoft.Greenlight.Shared.Contracts.Messages.DocumentProcesses;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Models.DocumentProcess;

@@ -22,4 +22,8 @@
 		<ProjectReference Include="..\Microsoft.Greenlight.ServiceDefaults\Microsoft.Greenlight.ServiceDefaults.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.Shared\Microsoft.Greenlight.Shared.csproj" />
 	</ItemGroup>
+
+	<ItemGroup>
+	  <Folder Include="Properties\" />
+	</ItemGroup>
 </Project>

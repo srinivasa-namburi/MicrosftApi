@@ -17,7 +17,7 @@ namespace Microsoft.Greenlight.Shared.Services.Search
             {
                 DocumentLibraryType = DocumentLibraryType.PrimaryDocumentProcessLibrary,
                 IndexName = "default",
-                Top = 50,
+                Top = 5,
                 MinRelevance = 0.7,
                 PrecedingPartitionCount = 0,
                 FollowingPartitionCount = 0

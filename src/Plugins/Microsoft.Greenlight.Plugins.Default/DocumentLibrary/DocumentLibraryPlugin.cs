@@ -100,11 +100,7 @@ public class DocumentLibraryPlugin : IPluginImplementation
                          "DON'T use the index name - use only the documentLibraryShortName")]
             string documentLibraryShortName,
             [Description("The search text to use for the search")]
-            string searchText,
-            [Description("The number of results to return. Minimum value 12, may be up to 25")]
-            int top = 12,
-            [Description("The minimum relevance score for a result to be returned")]
-            double minRelevance = 0.7
+            string searchText
         )
     {
 
@@ -115,6 +111,7 @@ public class DocumentLibraryPlugin : IPluginImplementation
             throw new Exception(
                 "For assistant : Wrong Document Library ShortName provided - no valid library found. Please use the DocumentProcessShortName returned by GetDocumentLibraryInfo");
         }
+
 
         var searchResults = await _kmRepository.SearchAsync(documentLibraryShortName, searchText);
 
