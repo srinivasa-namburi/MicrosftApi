@@ -11,11 +11,11 @@ public record ClassicDocumentIngestionRequest(Guid CorrelationId) : CorrelatedBy
     /// <summary>
     /// File name of document to ingest.
     /// </summary>
-    public string FileName { get; set; }
+    public required string FileName { get; set; }
     /// <summary>
     /// Original document URL.
     /// </summary>
-    public string OriginalDocumentUrl { get; set; }
+    public required string OriginalDocumentUrl { get; set; }
     /// <summary>
     /// OID of the user who uploaded the document.
     /// </summary>
@@ -23,7 +23,7 @@ public record ClassicDocumentIngestionRequest(Guid CorrelationId) : CorrelatedBy
     /// <summary>
     /// Document process name.
     /// </summary>
-    public string DocumentProcessName { get; set; }
+    public required string DocumentProcessName { get; set; }
     /// <summary>
     /// Plugin used for document processing.
     /// </summary>

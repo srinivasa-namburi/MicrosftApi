@@ -11,5 +11,5 @@ public record IngestedDocumentCreatedInDatabase(Guid CorrelationId) : Correlated
     /// <summary>
     /// The ID of the ingested document.
     /// </summary>
-    public string FileHash { get; set; }
+    public string? FileHash { get; set; }
 }

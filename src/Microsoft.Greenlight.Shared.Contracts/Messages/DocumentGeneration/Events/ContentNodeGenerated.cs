@@ -21,5 +21,5 @@ public record ContentNodeGenerated(Guid CorrelationId) : CorrelatedBy<Guid>
     /// <summary>
     /// Author OID.
     /// </summary>
-    public string AuthorOid { get; set; }
+    public string? AuthorOid { get; set; }
 }

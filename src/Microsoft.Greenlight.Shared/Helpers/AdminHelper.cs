@@ -13,7 +13,7 @@ namespace Microsoft.Greenlight.Shared.Helpers
         /// Initializes the AdminHelper with the specified configuration.
         /// </summary>
         /// <param name="configuration">The configuration to use.</param>
-        public static void Initialize(IConfiguration configuration)
+        public static void Initialize(IConfiguration? configuration)
         {
             _configuration = configuration;
         }

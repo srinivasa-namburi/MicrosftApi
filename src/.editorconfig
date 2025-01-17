@@ -275,3 +275,7 @@ dotnet_style_qualification_for_event = false:silent
 [*.Tests/**.cs]
 # IDE0130: Namespace does not match folder structure
 dotnet_diagnostic.IDE0130.severity = silent
+
+[Microsoft.Greenlight.Shared.Contracts/[!Messages]**]
+# CS8618: Non-nullable field must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring as nullable.
+dotnet_diagnostic.CS8618.severity = silent

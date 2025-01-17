@@ -11,6 +11,6 @@ public record IngestedDocumentClassified(Guid CorrelationId) : CorrelatedBy<Guid
     /// <summary>
     /// Short code of the classification.
     /// </summary>
-    public string ClassificationShortCode { get; set; }
+    public required string ClassificationShortCode { get; set; }
 
 }

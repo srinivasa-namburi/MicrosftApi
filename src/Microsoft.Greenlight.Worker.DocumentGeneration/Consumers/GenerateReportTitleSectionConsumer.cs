@@ -9,9 +9,13 @@ using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Models;
+using Microsoft.Greenlight.Shared.Models.SourceReferences;
 
 namespace Microsoft.Greenlight.Worker.DocumentGeneration.Consumers;
 
+/// <summary>
+/// A consumer class for the <see cref="GenerateReportTitleSection"/> message.
+/// </summary>
 public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleSection>
 {
     private readonly DocGenerationDbContext _dbContext;
@@ -19,12 +23,18 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
     private readonly IPublishEndpoint _publishEndpoint;
     private readonly IServiceProvider _sp;
 
+    /// <summary>
+    /// Initializes a new instance of the GenerateReportTitleSectionConsumer class.
+    /// </summary>
+    /// <param name="logger">The <see cref="ILogger"/> instance for this class.</param>
+    /// <param name="dbContext">The <see cref="DocGenerationDbContext"/> database context.</param>
+    /// <param name="sp">The <see cref="IServiceProvider"/> instance for resolving service dependencies.</param>
+    /// <param name="publishEndpoint">The <see cref="IPublishEndpoint"/> for publishing generated messages.</param>
     public GenerateReportTitleSectionConsumer(
-        DocGenerationDbContext dbContext,
         ILogger<GenerateReportTitleSectionConsumer> logger,
-        IPublishEndpoint publishEndpoint,
-        IServiceProvider sp
-        )
+        DocGenerationDbContext dbContext,
+        IServiceProvider sp,
+        IPublishEndpoint publishEndpoint)
     {
         _dbContext = dbContext;
         _logger = logger;
@@ -32,6 +42,11 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
         _sp = sp;
     }
 
+    /// <summary>
+    /// Consumes the <see cref="GenerateReportTitleSection"/> context.
+    /// </summary>
+    /// <param name="context">The <see cref="GenerateReportTitleSection"/> context.</param>
+    /// <returns>The long running consuming <see cref="Task"/>.</returns>
     public async Task Consume(ConsumeContext<GenerateReportTitleSection> context)
     {
         var message = context.Message;
@@ -72,7 +87,7 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
             var existingContentNode = await _dbContext.ContentNodes
                 .Include(x => x.Children)
                 .Include(x => x.ContentNodeSystemItem)
-                .ThenInclude(contentNodeSystemItem => contentNodeSystemItem.SourceReferences)
+                    .ThenInclude(y=>y!.SourceReferences)
                 .FirstOrDefaultAsync(cn => cn.Id == contentNode.Id);
 
             if (existingContentNode == null)
@@ -134,7 +149,11 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
                 bodyContentNodeNumber++;
             }
 
-            await _dbContext.ContentNodeSystemItems.AddAsync(existingContentNode.ContentNodeSystemItem);
+            if (existingContentNode.ContentNodeSystemItem != null)
+            {
+                await _dbContext.ContentNodeSystemItems.AddAsync(existingContentNode.ContentNodeSystemItem);
+            }
+
             await _dbContext.ContentNodes.AddRangeAsync(bodyContentNodes);
 
             await _dbContext.SaveChangesAsync();
@@ -191,7 +210,10 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
             }
             catch (Exception innerEx)
             {
-                _logger.LogError(innerEx, "Failed to update GenerationState to Failed for ContentNode ID {ContentNodeId}.", contentNode.Id);
+                _logger.LogError(
+                    innerEx,
+                    "Failed to update GenerationState to Failed for ContentNode ID {ContentNodeId}.",
+                    contentNode.Id);
             }
         }
         finally
@@ -218,10 +240,13 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
     }
 
     private async Task<List<ContentNode>> GenerateBodyText(string contentNodeType, string sectionNumber,
-            string sectionTitle, string tableOfContentsString, string documentProcessName, 
+            string sectionTitle, string tableOfContentsString, string? documentProcessName, 
             Guid? metadataId = null,
             ContentNode? sectionContentNode = null)
     {
+        // The documentProcessName is required to get the correct IBodyTextGenerator
+        ArgumentNullException.ThrowIfNull(documentProcessName);
+
         var bodyTextGenerator = _sp.GetRequiredServiceForDocumentProcess<IBodyTextGenerator>(documentProcessName);
 
         if (bodyTextGenerator == null)
@@ -234,7 +259,9 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
         return result;
     }
 
-    private void ReAttachContentNodeSystemItemToHeadingNode(ContentNode bodyContentNode, ContentNode existingContentNode)
+    private void ReAttachContentNodeSystemItemToHeadingNode(
+        ContentNode bodyContentNode,
+        ContentNode existingContentNode)
     {
         if (bodyContentNode.ContentNodeSystemItem != null)
         {
@@ -251,7 +278,7 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
     private string GeneratePlainTextTableOfContentsFromOutlineJson(string outlineJson)
     {
         var contentNodes = JsonSerializer.Deserialize<List<ContentNode>>(outlineJson);
-        return GenerateTableOfContents(contentNodes);
+        return contentNodes == null ? "" : GenerateTableOfContents(contentNodes);
     }
 
     private string GenerateTableOfContents(IEnumerable<ContentNode> contentNodes)

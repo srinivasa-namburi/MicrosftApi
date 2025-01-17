@@ -9,7 +9,7 @@ public record GenerateDocumentOutline(Guid CorrelationId) : CorrelatedBy<Guid>
     /// <summary>
     /// Title of the document.
     /// </summary>
-    public string DocumentTitle { get; set; }
+    public required string DocumentTitle { get; set; }
 
     /// <summary>
     /// OID of the author.

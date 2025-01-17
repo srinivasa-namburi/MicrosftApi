@@ -50,7 +50,7 @@ public class ReviewQuestionAnswer : EntityBase
     /// <summary>
     /// Text of the original review question.
     /// </summary>
-    public string OriginalReviewQuestionText { get; set; }
+    public required string OriginalReviewQuestionText { get; set; }
 
     /// <summary>
     /// Type of the original review question.

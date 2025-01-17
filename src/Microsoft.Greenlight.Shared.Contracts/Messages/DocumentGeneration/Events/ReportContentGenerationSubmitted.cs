@@ -16,5 +16,5 @@ public record ReportContentGenerationSubmitted(Guid CorrelationId) : CorrelatedB
     /// <summary>
     /// Author OID.
     /// </summary>
-    public string AuthorOid { get; set; }
+    public string? AuthorOid { get; set; }
 }

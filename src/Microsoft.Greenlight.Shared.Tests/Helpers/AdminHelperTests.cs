@@ -6,7 +6,8 @@ using Assert = Xunit.Assert;
 
 namespace Microsoft.Greenlight.Tests.Helpers
 {
-    public class AdminHelperTests
+    [Collection("Tests that call AdminHelper.Initialize")]
+    public sealed class AdminHelperTests : IDisposable
     {
         private readonly Mock<IConfiguration> _mockConfiguration;
 
@@ -15,13 +16,16 @@ namespace Microsoft.Greenlight.Tests.Helpers
             _mockConfiguration = new Mock<IConfiguration>();
         }
 
+        public void Dispose()
+        {
+            AdminHelper.Initialize(null);
+        }
+
         [Fact]
         public void IsRunningInProduction_WhenHelperNotInitialized_ShouldThrowInvalidOperationException()
         {
             // Act & Assert
-#pragma warning disable CS8625 // Disabling to ensure AdminHelper config is not initialized.
             AdminHelper.Initialize(null);
-#pragma warning restore CS8625 // Disabling to ensure AdminHelper config is not initialized.
             Assert.Throws<InvalidOperationException>(() => AdminHelper.IsRunningInProduction());
         }
 

@@ -246,7 +246,7 @@ public class PluginsController : BaseController
                 plugin.Versions.Remove(existingVersion);
             }
 
-            plugin.Versions.Add(pluginVersion);
+            plugin.Versions.Add(pluginVersion!);
 
             await _dbContext.SaveChangesAsync();
 

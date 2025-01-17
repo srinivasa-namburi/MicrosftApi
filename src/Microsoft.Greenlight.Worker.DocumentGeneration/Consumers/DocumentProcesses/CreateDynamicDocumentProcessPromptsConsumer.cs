@@ -10,6 +10,9 @@ using Microsoft.Greenlight.Shared.Repositories;
 
 namespace Microsoft.Greenlight.Worker.DocumentGeneration.Consumers.DocumentProcesses;
 
+/// <summary>
+/// A consumer class for the <see cref="CreateDynamicDocumentProcessPrompts"/> message.
+/// </summary>
 public class CreateDynamicDocumentProcessPromptsConsumer : IConsumer<CreateDynamicDocumentProcessPrompts>
 {
     private readonly PromptDefinitionRepository _promptDefinitionRepository;
@@ -18,6 +21,17 @@ public class CreateDynamicDocumentProcessPromptsConsumer : IConsumer<CreateDynam
     private readonly ILogger<CreateDynamicDocumentProcessPromptsConsumer> _logger;
     private readonly DefaultPromptCatalogTypes _defaultPromptCatalogTypes;
 
+    /// <summary>
+    /// Initializes a new instance of the CreateDynamicDocumentProcessPromptsConsumer class.
+    /// </summary>
+    /// <param name="promptDefinitionRepository">The repository that contains the definition of the prompts.</param>
+    /// <param name="promptImplementationGenericRepository">
+    /// The repository instance for <see cref="PromptImplementation"/> objects./>
+    /// </param>
+    /// <param name="documentProcessRepository">
+    /// The repository instance for retrieving dynamic process definitions.
+    /// </param>
+    /// <param name="logger">The <see cref="ILogger"/> instance for this class.</param>
     public CreateDynamicDocumentProcessPromptsConsumer(
         PromptDefinitionRepository promptDefinitionRepository,
         GenericRepository<PromptImplementation> promptImplementationGenericRepository,
@@ -31,6 +45,11 @@ public class CreateDynamicDocumentProcessPromptsConsumer : IConsumer<CreateDynam
         _defaultPromptCatalogTypes = new DefaultPromptCatalogTypes();
     }
 
+    /// <summary>
+    /// Consumes the <see cref="CreateDynamicDocumentProcessPrompts"/> context.
+    /// </summary>
+    /// <param name="context">The <see cref="CreateDynamicDocumentProcessPrompts"/> context.</param>
+    /// <returns>The long running consuming <see cref="Task"/>.</returns>
     public async Task Consume(ConsumeContext<CreateDynamicDocumentProcessPrompts> context)
     {
         var documentProcessId = context.Message.DocumentProcessId;
@@ -48,23 +67,38 @@ public class CreateDynamicDocumentProcessPromptsConsumer : IConsumer<CreateDynam
 
         if (documentProcess == null)
         {
-            _logger.LogWarning("CreateDynamicDocumentProcessPromptsConsumer: Document Process with Id {DocumentProcessId} not found", documentProcessId);
+            _logger.LogWarning(
+                "CreateDynamicDocumentProcessPromptsConsumer: Document Process with Id {DocumentProcessId} not found",
+                documentProcessId);
             return;
         }
 
         // Get all Prompt Implementations for the Dynamic Document Process to see if they already exist
-        var promptImplementationsForDocumentProcess = _promptImplementationGenericRepository.AllRecords().Where(pi => pi.DocumentProcessDefinitionId == documentProcess.Id);
+        var promptImplementationsForDocumentProcess =
+            _promptImplementationGenericRepository.AllRecords()
+                                                  .Where(pi => pi.DocumentProcessDefinitionId == documentProcess.Id);
 
-        // Loop through all the properties in the DefaultPromptCatalogTypes class to see if there are any missing Prompt Implementations for this Document Process
+        // Loop through all the properties in the DefaultPromptCatalogTypes class to see if there are any missing
+        // Prompt Implementations for this Document Process.
         // We expect to have a Prompt Implementation for each property in the DefaultPromptCatalogTypes class
 
         var numberOfPromptImplementationsAdded = 0;
-        foreach (var promptCatalogProperty in _defaultPromptCatalogTypes.GetType().GetProperties().Where(p => p.PropertyType == typeof(string)))
+        foreach (var promptCatalogProperty in _defaultPromptCatalogTypes.GetType()
+                                                                        .GetProperties()
+                                                                        .Where(p => p.PropertyType == typeof(string)))
         {
-            var promptImplementation = promptImplementationsForDocumentProcess.FirstOrDefault(pi => pi.PromptDefinition.ShortCode == promptCatalogProperty.Name);
+            var promptImplementation =
+                promptImplementationsForDocumentProcess.FirstOrDefault(pi =>
+                    pi.PromptDefinition != null && pi.PromptDefinition.ShortCode == promptCatalogProperty.Name);
             if (promptImplementation == null)
             {
-                var promptDefinition = await _promptDefinitionRepository.AllRecords().FirstOrDefaultAsync(pd => pd.ShortCode == promptCatalogProperty.Name, cancellationToken: stoppingToken);
+                var promptDefinition =
+                    await _promptDefinitionRepository
+                            .AllRecords()
+                            .FirstOrDefaultAsync(
+                                pd => pd.ShortCode == promptCatalogProperty.Name,
+                                cancellationToken: stoppingToken);
+
                 if (promptDefinition != null)
                 {
 
@@ -75,7 +109,10 @@ public class CreateDynamicDocumentProcessPromptsConsumer : IConsumer<CreateDynam
                         Text = promptCatalogProperty.GetValue(_defaultPromptCatalogTypes)?.ToString() ?? ""
                     };
 
-                    _logger.LogInformation("CreateDynamicDocumentProcessPromptsConsumer: Creating prompt implementation of prompt {PromptName} for DP {DocumentProcessShortname}", promptDefinition.ShortCode, documentProcess.ShortName);
+                    _logger.LogInformation(
+                        "CreateDynamicDocumentProcessPromptsConsumer: Creating prompt implementation of prompt {PromptName} for DP {DocumentProcessShortname}",
+                        promptDefinition.ShortCode,
+                        documentProcess.ShortName);
 
                     await _promptImplementationGenericRepository.AddAsync(promptImplementation, false);
                     numberOfPromptImplementationsAdded++;
@@ -92,6 +129,9 @@ public class CreateDynamicDocumentProcessPromptsConsumer : IConsumer<CreateDynam
 
         await _documentProcessRepository.UpdateAsync(documentProcess, false);
         await _documentProcessRepository.SaveChangesAsync();
-        _logger.LogInformation("CreateDynamicDocumentProcessPromptsConsumer: Created {NumberOfPromptImplementationsAdded} prompt implementations for DP {DocumentProcessShortname}", numberOfPromptImplementationsAdded, documentProcess.ShortName);
+        _logger.LogInformation(
+            "CreateDynamicDocumentProcessPromptsConsumer: Created {NumberOfPromptImplementationsAdded} prompt implementations for DP {DocumentProcessShortname}",
+            numberOfPromptImplementationsAdded,
+            documentProcess.ShortName);
     }
 }

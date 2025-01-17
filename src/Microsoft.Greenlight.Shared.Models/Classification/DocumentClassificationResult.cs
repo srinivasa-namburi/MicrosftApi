@@ -10,7 +10,7 @@ public class DocumentClassificationResult
     /// <summary>
     /// Short code representing the result of the document classification.
     /// </summary>
-    public string ClassificationShortCode { get; set; }
+    public required string ClassificationShortCode { get; set; }
 
     /// <summary>
     /// Confidence level of the document classification process.

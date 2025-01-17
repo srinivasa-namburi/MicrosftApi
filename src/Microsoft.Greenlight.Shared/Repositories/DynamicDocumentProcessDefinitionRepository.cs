@@ -112,7 +112,8 @@ public class DynamicDocumentProcessDefinitionRepository : GenericRepository<Dyna
         await Cache.KeyDeleteAsync(CacheKeyAll);
     }
 
-    public new async Task UpdateAsync(DynamicDocumentProcessDefinition updatedDefinition, bool saveChanges = true)
+    public virtual new async Task UpdateAsync(
+        DynamicDocumentProcessDefinition updatedDefinition, bool saveChanges = true)
     {
         await base.UpdateAsync(updatedDefinition, saveChanges);
 

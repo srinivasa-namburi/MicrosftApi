@@ -12,12 +12,12 @@ public record IngestDocumentsFromAutoImportPath(Guid CorrelationId) : Correlated
     /// <summary>
     /// Name of the blob container.
     /// </summary>
-    public string BlobContainerName { get; set; }
+    public required string BlobContainerName { get; set; }
 
     /// <summary>
     /// Folder path in blob container.
     /// </summary>
-    public string FolderPath { get; set; }
+    public required string FolderPath { get; set; }
 
     /// <summary>
     /// Short name of the document library.

@@ -9,6 +9,9 @@ using Microsoft.Greenlight.Shared.Enums;
 
 namespace Microsoft.Greenlight.Worker.DocumentGeneration.Consumers.Review;
 
+/// <summary>
+/// A consumer class for the <see cref="AnalyzeReviewQuestionAnswerSentiment"/> message.
+/// </summary>
 public class AnalyzeReviewQuestionAnswerSentimentConsumer : IConsumer<AnalyzeReviewQuestionAnswerSentiment>
 {
     private readonly Kernel _sk;
@@ -16,6 +19,13 @@ public class AnalyzeReviewQuestionAnswerSentimentConsumer : IConsumer<AnalyzeRev
     private readonly ILogger<AnalyzeReviewQuestionAnswerSentimentConsumer> _logger;
     private readonly IMapper _mapper;
 
+    /// <summary>
+    /// Initializes a new instance of the AnalyzeReviewQuestionAnswerSentimentConsumer class.
+    /// </summary>
+    /// <param name="sk">The Semantic Kernel kernel.</param>
+    /// <param name="dbContext">The <see cref="DocGenerationDbContext"/> database context.</param>
+    /// <param name="logger">The <see cref="ILogger"/> instance for this class.</param>
+    /// <param name="mapper">The AutoMapper mapper instance.</param>
     public AnalyzeReviewQuestionAnswerSentimentConsumer(
         Kernel sk,
         DocGenerationDbContext dbContext,
@@ -28,6 +38,12 @@ public class AnalyzeReviewQuestionAnswerSentimentConsumer : IConsumer<AnalyzeRev
         _logger = logger;
         _mapper = mapper;
     }
+
+    /// <summary>
+    /// Consumes the <see cref="AnalyzeReviewQuestionAnswerSentiment"/> context.
+    /// </summary>
+    /// <param name="context">The <see cref="AnalyzeReviewQuestionAnswerSentiment"/> context.</param>
+    /// <returns>The long running consuming <see cref="Task"/>.</returns>
     public async Task Consume(ConsumeContext<AnalyzeReviewQuestionAnswerSentiment> context)
     {
         // Using Semantic Kernel, analyze the sentiment of the answer
@@ -58,7 +74,10 @@ public class AnalyzeReviewQuestionAnswerSentimentConsumer : IConsumer<AnalyzeRev
         if (!Enum.TryParse<ReviewQuestionAnswerSentiment>(sentiment, out var sentimentEnum))
         {
             // If the sentiment is not valid, log an error and return
-            _logger.LogWarning("AnalyzeReviewQuestionAnswerSentimentConsumer : Invalid sentiment value {Sentiment} for review question answer {ReviewQuestionAnswerId}", sentiment, context.Message.ReviewQuestionAnswer.Id);
+            _logger.LogWarning(
+                "AnalyzeReviewQuestionAnswerSentimentConsumer : Invalid sentiment value {Sentiment} for review question answer {ReviewQuestionAnswerId}",
+                sentiment,
+                context.Message.ReviewQuestionAnswer.Id);
             return;
         }
 
@@ -83,12 +102,15 @@ public class AnalyzeReviewQuestionAnswerSentimentConsumer : IConsumer<AnalyzeRev
         var sentimentReasoningKernelResult = await _sk.InvokePromptAsync(sentimentReasoningPrompt);
         var sentimentReasoning = sentimentReasoningKernelResult.GetValue<string>();
 
-        var reviewQuestionModel = await _dbContext.ReviewQuestionAnswers.FindAsync(context.Message.ReviewQuestionAnswer.Id);
+        var reviewQuestionModel =
+            await _dbContext.ReviewQuestionAnswers.FindAsync(context.Message.ReviewQuestionAnswer.Id);
 
         if (reviewQuestionModel == null)
         {
             // If the review question answer is not found, log an error and return
-            _logger.LogWarning("AnalyzeReviewQuestionAnswerSentimentConsumer : Review question answer not found for ID {ReviewQuestionAnswerId}", context.Message.ReviewQuestionAnswer.Id);
+            _logger.LogWarning(
+                "AnalyzeReviewQuestionAnswerSentimentConsumer : Review question answer not found for ID {ReviewQuestionAnswerId}",
+                context.Message.ReviewQuestionAnswer.Id);
             return;
         }
         // Update the sentiment of the answer in the database

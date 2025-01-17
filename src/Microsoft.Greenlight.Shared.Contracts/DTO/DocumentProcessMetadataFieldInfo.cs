@@ -1,10 +1,11 @@
 ﻿using Microsoft.Greenlight.Shared.Enums;
-using System.ComponentModel;
-using System.Runtime.CompilerServices;
 
 namespace Microsoft.Greenlight.Shared.Contracts.DTO
 {
-    public class DocumentProcessMetadataFieldInfo 
+    /// <summary>
+    /// Represents metadata field information for a document process.
+    /// </summary>
+    public class DocumentProcessMetadataFieldInfo
     {
         /// <summary>
         /// ID of the Metadata Field. Unique identifier.
@@ -15,7 +16,7 @@ namespace Microsoft.Greenlight.Shared.Contracts.DTO
         /// Unique identifier of the Dynamic Document Process Definition this field belongs to.
         /// </summary>
         public Guid DynamicDocumentProcessDefinitionId { get; set; }
-        
+
         /// <summary>
         /// Name of the field. Used as the key in the metadata dictionary/json.
         /// Important that this is descriptive and unique. It is used by the LLM to understand the content of the field.
@@ -89,7 +90,7 @@ namespace Microsoft.Greenlight.Shared.Contracts.DTO
                 Order = this.Order,
                 DefaultValue = this.DefaultValue,
                 HasPossibleValues = this.HasPossibleValues,
-                PossibleValues = [..this.PossibleValues],
+                PossibleValues = [.. this.PossibleValues],
                 DefaultPossibleValue = this.DefaultPossibleValue
             };
         }

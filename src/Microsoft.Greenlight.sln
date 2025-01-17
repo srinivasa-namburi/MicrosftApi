@@ -116,6 +116,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tests", "Tests", "{F85B5003
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.Greenlight.SetupManager.Services.Tests", "Microsoft.Greenlight.SetupManager.Services.Tests\Microsoft.Greenlight.SetupManager.Services.Tests.csproj", "{1EB676DF-B039-497B-A1C5-D190C71A522C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.Greenlight.Worker.DocumentGeneration.Tests", "Microsoft.Greenlight.Worker.DocumentGeneration.Tests\Microsoft.Greenlight.Worker.DocumentGeneration.Tests.csproj", "{BC263AE7-4491-487C-83A9-7B86B3BC5DEB}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.Greenlight.Worker.Scheduler.Tests", "Microsoft.Greenlight.Worker.SchedulerTests\Microsoft.Greenlight.Worker.Scheduler.Tests.csproj", "{0FC0D2E5-8056-46CE-B930-0993AFFF3578}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.Greenlight.SetupManager.DB", "Microsoft.Greenlight.SetupManager.DB\Microsoft.Greenlight.SetupManager.DB.csproj", "{B5F5F9A7-494C-43F5-8589-AE97471442D1}"
@@ -127,6 +129,10 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.Greenlight.Extensions.Plugins.Tests", "Microsoft.Greenlight.Extensions.Plugins.Tests\Microsoft.Greenlight.Extensions.Plugins.Tests.csproj", "{CD753561-BDC4-4520-9B8F-819944E1E41F}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.Greenlight.Shared.Tests", "Microsoft.Greenlight.Shared.Tests\Microsoft.Greenlight.Shared.Tests.csproj", "{49F36FA5-EA47-4862-A0C6-9C336F57B41A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.Greenlight.Shared.Contracts.Tests", "Microsoft.Greenlight.Shared.Contracts.Tests\Microsoft.Greenlight.Shared.Contracts.Tests.csproj", "{639BA273-121B-49E1-A264-C6A02241D347}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.Greenlight.Shared.Models.Tests", "Microsoft.Greenlight.Shared.Models.Tests\Microsoft.Greenlight.Shared.Models.Tests.csproj", "{8325BDB0-F4C4-4DDC-ADF0-FF74DC425D3D}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -369,6 +375,24 @@ Global
 		{49F36FA5-EA47-4862-A0C6-9C336F57B41A}.Publish|Any CPU.Build.0 = Debug|Any CPU
 		{49F36FA5-EA47-4862-A0C6-9C336F57B41A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{49F36FA5-EA47-4862-A0C6-9C336F57B41A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{639BA273-121B-49E1-A264-C6A02241D347}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{639BA273-121B-49E1-A264-C6A02241D347}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{639BA273-121B-49E1-A264-C6A02241D347}.Publish|Any CPU.ActiveCfg = Debug|Any CPU
+		{639BA273-121B-49E1-A264-C6A02241D347}.Publish|Any CPU.Build.0 = Debug|Any CPU
+		{639BA273-121B-49E1-A264-C6A02241D347}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{639BA273-121B-49E1-A264-C6A02241D347}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BC263AE7-4491-487C-83A9-7B86B3BC5DEB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BC263AE7-4491-487C-83A9-7B86B3BC5DEB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BC263AE7-4491-487C-83A9-7B86B3BC5DEB}.Publish|Any CPU.ActiveCfg = Debug|Any CPU
+		{BC263AE7-4491-487C-83A9-7B86B3BC5DEB}.Publish|Any CPU.Build.0 = Debug|Any CPU
+		{BC263AE7-4491-487C-83A9-7B86B3BC5DEB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BC263AE7-4491-487C-83A9-7B86B3BC5DEB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8325BDB0-F4C4-4DDC-ADF0-FF74DC425D3D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8325BDB0-F4C4-4DDC-ADF0-FF74DC425D3D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8325BDB0-F4C4-4DDC-ADF0-FF74DC425D3D}.Publish|Any CPU.ActiveCfg = Debug|Any CPU
+		{8325BDB0-F4C4-4DDC-ADF0-FF74DC425D3D}.Publish|Any CPU.Build.0 = Debug|Any CPU
+		{8325BDB0-F4C4-4DDC-ADF0-FF74DC425D3D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8325BDB0-F4C4-4DDC-ADF0-FF74DC425D3D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -420,6 +444,9 @@ Global
 		{A61AFB9E-3915-4695-A28E-FC5C4750B23F} = {E3971949-16AA-4C9B-BD65-62E0BE6EEAFE}
 		{CD753561-BDC4-4520-9B8F-819944E1E41F} = {A61AFB9E-3915-4695-A28E-FC5C4750B23F}
 		{49F36FA5-EA47-4862-A0C6-9C336F57B41A} = {A5F5EE42-56F5-4A37-82F6-7EDAF7D7EB48}
+		{639BA273-121B-49E1-A264-C6A02241D347} = {A5F5EE42-56F5-4A37-82F6-7EDAF7D7EB48}
+		{BC263AE7-4491-487C-83A9-7B86B3BC5DEB} = {50972C3E-4FF3-4EBA-BEA6-B9B25AF9E46A}
+		{8325BDB0-F4C4-4DDC-ADF0-FF74DC425D3D} = {A5F5EE42-56F5-4A37-82F6-7EDAF7D7EB48}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {8B68A6F2-AE7F-4585-941D-282839D6E440}

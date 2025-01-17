@@ -11,17 +11,17 @@ public record GenerateReportTitleSection(Guid CorrelationId) : CorrelatedBy<Guid
     /// <summary>
     /// JSON representation of the content node.
     /// </summary>
-    public string ContentNodeJson { get; set; }
+    public required string ContentNodeJson { get; set; }
 
     /// <summary>
     /// JSON representation of the document outline.
     /// </summary>
-    public string DocumentOutlineJson { get; set; }
+    public required string DocumentOutlineJson { get; set; }
 
     /// <summary>
     /// OID of the author.
     /// </summary>
-    public string AuthorOid { get; set; }
+    public string? AuthorOid { get; set; }
 
     /// <summary>
     /// Optional metadata ID.

@@ -16,11 +16,11 @@ namespace Microsoft.Greenlight.Shared.Contracts.Messages.DocumentIngestion.Comma
         /// <summary>
         /// Name of the blob container.
         /// </summary>
-        public string BlobContainer { get; set; }
+        public string? BlobContainer { get; set; }
 
         /// <summary>
         /// Name of the file.
         /// </summary>
-        public string FileName { get; set; }
+        public string? FileName { get; set; }
     }
 }

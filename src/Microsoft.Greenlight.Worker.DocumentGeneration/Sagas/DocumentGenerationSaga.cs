@@ -2,15 +2,26 @@ using MassTransit;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Contracts.Messages.DocumentGeneration.Commands;
 using Microsoft.Greenlight.Shared.Contracts.Messages.DocumentGeneration.Events;
-using Microsoft.Greenlight.Shared.Interfaces;
 using Microsoft.Greenlight.Shared.SagaState;
 // ReSharper disable MemberCanBePrivate.Global
 // State variables must be public for MassTransit to work
 
 namespace Microsoft.Greenlight.Worker.DocumentGeneration.Sagas;
 
+/// <summary>
+/// The DocumentGenerationSaga class is the Mass Transit state machine responsible for coordinating the generation of a
+/// document.
+/// </summary>
 public class DocumentGenerationSaga : MassTransitStateMachine<DocumentGenerationSagaState>
 {
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DocumentGenerationSaga"/> class.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The constructor is responsible for creating the Mass Transit messaging flow for generating the document.
+    /// </para>
+    /// </remarks>
     public DocumentGenerationSaga()
     {
         InstanceState(x => x.CurrentState);
@@ -90,20 +101,58 @@ public class DocumentGenerationSaga : MassTransitStateMachine<DocumentGeneration
                       context.Saga.NumberOfContentNodesGenerated++;
                   }
               })
-              .If(context =>  context.Saga.NumberOfContentNodesGenerated == context.Saga.NumberOfContentNodesToGenerate,
+              .If(context => context.Saga.NumberOfContentNodesGenerated == context.Saga.NumberOfContentNodesToGenerate,
                     x => x.TransitionTo(ContentFinalized)));
 
     }
 
+    /// <summary>
+    /// Gets or sets the Processing <see cref="State"/> and its associated events.
+    /// </summary>
     public State Processing { get; set; } = null!;
-    public State Creating { get; set; } = null!;
-    public State ContentGeneration { get; set; } = null!;
-    public State ContentFinalized { get; set; } = null!;
-    public Event<GenerateDocumentDTO> DocumentGenerationRequested { get; private set; }
-    public Event<GeneratedDocumentCreated> GeneratedDocumentCreated { get; private set; }
-    public Event<DocumentOutlineGenerated> DocumentOutlineGenerated { get; private set; }
-    public Event<DocumentOutlineGenerationFailed> DocumentOutlineGenerationFailed { get; private set; }
-    public Event<ReportContentGenerationSubmitted> ReportContentGenerationSubmitted { get; private set; }
-    public Event<ContentNodeGenerated> ContentNodeGenerated { get; private set; }
 
+    /// <summary>
+    /// Gets or sets the Creating <see cref="State"/> and its associated events.
+    /// </summary>
+    public State Creating { get; set; } = null!;
+
+    /// <summary>
+    /// Gets or sets the ContentGeneration <see cref="State"/> and its associated events.
+    /// </summary>
+    public State ContentGeneration { get; set; } = null!;
+
+    /// <summary>
+    /// Gets or sets the ContentFinalized <see cref="State"/> and its associated events.
+    /// </summary>
+    public State ContentFinalized { get; set; } = null!;
+
+    /// <summary>
+    /// Gets the document generation requested <see cref="Event"/>.
+    /// </summary>
+    public Event<GenerateDocumentDTO> DocumentGenerationRequested { get; private set; } = null!;
+
+    /// <summary>
+    /// Gets the document created <see cref="Event"/>.
+    /// </summary>
+    public Event<GeneratedDocumentCreated> GeneratedDocumentCreated { get; private set; } = null!;
+
+    /// <summary>
+    /// Gets the document outline generated <see cref="Event"/>.
+    /// </summary>
+    public Event<DocumentOutlineGenerated> DocumentOutlineGenerated { get; private set; } = null!;
+
+    /// <summary>
+    /// Gets the document outline generation failed <see cref="Event"/>.
+    /// </summary>
+    public Event<DocumentOutlineGenerationFailed> DocumentOutlineGenerationFailed { get; private set; } = null!;
+
+    /// <summary>
+    /// Gets the report content generation submitted <see cref="Event"/>.
+    /// </summary>
+    public Event<ReportContentGenerationSubmitted> ReportContentGenerationSubmitted { get; private set; } = null!;
+
+    /// <summary>
+    /// Gets the content node generated <see cref="Event"/>.
+    /// </summary>
+    public Event<ContentNodeGenerated> ContentNodeGenerated { get; private set; } = null!;
 }

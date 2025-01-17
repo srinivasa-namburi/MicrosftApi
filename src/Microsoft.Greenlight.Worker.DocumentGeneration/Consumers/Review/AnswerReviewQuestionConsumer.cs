@@ -11,26 +11,39 @@ using Microsoft.Greenlight.Shared.Models.Review;
 
 namespace Microsoft.Greenlight.Worker.DocumentGeneration.Consumers.Review;
 
+/// <summary>
+/// A consumer class for the <see cref="AnswerReviewQuestion"/> message.
+/// </summary>
 public class AnswerReviewQuestionConsumer : IConsumer<AnswerReviewQuestion>
 {
     private readonly DocGenerationDbContext _dbContext;
     private readonly IReviewKernelMemoryRepository _reviewKmRepository;
-    private readonly ILogger<AnswerReviewQuestionConsumer> _logger;
     private readonly IMapper _mapper;
 
+    /// <summary>
+    /// Initializes a new instance of the AnswerReviewQuestionConsumer class.
+    /// </summary>
+    /// <param name="dbContext">The <see cref="DocGenerationDbContext"/> database context.</param>
+    /// <param name="reviewKmRepository">
+    /// The <see cref="IReviewKernelMemoryRepository"/> instance that supports Kernel memory for Reviews.
+    /// </param>
+    /// <param name="mapper">The AutoMapper mapper instance.</param>
     public AnswerReviewQuestionConsumer(
         DocGenerationDbContext dbContext,
         IReviewKernelMemoryRepository reviewKmRepository,
-        ILogger<AnswerReviewQuestionConsumer> logger,
         IMapper mapper
         )
     {
         _dbContext = dbContext;
         _reviewKmRepository = reviewKmRepository;
-        _logger = logger;
         _mapper = mapper;
     }
 
+    /// <summary>
+    /// Consumes the <see cref="AnswerReviewQuestion"/> context.
+    /// </summary>
+    /// <param name="context">The <see cref="AnswerReviewQuestion"/> context.</param>
+    /// <returns>The long running consuming <see cref="Task"/>.</returns>
     public async Task Consume(ConsumeContext<AnswerReviewQuestion> context)
     {
         var reviewInstanceId = context.Message.CorrelationId;

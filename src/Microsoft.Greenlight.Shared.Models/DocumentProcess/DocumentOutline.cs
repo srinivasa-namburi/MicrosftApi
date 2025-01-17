@@ -33,7 +33,7 @@ public class DocumentOutline : EntityBase
     /// <summary>
     /// The OutlineItems are Auto Included in the Context
     /// </summary>
-    public virtual List<DocumentOutlineItem> OutlineItems { get; set; }
+    public virtual List<DocumentOutlineItem> OutlineItems { get; set; } = null!;
 
     /// <summary>
     /// Determines if the outline uses numbers or hashes to indicate hierarchy.
@@ -62,11 +62,24 @@ public class DocumentOutline : EntityBase
         var parentStack = new Stack<DocumentOutlineItem>();
         foreach (var line in lines)
         {
-            var match = Regex.Match(line, @"^(\d+\.)*\d+|#* ");
+            var match = Regex.Match(line, @"^(\d+(\.\d+)*)|(\#+) ");
             if (match.Success)
             {
-                var level = match.Groups[1].Captures.Count;
-                var sectionNumber = match.Value.Trim();
+                int level;
+                string sectionNumber;
+                if (match.Groups[1].Success)
+                {
+                    // Numbering (1, 1.1, 1.1.1, etc.)
+                    level = match.Groups[1].Value.Count(c => c == '.');
+                    sectionNumber = match.Groups[1].Value.Trim();
+                }
+                else
+                {
+                    // Hashes (#, ##, ###, etc.)
+                    level = match.Groups[3].Value.Length - 1;
+                    sectionNumber = match.Groups[3].Value.Trim();
+                }
+
                 var sectionTitle = line.Substring(match.Length).Trim();
                 var outlineItem = new DocumentOutlineItem
                 {

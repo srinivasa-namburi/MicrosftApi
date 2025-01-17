@@ -11,7 +11,7 @@ public record DocumentOutlineGenerated(Guid CorrelationId) : CorrelatedBy<Guid>
     /// <summary>
     /// The generated document in JSON format.
     /// </summary>
-    public string GeneratedDocumentJson { get; set; }
+    public required string GeneratedDocumentJson { get; set; }
 
     /// <summary>
     /// The OID of the author who generated the document.

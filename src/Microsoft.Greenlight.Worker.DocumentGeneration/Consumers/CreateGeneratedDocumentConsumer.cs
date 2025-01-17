@@ -6,19 +6,32 @@ using Microsoft.Greenlight.Shared.Models;
 
 namespace Microsoft.Greenlight.Worker.DocumentGeneration.Consumers;
 
+/// <summary>
+/// A consumer class for the <see cref="CreateGeneratedDocument"/> message.
+/// </summary>
 public class CreateGeneratedDocumentConsumer : IConsumer<CreateGeneratedDocument>
 {
     private readonly DocGenerationDbContext _dbContext;
-    private ILogger<CreateGeneratedDocumentConsumer> _logger { get; }
+    private readonly ILogger<CreateGeneratedDocumentConsumer> _logger;
 
+    /// <summary>
+    /// Initializes a new instance of the CreateGeneratedDocumentConsumer class.
+    /// </summary>
+    /// <param name="logger">The <see cref="ILogger"/> instance for this class.</param>
+    /// <param name="dbContext">The <see cref="DocGenerationDbContext"/> database context.</param>
     public CreateGeneratedDocumentConsumer(
         ILogger<CreateGeneratedDocumentConsumer> logger,
-        DocGenerationDbContext dbContext
-        )
+        DocGenerationDbContext dbContext)
     {
         _dbContext = dbContext;
         _logger = logger;
     }
+
+    /// <summary>
+    /// Consumes the <see cref="CreateGeneratedDocument"/> context.
+    /// </summary>
+    /// <param name="context">The <see cref="CreateGeneratedDocument"/> context.</param>
+    /// <returns>The long running consuming <see cref="Task"/>.</returns>
     public async Task Consume(ConsumeContext<CreateGeneratedDocument> context)
     {
         var message = context.Message;
@@ -37,7 +50,7 @@ public class CreateGeneratedDocumentConsumer : IConsumer<CreateGeneratedDocument
             GeneratedDate = DateTime.UtcNow,
             RequestingAuthorOid = new Guid(message.OriginalDTO.AuthorOid!),
             DocumentProcess = message.OriginalDTO.DocumentProcessName,
-            ContentNodes = new List<ContentNode>()
+            ContentNodes = []
         };
 
         var metaData = new DocumentMetadata()
@@ -57,11 +70,16 @@ public class CreateGeneratedDocumentConsumer : IConsumer<CreateGeneratedDocument
         }
         catch (Exception e)
         {
-            _logger.LogError(e, "CreateGeneratedDocumentConsumer: Error saving generated document with ID {documentId} to database", context.Message.CorrelationId);
+            _logger.LogError(
+                e,
+                "CreateGeneratedDocumentConsumer: Error saving generated document with ID {documentId} to database",
+                context.Message.CorrelationId);
             throw;
         }
 
-        _logger.LogInformation("CreateGeneratedDocumentConsumer: Generated document with ID {documentId} saved to database", context.Message.CorrelationId);
+        _logger.LogInformation(
+            "CreateGeneratedDocumentConsumer: Generated document with ID {documentId} saved to database",
+            context.Message.CorrelationId);
 
         await context.Publish(new GeneratedDocumentCreated(context.Message.CorrelationId)
         {

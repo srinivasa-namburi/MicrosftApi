@@ -51,7 +51,7 @@ public class GenericRepository<T> where T : EntityBase
         }
     }
 
-    public async Task<T?> GetByIdAsync(Guid id, bool useCache = true)
+    public virtual async Task<T?> GetByIdAsync(Guid id, bool useCache = true)
     {
         if (useCache)
         {
@@ -75,7 +75,7 @@ public class GenericRepository<T> where T : EntityBase
         }
     }
 
-    public async Task AddAsync(T entity, bool saveChanges=true)
+    public virtual async Task AddAsync(T entity, bool saveChanges=true)
     {
         await _dbContext.Set<T>().AddAsync(entity);
         

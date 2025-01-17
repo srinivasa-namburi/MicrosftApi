@@ -12,17 +12,17 @@ public record ClassifyIngestedDocument(Guid CorrelationId) : CorrelatedBy<Guid>
     /// <summary>
     /// The name of the document process.
     /// </summary>
-    public string DocumentProcessName { get; set; }
+    public required string DocumentProcessName { get; set; }
 
     /// <summary>
     /// The name of the file.
     /// </summary>
-    public string FileName { get; set; }
+    public required string FileName { get; set; }
 
     /// <summary>
     /// The original URL of the document.
     /// </summary>
-    public string OriginalDocumentUrl { get; set; }
+    public required string OriginalDocumentUrl { get; set; }
 
     /// <summary>
     /// The OID of the user who uploaded the document.

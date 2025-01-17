@@ -8,8 +8,20 @@ using Microsoft.Greenlight.Shared.SagaState;
 
 namespace Microsoft.Greenlight.Worker.DocumentGeneration.Sagas;
 
+/// <summary>
+/// The ReviewExecutionSaga class is the Mass Transit state machine responsible for coordinating the execution of a
+/// review of a document.
+/// </summary>
 public class ReviewExecutionSaga : MassTransitStateMachine<ReviewExecutionSagaState>
 {
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ReviewExecutionSaga"/> class.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The constructor is responsible for creating the Mass Transit messaging flow for reviewing a document.
+    /// </para>
+    /// </remarks>
     public ReviewExecutionSaga()
     {
         InstanceState(x => x.CurrentState);
@@ -64,12 +76,33 @@ public class ReviewExecutionSaga : MassTransitStateMachine<ReviewExecutionSagaSt
                 ));
     }
 
-
-
+    /// <summary>
+    /// Gets or sets the Ingesting <see cref="State"/> and its associated events.
+    /// </summary>
     public State Ingesting { get; set; } = null!;
+
+    /// <summary>
+    /// Gets or sets the Answering <see cref="State"/> and its associated events.
+    /// </summary>
     public State Answering { get; set; } = null!;
-    public Event<ExecuteReviewRequest> ReviewExecutionRequested { get; private set; }
-    public Event<ReviewDocumentIngested> ReviewDocumentIngested { get; private set; }
-    public Event<ReviewQuestionAnswered> ReviewQuestionAnswered { get; private set; }
-    public Event<ReviewQuestionAnswerAnalyzed> ReviewQuestionAnswerAnalyzed { get; private set; }
+
+    /// <summary>
+    /// Gets the review requested <see cref="Event"/>.
+    /// </summary>
+    public Event<ExecuteReviewRequest> ReviewExecutionRequested { get; private set; } = null!;
+
+    /// <summary>
+    /// Gets the document to review ingested <see cref="Event"/>.
+    /// </summary>
+    public Event<ReviewDocumentIngested> ReviewDocumentIngested { get; private set; } = null!;
+
+    /// <summary>
+    /// Gets the review question answered <see cref="Event"/>.
+    /// </summary>
+    public Event<ReviewQuestionAnswered> ReviewQuestionAnswered { get; private set; } = null!;
+
+    /// <summary>
+    /// Gets the review question analyzed <see cref="Event"/>.
+    /// </summary>
+    public Event<ReviewQuestionAnswerAnalyzed> ReviewQuestionAnswerAnalyzed { get; private set; } = null!;
 }

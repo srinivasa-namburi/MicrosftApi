@@ -9,8 +9,14 @@ using Microsoft.Greenlight.Shared.Contracts.Messages;
 
 namespace Microsoft.Greenlight.API.Main.Controllers.Tests
 {
-    public class DocumentLibraryControllerTests
+    [Collection("Tests that call AdminHelper.Initialize")]
+    public sealed class DocumentLibraryControllerTests : IDisposable
     {
+        public void Dispose()
+        {
+            AdminHelper.Initialize(null);
+        }
+
         [Fact]
         public async Task GetAllDocumentLibraries_WithList_ReturnsOk()
         {
@@ -33,7 +39,6 @@ namespace Microsoft.Greenlight.API.Main.Controllers.Tests
             var returnValue = Assert.IsType<List<DocumentLibraryInfo>>(okResult.Value);
             Assert.Equal(2, returnValue.Count);
         }
-
 
         [Fact]
         public async Task GetDocumentLibraryById_WithValidId_ReturnsOk()

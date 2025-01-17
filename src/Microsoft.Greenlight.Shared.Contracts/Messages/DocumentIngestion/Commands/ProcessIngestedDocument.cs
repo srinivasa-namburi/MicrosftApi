@@ -11,12 +11,12 @@ public record ProcessIngestedDocument(Guid CorrelationId) : CorrelatedBy<Guid>
     /// <summary>
     /// Name of the file.
     /// </summary>
-    public string FileName { get; set; }
+    public required string FileName { get; set; }
 
     /// <summary>
     /// URL of the original document.
     /// </summary>
-    public string OriginalDocumentUrl { get; set; }
+    public required string OriginalDocumentUrl { get; set; }
 
     /// <summary>
     /// OID of the user who uploaded the document.

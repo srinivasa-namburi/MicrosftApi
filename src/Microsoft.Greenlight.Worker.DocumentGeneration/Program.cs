@@ -21,13 +21,16 @@ builder.AddServiceDefaults();
 builder.Services.AddSingleton<AzureCredentialHelper>();
 var credentialHelper = new AzureCredentialHelper(builder.Configuration);
 
-builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
-var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
+builder.Services.AddOptions<ServiceConfigurationOptions>()
+                .Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
+var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName)
+                                                       .Get<ServiceConfigurationOptions>()!;
 
 // Initialize AdminHelper with configuration
 AdminHelper.Initialize(builder.Configuration);
 
-await builder.DelayStartup(serviceConfigurationOptions.GreenlightServices.DocumentGeneration.DurableDevelopmentServices);
+await builder.DelayStartup(
+    serviceConfigurationOptions.GreenlightServices.DocumentGeneration.DurableDevelopmentServices);
 
 builder.AddGreenlightServices(credentialHelper, serviceConfigurationOptions);
 

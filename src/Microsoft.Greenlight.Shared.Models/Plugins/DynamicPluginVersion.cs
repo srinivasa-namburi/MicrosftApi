@@ -53,7 +53,7 @@ public class DynamicPluginVersion : IEquatable<DynamicPluginVersion>, IComparabl
     /// <param name="pluginVersion">When this method returns, contains the <see cref="DynamicPluginVersion"/>
     /// instance, if the parse succeeded, or null if the parse failed.</param>
     /// <returns><c>true</c> if the version string was parsed successfully; otherwise, <c>false</c>.</returns>
-    public static bool TryParse(string version, out DynamicPluginVersion pluginVersion)
+    public static bool TryParse(string version, out DynamicPluginVersion? pluginVersion)
     {
         pluginVersion = null;
         var parts = version.Split('.');
@@ -82,8 +82,9 @@ public class DynamicPluginVersion : IEquatable<DynamicPluginVersion>, IComparabl
     /// </summary>
     /// <param name="other">An object to compare with this instance.</param>
     /// <returns>A value that indicates the relative order of the objects being compared.</returns>
-    public int CompareTo(DynamicPluginVersion other)
+    public int CompareTo(DynamicPluginVersion? other)
     {
+        if (other is null) throw new ArgumentNullException(nameof(other));
         if (Major != other.Major) return Major.CompareTo(other.Major);
         if (Minor != other.Minor) return Minor.CompareTo(other.Minor);
         return Patch.CompareTo(other.Patch);
@@ -94,7 +95,7 @@ public class DynamicPluginVersion : IEquatable<DynamicPluginVersion>, IComparabl
     /// </summary>
     /// <param name="other">An object to compare with this object.</param>
     /// <returns><c>true</c> if the current object is equal to the <paramref name="other"/> parameter; otherwise, <c>false</c>.</returns>
-    public bool Equals(DynamicPluginVersion other)
+    public bool Equals(DynamicPluginVersion? other)
     {
         if (ReferenceEquals(null, other)) return false;
         if (ReferenceEquals(this, other)) return true;
@@ -102,7 +103,7 @@ public class DynamicPluginVersion : IEquatable<DynamicPluginVersion>, IComparabl
     }
 
     /// <inheritdoc/>
-    public override bool Equals(object obj)
+    public override bool Equals(object? obj)
     {
         if (ReferenceEquals(null, obj)) return false;
         if (ReferenceEquals(this, obj)) return true;

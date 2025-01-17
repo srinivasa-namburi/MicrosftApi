@@ -12,12 +12,12 @@ public record KernelMemoryDocumentIngestionRequest(Guid CorrelationId) : Correla
     /// <summary>
     /// Name of the file.
     /// </summary>
-    public string FileName { get; set; }
+    public required string FileName { get; set; }
 
     /// <summary>
     /// URL of the original document.
     /// </summary>
-    public string OriginalDocumentUrl { get; set; }
+    public required string OriginalDocumentUrl { get; set; }
 
     /// <summary>
     /// OID of the user who uploaded the document.
@@ -27,12 +27,12 @@ public record KernelMemoryDocumentIngestionRequest(Guid CorrelationId) : Correla
     /// <summary>
     /// Short name of the document library.
     /// </summary>
-    public string DocumentLibraryShortName { get; set; }
+    public required string DocumentLibraryShortName { get; set; }
 
     /// <summary>
     /// Name of the blob container.
     /// </summary>
-    public string BlobContainerName { get; set; }
+    public string? BlobContainerName { get; set; }
 
     /// <summary>
     /// Type of the document library.

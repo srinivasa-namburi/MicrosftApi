@@ -28,7 +28,7 @@ public abstract class EntityBase
     /// Unique identifier for the entity.
     /// </summary>
     [Key]
-    public Guid Id { get; set; }
+    public virtual Guid Id { get; set; }
 
     /// <summary>
     /// Row version for concurrency control.

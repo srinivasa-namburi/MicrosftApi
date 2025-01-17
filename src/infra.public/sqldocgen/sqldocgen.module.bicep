@@ -5,17 +5,10 @@ param principalId string
 
 param principalName string
 
-resource sqldocgen 'Microsoft.Sql/servers@2021-11-01' = {
+resource sqldocgen 'Microsoft.Sql/servers@2024-05-01-preview' = {
   name: take('sqldocgen${uniqueString(resourceGroup().id)}', 63)
   location: location
   properties: {
-    administrators: {
-      administratorType: 'ActiveDirectory'
-      login: principalName
-      sid: principalId
-      tenantId: subscription().tenantId
-      azureADOnlyAuthentication: true
-    }
     minimalTlsVersion: '1.2'
     publicNetworkAccess: 'Enabled'
     version: '12.0'
@@ -24,6 +17,17 @@ resource sqldocgen 'Microsoft.Sql/servers@2021-11-01' = {
     'aspire-resource-name': 'sqldocgen'
   }
 }
+
+resource sqlAdmins 'Microsoft.Sql/servers/administrators@2024-05-01-preview' = {
+  parent: sqldocgen
+  name: 'ActiveDirectory'
+  properties: {
+      administratorType: 'ActiveDirectory'
+      login: principalName
+      sid: principalId
+      tenantId: subscription().tenantId
+    } 
+  }
 
 resource sqlFirewallRule_AllowAllAzureIps 'Microsoft.Sql/servers/firewallRules@2021-11-01' = {
   name: 'AllowAllAzureIps'

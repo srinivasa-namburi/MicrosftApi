@@ -7,9 +7,12 @@ namespace Microsoft.Greenlight.Shared.Contracts.Messages.DocumentGeneration.Comm
 public record GenerateReportContent(Guid CorrelationId) : CorrelatedBy<Guid>
 {
     /// <summary>
-    /// Generated document JSON.
+    /// The JSON representation of the generated document.
     /// </summary>
-    public string? GeneratedDocumentJson { get; set; }
+    /// <remarks>
+    /// This is currently only set in GenerateReportContentConsumer, and is set by a non-nullable property.
+    /// </remarks>
+    public virtual string GeneratedDocumentJson { get; set; } = null!;
 
     /// <summary>
     /// Author OID.

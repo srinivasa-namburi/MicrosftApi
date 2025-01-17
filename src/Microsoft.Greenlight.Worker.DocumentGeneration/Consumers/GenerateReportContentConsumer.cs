@@ -9,12 +9,20 @@ using Microsoft.Greenlight.Shared.Models;
 
 namespace Microsoft.Greenlight.Worker.DocumentGeneration.Consumers;
 
+/// <summary>
+/// A consumer class for the <see cref="GenerateReportContent"/> message.
+/// </summary>
 public class GenerateReportContentConsumer : IConsumer<GenerateReportContent>
 {
     private readonly ILogger<GenerateReportContentConsumer> _logger;
     private readonly DocGenerationDbContext _dbContext;
     private int _titleCount;
 
+    /// <summary>
+    /// Initializes a new instance of the GenerateReportContentConsumer class.
+    /// </summary>
+    /// <param name="logger">The <see cref="ILogger"/> instance for this class.</param>
+    /// <param name="dbContext">The <see cref="DocGenerationDbContext"/> database context.</param>
     public GenerateReportContentConsumer(
         ILogger<GenerateReportContentConsumer> logger,
         DocGenerationDbContext dbContext)
@@ -23,6 +31,11 @@ public class GenerateReportContentConsumer : IConsumer<GenerateReportContent>
         _dbContext = dbContext;
     }
 
+    /// <summary>
+    /// Consumes the <see cref="GenerateReportContent"/> context.
+    /// </summary>
+    /// <param name="context">The <see cref="GenerateReportContent"/> context.</param>
+    /// <returns>The long running consuming <see cref="Task"/>.</returns>
     public async Task Consume(ConsumeContext<GenerateReportContent> context)
     {
         var message = context.Message;
@@ -33,12 +46,17 @@ public class GenerateReportContentConsumer : IConsumer<GenerateReportContent>
         var noContentNodes = new List<ContentNode>();
 
         _titleCount = 0;
-        var documentContentNodesJson = JsonSerializer.Serialize(reportContent.ContentNodes);
+
+        // Throws a null reference exception if reportContent is null.
+        // This will never be null because the GeneratedDocumentJson will always be present and successfullly
+        // deserialized at this point.
+        var documentContentNodesJson = JsonSerializer.Serialize(reportContent!.ContentNodes);
 
         // Process each top-level content node recursively
         foreach (var title in reportContent.ContentNodes)
         {
-            await ProcessContentNodeRecursive(title, documentContentNodesJson, context, noContentNodes, generationMessages);
+            await ProcessContentNodeRecursive(
+                title, documentContentNodesJson, context, noContentNodes, generationMessages);
         }
 
         await context.Publish(new ReportContentGenerationSubmitted(context.Message.CorrelationId)
