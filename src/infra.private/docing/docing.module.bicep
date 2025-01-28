@@ -1,42 +1,39 @@
-targetScope = 'resourceGroup'
-
-@description('')
+@description('The location for the resource(s) to be deployed.')
 param location string = resourceGroup().location
 
-@description('')
 param principalId string
 
-@description('')
 param principalType string
 
 @description('')
 param peSubnet string = ''
 
-@description('')
-param tags object = {}
-
-resource storageAccount_ZrwAiVlDH 'Microsoft.Storage/storageAccounts@2023-01-01' = {
-  name: toLower(take('docing${uniqueString(resourceGroup().id)}', 24))
+resource docing 'Microsoft.Storage/storageAccounts@2024-01-01' = {
+  name: take('docing${uniqueString(resourceGroup().id)}', 24)
+  kind: 'StorageV2'
   location: location
-  tags: {
-    'aspire-resource-name': 'docing'
-  }
   sku: {
     name: 'Standard_GRS'
   }
-  kind: 'StorageV2'
   properties: {
     accessTier: 'Hot'
+    allowSharedKeyAccess: false
+    minimumTlsVersion: 'TLS1_2'
     networkAcls: {
-      defaultAction: 'Deny'
+      defaultAction: 'Allow'
     }
     publicNetworkAccess: 'Disabled'
   }
+  tags: {
+    'aspire-resource-name': 'docing'
+  }
 }
 
-resource peStorageAccount_ZrwAiVlDH 'Microsoft.Network/privateEndpoints@2023-11-01' = if (peSubnet != '') {
-  name: '${storageAccount_ZrwAiVlDH.name}-pl'
-  tags: tags
+resource peDocing 'Microsoft.Network/privateEndpoints@2023-11-01' = if (peSubnet != '') {
+  name: '${docing.name}-pl'
+  tags: {
+    'aspire-resource-name': 'docing'
+  }
   location: location
   properties: {
     subnet: {
@@ -44,9 +41,9 @@ resource peStorageAccount_ZrwAiVlDH 'Microsoft.Network/privateEndpoints@2023-11-
     }
     privateLinkServiceConnections: [
       {
-        name: '${storageAccount_ZrwAiVlDH.name}-pl'
+        name: '${docing.name}-pl'
         properties: {
-          privateLinkServiceId: storageAccount_ZrwAiVlDH.id
+          privateLinkServiceId: docing.id
           groupIds: ['blob']
         }
       }
@@ -54,47 +51,47 @@ resource peStorageAccount_ZrwAiVlDH 'Microsoft.Network/privateEndpoints@2023-11-
   }
 }
 
-resource blobService_G4CRMfvgh 'Microsoft.Storage/storageAccounts/blobServices@2022-09-01' = {
-  parent: storageAccount_ZrwAiVlDH
+resource blobs 'Microsoft.Storage/storageAccounts/blobServices@2024-01-01' = {
   name: 'default'
-  properties: {
-  }
+  parent: docing
 }
 
-resource roleAssignment_g1GHeJxdK 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  scope: storageAccount_ZrwAiVlDH
-  name: guid(storageAccount_ZrwAiVlDH.id, principalId, subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'))
+resource docing_StorageBlobDataContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(docing.id, principalId, subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'))
   properties: {
+    principalId: principalId
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
-    principalId: principalId
     principalType: principalType
   }
+  scope: docing
 }
 
-resource roleAssignment_h6bEtMn47 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  scope: storageAccount_ZrwAiVlDH
-  name: guid(storageAccount_ZrwAiVlDH.id, principalId, subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3'))
+resource docing_StorageTableDataContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(docing.id, principalId, subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3'))
   properties: {
+    principalId: principalId
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3')
-    principalId: principalId
     principalType: principalType
   }
+  scope: docing
 }
 
-resource roleAssignment_eB8mbL3FS 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  scope: storageAccount_ZrwAiVlDH
-  name: guid(storageAccount_ZrwAiVlDH.id, principalId, subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '974c5e8b-45b9-4653-ba55-5f855dd0fb88'))
+resource docing_StorageQueueDataContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(docing.id, principalId, subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '974c5e8b-45b9-4653-ba55-5f855dd0fb88'))
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '974c5e8b-45b9-4653-ba55-5f855dd0fb88')
     principalId: principalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '974c5e8b-45b9-4653-ba55-5f855dd0fb88')
     principalType: principalType
   }
+  scope: docing
 }
 
-output blobEndpoint string = storageAccount_ZrwAiVlDH.properties.primaryEndpoints.blob
-output queueEndpoint string = storageAccount_ZrwAiVlDH.properties.primaryEndpoints.queue
-output tableEndpoint string = storageAccount_ZrwAiVlDH.properties.primaryEndpoints.table
+output blobEndpoint string = docing.properties.primaryEndpoints.blob
+
+output queueEndpoint string = docing.properties.primaryEndpoints.queue
+
+output tableEndpoint string = docing.properties.primaryEndpoints.table
 
 // Custom
-output name string = storageAccount_ZrwAiVlDH.name
-output pe_ip string = peStorageAccount_ZrwAiVlDH.properties.customDnsConfigs[0].ipAddresses[0]
+output name string = docing.name
+output pe_ip string = peDocing.properties.customDnsConfigs[0].ipAddresses[0]

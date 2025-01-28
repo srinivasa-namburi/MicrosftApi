@@ -1,42 +1,42 @@
 targetScope = 'resourceGroup'
 
-@description('')
+@description('The location for the resource(s) to be deployed.')
 param location string = resourceGroup().location
 
-@description('')
-param keyVaultName string
+param principalId string
+
+param principalName string
 
 @description('')
 param peSubnet string = ''
 
-@description('')
-param tags object = {}
-
-resource keyVault_IeF8jZvXV 'Microsoft.KeyVault/vaults@2022-07-01' existing = {
-  name: keyVaultName
-}
-
-resource redisCache_bsDXQBNdq 'Microsoft.Cache/Redis@2020-06-01' = {
-  name: toLower(take('redis${uniqueString(resourceGroup().id)}', 24))
+resource redis 'Microsoft.Cache/redis@2024-03-01' = {
+  name: take('redis${uniqueString(resourceGroup().id)}', 63)
   location: location
-  tags: {
-    'aspire-resource-name': 'redis'
-  }
   properties: {
-    enableNonSslPort: false
-    minimumTlsVersion: '1.2'
     sku: {
       name: 'Standard'
       family: 'C'
       capacity: 1
     }
+    enableNonSslPort: false
+    disableAccessKeyAuthentication: true
+    minimumTlsVersion: '1.2'
+    redisConfiguration: {
+      'aad-enabled': 'true'
+    }
     publicNetworkAccess: 'Disabled'
+  }
+  tags: {
+    'aspire-resource-name': 'redis'
   }
 }
 
-resource peRedisCache_bsDXQBNdq 'Microsoft.Network/privateEndpoints@2023-11-01' = if (peSubnet != '') {
-  name: '${redisCache_bsDXQBNdq.name}-pl'
-  tags: tags
+resource peRedis 'Microsoft.Network/privateEndpoints@2023-11-01' = if (peSubnet != '') {
+  name: '${redis.name}-pl'
+  tags: {
+    'aspire-resource-name': 'redis'
+  }
   location: location
   properties: {
     subnet: {
@@ -44,9 +44,9 @@ resource peRedisCache_bsDXQBNdq 'Microsoft.Network/privateEndpoints@2023-11-01' 
     }
     privateLinkServiceConnections: [
       {
-        name: '${redisCache_bsDXQBNdq.name}-pl'
+        name: '${redis.name}-pl'
         properties: {
-          privateLinkServiceId: redisCache_bsDXQBNdq.id
+          privateLinkServiceId: redis.id
           groupIds: ['redisCache']
         }
       }
@@ -54,16 +54,19 @@ resource peRedisCache_bsDXQBNdq 'Microsoft.Network/privateEndpoints@2023-11-01' 
   }
 }
 
-resource keyVaultSecret_Ddsc3HjrA 'Microsoft.KeyVault/vaults/secrets@2022-07-01' = {
-  parent: keyVault_IeF8jZvXV
-  name: 'connectionString'
-  location: location
+
+resource redis_contributor 'Microsoft.Cache/redis/accessPolicyAssignments@2024-03-01' = {
+  name: take('rediscontributor${uniqueString(resourceGroup().id)}', 24)
   properties: {
-    value: '${redisCache_bsDXQBNdq.properties.hostName},ssl=true,password=${redisCache_bsDXQBNdq.listKeys(redisCache_bsDXQBNdq.apiVersion).primaryKey}'
+    accessPolicyName: 'Data Contributor'
+    objectId: principalId
+    objectIdAlias: principalName
   }
+  parent: redis
 }
 
+output connectionString string = '${redis.properties.hostName},ssl=true'
 
 // Custom
-output name string = redisCache_bsDXQBNdq.name
-output pe_ip string = peRedisCache_bsDXQBNdq.properties.customDnsConfigs[0].ipAddresses[0]
+output name string = redis.name
+output pe_ip string = peRedis.properties.customDnsConfigs[0].ipAddresses[0]

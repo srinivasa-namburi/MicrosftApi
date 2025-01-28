@@ -12,9 +12,6 @@ param location string
 @description('Id of the user or app to assign application roles')
 param principalId string = ''
 
-// @secure()
-// param sqlPassword string
-
 var tags = {
   'azd-env-name': environmentName
 }

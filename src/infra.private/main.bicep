@@ -35,11 +35,10 @@ module resources 'resources.bicep' = {
     location: location
     tags: tags
     principalId: principalId
-    peSubnet: peSubnet
     containerAppEnvSubnet: containerAppEnvSubnet
+    peSubnet: peSubnet
   }
 }
-
 module aiSearch 'aiSearch/aiSearch.module.bicep' = {
   name: 'aiSearch'
   scope: rg
@@ -47,7 +46,6 @@ module aiSearch 'aiSearch/aiSearch.module.bicep' = {
     location: location
     principalId: resources.outputs.MANAGED_IDENTITY_PRINCIPAL_ID
     principalType: 'ServicePrincipal'
-    tags: tags
     peSubnet: peSubnet
   }
 }
@@ -58,17 +56,24 @@ module docing 'docing/docing.module.bicep' = {
     location: location
     principalId: resources.outputs.MANAGED_IDENTITY_PRINCIPAL_ID
     principalType: 'ServicePrincipal'
-    tags: tags
     peSubnet: peSubnet
+  }
+}
+module insights 'insights/insights.module.bicep' = {
+  name: 'insights'
+  scope: rg
+  params: {
+    location: location
+    logAnalyticsWorkspaceId: resources.outputs.AZURE_LOG_ANALYTICS_WORKSPACE_ID
   }
 }
 module redis 'redis/redis.module.bicep' = {
   name: 'redis'
   scope: rg
   params: {
-    keyVaultName: resources.outputs.SERVICE_BINDING_KVB6088994_NAME
     location: location
-    tags: tags
+    principalId: resources.outputs.MANAGED_IDENTITY_PRINCIPAL_ID
+    principalName: resources.outputs.MANAGED_IDENTITY_NAME
     peSubnet: peSubnet
   }
 }
@@ -79,7 +84,6 @@ module sbus 'sbus/sbus.module.bicep' = {
     location: location
     principalId: resources.outputs.MANAGED_IDENTITY_PRINCIPAL_ID
     principalType: 'ServicePrincipal'
-    tags: tags
     peSubnet: peSubnet
   }
 }
@@ -90,7 +94,6 @@ module signalr 'signalr/signalr.module.bicep' = {
     location: location
     principalId: resources.outputs.MANAGED_IDENTITY_PRINCIPAL_ID
     principalType: 'ServicePrincipal'
-    tags: tags
     peSubnet: peSubnet
   }
 }
@@ -101,7 +104,6 @@ module sqldocgen 'sqldocgen/sqldocgen.module.bicep' = {
     location: location
     principalId: resources.outputs.MANAGED_IDENTITY_PRINCIPAL_ID
     principalName: resources.outputs.MANAGED_IDENTITY_NAME
-    tags: tags
     peSubnet: peSubnet
   }
 }
@@ -110,12 +112,14 @@ output MANAGED_IDENTITY_NAME string = resources.outputs.MANAGED_IDENTITY_NAME
 output AZURE_LOG_ANALYTICS_WORKSPACE_NAME string = resources.outputs.AZURE_LOG_ANALYTICS_WORKSPACE_NAME
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = resources.outputs.AZURE_CONTAINER_REGISTRY_ENDPOINT
 output AZURE_CONTAINER_REGISTRY_MANAGED_IDENTITY_ID string = resources.outputs.AZURE_CONTAINER_REGISTRY_MANAGED_IDENTITY_ID
+output AZURE_CONTAINER_REGISTRY_NAME string = resources.outputs.AZURE_CONTAINER_REGISTRY_NAME
+output AZURE_CONTAINER_APPS_ENVIRONMENT_NAME string = resources.outputs.AZURE_CONTAINER_APPS_ENVIRONMENT_NAME
 output AZURE_CONTAINER_APPS_ENVIRONMENT_ID string = resources.outputs.AZURE_CONTAINER_APPS_ENVIRONMENT_ID
 output AZURE_CONTAINER_APPS_ENVIRONMENT_DEFAULT_DOMAIN string = resources.outputs.AZURE_CONTAINER_APPS_ENVIRONMENT_DEFAULT_DOMAIN
-output SERVICE_BINDING_KVB6088994_ENDPOINT string = resources.outputs.SERVICE_BINDING_KVB6088994_ENDPOINT
-
 output AISEARCH_CONNECTIONSTRING string = aiSearch.outputs.connectionString
 output DOCING_BLOBENDPOINT string = docing.outputs.blobEndpoint
+output INSIGHTS_APPINSIGHTSCONNECTIONSTRING string = insights.outputs.appInsightsConnectionString
+output REDIS_CONNECTIONSTRING string = redis.outputs.connectionString
 output SBUS_SERVICEBUSENDPOINT string = sbus.outputs.serviceBusEndpoint
 output SIGNALR_HOSTNAME string = signalr.outputs.hostName
 output SQLDOCGEN_SQLSERVERFQDN string = sqldocgen.outputs.sqlServerFqdn

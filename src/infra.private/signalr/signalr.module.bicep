@@ -1,22 +1,15 @@
-targetScope = 'resourceGroup'
-
-@description('')
+@description('The location for the resource(s) to be deployed.')
 param location string = resourceGroup().location
 
-@description('')
 param principalId string
 
-@description('')
 param principalType string
 
 @description('')
 param peSubnet string = ''
 
-@description('')
-param tags object = {}
-
-resource signalRService_iD3Yrl49T 'Microsoft.SignalRService/signalR@2022-02-01' = {
-  name: toLower(take('signalr${uniqueString(resourceGroup().id)}', 24))
+resource signalr 'Microsoft.SignalRService/signalR@2024-03-01' = {
+  name: take('signalr${uniqueString(resourceGroup().id)}', 63)
   location: location
   tags: {
     'aspire-resource-name': 'signalr'
@@ -24,11 +17,11 @@ resource signalRService_iD3Yrl49T 'Microsoft.SignalRService/signalR@2022-02-01' 
   sku: {
     name: 'Premium_P1'
     tier: 'Premium'
-    capacity: 3
+    capacity: 2
   }
   kind: 'SignalR'
   properties: {
-    publicNetworkAccess: 'Enabled'
+    publicNetworkAccess: 'Enabled' // This communicates with frontend client app directly, so needs to be enabled
     features: [
       {
         flag: 'ServiceMode'
@@ -43,9 +36,11 @@ resource signalRService_iD3Yrl49T 'Microsoft.SignalRService/signalR@2022-02-01' 
   }
 }
 
-resource peSignalRService_iD3Yrl49T 'Microsoft.Network/privateEndpoints@2023-11-01' = if (peSubnet != '') {
-  name: '${signalRService_iD3Yrl49T.name}-pl'
-  tags: tags
+resource peSignalr 'Microsoft.Network/privateEndpoints@2023-11-01' = if (peSubnet != '') {
+  name: '${signalr.name}-pl'
+  tags: {
+    'aspire-resource-name': 'signalr'
+  }
   location: location
   properties: {
     subnet: {
@@ -53,9 +48,9 @@ resource peSignalRService_iD3Yrl49T 'Microsoft.Network/privateEndpoints@2023-11-
     }
     privateLinkServiceConnections: [
       {
-        name: '${signalRService_iD3Yrl49T.name}-pl'
+        name: '${signalr.name}-pl'
         properties: {
-          privateLinkServiceId: signalRService_iD3Yrl49T.id
+          privateLinkServiceId: signalr.id
           groupIds: ['signalr']
         }
       }
@@ -63,18 +58,19 @@ resource peSignalRService_iD3Yrl49T 'Microsoft.Network/privateEndpoints@2023-11-
   }
 }
 
-resource roleAssignment_35voRFfVj 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  scope: signalRService_iD3Yrl49T
-  name: guid(signalRService_iD3Yrl49T.id, principalId, subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '420fcaa2-552c-430f-98ca-3264be4806c7'))
+
+resource signalr_SignalRAppServer 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(signalr.id, principalId, subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '420fcaa2-552c-430f-98ca-3264be4806c7'))
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '420fcaa2-552c-430f-98ca-3264be4806c7')
     principalId: principalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '420fcaa2-552c-430f-98ca-3264be4806c7')
     principalType: principalType
   }
+  scope: signalr
 }
 
-output hostName string = signalRService_iD3Yrl49T.properties.hostName
+output hostName string = signalr.properties.hostName
 
 // Custom
-output name string = signalRService_iD3Yrl49T.name
-output pe_ip string = peSignalRService_iD3Yrl49T.properties.customDnsConfigs[0].ipAddresses[0]
+output name string = signalr.name
+output pe_ip string = peSignalr.properties.customDnsConfigs[0].ipAddresses[0]

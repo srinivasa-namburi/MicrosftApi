@@ -1,42 +1,31 @@
-targetScope = 'resourceGroup'
-
-@description('')
+@description('The location for the resource(s) to be deployed.')
 param location string = resourceGroup().location
 
-@description('')
 param principalId string
 
-@description('')
 param principalName string
 
 @description('')
 param peSubnet string = ''
 
-@description('')
-param tags object = {}
-
-resource sqlServer_34MHlY0Ot 'Microsoft.Sql/servers@2020-11-01-preview' = {
-  name: toLower(take('sqldocgen${uniqueString(resourceGroup().id)}', 24))
+resource sqldocgen 'Microsoft.Sql/servers@2024-05-01-preview' = {
+  name: take('sqldocgen${uniqueString(resourceGroup().id)}', 63)
   location: location
+  properties: {
+    minimalTlsVersion: '1.2'
+    publicNetworkAccess: 'Disabled'
+    version: '12.0'
+  }
   tags: {
     'aspire-resource-name': 'sqldocgen'
   }
-  properties: {
-    version: '12.0'
-    publicNetworkAccess: 'Disabled'
-    administrators: {
-      administratorType: 'ActiveDirectory'
-      login: principalName
-      sid: principalId
-      tenantId: subscription().tenantId
-      azureADOnlyAuthentication: true
-    }
-  }
 }
 
-resource peSqlServer_34MHlY0Ot 'Microsoft.Network/privateEndpoints@2023-11-01' = if (peSubnet != '') {
-  name: '${sqlServer_34MHlY0Ot.name}-pl'
-  tags: tags
+resource peSqldocgen 'Microsoft.Network/privateEndpoints@2023-11-01' = if (peSubnet != '') {
+  name: '${sqldocgen.name}-pl'
+  tags: {
+    'aspire-resource-name': 'sqldocgen'
+  }
   location: location
   properties: {
     subnet: {
@@ -44,9 +33,9 @@ resource peSqlServer_34MHlY0Ot 'Microsoft.Network/privateEndpoints@2023-11-01' =
     }
     privateLinkServiceConnections: [
       {
-        name: '${sqlServer_34MHlY0Ot.name}-pl'
+        name: '${sqldocgen.name}-pl'
         properties: {
-          privateLinkServiceId: sqlServer_34MHlY0Ot.id
+          privateLinkServiceId: sqldocgen.id
           groupIds: ['sqlServer']
         }
       }
@@ -54,19 +43,37 @@ resource peSqlServer_34MHlY0Ot 'Microsoft.Network/privateEndpoints@2023-11-01' =
   }
 }
 
-resource sqlDatabase_RnsdBrRX2 'Microsoft.Sql/servers/databases@2020-11-01-preview' = {
-  parent: sqlServer_34MHlY0Ot
+resource sqlAdmins 'Microsoft.Sql/servers/administrators@2024-05-01-preview' = {
+  parent: sqldocgen
+  name: 'ActiveDirectory'
+  properties: {
+      administratorType: 'ActiveDirectory'
+      login: principalName
+      sid: principalId
+      tenantId: subscription().tenantId
+    } 
+  }
+
+resource sqlFirewallRule_AllowAllAzureIps 'Microsoft.Sql/servers/firewallRules@2021-11-01' = {
+  name: 'AllowAllAzureIps'
+  properties: {
+    endIpAddress: '0.0.0.0'
+    startIpAddress: '0.0.0.0'
+  }
+  parent: sqldocgen
+}
+
+resource ProjectVicoDB 'Microsoft.Sql/servers/databases@2021-11-01' = {
   name: 'ProjectVicoDB'
   location: location
+  parent: sqldocgen
   sku: {
     name: 'HS_Gen5_2'
   }
-  properties: {
-  }
 }
 
-output sqlServerFqdn string = sqlServer_34MHlY0Ot.properties.fullyQualifiedDomainName
+output sqlServerFqdn string = sqldocgen.properties.fullyQualifiedDomainName
 
 // Custom
-output name string = sqlServer_34MHlY0Ot.name
-output pe_ip string = peSqlServer_34MHlY0Ot.properties.customDnsConfigs[0].ipAddresses[0]
+output name string = sqldocgen.name
+output pe_ip string = peSqldocgen.properties.customDnsConfigs[0].ipAddresses[0]
