@@ -5,11 +5,18 @@ using Microsoft.Greenlight.Shared.Enums;
 
 namespace Microsoft.Greenlight.Shared.Services.Search
 {
+    /// <summary>
+    /// Factory class for creating consolidated search options.
+    /// </summary>
     public class ConsolidatedSearchOptionsFactory : IConsolidatedSearchOptionsFactory
     {
         private readonly IDocumentProcessInfoService _documentProcessInfoService;
         private readonly ConsolidatedSearchOptions _defaultOptions;
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="ConsolidatedSearchOptionsFactory"/> class.
+        /// </summary>
+        /// <param name="documentProcessInfoService">The document process info service.</param>
         public ConsolidatedSearchOptionsFactory(IDocumentProcessInfoService documentProcessInfoService)
         {
             _documentProcessInfoService = documentProcessInfoService;
@@ -24,13 +31,21 @@ namespace Microsoft.Greenlight.Shared.Services.Search
             };
         }
 
+        /// <inheritdoc/>
         public async Task<ConsolidatedSearchOptions> CreateSearchOptionsForDocumentProcessAsync(string documentProcessName)
         {
             var documentProcess =
                 await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentProcessName);
+
+            if (documentProcess == null)
+            {
+                return _defaultOptions;
+            }
+
             return await CreateSearchOptionsForDocumentProcessAsync(documentProcess);
         }
 
+        /// <inheritdoc/>
         public async Task<ConsolidatedSearchOptions> CreateSearchOptionsForDocumentProcessAsync(DocumentProcessInfo documentProcess)
         {
             var options = new ConsolidatedSearchOptions
@@ -55,6 +70,7 @@ namespace Microsoft.Greenlight.Shared.Services.Search
             return options;
         }
 
+        /// <inheritdoc/>
         public async Task<ConsolidatedSearchOptions> CreateSearchOptionsForDocumentLibraryAsync(DocumentLibraryInfo documentLibrary)
         {
             var options = new ConsolidatedSearchOptions
@@ -70,7 +86,8 @@ namespace Microsoft.Greenlight.Shared.Services.Search
             return options;
         }
 
-        public async Task<ConsolidatedSearchOptions> CreateSearchOptionsForReviewsAsync(Dictionary<string,string> tags)
+        /// <inheritdoc/>
+        public async Task<ConsolidatedSearchOptions> CreateSearchOptionsForReviewsAsync(Dictionary<string, string> tags)
         {
             var options = new ConsolidatedSearchOptions()
             {

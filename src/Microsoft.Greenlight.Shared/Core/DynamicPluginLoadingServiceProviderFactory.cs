@@ -31,11 +31,11 @@ namespace Microsoft.Greenlight.Shared.Core
             _services = services;
             // Add the DynamicPluginContainer and DynamicPluginManager as singletons
             _services.TryAddSingleton<DynamicPluginContainer>();
-            _services.TryAddSingleton<DynamicPluginManager>(sp =>
+            _services.TryAddSingleton(sp =>
             {
                 var pluginContainer = sp.GetRequiredService<DynamicPluginContainer>();
                 var serviceScopeFactory = sp.GetRequiredService<IServiceScopeFactory>();
-                return new DynamicPluginManager(_services, serviceScopeFactory, pluginContainer);
+                return new DynamicPluginManager(serviceScopeFactory, pluginContainer);
             });
 
             return _innerFactory.CreateBuilder(_services);

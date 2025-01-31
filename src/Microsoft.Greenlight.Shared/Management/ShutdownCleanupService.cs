@@ -5,6 +5,9 @@ using Microsoft.Greenlight.Shared.Helpers;
 
 namespace Microsoft.Greenlight.Shared.Management;
 
+/// <summary>
+/// Service to handle cleanup tasks during application shutdown.
+/// </summary>
 public class ShutdownCleanupService : IHostedService
 {
     private readonly AzureCredentialHelper _credentialHelper;
@@ -13,6 +16,11 @@ public class ShutdownCleanupService : IHostedService
     private readonly string _topicPath;
     private readonly string _pluginTemporaryBasePath;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ShutdownCleanupService"/> class.
+    /// </summary>
+    /// <param name="configuration">The configuration instance.</param>
+    /// <param name="credentialHelper">The Azure credential helper instance.</param>
     public ShutdownCleanupService(IConfiguration configuration, AzureCredentialHelper credentialHelper)
     {
         _credentialHelper = credentialHelper;
@@ -46,30 +54,46 @@ public class ShutdownCleanupService : IHostedService
         _pluginTemporaryBasePath = Path.Combine(Path.GetTempPath(), Path.Combine(directoryElements.ToArray()));
     }
 
+    /// <summary>
+    /// Starts the service.
+    /// </summary>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>A task that represents the asynchronous start operation.</returns>
+#pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously: IHostedService requires this method to be async
     public async Task StartAsync(CancellationToken cancellationToken)
+#pragma warning restore CS1998 // Async method lacks 'await' operators and will run synchronously: IHostedService requires this method to be async
     {
         // No action needed on start
         return;
     }
 
+    /// <summary>
+    /// Stops the service.
+    /// </summary>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>A task that represents the asynchronous stop operation.</returns>
     public async Task StopAsync(CancellationToken cancellationToken)
     {
         await RemoveHostBasedAzureServiceBusEndpoints(cancellationToken);
-        await RemovePluginTemporaryDirectories(cancellationToken);
+        RemovePluginTemporaryDirectories(cancellationToken);
     }
 
-    private async Task RemovePluginTemporaryDirectories(CancellationToken cancellationToken)
+    /// <summary>
+    /// Removes temporary directories created by plugins.
+    /// </summary>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
+    private void RemovePluginTemporaryDirectories(CancellationToken cancellationToken)
     {
         if (Directory.Exists(_pluginTemporaryBasePath))
         {
-
             foreach (var directory in Directory.GetDirectories(_pluginTemporaryBasePath, "*", SearchOption.AllDirectories))
             {
                 try
                 {
                     Directory.Delete(directory, true);
                 }
-                catch (Exception ex)
+                catch
                 {
                     continue;
                 }
@@ -77,6 +101,11 @@ public class ShutdownCleanupService : IHostedService
         }
     }
 
+    /// <summary>
+    /// Removes Azure Service Bus endpoints based on the host.
+    /// </summary>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     private async Task RemoveHostBasedAzureServiceBusEndpoints(CancellationToken cancellationToken)
     {
         if (await _adminClient.SubscriptionExistsAsync(_topicPath, _subscriptionName, cancellationToken))

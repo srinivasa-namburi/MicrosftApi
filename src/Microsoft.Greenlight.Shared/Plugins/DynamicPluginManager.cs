@@ -1,5 +1,4 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using System.IO.Compression;
 using System.Reflection;
 using System.Runtime.Loader;
@@ -13,29 +12,41 @@ using Microsoft.Greenlight.Extensions.Plugins;
 
 namespace Microsoft.Greenlight.Shared.Plugins
 {
+    /// <summary>
+    /// Manages the dynamic loading and unloading of plugins.
+    /// </summary>
     public class DynamicPluginManager
     {
-        private readonly IServiceCollection _services;
         private readonly IServiceScopeFactory _serviceScopeFactory;
-
-
         private bool _pluginsLoaded;
         private readonly object _lockObject = new();
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="DynamicPluginManager"/> class.
+        /// </summary>
+        /// <param name="serviceScopeFactory">The service scope factory.</param>
+        /// <param name="pluginContainer">The dynamic plugin container.</param>
         public DynamicPluginManager(
-            IServiceCollection services,
             IServiceScopeFactory serviceScopeFactory,
-            DynamicPluginContainer pluginContainer
-            )
+            DynamicPluginContainer pluginContainer)
         {
-            _services = services;
             _serviceScopeFactory = serviceScopeFactory;
             PluginContainer = pluginContainer;
         }
 
+        /// <summary>
+        /// Gets the dynamic plugin container.
+        /// </summary>
         public DynamicPluginContainer PluginContainer { get; }
 
+        /// <summary>
+        /// Ensures that plugins are loaded.
+        /// </summary>
+        /// <param name="services">The service collection.</param>
+        /// <returns>A task that represents the asynchronous operation.</returns>
+        #pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
         public async Task EnsurePluginsLoadedAsync(IServiceCollection services)
+        #pragma warning restore CS1998 // Async method lacks 'await' operators and will run synchronously       
         {
             if (!_pluginsLoaded)
             {
@@ -50,10 +61,15 @@ namespace Microsoft.Greenlight.Shared.Plugins
             }
         }
 
+        /// <summary>
+        /// Gets the plugin information for a specific type asynchronously.
+        /// </summary>
+        /// <param name="documentProcess">The document process information.</param>
+        /// <param name="pluginType">The plugin type.</param>
+        /// <returns>A task that represents the asynchronous operation. The task result contains the loaded dynamic plugin information.</returns>
         public async Task<LoadedDynamicPluginInfo?> GetPluginInfoForTypeAsync(DocumentProcessInfo documentProcess, Type pluginType)
         {
             using var scope = _serviceScopeFactory.CreateScope();
-
             var dbContext = scope.ServiceProvider.GetRequiredService<DocGenerationDbContext>();
 
             var dynamicDocumentProcessModel = await dbContext.DynamicDocumentProcessDefinitions
@@ -70,9 +86,9 @@ namespace Microsoft.Greenlight.Shared.Plugins
             foreach (var pluginAssociation in dynamicDocumentProcessModel.Plugins)
             {
                 var plugin = pluginAssociation.DynamicPlugin;
-                var versionToUse = pluginAssociation.Version ?? plugin.LatestVersion;
-                if (PluginContainer.TryGetPlugin(plugin.Name, versionToUse.ToString(), out var pluginInfo) &&
-                    pluginInfo.PluginTypes.Contains(pluginType))
+                var versionToUse = pluginAssociation.Version ?? plugin!.LatestVersion;
+                if (PluginContainer.TryGetPlugin(plugin!.Name, versionToUse!.ToString(), out var pluginInfo) &&
+                    pluginInfo!.PluginTypes.Contains(pluginType))
                 {
                     return pluginInfo;
                 }
@@ -84,7 +100,6 @@ namespace Microsoft.Greenlight.Shared.Plugins
         private async Task LoadDynamicPluginsAsync(IServiceCollection services)
         {
             using var scope = _serviceScopeFactory.CreateScope();
-
             var dbContext = scope.ServiceProvider.GetRequiredService<DocGenerationDbContext>();
             var azureFileHelper = scope.ServiceProvider.GetRequiredService<AzureFileHelper>();
             var mapper = scope.ServiceProvider.GetRequiredService<IMapper>();
@@ -119,7 +134,6 @@ namespace Microsoft.Greenlight.Shared.Plugins
                     }
 
                     var pluginDirectory = GetPluginDownloadDirectory(plugin, version);
-
                     Directory.CreateDirectory(pluginDirectory);
 
                     try
@@ -138,7 +152,6 @@ namespace Microsoft.Greenlight.Shared.Plugins
                         }
 
                         UnzipPlugin(pluginStream, pluginDirectory);
-
                         var mainAssemblyPath = FindMainAssemblyPath(pluginDirectory);
 
                         if (mainAssemblyPath != null)
@@ -162,7 +175,6 @@ namespace Microsoft.Greenlight.Shared.Plugins
 
                             RegisterPluginTypes(assembly, scope.ServiceProvider, services);
                             var pluginInfo = CreatePluginInfo(assembly, plugin, version, pluginDirectory);
-
                             PluginContainer.AddPlugin(plugin.Name, version.ToString(), pluginInfo);
                         }
                         else
@@ -187,26 +199,24 @@ namespace Microsoft.Greenlight.Shared.Plugins
 
         private static string GetPluginDownloadDirectory(DynamicPlugin plugin, DynamicPluginVersion version)
         {
-
             // This is a temporary directory where we extract the plugin zip file
             // It needs to be unique for each appdomain, instance, hostname, etc.
 
             var directoryElements = new List<string>
-            {
-                "greenlight-plugins",
-                Environment.MachineName,
-                AppDomain.CurrentDomain.FriendlyName,
-                "process-" + Environment.ProcessId.ToString(),
-                plugin.Name, 
-                version.ToString()
-            };
+                {
+                    "greenlight-plugins",
+                    Environment.MachineName,
+                    AppDomain.CurrentDomain.FriendlyName,
+                    "process-" + Environment.ProcessId.ToString(),
+                    plugin.Name,
+                    version.ToString()
+                };
 
             var pluginDirectory = Path.Combine(Path.GetTempPath(), Path.Combine(directoryElements.ToArray()));
-            
             return pluginDirectory;
         }
 
-        private void RegisterPluginTypes(Assembly assembly, IServiceProvider sp, IServiceCollection services)
+        private static void RegisterPluginTypes(Assembly assembly, IServiceProvider sp, IServiceCollection services)
         {
             const string registrationInterfaceFullName = "Microsoft.Greenlight.Extensions.Plugins.IPluginRegistration";
             var registrationTypes = GetImplementingTypes(assembly, registrationInterfaceFullName);
@@ -220,7 +230,7 @@ namespace Microsoft.Greenlight.Shared.Plugins
             }
         }
 
-        private LoadedDynamicPluginInfo CreatePluginInfo(Assembly assembly, DynamicPlugin plugin, DynamicPluginVersion version, string tempDirectory)
+        private static LoadedDynamicPluginInfo CreatePluginInfo(Assembly assembly, DynamicPlugin plugin, DynamicPluginVersion version, string tempDirectory)
         {
             const string interfaceFullName = "Microsoft.Greenlight.Extensions.Plugins.IPluginImplementation";
             var pluginTypes = GetImplementingTypes(assembly, interfaceFullName);
@@ -246,10 +256,14 @@ namespace Microsoft.Greenlight.Shared.Plugins
             };
         }
 
+        /// <summary>
+        /// Gets the plugin types for a specific document process asynchronously.
+        /// </summary>
+        /// <param name="documentProcess">The document process information.</param>
+        /// <returns>A task that represents the asynchronous operation. The task result contains the plugin types.</returns>
         public async Task<IEnumerable<Type>> GetPluginTypesAsync(DocumentProcessInfo documentProcess)
         {
             using var scope = _serviceScopeFactory.CreateScope();
-
             var dbContext = scope.ServiceProvider.GetRequiredService<DocGenerationDbContext>();
 
             var dynamicDocumentProcessModel = await dbContext.DynamicDocumentProcessDefinitions
@@ -265,20 +279,20 @@ namespace Microsoft.Greenlight.Shared.Plugins
 
             var result = new List<Type>();
 
-            foreach (var pluginAssociation in dynamicDocumentProcessModel.Plugins)
+            foreach (var pluginAssociation in dynamicDocumentProcessModel.Plugins!)
             {
                 var plugin = pluginAssociation.DynamicPlugin;
-                var versionToUse = pluginAssociation.Version ?? plugin.LatestVersion;
-                if (PluginContainer.TryGetPlugin(plugin.Name, versionToUse.ToString(), out var pluginInfo))
+                var versionToUse = pluginAssociation.Version ?? plugin!.LatestVersion;
+                if (PluginContainer.TryGetPlugin(plugin!.Name, versionToUse!.ToString(), out var pluginInfo))
                 {
-                    result.AddRange(pluginInfo.PluginTypes);
+                    result.AddRange(pluginInfo!.PluginTypes);
                 }
             }
 
             return result;
         }
 
-        private List<Type> GetImplementingTypes(Assembly assembly, string interfaceFullName)
+        private static List<Type> GetImplementingTypes(Assembly assembly, string interfaceFullName)
         {
             var implementingTypes = new List<Type>();
 
@@ -302,13 +316,13 @@ namespace Microsoft.Greenlight.Shared.Plugins
             return implementingTypes;
         }
 
-        private void UnzipPlugin(Stream zipStream, string targetDirectory)
+        private static void UnzipPlugin(Stream zipStream, string targetDirectory)
         {
             using var archive = new ZipArchive(zipStream, ZipArchiveMode.Read, leaveOpen: true);
             archive.ExtractToDirectory(targetDirectory);
         }
 
-        private string? FindMainAssemblyPath(string directory)
+        private static string? FindMainAssemblyPath(string directory)
         {
             var depsFile = Directory.GetFiles(directory, "*.deps.json").FirstOrDefault();
             if (depsFile != null)

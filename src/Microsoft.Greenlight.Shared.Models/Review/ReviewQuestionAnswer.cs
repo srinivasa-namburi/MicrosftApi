@@ -78,6 +78,8 @@ public class ReviewQuestionAnswer : EntityBase
     /// <param name="question">The review question to create the answer from.</param>
     public void CreateFromReviewQuestion(ReviewQuestion question)
     {
+        if (question is null) return;
+
         OriginalReviewQuestionId = question.Id;
         OriginalReviewQuestionText = question.Question;
         OriginalReviewQuestionType = question.QuestionType;

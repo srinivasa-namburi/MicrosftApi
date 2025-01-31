@@ -11,6 +11,9 @@ using Microsoft.Greenlight.Shared.Repositories;
 
 namespace Microsoft.Greenlight.Shared.Services
 {
+    /// <summary>
+    /// Service for managing document process information.
+    /// </summary>
     public class DocumentProcessInfoService : IDocumentProcessInfoService
     {
         private readonly IMapper _mapper;
@@ -19,6 +22,14 @@ namespace Microsoft.Greenlight.Shared.Services
         private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
         private readonly DocGenerationDbContext _dbContext;
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="DocumentProcessInfoService"/> class.
+        /// </summary>
+        /// <param name="serviceConfigurationOptions">The service configuration options.</param>
+        /// <param name="mapper">The mapper.</param>
+        /// <param name="documentProcessRepository">The document process repository.</param>
+        /// <param name="publishEndpoint">The publish endpoint.</param>
+        /// <param name="dbContext">The database context.</param>
         public DocumentProcessInfoService(
             IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
             IMapper mapper,
@@ -32,6 +43,7 @@ namespace Microsoft.Greenlight.Shared.Services
             _serviceConfigurationOptions = serviceConfigurationOptions.Value;
         }
 
+        /// <inheritdoc/>
         public async Task<List<DocumentProcessInfo>> GetCombinedDocumentProcessInfoListAsync()
         {
             // Materialize the static definitions
@@ -46,6 +58,7 @@ namespace Microsoft.Greenlight.Shared.Services
             return mappedStaticDefinitions.Concat(mappedDynamicDefinitions).ToList();
         }
 
+        /// <inheritdoc/>
         public async Task<DocumentProcessInfo?> GetDocumentProcessInfoByShortNameAsync(string shortName)
         {
             // Retrieve and map static definitions
@@ -68,6 +81,7 @@ namespace Microsoft.Greenlight.Shared.Services
             return result;
         }
 
+        /// <inheritdoc/>
         public async Task<DocumentProcessInfo?> GetDocumentProcessInfoByIdAsync(Guid id)
         {
             // If we're looking for a Document Process by ID, we should only look in the dynamic definitions, as 
@@ -84,14 +98,15 @@ namespace Microsoft.Greenlight.Shared.Services
             return result;
         }
 
+        /// <inheritdoc/>
         public async Task<List<DocumentProcessInfo>> GetDocumentProcessesByLibraryIdAsync(Guid libraryId)
         {
             var processes = await _dbContext.DocumentLibraryDocumentProcessAssociations
                 .Where(x => x.DocumentLibraryId == libraryId)
                 .Include(x => x.DynamicDocumentProcessDefinition)
-                    .ThenInclude(x=>x.DocumentOutline)
-                        .ThenInclude(x => x.OutlineItems)
-                .Include(x=>x.DocumentLibrary)
+                    .ThenInclude(x => x!.DocumentOutline)
+                        .ThenInclude(x => x!.OutlineItems)
+                .Include(x => x.DocumentLibrary)
                 .AsNoTracking()
                 .AsSplitQuery()
                 .Select(x => x.DynamicDocumentProcessDefinition)
@@ -99,7 +114,8 @@ namespace Microsoft.Greenlight.Shared.Services
 
             return _mapper.Map<List<DocumentProcessInfo>>(processes);
         }
-        
+
+        /// <inheritdoc/>
         public async Task<DocumentProcessInfo> CreateDocumentProcessInfoAsync(DocumentProcessInfo documentProcessInfo)
         {
             ValidateAndFormatShortName(documentProcessInfo);
@@ -117,56 +133,56 @@ namespace Microsoft.Greenlight.Shared.Services
                 OutlineItems =
                 [
                     new DocumentOutlineItem()
-                    {
-                        SectionNumber = "1",
-                        SectionTitle = "Chapter 1",
-                        Level = 0
-                    },
-                    new DocumentOutlineItem()
-                    {
-                        SectionNumber = "2",
-                        SectionTitle = "Chapter 2",
-                        Level = 0,
-                        Children =
-                        [
-                            new DocumentOutlineItem()
-                            {
-                                SectionNumber = "2.1",
-                                SectionTitle = "Section 2.1",
-                                Level = 1,
-                                Children =
-                                [
-                                    new DocumentOutlineItem()
-                                    {
-                                        SectionNumber = "2.1.1",
-                                        SectionTitle = "Section 2.1.1",
-                                        Level = 2
-                                    }
-                                ]
-                            },
-                            new DocumentOutlineItem()
-                            {
-                                SectionNumber = "2.2",
-                                SectionTitle = "Section 2.2",
-                                Level = 1
-                            }
-                        ]
-                    },
-                    new DocumentOutlineItem()
-                    {
-                        SectionNumber = "3",
-                        SectionTitle = "Chapter 3",
-                        Level = 0,
-                        Children =
-                        [
-                            new DocumentOutlineItem()
-                            {
-                                SectionNumber = "3.1",
-                                SectionTitle = "Section 3.1",
-                                Level = 1
-                            }
-                        ]
-                    }
+                        {
+                            SectionNumber = "1",
+                            SectionTitle = "Chapter 1",
+                            Level = 0
+                        },
+                        new DocumentOutlineItem()
+                        {
+                            SectionNumber = "2",
+                            SectionTitle = "Chapter 2",
+                            Level = 0,
+                            Children =
+                            [
+                                new DocumentOutlineItem()
+                                {
+                                    SectionNumber = "2.1",
+                                    SectionTitle = "Section 2.1",
+                                    Level = 1,
+                                    Children =
+                                    [
+                                        new DocumentOutlineItem()
+                                        {
+                                            SectionNumber = "2.1.1",
+                                            SectionTitle = "Section 2.1.1",
+                                            Level = 2
+                                        }
+                                    ]
+                                },
+                                new DocumentOutlineItem()
+                                {
+                                    SectionNumber = "2.2",
+                                    SectionTitle = "Section 2.2",
+                                    Level = 1
+                                }
+                            ]
+                        },
+                        new DocumentOutlineItem()
+                        {
+                            SectionNumber = "3",
+                            SectionTitle = "Chapter 3",
+                            Level = 0,
+                            Children =
+                            [
+                                new DocumentOutlineItem()
+                                {
+                                    SectionNumber = "3.1",
+                                    SectionTitle = "Section 3.1",
+                                    Level = 1
+                                }
+                            ]
+                        }
                 ]
             };
 
@@ -187,6 +203,7 @@ namespace Microsoft.Greenlight.Shared.Services
             return createdDocumentProcessInfo;
         }
 
+        /// <inheritdoc/>
         public async Task<bool> DeleteDocumentProcessInfoAsync(Guid processId)
         {
             var documentProcess = await _documentProcessRepository.GetByIdAsync(processId, false);
@@ -197,6 +214,7 @@ namespace Microsoft.Greenlight.Shared.Services
             }
             else return false;
         }
+
         private void ValidateAndFormatShortName(DocumentProcessInfo documentProcessInfo)
         {
             if (string.IsNullOrWhiteSpace(documentProcessInfo.ShortName))

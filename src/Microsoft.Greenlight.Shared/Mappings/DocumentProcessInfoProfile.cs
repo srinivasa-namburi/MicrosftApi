@@ -6,8 +6,16 @@ using Microsoft.Greenlight.Shared.Models.DocumentProcess;
 
 namespace Microsoft.Greenlight.Shared.Mappings;
 
+/// <summary>
+/// Profile for mapping document process information.
+/// </summary>
 public class DocumentProcessInfoProfile : Profile
 {
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DocumentProcessInfoProfile"/> class.
+    /// Defines the mapping between <see cref="DocumentProcessOptions"/> and <see cref="DocumentProcessInfo"/>, 
+    /// and between <see cref="DynamicDocumentProcessDefinition"/> and <see cref="DocumentProcessInfo"/>.
+    /// </summary>
     public DocumentProcessInfoProfile()
     {
         CreateMap<DocumentProcessOptions, DocumentProcessInfo>()
@@ -22,13 +30,13 @@ public class DocumentProcessInfoProfile : Profile
             .ForMember(x => x.NumberOfCitationsToGetFromRepository, y => y.Ignore())
             .ForMember(x => x.MinimumRelevanceForCitations, y => y.Ignore())
             .ForMember(x => x.CompletionServiceType, y => y.Ignore())
-            .ForMember(x => x.LogicType,
-                y => y.MapFrom(source =>
-                    Enum.Parse<DocumentProcessLogicType>(source.IngestionMethod ?? "KernelMemory")));
+            .ForMember(x => x.LogicType, y => y.MapFrom(
+                source => Enum.Parse<DocumentProcessLogicType>(source.IngestionMethod ?? "KernelMemory")));
 
         CreateMap<DocumentProcessInfo, DynamicDocumentProcessDefinition>()
             .ForMember(x => x.LogicType, y => y.MapFrom(source => source.LogicType.ToString()))
-            .ForMember(x => x.CompletionServiceType, y => y.MapFrom(source => source.CompletionServiceType ?? DocumentProcessCompletionServiceType.GenericAiCompletionService))
+            .ForMember(x => x.CompletionServiceType, y => y.MapFrom(
+                source => source.CompletionServiceType ?? DocumentProcessCompletionServiceType.GenericAiCompletionService))
             .ForMember(dest => dest.Repositories, opt => opt.MapFrom(src => src.Repositories))
             .ForMember(x => x.Plugins, y => y.DoNotUseDestinationValue());
 
@@ -38,9 +46,9 @@ public class DocumentProcessInfoProfile : Profile
             .ForMember(x => x.DocumentOutlineId, DocumentOutlineIdCheck);
     }
 
-    private void DocumentOutlineIdCheck(IMemberConfigurationExpression<DynamicDocumentProcessDefinition, DocumentProcessInfo, Guid?> obj)
+    private void DocumentOutlineIdCheck(
+        IMemberConfigurationExpression<DynamicDocumentProcessDefinition, DocumentProcessInfo, Guid?> obj)
     {
-        // If the DocumentOutlineId is null, if it is, check if DocumentOutline.Id is null, if it is, set it to Guid.Empty
         obj.MapFrom((source, dest) => source.DocumentOutlineId ?? source.DocumentOutline?.Id ?? Guid.Empty);
     }
 }

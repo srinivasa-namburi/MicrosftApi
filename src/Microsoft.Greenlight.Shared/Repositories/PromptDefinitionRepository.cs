@@ -6,11 +6,19 @@ using StackExchange.Redis;
 
 namespace Microsoft.Greenlight.Shared.Repositories;
 
+/// <summary>
+/// Repository for managing <see cref="PromptDefinition"/> entities.
+/// </summary>
 public class PromptDefinitionRepository : GenericRepository<PromptDefinition>
 {
     private const string CacheKeyAll = "PromptDefinition";
     private readonly TimeSpan DefaultCacheDuration = TimeSpan.FromMinutes(60);
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="PromptDefinitionRepository"/> class.
+    /// </summary>
+    /// <param name="dbContext">The database context.</param>
+    /// <param name="redisConnection">The Redis connection.</param>
     public PromptDefinitionRepository(
         DocGenerationDbContext dbContext,
         IConnectionMultiplexer redisConnection
@@ -19,6 +27,13 @@ public class PromptDefinitionRepository : GenericRepository<PromptDefinition>
         SetCacheDuration(DefaultCacheDuration);
     }
 
+    /// <summary>
+    /// Gets all prompt definitions.
+    /// </summary>
+    /// <param name="useCache">Whether to use cache.</param>
+    /// <returns>
+    /// A list of prompt definitions.
+    /// </returns>
     public virtual async Task<List<PromptDefinition>> GetAllPromptDefinitionsAsync(bool useCache = true)
     {
         if (useCache)
@@ -26,7 +41,11 @@ public class PromptDefinitionRepository : GenericRepository<PromptDefinition>
             var cachedData = await Cache.StringGetAsync(CacheKeyAll);
             if (cachedData.HasValue)
             {
-                return JsonSerializer.Deserialize<List<PromptDefinition>>(cachedData);
+                var result = JsonSerializer.Deserialize<List<PromptDefinition>>(cachedData!);
+                if (result != null)
+                {
+                    return result;
+                }
             }
 
             var promptDefinitions = await GetAllAsync(useCache: false);
@@ -35,10 +54,47 @@ public class PromptDefinitionRepository : GenericRepository<PromptDefinition>
         }
         else
         {
-            return await AllRecords().Include(x=>x.Variables).ToListAsync();
+            return await AllRecords().Include(x => x.Variables).ToListAsync();
         }
     }
 
+    /// <inheritdoc/>
+    public virtual new async Task<List<PromptDefinition>> GetAllAsync(bool useCache = false)
+    {
+        if (useCache)
+        {
+            var cachedData = await Cache.StringGetAsync(CacheKeyAll);
+            if (cachedData.HasValue)
+            {
+                var result = JsonSerializer.Deserialize<List<PromptDefinition>>(cachedData!);
+                if (result != null)
+                {
+                    return result;
+                }
+            }
+
+            var entities = await _dbContext.PromptDefinitions
+                .Include(x => x.Variables)
+                .ToListAsync();
+            await Cache.StringSetAsync(CacheKeyAll, JsonSerializer.Serialize(entities), CacheDuration);
+            return entities;
+        }
+        else
+        {
+            return await _dbContext.PromptDefinitions
+                .Include(x => x.Variables)
+                .ToListAsync();
+        }
+    }
+
+    /// <summary>
+    /// Gets a prompt definition by its short code.
+    /// </summary>
+    /// <param name="shortCode">The short code of the prompt definition.</param>
+    /// <param name="useCache">Whether to use cache.</param>
+    /// <returns>
+    /// The prompt definition if found; otherwise, null.
+    /// </returns>
     public async Task<PromptDefinition?> GetByShortCodeAsync(string shortCode, bool useCache = true)
     {
         if (useCache)
@@ -47,7 +103,7 @@ public class PromptDefinitionRepository : GenericRepository<PromptDefinition>
             var cachedData = await Cache.StringGetAsync(cacheKey);
             if (cachedData.HasValue)
             {
-                return JsonSerializer.Deserialize<PromptDefinition>(cachedData);
+                return JsonSerializer.Deserialize<PromptDefinition>(cachedData!);
             }
 
             var promptDefinition = await AllRecords()
@@ -70,6 +126,7 @@ public class PromptDefinitionRepository : GenericRepository<PromptDefinition>
         }
     }
 
+    /// <inheritdoc/>
     public virtual new async Task AddAsync(PromptDefinition newDefinition, bool saveChanges = true)
     {
         await base.AddAsync(newDefinition, saveChanges);
@@ -82,6 +139,7 @@ public class PromptDefinitionRepository : GenericRepository<PromptDefinition>
         await Cache.KeyDeleteAsync(CacheKeyAll);
     }
 
+    /// <inheritdoc/>
     public new async Task UpdateAsync(PromptDefinition updatedDefinition, bool saveChanges = true)
     {
         await base.UpdateAsync(updatedDefinition, saveChanges);

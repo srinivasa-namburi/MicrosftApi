@@ -6,11 +6,19 @@ using StackExchange.Redis;
 
 namespace Microsoft.Greenlight.Shared.Repositories;
 
+/// <summary>
+/// Repository for managing <see cref="DynamicDocumentProcessDefinition"/> entities.
+/// </summary>
 public class DynamicDocumentProcessDefinitionRepository : GenericRepository<DynamicDocumentProcessDefinition>
 {
     private const string CacheKeyAll = "DynamicDocumentProcessDefinition";
     private readonly TimeSpan DefaultCacheDuration = TimeSpan.FromMinutes(60);
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DynamicDocumentProcessDefinitionRepository"/> class.
+    /// </summary>
+    /// <param name="dbContext">The document generation db context.</param>
+    /// <param name="redisConnection">The redis connection.</param>
     public DynamicDocumentProcessDefinitionRepository(
         DocGenerationDbContext dbContext,
         IConnectionMultiplexer redisConnection
@@ -20,6 +28,11 @@ public class DynamicDocumentProcessDefinitionRepository : GenericRepository<Dyna
         SetCacheDuration(DefaultCacheDuration);
     }
 
+    /// <summary>
+    /// Get all dynamic document process definitions.
+    /// </summary>
+    /// <param name="useCache">Indicates whether to use the cache.</param>
+    /// <returns>A list of dynamic document process definitions.</returns>
     public async Task<List<DynamicDocumentProcessDefinition>> GetAllDynamicDocumentProcessDefinitionsAsync(bool useCache = true)
     {
         if (useCache)
@@ -27,7 +40,12 @@ public class DynamicDocumentProcessDefinitionRepository : GenericRepository<Dyna
             var cachedData = await Cache.StringGetAsync(CacheKeyAll);
             if (cachedData.HasValue)
             {
-                return JsonSerializer.Deserialize<List<DynamicDocumentProcessDefinition>>(cachedData);
+                var result = JsonSerializer.Deserialize<List<DynamicDocumentProcessDefinition>>(cachedData!);
+                
+                if (result != null)
+                {
+                    return result;
+                }
             }
 
             var dynamicDefinitions = await GetAllAsync(useCache: false);
@@ -36,10 +54,15 @@ public class DynamicDocumentProcessDefinitionRepository : GenericRepository<Dyna
         }
         else
         {
-            return await AllRecords().Include(x=>x.DocumentOutline).ToListAsync();
+            return await AllRecords().Include(x => x.DocumentOutline).ToListAsync();
         }
     }
 
+    /// <summary>
+    /// Get all dynamic document process definitions.
+    /// </summary>
+    /// <param name="useCache">Indicates whether to use the cache.</param>
+    /// <returns>A list of dynamic document process definitions.</returns>
     public new async Task<List<DynamicDocumentProcessDefinition>> GetAllAsync(bool useCache = false)
     {
         if (useCache)
@@ -47,7 +70,11 @@ public class DynamicDocumentProcessDefinitionRepository : GenericRepository<Dyna
             var cachedData = await Cache.StringGetAsync(CacheKeyAll);
             if (cachedData.HasValue)
             {
-                return JsonSerializer.Deserialize<List<DynamicDocumentProcessDefinition>>(cachedData);
+                var result = JsonSerializer.Deserialize<List<DynamicDocumentProcessDefinition>>(cachedData!);
+                if (result != null)
+                {
+                    return result;
+                }
             }
 
             var entities = await _dbContext.DynamicDocumentProcessDefinitions
@@ -64,6 +91,12 @@ public class DynamicDocumentProcessDefinitionRepository : GenericRepository<Dyna
         }
     }
 
+    /// <summary>
+    /// Get a dynamic document process definition by its short name.
+    /// </summary>
+    /// <param name="shortName">The dynamic document process short name.</param>
+    /// <param name="useCache">Indicates whether to use the cache.</param>
+    /// <returns>A dynamic process definitions if found, else null.</returns>
     public async Task<DynamicDocumentProcessDefinition?> GetByShortNameAsync(string shortName, bool useCache = true)
     {
         if (useCache)
@@ -72,12 +105,17 @@ public class DynamicDocumentProcessDefinitionRepository : GenericRepository<Dyna
             var cachedData = await Cache.StringGetAsync(cacheKey);
             if (cachedData.HasValue)
             {
-                return JsonSerializer.Deserialize<DynamicDocumentProcessDefinition>(cachedData);
+                var result = JsonSerializer.Deserialize<DynamicDocumentProcessDefinition>(cachedData!)!;
+
+                if (result != null)
+                {
+                    return result;
+                }
             }
 
             var dynamicDefinition = await AllRecords()
                 .Where(x => x.ShortName == shortName)
-                .Include(o=>o.DocumentOutline)
+                .Include(o => o.DocumentOutline)
                 .FirstOrDefaultAsync();
 
             if (dynamicDefinition != null)
@@ -100,6 +138,7 @@ public class DynamicDocumentProcessDefinitionRepository : GenericRepository<Dyna
         }
     }
 
+    /// <inheritdoc />
     public new async Task AddAsync(DynamicDocumentProcessDefinition newDefinition, bool saveChanges = true)
     {
         await base.AddAsync(newDefinition, saveChanges);
@@ -112,6 +151,7 @@ public class DynamicDocumentProcessDefinitionRepository : GenericRepository<Dyna
         await Cache.KeyDeleteAsync(CacheKeyAll);
     }
 
+    /// <inheritdoc />
     public virtual new async Task UpdateAsync(
         DynamicDocumentProcessDefinition updatedDefinition, bool saveChanges = true)
     {
@@ -132,18 +172,25 @@ public class DynamicDocumentProcessDefinitionRepository : GenericRepository<Dyna
         }
     }
 
+    /// <inheritdoc />
     public new async Task DeleteAsync(DynamicDocumentProcessDefinition definition, bool saveChanges = true)
     {
 
         var fullDefinition = await _dbContext.DynamicDocumentProcessDefinitions
             .Include(p => p.Prompts)
-            .Include(d=> d.DocumentOutline)
-            .ThenInclude(documentOutline => documentOutline.OutlineItems)
-                .ThenInclude(y => y.Children)
-                    .ThenInclude(v=>v.Children)
-                        .ThenInclude(w=>w.Children)
-                            .ThenInclude(x=>x.Children)
+            .Include(d => d.DocumentOutline)
+            .ThenInclude(documentOutline => documentOutline!.OutlineItems)
+            .ThenInclude(y => y.Children)
+            .ThenInclude(v => v.Children)
+            .ThenInclude(w => w.Children)
+            .ThenInclude(x => x.Children)
             .FirstOrDefaultAsync(x => x.Id == definition.Id);
+
+        // No definition found to delete, so do nothing.
+        if (fullDefinition == null)
+        {
+            return;
+        }
 
         // Recursively delete the document outline items, starting with leaf nodes (use a recursive method to delete the children first)
         if (fullDefinition.DocumentOutline != null)
@@ -171,8 +218,6 @@ public class DynamicDocumentProcessDefinitionRepository : GenericRepository<Dyna
         {
             var documentOutlineCacheKey = $"{nameof(DocumentOutline)}_{definition.DocumentOutline.Id}";
             await Cache.KeyDeleteAsync(documentOutlineCacheKey);
-
-
         }
     }
 

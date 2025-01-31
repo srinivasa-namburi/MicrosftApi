@@ -4,19 +4,31 @@ using Microsoft.SemanticKernel;
 
 namespace Microsoft.Greenlight.Shared.Plugins;
 
+/// <summary>
+/// A filter that tracks the input and output of plugin function invocations.
+/// </summary>
 public class InputOutputTrackingPluginInvocationFilter : IFunctionInvocationFilter
 {
     private readonly IPluginSourceReferenceCollector _pluginSourceReferenceCollector;
     private Guid _executionId;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="InputOutputTrackingPluginInvocationFilter"/> class.
+    /// </summary>
+    /// <param name="pluginSourceReferenceCollector">The collector for plugin source references.</param>
     public InputOutputTrackingPluginInvocationFilter(IPluginSourceReferenceCollector pluginSourceReferenceCollector)
     {
         _pluginSourceReferenceCollector = pluginSourceReferenceCollector;
         _executionId = Guid.Empty;
     }
 
-    public async Task OnFunctionInvocationAsync(FunctionInvocationContext context,
-        Func<FunctionInvocationContext, Task> next)
+    /// <summary>
+    /// Invoked when a function is called, tracking its input and output.
+    /// </summary>
+    /// <param name="context">The context of the function invocation.</param>
+    /// <param name="next">The next function to call in the invocation pipeline.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    public async Task OnFunctionInvocationAsync(FunctionInvocationContext context, Func<FunctionInvocationContext, Task> next)
     {
         // Don't track ContentState function calls as there are internal calls that we don't want to track.
         if (context.Function.PluginName != null && context.Function.PluginName.Contains("ContentState"))
@@ -77,8 +89,7 @@ public class InputOutputTrackingPluginInvocationFilter : IFunctionInvocationFilt
                 {
                     try
                     {
-                        functionInputs.Add(argument.Key,
-                            argument.Value.ToString() ?? throw new InvalidOperationException());
+                        functionInputs.Add(argument.Key, argument.Value.ToString() ?? throw new InvalidOperationException());
                     }
                     catch (InvalidOperationException)
                     {
@@ -104,7 +115,6 @@ public class InputOutputTrackingPluginInvocationFilter : IFunctionInvocationFilt
 
         // Call the function.
         await next(context);
-
 
         if (_executionId != Guid.Empty)
         {

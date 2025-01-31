@@ -312,6 +312,7 @@ Follow these guidelines:
 - Always Use StoreSequenceContent(...) to save your content.
 - Include the sequence number(s) in your message if you have stored content you'd like the reviewer to see.
 - Use GetNextSequenceNumber() to get the next available sequence number for appending content.
+- When adding (or revising) sequences, don't repeat section name in later sections, add (continued) or similar. The content will be assembled in order.
 
 Below is your main prompt context:
 [MAIN_PROMPT]
@@ -358,6 +359,8 @@ Rules:
 - [DETAIL: ...] tags are expected in the produced content - these are indicators for human editors to fill in details. Don't ask for their removal.
 - Remove any placeholder tags like '[*COMPLETE*]' or similar.
 - Focus only on the current section: {fullSectionName} 
+- Make sure there is no repetition across sequences, and especially make sure there are no (continued) or similar tags in the final content. 
+  Don't repeat section headlines several times.
 ";
         }
 

@@ -4,8 +4,16 @@ using Microsoft.Greenlight.Shared.Models.DocumentProcess;
 
 namespace Microsoft.Greenlight.Shared.Mappings;
 
+/// <summary>
+/// Profile for mapping between <see cref="DocumentOutline"/> and <see cref="DocumentOutlineInfo"/>, and between DocumentOutlineItem and DocumentOutlineItemInfo.
+/// </summary>
 public class DocumentOutlineInfoProfile : Profile
 {
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DocumentOutlineInfoProfile"/> class.
+    /// Defines the mapping between <see cref="DocumentOutline"/> and <see cref="DocumentOutlineInfo"/>, 
+    /// and between <see cref="DocumentOutlineItem"/> and <see cref="DocumentOutlineItemInfo"/>.
+    /// </summary>
     public DocumentOutlineInfoProfile()
     {
         CreateMap<DocumentOutline, DocumentOutlineInfo>()
@@ -34,9 +42,9 @@ public class DocumentOutlineInfoProfile : Profile
             });
     }
 
-    private void OrderChildren(DocumentOutlineInfo item)
+    private static void OrderChildren(DocumentOutlineInfo item)
     {
-        if (item.OutlineItems != null && item.OutlineItems.Any())
+        if (item.OutlineItems != null && item.OutlineItems.Count != 0)
         {
             item.OutlineItems = item.OutlineItems.OrderBy(c => c.OrderIndex).ToList();
             foreach (var child in item.OutlineItems)
@@ -46,9 +54,9 @@ public class DocumentOutlineInfoProfile : Profile
         }
     }
 
-    private void OrderChildren(DocumentOutline item)
+    private static void OrderChildren(DocumentOutline item)
     {
-        if (item.OutlineItems != null && item.OutlineItems.Any())
+        if (item.OutlineItems != null && item.OutlineItems.Count != 0)
         {
             item.OutlineItems = item.OutlineItems.OrderBy(c => c.OrderIndex).ToList();
             foreach (var child in item.OutlineItems)
@@ -58,9 +66,9 @@ public class DocumentOutlineInfoProfile : Profile
         }
     }
 
-    private void OrderChildren(DocumentOutlineItemInfo item)
+    private static void OrderChildren(DocumentOutlineItemInfo item)
     {
-        if (item.Children != null && item.Children.Any())
+        if (item.Children != null && item.Children.Count != 0)
         {
             item.Children = item.Children.OrderBy(c => c.OrderIndex).ToList();
             foreach (var child in item.Children)
@@ -70,9 +78,9 @@ public class DocumentOutlineInfoProfile : Profile
         }
     }
 
-    private void OrderChildren(DocumentOutlineItem item)
+    private static void OrderChildren(DocumentOutlineItem item)
     {
-        if (item.Children != null && item.Children.Any())
+        if (item.Children != null && item.Children.Count != 0)
         {
             item.Children = item.Children.OrderBy(c => c.OrderIndex).ToList();
             foreach (var child in item.Children)

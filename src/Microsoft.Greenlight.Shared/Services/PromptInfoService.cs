@@ -10,6 +10,9 @@ using Microsoft.Greenlight.Shared.Repositories;
 
 namespace Microsoft.Greenlight.Shared.Services
 {
+    /// <summary>
+    /// Service for managing prompt information.
+    /// </summary>
     public class PromptInfoService : IPromptInfoService
     {
         private readonly GenericRepository<PromptDefinition> _promptDefinitionRepository;
@@ -17,10 +20,17 @@ namespace Microsoft.Greenlight.Shared.Services
         private readonly IDocumentProcessInfoService _documentProcessInfoService;
         private readonly IServiceProvider _serviceProvider;
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="PromptInfoService"/> class.
+        /// </summary>
+        /// <param name="promptDefinitionRepository">The repository for prompt definitions.</param>
+        /// <param name="promptImplementationRepository">The repository for prompt implementations.</param>
+        /// <param name="documentProcessInfoService">The service for document process information.</param>
+        /// <param name="serviceProvider">The service provider.</param>
         public PromptInfoService(
             GenericRepository<PromptDefinition> promptDefinitionRepository,
             GenericRepository<PromptImplementation> promptImplementationRepository,
-            IDocumentProcessInfoService documentProcessInfoService, 
+            IDocumentProcessInfoService documentProcessInfoService,
             IServiceProvider serviceProvider)
         {
             _promptDefinitionRepository = promptDefinitionRepository;
@@ -31,11 +41,7 @@ namespace Microsoft.Greenlight.Shared.Services
             _serviceProvider = serviceProvider;
         }
 
-        /// <summary>
-        /// Get a Prompt by its ID/Guid. That means it can only be a database-stored prompt, since only those have Guids.
-        /// </summary>
-        /// <param name="id">PromptImplementation ID</param>
-        /// <returns></returns>
+        /// <inheritdoc/>
         public async Task<PromptInfo?> GetPromptByIdAsync(Guid id)
         {
             var implementation = await _promptImplementationRepository.AllRecords()
@@ -44,6 +50,9 @@ namespace Microsoft.Greenlight.Shared.Services
                 .FirstOrDefaultAsync(pi => pi.Id == id);
 
             if (implementation == null)
+                return null;
+
+            if(implementation.PromptDefinition == null || implementation.DocumentProcessDefinition == null)
                 return null;
 
             return new PromptInfo
@@ -58,52 +67,46 @@ namespace Microsoft.Greenlight.Shared.Services
             };
         }
 
+        /// <inheritdoc/>
         public async Task<PromptInfo?> GetPromptByShortCodeAndProcessNameAsync(string promptShortCode, string documentProcessName)
         {
             var prompts = await GetPromptsByDocumentProcessName(documentProcessName);
             return prompts.FirstOrDefault(p => p.ShortCode == promptShortCode);
         }
 
+        /// <inheritdoc/>
         public async Task<string?> GetPromptTextByShortCodeAndProcessNameAsync(string promptShortCode, string documentProcessName)
         {
             var prompt = await GetPromptByShortCodeAndProcessNameAsync(promptShortCode, documentProcessName);
             return prompt?.Text ?? "";
         }
 
-        /// <summary>
-        /// Get all prompts for a process by the process's ID/Guid. Only dynamic processes have IDs, so this method is only
-        /// returning prompts for dynamic processes (from the database).
-        /// </summary>
-        /// <param name="processId">DocumentProcessDefinition.Id</param>
-        /// <returns></returns>
+        /// <inheritdoc/>
         public async Task<List<PromptInfo>> GetPromptsByProcessIdAsync(Guid processId)
         {
             var implementations = await _promptImplementationRepository.AllRecords()
                 .Where(pi => pi.DocumentProcessDefinitionId == processId)
                 .Include(pi => pi.PromptDefinition)
-                .Include(pi=>pi.DocumentProcessDefinition)
+                .Include(pi => pi.DocumentProcessDefinition)
                 .ToListAsync();
+
+            if (implementations == null || implementations.Count == 0)
+                return new List<PromptInfo>();
+
+            implementations = implementations.Where(pi => pi.PromptDefinition != null && pi.DocumentProcessDefinition != null).ToList();
 
             return implementations.Select(pi => new PromptInfo
             {
                 Id = pi.Id,
-                ShortCode = pi.PromptDefinition.ShortCode,
-                DocumentProcessName = pi.DocumentProcessDefinition.ShortName,
+                ShortCode = pi.PromptDefinition!.ShortCode,
+                DocumentProcessName = pi.DocumentProcessDefinition!.ShortName,
                 DocumentProcessId = pi.DocumentProcessDefinitionId,
                 Description = pi.PromptDefinition.Description,
                 Text = pi.Text
-                
-               
             }).ToList();
         }
 
-        /// <summary>
-        /// Returns all prompts for a given process name. This can be used both for static and dynamic processes.
-        /// We first determine if the process is static or dynamic, and then return the prompts accordingly.
-        /// Static prompts are returned from the processes IPromptCatalogTypes, dynamic prompts are returned from the database.
-        /// </summary>
-        /// <param name="documentProcessName"></param>
-        /// <returns></returns>
+        /// <inheritdoc/>
         public async Task<List<PromptInfo>> GetPromptsByDocumentProcessName(string documentProcessName)
         {
             var documentProcess =
@@ -114,14 +117,9 @@ namespace Microsoft.Greenlight.Shared.Services
 
             if (documentProcess.Source == ProcessSource.Static)
             {
-                // render the Prompt Catalog Types and return them as PromptInfo objects
-                // We still need a class to do this work
-
                 var scope = _serviceProvider.CreateScope();
+                var promptCatalogTypes = scope.ServiceProvider.GetRequiredServiceForDocumentProcess<IPromptCatalogTypes>(documentProcess!);
 
-                var promptCatalogTypes =  scope.ServiceProvider.GetRequiredServiceForDocumentProcess<IPromptCatalogTypes>(documentProcess!);
-                
-                // for each property in the PromptCatalogTypes, create a PromptInfo object
                 var promptInfos = promptCatalogTypes.GetType().GetProperties()
                     .Select(prop => new PromptInfo
                     {
@@ -135,14 +133,12 @@ namespace Microsoft.Greenlight.Shared.Services
 
                 foreach (var promptInfo in promptInfos)
                 {
-
                     var promptDefinitions = await _promptDefinitionRepository.GetAllAsync(useCache: true);
                     var promptDefinition = promptDefinitions.FirstOrDefault(pd => pd.ShortCode == promptInfo.ShortCode);
-                    
+
                     if (promptDefinition != null)
                     {
                         promptInfo.Description = promptDefinition.Description;
-
                     }
                 }
 
@@ -150,18 +146,17 @@ namespace Microsoft.Greenlight.Shared.Services
             }
             else
             {
-                // use the Document Process ID to get the prompts from the database
                 return await GetPromptsByProcessIdAsync(documentProcess.Id);
             }
-
         }
 
+        /// <inheritdoc/>
         public async Task AddPromptAsync(PromptInfo promptInfo)
         {
             var promptImplementation = new PromptImplementation
             {
                 Id = Guid.NewGuid(),
-                PromptDefinitionId = promptInfo.DefinitionId, 
+                PromptDefinitionId = promptInfo.DefinitionId,
                 DocumentProcessDefinitionId = promptInfo.DocumentProcessId,
                 StaticDocumentProcessShortCode = promptInfo.DocumentProcessName,
                 Text = promptInfo.Text
@@ -169,6 +164,7 @@ namespace Microsoft.Greenlight.Shared.Services
             await _promptImplementationRepository.AddAsync(promptImplementation);
         }
 
+        /// <inheritdoc/>
         public async Task UpdatePromptAsync(PromptInfo promptInfo)
         {
             if (promptInfo.Id != null)
@@ -182,6 +178,7 @@ namespace Microsoft.Greenlight.Shared.Services
             }
         }
 
+        /// <inheritdoc/>
         public async Task DeletePromptAsync(Guid promptId)
         {
             var promptImplementation = await _promptImplementationRepository.GetByIdAsync(promptId);
@@ -190,7 +187,5 @@ namespace Microsoft.Greenlight.Shared.Services
                 await _promptImplementationRepository.DeleteAsync(promptImplementation);
             }
         }
-
-       
     }
 }

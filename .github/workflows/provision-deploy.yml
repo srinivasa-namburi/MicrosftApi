@@ -34,7 +34,7 @@ jobs:
         run: dotnet workload install wasm-tools
 
       - name: Install AZD
-        uses: Azure/setup-azd@v1.0.0
+        uses: Azure/setup-azd@v2
 
       - name: Rewrite Azure Credentials to old format if necessary
         run: |

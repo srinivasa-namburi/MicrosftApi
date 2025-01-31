@@ -6,15 +6,23 @@ using Microsoft.Greenlight.Shared.Models.Plugins;
 
 namespace Microsoft.Greenlight.Shared.Services
 {
+    /// <summary>
+    /// Service for managing plugins and their associations with document processes.
+    /// </summary>
     public class PluginService : IPluginService
     {
         private readonly DocGenerationDbContext _dbContext;
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="PluginService"/> class.
+        /// </summary>
+        /// <param name="dbContext">The database context.</param>
         public PluginService(DocGenerationDbContext dbContext)
         {
             _dbContext = dbContext;
         }
 
+        /// <inheritdoc/>
         public async Task AssociatePluginWithDocumentProcessAsync(Guid pluginId, Guid documentProcessId, string version)
         {
             // Retrieve the plugin and document process
@@ -46,6 +54,7 @@ namespace Microsoft.Greenlight.Shared.Services
             await AssociatePluginWithDocumentProcessAsync(pluginId, documentProcessId, versionObj);
         }
 
+        /// <inheritdoc/>
         public async Task AssociatePluginWithDocumentProcessAsync(Guid pluginId, Guid documentProcessId, DynamicPluginVersion version)
         {
             // Retrieve the plugin and document process
@@ -68,7 +77,7 @@ namespace Microsoft.Greenlight.Shared.Services
             }
 
             // Check if association already exists
-            var existingAssociation = documentProcess.Plugins.FirstOrDefault(p => p.DynamicPluginId == pluginId);
+            var existingAssociation = documentProcess.Plugins!.FirstOrDefault(p => p.DynamicPluginId == pluginId);
 
             if (existingAssociation != null)
             {
@@ -86,12 +95,13 @@ namespace Microsoft.Greenlight.Shared.Services
                     Version = version,
                 };
 
-                documentProcess.Plugins.Add(association);
+                documentProcess.Plugins!.Add(association);
             }
 
             await _dbContext.SaveChangesAsync();
         }
 
+        /// <inheritdoc/>
         public async Task DisassociatePluginFromDocumentProcessAsync(Guid pluginId, Guid documentProcessId)
         {
             // Retrieve the association
@@ -109,6 +119,7 @@ namespace Microsoft.Greenlight.Shared.Services
             await _dbContext.SaveChangesAsync();
         }
 
+        /// <inheritdoc/>
         public async Task<List<DynamicPlugin>> GetAllPluginsAsync()
         {
             var plugins = await _dbContext.DynamicPlugins
@@ -120,6 +131,7 @@ namespace Microsoft.Greenlight.Shared.Services
             return plugins;
         }
 
+        /// <inheritdoc/>
         public async Task<DynamicPlugin?> GetPluginByIdAsync(Guid pluginId)
         {
             var plugins = await _dbContext.DynamicPlugins
@@ -132,6 +144,7 @@ namespace Microsoft.Greenlight.Shared.Services
             return plugins;
         }
 
+        /// <inheritdoc/>
         public async Task<List<DynamicPlugin>> GetPluginsByDocumentProcessIdAsync(Guid documentProcessId)
         {
             var plugins = await _dbContext.DynamicPluginDocumentProcesses
@@ -144,6 +157,5 @@ namespace Microsoft.Greenlight.Shared.Services
 
             return plugins.Count == 0 ? new List<DynamicPlugin>() : plugins!;
         }
-
     }
 }

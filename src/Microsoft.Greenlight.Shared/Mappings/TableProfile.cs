@@ -6,8 +6,17 @@ using BoundingRegion = Azure.AI.FormRecognizer.DocumentAnalysis.BoundingRegion;
 
 namespace Microsoft.Greenlight.Shared.Mappings;
 
+/// <summary>
+/// Profile for mapping table-related entities.
+/// </summary>
 public class TableProfile : Profile
 {
+    /// <summary>
+    /// Initializes a new instance of the <see cref="TableProfile"/> class.
+    /// Defines the mapping between <see cref="DocumentTable"/> and <see cref="Table"/>, 
+    /// between <see cref="DocumentTableCell"/> and <see cref="TableCell"/>,
+    /// and between <see cref="BoundingRegion"/> and <see cref="Models.BoundingRegion"/>.
+    /// </summary>
     public TableProfile()
     {
         CreateMap<PointF, BoundingPolygon>().ConvertUsing<BoundingPolygonConverter>();

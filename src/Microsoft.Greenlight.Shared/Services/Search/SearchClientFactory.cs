@@ -7,16 +7,26 @@ using Microsoft.Greenlight.Shared.Helpers;
 
 namespace Microsoft.Greenlight.Shared.Services.Search;
 
+/// <summary>
+/// Factory class for creating instances of SearchClient and SearchIndexClient.
+/// </summary>
 public class SearchClientFactory
 {
     private readonly IConfiguration _configuration;
     private readonly SearchIndexClient _baseSearchIndexClient;
     private readonly AzureCredentialHelper _azureCredentialHelper;
-    private ServiceConfigurationOptions _serviceConfigurationOptions;
+    private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
 
     private Dictionary<string, SearchClient>? searchClients;
     private Dictionary<string, SearchIndexClient>? searchIndexClients;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="SearchClientFactory"/> class.
+    /// </summary>
+    /// <param name="configuration">The configuration.</param>
+    /// <param name="baseSearchIndexClient">The base search index client.</param>
+    /// <param name="serviceConfigurationOptions">The service configuration options.</param>
+    /// <param name="azureCredentialHelper">The Azure credential helper.</param>
     public SearchClientFactory(
         IConfiguration configuration,
         SearchIndexClient baseSearchIndexClient,
@@ -30,6 +40,11 @@ public class SearchClientFactory
         _serviceConfigurationOptions = serviceConfigurationOptions.Value;
     }
 
+    /// <summary>
+    /// Gets the search index client for the specified index name.
+    /// </summary>
+    /// <param name="indexName">Name of the index.</param>
+    /// <returns>The search index client.</returns>
     public virtual SearchIndexClient GetSearchIndexClientForIndex(string indexName)
     {
         searchIndexClients ??= new Dictionary<string, SearchIndexClient>();
@@ -47,7 +62,12 @@ public class SearchClientFactory
         return searchIndexClients[indexName];
     }
 
-    public SearchClient GetSearchClientForIndex(string indexName)
+    /// <summary>
+    /// Gets the search client for the specified index name.
+    /// </summary>
+    /// <param name="indexName">Name of the index.</param>
+    /// <returns>The search client.</returns>
+    public virtual SearchClient GetSearchClientForIndex(string indexName)
     {
         searchClients ??= new Dictionary<string, SearchClient>();
 

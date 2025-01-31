@@ -1,5 +1,4 @@
-﻿using System.Linq.Expressions;
-using System.Text.Json;
+﻿using System.Text.Json;
 using AutoMapper;
 using Microsoft.Greenlight.Shared.Contracts.DTO.Document;
 using Microsoft.Greenlight.Shared.Models;
@@ -8,12 +7,24 @@ using Microsoft.KernelMemory;
 
 namespace Microsoft.Greenlight.Shared.Mappings;
 
+/// <summary>
+/// Profile for mapping between various document-related models and DTOs.
+/// </summary>
 public class GeneratedDocumentProfile : Profile
 {
+    /// <summary>
+    /// Initializes a new instance of the <see cref="GeneratedDocumentProfile"/> class.
+    /// Defines the mapping between <see cref="ContentNode"/> and <see cref="ContentNodeInfo"/>, 
+    /// between <see cref="ContentNodeSystemItem"/> and <see cref="ContentNodeSystemItemInfo"/>,
+    /// between <see cref="SourceReferenceItem"/> and <see cref="SourceReferenceItemInfo"/>,
+    /// between <see cref="PluginSourceReferenceItem"/> and <see cref="PluginSourceReferenceItemInfo"/>,
+    /// between <see cref="KernelMemoryDocumentSourceReferenceItem"/> and <see cref="KernelMemoryDocumentSourceReferenceItemInfo"/>,
+    /// between <see cref="DocumentLibrarySourceReferenceItem"/> and <see cref="DocumentLibrarySourceReferenceItemInfo"/>,
+    /// and between <see cref="DocumentProcessRepositorySourceReferenceItem"/> and <see cref="DocumentProcessRepositorySourceReferenceItemInfo"/>,
+    /// </summary>
     public GeneratedDocumentProfile()
     {
         // Mapping for ContentNode
-
 
         CreateMap<ContentNode, ContentNodeInfo>()
             .ForMember(dest => dest.Children, opt => opt.Ignore())
@@ -22,7 +33,7 @@ public class GeneratedDocumentProfile : Profile
             .AfterMap((src, dest, context) =>
             {
                 // Map children recursively
-                if (src.Children != null && src.Children.Any())
+                if (src.Children != null && src.Children.Count != 0)
                 {
                     dest.Children = src.Children.Select(child => context.Mapper.Map<ContentNodeInfo>(child)).ToList();
                 }
@@ -34,7 +45,7 @@ public class GeneratedDocumentProfile : Profile
             .ForMember(dest => dest.ContentNodeSystemItemId, opt => opt.MapFrom(src => src.ContentNodeSystemItemId))
             .AfterMap((src, dest, context) =>
             {
-                if (src.Children != null && src.Children.Any())
+                if (src.Children != null && src.Children.Count != 0)
                 {
                     dest.Children = src.Children.Select(child => context.Mapper.Map<ContentNode>(child)).ToList();
                 }
@@ -67,7 +78,7 @@ public class GeneratedDocumentProfile : Profile
             .ForMember(dest => dest.ContentNodes, opt => opt.Ignore())
             .AfterMap((src, dest, context) =>
             {
-                if (src.ContentNodes != null && src.ContentNodes.Any())
+                if (src.ContentNodes != null && src.ContentNodes.Count != 0)
                 {
                     dest.ContentNodes = src.ContentNodes.Select(cn => context.Mapper.Map<ContentNodeInfo>(cn)).ToList();
                 }
@@ -77,7 +88,7 @@ public class GeneratedDocumentProfile : Profile
             .ForMember(dest => dest.ContentNodes, opt => opt.Ignore())
             .AfterMap((src, dest, context) =>
             {
-                if (src.ContentNodes != null && src.ContentNodes.Any())
+                if (src.ContentNodes != null && src.ContentNodes.Count != 0)
                 {
                     dest.ContentNodes = src.ContentNodes.Select(cn => context.Mapper.Map<ContentNode>(cn)).ToList();
                 }
