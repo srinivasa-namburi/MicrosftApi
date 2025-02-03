@@ -20,13 +20,28 @@ jobs:
       AZURE_SUBNET_CAE: ${{ vars.AZURE_SUBNET_CAE }}
       AZURE_SUBNET_PE: ${{ vars.AZURE_SUBNET_PE }}
       AZURE_CLOUD: ${{ vars.AZURE_CLOUD }}
+      DEPLOYMENT_MODEL: ${{ vars.DEPLOYMENT_MODEL }}
+      AZURE_CAE_WORKLOAD_TYPE: ${{ vars.AZURE_CAE_WORKLOAD_TYPE }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate deployment parameters
+        run: |
+          if [ "${DEPLOYMENT_MODEL}" == "private" ]; then
+            if [ "${AZURE_CAE_WORKLOAD_TYPE}" == "consumption" ]; then
+              echo "Error: When DEPLOYMENT_MODEL is 'private', AZURE_CAE_WORKLOAD_TYPE cannot be 'consumption'."
+              exit 1
+            fi
+            if [ -z "${AZURE_SUBNET_CAE}" ] || [ -z "${AZURE_SUBNET_PE}" ]; then
+              echo "Error: When DEPLOYMENT_MODEL is 'private', both AZURE_SUBNET_CAE and AZURE_SUBNET_PE must be non-empty."
+              exit 1
+            fi
+          fi
+
       - name: Use DotNet SDK 8.0.x
-        uses: actions/setup-dotnet@v1
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.404
 
@@ -50,23 +65,11 @@ jobs:
         env:
           AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Set up infra folder based on deployment model
+      - name: Set up infra folder
         run: |
-          set -e
-          DEPLOYMENT_MODEL=${{ vars.DEPLOYMENT_MODEL }}
-
-          # Delete existing infra folder
           rm -rf infra
           rm -rf .azure
-
-          # Copy infra folder based on deployment model
-          if [ "$DEPLOYMENT_MODEL" == "public" ]; then
-            cp -r infra.public infra
-          else
-            cp -r infra.private infra
-          fi
-        env:
-          DEPLOYMENT_MODEL: ${{ vars.DEPLOYMENT_MODEL }}
+          cp -r infra.public infra
 
       - name: Set execute permission on .sh and .ps1 scripts in the ./deploy folder
         run: chmod ugo+x deploy/*.sh deploy/*.ps1
@@ -89,16 +92,9 @@ jobs:
           client_id=$(echo "${info}" | jq -r '.appId // .clientId')
           client_secret=$(echo "${info}" | jq -r '.password // .clientSecret')
           tenant_id=$(echo "${info}" | jq -r '.tenant // .tenantId')
-
-          # Set cloud.name to contents of AZURE_CLOUD
-          # Display the current cloud name
           azd config set cloud.name ${AZURE_CLOUD}
           echo "Current AZD cloud name: $(az cloud show --query name -o tsv)"
-
-          azd auth login \
-            --client-id "${client_id}" \
-            --client-secret "${client_secret}" \
-            --tenant-id "${tenant_id}"
+          azd auth login --client-id "${client_id}" --client-secret "${client_secret}" --tenant-id "${tenant_id}"
         env:
           AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
           AZURE_CLOUD: ${{ vars.AZURE_CLOUD }}
@@ -106,17 +102,11 @@ jobs:
       - name: Update Bicep file for workload profile type
         run: |
           WORKLOAD_TYPE="${{ env.AZURE_CAE_WORKLOAD_TYPE }}"
-
-          # If the workload type is not set or empty, default to 'D4'
           if [ -z "$WORKLOAD_TYPE" ]; then
             WORKLOAD_TYPE="D4"
           fi
-
-          # Replace the workload profile type in the Bicep file
           sed -i "s/param workloadProfileType string = 'D4'/param workloadProfileType string = '$WORKLOAD_TYPE'/" infra/resources.bicep
-
           echo "Updated resources.bicep with workload profile type: $WORKLOAD_TYPE"
-
         env:
           AZURE_CAE_WORKLOAD_TYPE: ${{ vars.AZURE_CAE_WORKLOAD_TYPE }}
 
@@ -125,24 +115,89 @@ jobs:
         env:
           AZD_INITIAL_ENVIRONMENT_CONFIG: ${{ secrets.AZD_INITIAL_ENVIRONMENT_CONFIG }}
           AZURE_CAE_WORKLOAD_TYPE: ${{ vars.AZURE_CAE_WORKLOAD_TYPE }}
+          DEPLOYMENT_MODEL: ${{ vars.DEPLOYMENT_MODEL }}
+          AZURE_SUBNET_CAE: ${{ vars.AZURE_SUBNET_CAE }}
+          AZURE_SUBNET_PE: ${{ vars.AZURE_SUBNET_PE }}
+          AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
+
+      - name: Configure Azure SQL Server for Azure AD authentication
+        run: |
+          set -e
+          # Assume the resource group is named "rg-<AZURE_ENV_NAME>"
+          RG_NAME="rg-${AZURE_ENV_NAME}"
+
+          # Retrieve the SQL server name from the resource group (assumes only one SQL server exists)
+          sqlServerName=$(az sql server list --resource-group "$RG_NAME" --query "[].name" -o tsv)
+          if [ -z "$sqlServerName" ]; then
+              echo "No SQL server found in $RG_NAME. Exiting."
+              exit 1
+          fi
+          echo "SQL Server Name: $sqlServerName"
+
+          # Retrieve the Azure AD admin's objectId for the SQL server.
+          existingAdmin=$(az sql server ad-admin list \
+              --resource-group "$RG_NAME" \
+              --server-name "$sqlServerName" \
+              --query "sid" -o tsv)
+
+          # Check if the admin exists by testing if the variable is empty.
+          if [ -z "$existingAdmin" ]; then
+              echo "No Azure AD admin found. Configuring SQL server..."
+              
+              # Retrieve the Managed Identity from the resource group (assumes only one MI exists)
+              miResourceId=$(az resource list --resource-type "Microsoft.ManagedIdentity/userAssignedIdentities" --resource-group "$RG_NAME" --query "[0].id" -o tsv)
+              if [ -z "$miResourceId" ]; then
+                  echo "No Managed Identity found in $RG_NAME. Exiting."
+                  exit 1
+              fi
+                
+              miObjectId=$(az resource show --ids "$miResourceId" --query "properties.principalId" -o tsv)
+              miName=$(az resource show --ids "$miResourceId" --query "name" -o tsv)
+              echo "Managed Identity: $miName (Object ID: $miObjectId)"
+              
+              # Sanitize the MI's name to produce a valid SQL login.
+              sanitizedLogin=$(echo "$miName" | cut -c1-16 | tr -d ' ')
+              echo "Sanitized login: $sanitizedLogin"
+              
+              # Create the Azure AD admin using the Managed Identity.
+              az sql server ad-admin create \
+                  --resource-group "$RG_NAME" \
+                  --server-name "$sqlServerName" \
+                  --object-id "$miObjectId" \
+                  --display-name "$miName"
+          else
+              echo "Azure AD admin already exists for SQL server ($sqlServerName). Skipping admin configuration."
+          fi
+
+          # Retrieve the current Azure AD–only authentication setting.
+          currentAuth=$(az sql server ad-only-auth get \
+              --resource-group "$RG_NAME" \
+              --name "$sqlServerName" \
+              --query "azureAdOnlyAuthentication" -o tsv)
+
+          echo "Current Azure AD–only authentication setting for SQL Server '$sqlServerName': $currentAuth"
+
+          if [ "$currentAuth" = "false" ]; then
+              echo "Azure AD–only authentication is not enabled. Enabling now..."
+              az sql server ad-only-auth enable --resource-group "$RG_NAME" --name "$sqlServerName"
+              echo "Azure AD–only authentication has been enabled."
+          else
+              echo "Azure AD–only authentication is already enabled. Skipping command."
+          fi
+
+        env:
+          AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
 
       - name: Create appsettings.Production.json file
         run: |
-          # Copy appsettings.json to appsettings.Production.json (in the Microsoft.Greenlight.AppHost directory)
           cp Microsoft.Greenlight.AppHost/appsettings.json Microsoft.Greenlight.AppHost/appsettings.Production.json
-
-          # Ensure ConnectionStrings and ServiceConfiguration.AzureMaps objects exist and add respective fields
           jq --arg openai_planner "${openai_planner}" --arg azure_maps_key "${ServiceConfiguration__AzureMaps__Key}" '
             .ConnectionStrings = (.ConnectionStrings // {}) |
             .ConnectionStrings["openai-planner"] = $openai_planner |
             .ServiceConfiguration.AzureMaps = (.ServiceConfiguration.AzureMaps // {}) |
             .ServiceConfiguration.AzureMaps.Key = $azure_maps_key' \
             Microsoft.Greenlight.AppHost/appsettings.Production.json > Microsoft.Greenlight.AppHost/appsettings.Production.json.tmp
-
-          # Move the temporary file to the final appsettings.Production.json
           mv Microsoft.Greenlight.AppHost/appsettings.Production.json.tmp Microsoft.Greenlight.AppHost/appsettings.Production.json
-
-          # Display the full appsettings.Production.json file
           echo "*****************************************************************************************"
           cat Microsoft.Greenlight.AppHost/appsettings.Production.json
           echo "*****************************************************************************************"
@@ -152,25 +207,14 @@ jobs:
 
       - name: Add AzureAd configuration to appsettings.Production.json
         run: |
-          # Check if the secret exists and is not empty
           if [ -z "${PVICO_ENTRA_CREDENTIALS}" ]; then
             echo "PVICO_ENTRA_CREDENTIALS is not set or is empty. Skipping AzureAd configuration."
             exit 0
           fi
-
-          # Load the existing appsettings.Production.json into a variable
           appsettings=$(cat Microsoft.Greenlight.AppHost/appsettings.Production.json)
-
-          # Load the AzureAd configuration from the secret
           azureAdConfig=$(echo "${PVICO_ENTRA_CREDENTIALS}")
-
-          # Merge the AzureAd configuration into the appsettings under the "AzureAd" key
           merged=$(echo "${appsettings}" | jq --argjson azureAdConfig "${azureAdConfig}" '. + {AzureAd: $azureAdConfig}')
-
-          # Write the merged configuration back to the appsettings.Production.json file
           echo "${merged}" > Microsoft.Greenlight.AppHost/appsettings.Production.json
-
-          # Display the full appsettings.Production.json file
           echo "*****************************************************************************************"
           cat Microsoft.Greenlight.AppHost/appsettings.Production.json
           echo "*****************************************************************************************"
@@ -181,12 +225,14 @@ jobs:
         run: |
           export SKIP_POSTDEPLOY=true
           azd deploy db-setupmanager --no-prompt
+        env:
+          AZURE_RESOURCE_GROUP: rg-${{ env.AZURE_ENV_NAME }}
+          AZURE_CAE_WORKLOAD_TYPE: ${{ vars.AZURE_CAE_WORKLOAD_TYPE }}
 
       - name: Deploy Rest of Application
         run: |
-          export SKIP_POSTDEPLOY=false1
+          export SKIP_POSTDEPLOY=false
           azd deploy --no-prompt
-
         env:
           AZURE_RESOURCE_GROUP: rg-${{ env.AZURE_ENV_NAME }}
           AZURE_CAE_WORKLOAD_TYPE: ${{ vars.AZURE_CAE_WORKLOAD_TYPE }}

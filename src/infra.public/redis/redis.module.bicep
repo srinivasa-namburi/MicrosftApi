@@ -2,10 +2,10 @@ targetScope = 'resourceGroup'
 
 @description('The location for the resource(s) to be deployed.')
 param location string = resourceGroup().location
-
 param principalId string
-
 param principalName string
+@description('Deployment model: public or private')
+param deploymentModel string
 
 resource redis 'Microsoft.Cache/redis@2024-03-01' = {
   name: take('redis${uniqueString(resourceGroup().id)}', 63)
@@ -22,6 +22,7 @@ resource redis 'Microsoft.Cache/redis@2024-03-01' = {
     redisConfiguration: {
       'aad-enabled': 'true'
     }
+    publicNetworkAccess: deploymentModel == 'private' ? 'Disabled' : 'Enabled'
   }
   tags: {
     'aspire-resource-name': 'redis'
@@ -39,3 +40,5 @@ resource redis_contributor 'Microsoft.Cache/redis/accessPolicyAssignments@2024-0
 }
 
 output connectionString string = '${redis.properties.hostName},ssl=true'
+output resourceId string = redis.id
+output resourceName string = redis.name

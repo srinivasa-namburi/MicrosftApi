@@ -22,6 +22,7 @@ using Microsoft.Greenlight.Web.Shared.Auth;
 using Microsoft.Greenlight.Web.Shared.ServiceClients;
 using StackExchange.Redis;
 using Yarp.ReverseProxy.Transforms;
+using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -281,7 +282,8 @@ app.MapForwarder("/api/{**catch-all}", "https://api-main/", transformBuilder =>
             transformContext.ProxyRequest.Headers.Authorization = new("Bearer", accessToken);
         }
     });
-}).RequireAuthorization();
+}).WithMetadata(new RequestSizeLimitAttribute(512 * 1024 * 1024)) // 512MB
+  .RequireAuthorization();
 
 app.MapForwarder("/hubs/{**catch-all}", "https://api-main/", transformBuilder =>
 {

@@ -1,11 +1,11 @@
 @description('The location for the resource(s) to be deployed.')
 param location string = resourceGroup().location
-
 param principalId string
-
 param principalType string
+@description('Deployment model: public or private')
+param deploymentModel string
 
-resource aiSearch 'Microsoft.Search/searchServices@2023-11-01' = {
+resource aiSearch 'Microsoft.Search/searchServices@2024-06-01-preview' = {
   name: take('aisearch${uniqueString(resourceGroup().id)}', 60)
   location: location
   tags: {
@@ -24,6 +24,7 @@ resource aiSearch 'Microsoft.Search/searchServices@2023-11-01' = {
         aadAuthFailureMode: 'http403'
       }
     }
+    publicNetworkAccess: deploymentModel == 'private' ? 'disabled' : 'enabled'
   }
 }
 
@@ -48,3 +49,5 @@ resource aiSearch_SearchServiceContributor 'Microsoft.Authorization/roleAssignme
 }
 
 output connectionString string = 'Endpoint=https://${aiSearch.name}.search.windows.net'
+output resourceId string = aiSearch.id
+output resourceName string = aiSearch.name

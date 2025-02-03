@@ -1,16 +1,16 @@
 @description('The location for the resource(s) to be deployed.')
 param location string = resourceGroup().location
-
 param sku string = 'Premium'
-
 param principalId string
-
 param principalType string
+@description('Deployment model: public or private')
+param deploymentModel string
 
 resource sbus 'Microsoft.ServiceBus/namespaces@2024-01-01' = {
   name: take('sbus${uniqueString(resourceGroup().id)}', 50)
   location: location
   properties: {
+    publicNetworkAccess: deploymentModel == 'private' ? 'Disabled' : 'Enabled'
   }
   sku: {
     name: sku
@@ -33,3 +33,5 @@ resource sbus_AzureServiceBusDataOwner 'Microsoft.Authorization/roleAssignments@
 }
 
 output serviceBusEndpoint string = sbus.properties.serviceBusEndpoint
+output resourceId string = sbus.id
+output resourceName string = sbus.name

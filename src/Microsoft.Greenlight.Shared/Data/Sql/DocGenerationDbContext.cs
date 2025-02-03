@@ -818,27 +818,27 @@ public class DocGenerationDbContext : DbContext
     /// <summary>
     /// Gets or sets the content node system items.
     /// </summary>
-    public DbSet<ContentNodeSystemItem> ContentNodeSystemItems { get; set; }
+    public virtual DbSet<ContentNodeSystemItem> ContentNodeSystemItems { get; set; }
 
     /// <summary>
     /// Gets or sets the generated documents.
     /// </summary>
-    public DbSet<GeneratedDocument> GeneratedDocuments { get; set; }
+    public virtual DbSet<GeneratedDocument> GeneratedDocuments { get; set; }
 
     /// <summary>
     /// Gets or sets the exported document links.
     /// </summary>
-    public DbSet<ExportedDocumentLink> ExportedDocumentLinks { get; set; }
+    public virtual DbSet<ExportedDocumentLink> ExportedDocumentLinks { get; set; }
 
     /// <summary>
     /// Gets or sets the document metadata.
     /// </summary>
-    public DbSet<DocumentMetadata> DocumentMetadata { get; set; }
+    public virtual DbSet<DocumentMetadata> DocumentMetadata { get; set; }
 
     /// <summary>
     /// Gets or sets the content nodes.
     /// </summary>
-    public DbSet<ContentNode> ContentNodes { get; set; }
+    public virtual DbSet<ContentNode> ContentNodes { get; set; }
 
     /// <summary>
     /// Gets or sets the ingested documents.
@@ -923,12 +923,12 @@ public class DocGenerationDbContext : DbContext
     /// <summary>
     /// Gets or sets the review definitions.
     /// </summary>
-    public DbSet<ReviewDefinition> ReviewDefinitions { get; set; }
+    public virtual DbSet<ReviewDefinition> ReviewDefinitions { get; set; }
 
     /// <summary>
     /// Gets or sets the review questions.
     /// </summary>
-    public DbSet<ReviewQuestion> ReviewQuestions { get; set; }
+    public virtual DbSet<ReviewQuestion> ReviewQuestions { get; set; }
 
     /// <summary>
     /// Gets or sets the review definition document process definitions.
@@ -938,7 +938,7 @@ public class DocGenerationDbContext : DbContext
     /// <summary>
     /// Gets or sets the review instances.
     /// </summary>
-    public DbSet<ReviewInstance> ReviewInstances { get; set; }
+    public virtual DbSet<ReviewInstance> ReviewInstances { get; set; }
 
     /// <summary>
     /// Gets or sets the review question answers.

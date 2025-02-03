@@ -15,7 +15,7 @@ public class DocumentProcessInfo : IDocumentProcessInfo
     /// <summary>
     /// Short name of the document process.
     /// </summary>
-    public string ShortName { get; set; }
+    public virtual string ShortName { get; set; }
 
     /// <summary>
     /// Description of the document process.

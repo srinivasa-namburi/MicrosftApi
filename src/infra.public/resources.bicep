@@ -2,13 +2,14 @@
 param location string = resourceGroup().location
 @description('Id of the user or app to assign application roles')
 param principalId string = ''
-
 @description('Tags that will be applied to all resources')
 param tags object = {}
-
-// Custom parameter not created by AZD/Aspire
+@description('The subnet of the Container Apps environment must be delegated to Microsoft.App/environments')
+param containerAppEnvSubnet string
 @description('The type of workload profile to use (D4, D8, D16, D32 or consumption)')
 param workloadProfileType string = 'D4'
+
+param deploymentModel string = 'public'
 
 var resourceToken = uniqueString(resourceGroup().id)
 
@@ -33,7 +34,7 @@ resource caeMiRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01
   properties: {
     principalId: managedIdentity.properties.principalId
     principalType: 'ServicePrincipal'
-    roleDefinitionId:  subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')
   }
 }
 
@@ -48,11 +49,15 @@ resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2022-10
   tags: tags
 }
 
-resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2024-02-02-preview' = {
+resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2024-10-02-preview' = {
   name: 'cae-${resourceToken}'
   location: location
   properties: {
-    // Conditional inclusion of workloadProfiles based on workloadProfileType
+    // Include vnet configuration only if deploymentModel is private.
+    vnetConfiguration: deploymentModel == 'private' ? {
+      infrastructureSubnetId: containerAppEnvSubnet
+      internal: true
+    } : null
     workloadProfiles: workloadProfileType != 'consumption' ? [
       {
         maximumCount: 10
@@ -77,7 +82,6 @@ resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2024-02-02-p
       componentType: 'AspireDashboard'
     }
   }
-
 }
 
 resource explicitContributorUserRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
@@ -85,7 +89,7 @@ resource explicitContributorUserRoleAssignment 'Microsoft.Authorization/roleAssi
   scope: containerAppEnvironment
   properties: {
     principalId: principalId
-    roleDefinitionId:  subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')
   }
 }
 

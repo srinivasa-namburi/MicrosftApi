@@ -187,7 +187,7 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "An error occurred while processing ContentNode ID {ContentNodeId}.", contentNode.Id);
+             _logger.LogError(ex, "An error occurred while processing ContentNode ID {ContentNodeId}.", contentNode.Id);
             contentNodeGeneratedEvent.IsSuccessful = false;
 
             // Attempt to set the state to Failed

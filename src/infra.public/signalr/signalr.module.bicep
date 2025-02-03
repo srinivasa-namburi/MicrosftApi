@@ -1,9 +1,9 @@
 @description('The location for the resource(s) to be deployed.')
 param location string = resourceGroup().location
-
 param principalId string
-
 param principalType string
+@description('Deployment model: public or private')
+param deploymentModel string
 
 resource signalr 'Microsoft.SignalRService/signalR@2024-03-01' = {
   name: take('signalr${uniqueString(resourceGroup().id)}', 63)
@@ -18,6 +18,7 @@ resource signalr 'Microsoft.SignalRService/signalR@2024-03-01' = {
   }
   kind: 'SignalR'
   properties: {
+    publicNetworkAccess: deploymentModel == 'private' ? 'Disabled' : 'Enabled'
     features: [
       {
         flag: 'ServiceMode'
@@ -43,3 +44,5 @@ resource signalr_SignalRAppServer 'Microsoft.Authorization/roleAssignments@2022-
 }
 
 output hostName string = signalr.properties.hostName
+output resourceId string = signalr.id
+output resourceName string = signalr.name

@@ -1,11 +1,11 @@
 @description('The location for the resource(s) to be deployed.')
 param location string = resourceGroup().location
-
 param principalId string
-
 param principalType string
+@description('Deployment model: public or private')
+param deploymentModel string
 
-resource docing 'Microsoft.Storage/storageAccounts@2024-01-01' = {
+resource docing 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   name: take('docing${uniqueString(resourceGroup().id)}', 24)
   kind: 'StorageV2'
   location: location
@@ -19,13 +19,14 @@ resource docing 'Microsoft.Storage/storageAccounts@2024-01-01' = {
     networkAcls: {
       defaultAction: 'Allow'
     }
+    publicNetworkAccess: deploymentModel == 'private' ? 'Disabled' : 'Enabled'
   }
   tags: {
     'aspire-resource-name': 'docing'
   }
 }
 
-resource blobs 'Microsoft.Storage/storageAccounts/blobServices@2024-01-01' = {
+resource blobs 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
   name: 'default'
   parent: docing
 }
@@ -61,7 +62,5 @@ resource docing_StorageQueueDataContributor 'Microsoft.Authorization/roleAssignm
 }
 
 output blobEndpoint string = docing.properties.primaryEndpoints.blob
-
-output queueEndpoint string = docing.properties.primaryEndpoints.queue
-
-output tableEndpoint string = docing.properties.primaryEndpoints.table
+output resourceId string = docing.id
+output resourceName string = docing.name
