@@ -8,25 +8,21 @@ param sqlAdminLogin string = 'sqladmin'
 param deploymentModel string
 
 @description('Indicates whether the SQL server already exists (true) or not (false)')
-param exists bool = false
+param exists bool
 
 
-var sqlAdminPassword = guid(take('sqldocgen${uniqueString(resourceGroup().id)}', 63))
+var sqlAdminPassword = 'P@ss${guid(resourceGroup().id)}'
 var isPrivate = deploymentModel == 'private'
 
 resource sqldocgen 'Microsoft.Sql/servers@2024-05-01-preview' = {
   name: take('sqldocgen${uniqueString(resourceGroup().id)}', 63)
   location: location
-  properties: union(
-    {
-      publicNetworkAccess: deploymentModel == 'private' ? 'Disabled' : 'Enabled'
-      version: '12.0'
-    },
-    exists ? {} : {
-      administratorLogin: sqlAdminLogin
-      administratorLoginPassword: sqlAdminPassword
-    }
-  )
+  properties: {
+    publicNetworkAccess: deploymentModel == 'private' ? 'Disabled' : 'Enabled'
+    version: '12.0'
+    administratorLogin: exists ? null : sqlAdminLogin
+    administratorLoginPassword: exists ? null : sqlAdminPassword
+  }
   tags: {
     'aspire-resource-name': 'sqldocgen'
   }

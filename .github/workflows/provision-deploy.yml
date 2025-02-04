@@ -111,7 +111,21 @@ jobs:
           AZURE_CAE_WORKLOAD_TYPE: ${{ vars.AZURE_CAE_WORKLOAD_TYPE }}
 
       - name: Provision Infrastructure
-        run: azd provision --no-prompt
+        run: |
+          RG_NAME="rg-${AZURE_ENV_NAME}"
+          sqlServers=$(az sql server list --resource-group "$RG_NAME" --query "[].name" -o tsv)
+          echo "SQL Servers found: '$sqlServers'"
+
+          if [ -z "$sqlServers" ]; then
+            echo "No SQL servers found. Setting EXISTING_SQL_SERVER to false."
+            export EXISTING_SQL_SERVER="false"
+          else
+            echo "SQL servers found. Setting EXISTING_SQL_SERVER to true. SQL Server Name: $sqlServers"
+            export EXISTING_SQL_SERVER="true"
+          fi
+
+          echo "Existing SQL server present (EXISTING_SQL_SERVER): $EXISTING_SQL_SERVER"
+          azd provision --no-prompt
         env:
           AZD_INITIAL_ENVIRONMENT_CONFIG: ${{ secrets.AZD_INITIAL_ENVIRONMENT_CONFIG }}
           AZURE_CAE_WORKLOAD_TYPE: ${{ vars.AZURE_CAE_WORKLOAD_TYPE }}
@@ -126,40 +140,45 @@ jobs:
           # Assume the resource group is named "rg-<AZURE_ENV_NAME>"
           RG_NAME="rg-${AZURE_ENV_NAME}"
 
-          # Retrieve the SQL server name from the resource group (assumes only one SQL server exists)
-          sqlServerName=$(az sql server list --resource-group "$RG_NAME" --query "[].name" -o tsv)
-          if [ -z "$sqlServerName" ]; then
+          # Check if SQL server exists and get its name
+          sqlServers=$(az sql server list --resource-group "$RG_NAME" --query "[].name" -o tsv)
+          if [ "$sqlServers" = '' ]; then
               echo "No SQL server found in $RG_NAME. Exiting."
               exit 1
           fi
+
+          sqlServerName=$sqlServers
           echo "SQL Server Name: $sqlServerName"
 
-          # Retrieve the Azure AD admin's objectId for the SQL server.
+          # Check for Azure AD admin and get objectId
           existingAdmin=$(az sql server ad-admin list \
               --resource-group "$RG_NAME" \
               --server-name "$sqlServerName" \
-              --query "sid" -o tsv)
+              --query "[].sid" -o tsv)
 
-          # Check if the admin exists by testing if the variable is empty.
-          if [ -z "$existingAdmin" ]; then
+          if [ "$existingAdmin" = '' ]; then
               echo "No Azure AD admin found. Configuring SQL server..."
               
-              # Retrieve the Managed Identity from the resource group (assumes only one MI exists)
-              miResourceId=$(az resource list --resource-type "Microsoft.ManagedIdentity/userAssignedIdentities" --resource-group "$RG_NAME" --query "[0].id" -o tsv)
-              if [ -z "$miResourceId" ]; then
+              # Check for and get Managed Identity
+              miResourceId=$(az resource list \
+                  --resource-type "Microsoft.ManagedIdentity/userAssignedIdentities" \
+                  --resource-group "$RG_NAME" \
+                  --query "[0].id" -o tsv)
+              
+              if [ "$miResourceId" = '' ]; then
                   echo "No Managed Identity found in $RG_NAME. Exiting."
                   exit 1
               fi
-                
+              
               miObjectId=$(az resource show --ids "$miResourceId" --query "properties.principalId" -o tsv)
               miName=$(az resource show --ids "$miResourceId" --query "name" -o tsv)
               echo "Managed Identity: $miName (Object ID: $miObjectId)"
               
-              # Sanitize the MI's name to produce a valid SQL login.
+              # Sanitize the MI's name to produce a valid SQL login
               sanitizedLogin=$(echo "$miName" | cut -c1-16 | tr -d ' ')
               echo "Sanitized login: $sanitizedLogin"
               
-              # Create the Azure AD admin using the Managed Identity.
+              # Create the Azure AD admin using the Managed Identity
               az sql server ad-admin create \
                   --resource-group "$RG_NAME" \
                   --server-name "$sqlServerName" \
@@ -169,7 +188,7 @@ jobs:
               echo "Azure AD admin already exists for SQL server ($sqlServerName). Skipping admin configuration."
           fi
 
-          # Retrieve the current Azure AD–only authentication setting.
+          # Check Azure AD-only authentication setting
           currentAuth=$(az sql server ad-only-auth get \
               --resource-group "$RG_NAME" \
               --name "$sqlServerName" \

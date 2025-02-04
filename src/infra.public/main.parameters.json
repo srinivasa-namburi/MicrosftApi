@@ -22,6 +22,9 @@
     },
     "deploymentModel": {
       "value": "${DEPLOYMENT_MODEL}"
+    },
+    "existingSqlServer": {
+      "value": "${EXISTING_SQL_SERVER}"
     }
   }
 }
