@@ -5,7 +5,7 @@ param principalId string = ''
 @description('Tags that will be applied to all resources')
 param tags object = {}
 @description('The subnet of the Container Apps environment must be delegated to Microsoft.App/environments')
-param containerAppEnvSubnet string
+param containerAppEnvSubnet string = ''
 @description('The type of workload profile to use (D4, D8, D16, D32 or consumption)')
 param workloadProfileType string = 'D4'
 

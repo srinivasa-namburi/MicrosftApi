@@ -13,10 +13,10 @@ param location string
 param principalId string = ''
 
 @description('The resource identifier of the subnet for the private endpoints environment – must have aligned private DNS zones / custom DNS for resolution')
-param peSubnet string
+param peSubnet string = ''
 
 @description('The resource identifier of the subnet used by the Container Apps instance. Must be delegated to Microsoft.App/environments')
-param containerAppEnvSubnet string
+param containerAppEnvSubnet string = ''
 
 @description('If the SQL server is already existing')
 param existingSqlServer bool
@@ -114,11 +114,6 @@ module signalr 'signalr/signalr.module.bicep' = {
     deploymentModel: deploymentModel
   }
 }
-
-// resource existingSqlServer 'Microsoft.Sql/servers@2024-05-01-preview' existing = {
-//   scope: rg
-//   name: take('sqldocgen${uniqueString(rg.id)}', 63)
-// }
 
 module sqldocgen 'sqldocgen/sqldocgen.module.bicep' = {
   name: 'sqldocgen'
