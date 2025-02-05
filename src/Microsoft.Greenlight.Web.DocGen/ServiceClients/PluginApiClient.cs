@@ -1,4 +1,5 @@
-﻿using System.Net.Http.Headers;
+﻿using System.Net;
+using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.Greenlight.Shared.Contracts.DTO.Plugins;
@@ -56,6 +57,17 @@ internal sealed class PluginApiClient : BaseServiceClient<PluginApiClient>, IPlu
     {
         var url = "/api/plugins/upload";
         var response = await SendPostRequestMessage(url, pluginFile);
+
+        // Ensure the helpful information provided by the API as to why it's a bad request
+        // is available in the exception being thrown
+        if (response!.StatusCode == HttpStatusCode.BadRequest)
+        {
+            throw new HttpRequestException($"{await response!.Content.ReadAsStringAsync()}");
+        }
+
+        // Make sure any other failure type is trapped and thrown as a HttpRequestException before trying
+        // to deserialize the response
+        response?.EnsureSuccessStatusCode();
 
         return await response.Content.ReadFromJsonAsync<DynamicPluginInfo>();
     }

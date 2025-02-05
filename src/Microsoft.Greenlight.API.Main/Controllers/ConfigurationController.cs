@@ -34,7 +34,8 @@ public class ConfigurationController : BaseController
     /// <returns>The Azure Maps key.</returns>
     [HttpGet("azure-maps-key")]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public IActionResult GetAzureMapsKey()
+    [Produces<string>]
+    public ActionResult<string> GetAzureMapsKey()
     {
         return Ok(_serviceConfigurationOptions.AzureMaps.Key);
     }
@@ -82,7 +83,8 @@ public class ConfigurationController : BaseController
     /// </returns>
     [HttpPost("restart-workers")]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task<IActionResult> RestartWorkers()
+    [Produces<string>]
+    public async Task<ActionResult<string>> RestartWorkers()
     {
         await _publishEndpoint.Publish(new RestartWorker(Guid.NewGuid()));
         return Ok("Restart command sent to all workers.");

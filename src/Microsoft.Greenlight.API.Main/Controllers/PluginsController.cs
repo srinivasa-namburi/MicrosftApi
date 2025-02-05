@@ -58,6 +58,7 @@ public class PluginsController : BaseController
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [Produces("application/json")]
+    [Produces<List<DynamicPluginInfo>>]
     public async Task<ActionResult<List<DynamicPluginInfo>>> GetAllPlugins()
     {
         var plugins = await _pluginService.GetAllPluginsAsync();
@@ -76,7 +77,9 @@ public class PluginsController : BaseController
     /// </returns>
     [HttpGet("{pluginId:guid}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/json")]
+    [Produces<DynamicPluginInfo>]
     public async Task<ActionResult<DynamicPluginInfo>> GetPluginById(Guid pluginId)
     {
         var plugin = await _pluginService.GetPluginByIdAsync(pluginId);
@@ -99,6 +102,7 @@ public class PluginsController : BaseController
     [HttpGet("/api/document-processes/{documentProcessId:guid}/plugins")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [Produces("application/json")]
+    [Produces<List<DynamicPluginInfo>>]
     public async Task<ActionResult<List<DynamicPluginInfo>>> GetPluginsByDocumentProcessId(Guid documentProcessId)
     {
         var plugins = await _pluginService.GetPluginsByDocumentProcessIdAsync(documentProcessId);
@@ -114,19 +118,20 @@ public class PluginsController : BaseController
     /// <param name="version">The plugin version.</param>
     /// <returns>An action result.
     /// Produces Status Codes:
-    ///     200 OK: When completed sucessfully
+    ///     204 No Content: When completed sucessfully
     ///     400 Bad Request: When either the plugin could not be found or the document process could not be found, 
     ///     the version provided does not conform to the major.minor.patch format, 
     ///     or the plugin version provided could not be found
     /// </returns>
     [HttpPost("{pluginId:guid}/{version}/associate/{documentProcessId:guid}")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> AssociateWithDocumentProcess(Guid pluginId, Guid documentProcessId, string version)
     {
         try
         {
             await _pluginService.AssociatePluginWithDocumentProcessAsync(pluginId, documentProcessId, version);
-            return Ok();
+            return NoContent();
         }
         catch (InvalidOperationException ex)
         {
@@ -141,21 +146,14 @@ public class PluginsController : BaseController
     /// <param name="documentProcessId">The document process identifier.</param>
     /// <returns>An action result.
     /// Produces Status Codes:
-    ///     200 OK: When completed sucessfully
+    ///     204 No Content: When completed sucessfully
     /// </returns>
     [HttpPost("{pluginId:guid}/disassociate/{documentProcessId:guid}")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> DisassociateFromDocumentProcess(Guid pluginId, Guid documentProcessId)
     {
-        try
-        {
-            await _pluginService.DisassociatePluginFromDocumentProcessAsync(pluginId, documentProcessId);
-            return Ok();
-        }
-        catch (InvalidOperationException ex) 
-        {
-            return BadRequest(ex.Message);
-        }
+        await _pluginService.DisassociatePluginFromDocumentProcessAsync(pluginId, documentProcessId);
+        return NoContent();
     }
 
     /// <summary>
@@ -168,15 +166,16 @@ public class PluginsController : BaseController
     ///     400 Bad Request: When no file is provided, an invalid file type is provided, 
     ///     the format of the file name doesn't conform to PluginName_version.zip, 
     ///     the version provided does not conform to the major.minor.patch format, 
-    ///     500 Bad Request: When uncaught exceptions are thrown
     /// </returns>
     [HttpPost("upload")]
     [DisableRequestSizeLimit]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [Produces(typeof(DynamicPluginInfo))]
+    [Consumes("multipart/form-data")]
+    [Produces("application/json")]
+    [Produces<DynamicPluginInfo>]
     [SwaggerIgnore]
-    public async Task<IActionResult> UploadPlugin([FromForm] IFormFile file)
+    public async Task<ActionResult<DynamicPluginInfo>> UploadPlugin([FromForm] IFormFile file)
     {
         if (file == null || file.Length == 0)
         {
@@ -209,60 +208,52 @@ public class PluginsController : BaseController
             return BadRequest("Invalid plugin version format. Expected format: Major.Minor.Patch");
         }
 
-        try
+        // Save the plugin zip file to Azure Blob Storage
+        var containerName = "plugins";
+        var blobFileName = $"{pluginName}/{versionString}/{originalFileName}";
+
+        await using var stream = file.OpenReadStream();
+        var blobUrl = await _fileHelper.UploadFileToBlobAsync(
+            stream, blobFileName, containerName, overwriteIfExists: true);
+
+        // Save or update plugin information in the database
+        var plugin = await _dbContext.DynamicPlugins
+            .FirstOrDefaultAsync(p => p.Name == pluginName);
+
+        if (plugin == null)
         {
-            // Save the plugin zip file to Azure Blob Storage
-            var containerName = "plugins";
-            var blobFileName = $"{pluginName}/{versionString}/{originalFileName}";
-
-            await using var stream = file.OpenReadStream();
-            var blobUrl = await _fileHelper.UploadFileToBlobAsync(
-                stream, blobFileName, containerName, overwriteIfExists: true);
-
-            // Save or update plugin information in the database
-            var plugin = await _dbContext.DynamicPlugins
-                .FirstOrDefaultAsync(p => p.Name == pluginName);
-
-            if (plugin == null)
+            // Create a new plugin entry
+            plugin = new DynamicPlugin
             {
-                // Create a new plugin entry
-                plugin = new DynamicPlugin
-                {
-                    Name = pluginName,
-                    BlobContainerName = containerName,
-                    Versions = new List<DynamicPluginVersion>(),
-                    DocumentProcesses = new List<DynamicPluginDocumentProcess>()
-                };
+                Name = pluginName,
+                BlobContainerName = containerName,
+                Versions = new List<DynamicPluginVersion>(),
+                DocumentProcesses = new List<DynamicPluginDocumentProcess>()
+            };
 
-                _dbContext.DynamicPlugins.Add(plugin);
-            }
-
-            // Check if this version already exists
-            plugin.Versions ??= new List<DynamicPluginVersion>();
-            var existingVersion = plugin.Versions.FirstOrDefault(v => v.Equals(pluginVersion));
-            if (existingVersion is not null)
-            {
-                // Overwrite the existing version
-                plugin.Versions.Remove(existingVersion);
-            }
-
-            plugin.Versions.Add(pluginVersion!);
-
-            await _dbContext.SaveChangesAsync();
-
-            var pluginInfo = _mapper.Map<DynamicPluginInfo>(plugin);
-
-            if (AdminHelper.IsRunningInProduction())
-            {
-                await _publishEndpoint.Publish(new RestartWorker(Guid.NewGuid()));
-            }
-
-            return Ok(pluginInfo);
+            _dbContext.DynamicPlugins.Add(plugin);
         }
-        catch
+
+        // Check if this version already exists
+        plugin.Versions ??= new List<DynamicPluginVersion>();
+        var existingVersion = plugin.Versions.FirstOrDefault(v => v.Equals(pluginVersion));
+        if (existingVersion is not null)
         {
-            // Log the exception as needed
-            return StatusCode(StatusCodes.Status500InternalServerError, "An error occurred while uploading the plugin.");
+            // Overwrite the existing version
+            plugin.Versions.Remove(existingVersion);
         }
+
+        plugin.Versions.Add(pluginVersion!);
+
+        await _dbContext.SaveChangesAsync();
+
+        var pluginInfo = _mapper.Map<DynamicPluginInfo>(plugin);
+
+        if (AdminHelper.IsRunningInProduction())
+        {
+            await _publishEndpoint.Publish(new RestartWorker(Guid.NewGuid()));
+        }
+
+        return Ok(pluginInfo);
     }
 }

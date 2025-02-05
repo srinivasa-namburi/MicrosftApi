@@ -87,7 +87,7 @@ builder.Services.AddHttpClient<IReviewApiClient, ReviewApiClient>(httpClient =>
     var handler = new HttpClientHandler();
     handler.MaxRequestContentBufferSize = 10 * 1024 * 1024 * 20; // 200 MB
     return handler;
-});;;
+});
 builder.Services.AddHttpClient<IPluginApiClient, PluginApiClient>(httpClient =>
 {
     httpClient.BaseAddress = apiUri;
@@ -104,7 +104,7 @@ builder.Services.AddHttpClient<IFileApiClient, FileApiClient>(httpClient =>
     var handler = new HttpClientHandler();
     handler.MaxRequestContentBufferSize = 10 * 1024 * 1024 * 20; // 200 MB
     return handler;
-});;;
+});
 
 // Add services to the container.
 builder.Services.AddAuthentication("MicrosoftOidc")

@@ -8,8 +8,8 @@
     "sqlPassword": {
       "value": "${AZURE_SQL_PASSWORD}"
     },
-    "environmentName": {
-      "value": "${AZURE_ENV_NAME}"
+    "resourceGroupName": {
+      "value": "${AZURE_RESOURCE_GROUP}"
     },
     "peSubnet": {
       "value": "${AZURE_SUBNET_PE}"

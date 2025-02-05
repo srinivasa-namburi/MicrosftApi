@@ -115,6 +115,7 @@ public class DocumentProcessController : BaseController
     [HttpGet("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [Produces("application/json")]
     [Produces<DocumentProcessInfo>]
     public async Task<ActionResult<DocumentProcessInfo>> GetDocumentProcessById(Guid id)
     {
@@ -137,7 +138,10 @@ public class DocumentProcessController : BaseController
     ///     404 Not found: When no document processes are found using the Library Id provided
     /// </returns>
     [HttpGet("by-document-library/{libraryId:guid}")]
-    [Produces(typeof(List<DocumentProcessInfo>))]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [Produces("application/json")]
+    [Produces<List<DocumentProcessInfo>>]
     public async Task<ActionResult<List<DocumentProcessInfo>>> GetDocumentProcessesByLibraryId(Guid libraryId)
     {
         var processes = await _documentProcessInfoService.GetDocumentProcessesByLibraryIdAsync(libraryId);
@@ -158,7 +162,6 @@ public class DocumentProcessController : BaseController
     /// </returns>
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status201Created)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [Consumes("application/json")]
     [Produces("application/json")]
     [Produces<DocumentProcessInfo>]
@@ -178,11 +181,11 @@ public class DocumentProcessController : BaseController
     /// Produces Status Codes:
     ///     202 Accepted: When the update to the Document Process has been made and the Process Restart 
     ///     the Workers has been published
-    ///     400 Bad Request: When no document processes are found using the Document Process Id provided
+    ///     404 Not Found: When no document processes are found using the Document Process Id provided
     /// </returns>
     [HttpPut("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/json")]
     [Produces<DocumentProcessInfo>]
     public async Task<ActionResult<DocumentProcessInfo>> UpdateDocumentProcess(Guid id, [FromBody] DocumentProcessInfo documentProcessInfo)
@@ -190,7 +193,7 @@ public class DocumentProcessController : BaseController
         var existingDocumentProcess = await _dbContext.DynamicDocumentProcessDefinitions.FindAsync(id);
         if (existingDocumentProcess == null)
         {
-            return BadRequest();
+            return NotFound();
         }
 
         _mapper.Map(documentProcessInfo, existingDocumentProcess);
@@ -211,7 +214,7 @@ public class DocumentProcessController : BaseController
     /// <param name="id">The ID of the document process.</param>
     /// <returns>A boolean indicating success or failure.
     /// Produces Status Codes:
-    ///     202 Accepted: When the update to the Document Process has been made and the Process Restart 
+    ///     200 Ok: When the update to the Document Process has been made and the Process Restart 
     ///     the Workers has been published
     ///     400 Bad Request: When no document processes are found using the Document Process Id provided
     /// </returns>
@@ -259,6 +262,7 @@ public class DocumentProcessController : BaseController
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/json")]
+    [Produces<string>]
     public async Task<ActionResult<string>> ExportDocumentProcess(Guid id)
     {
         var documentProcessModel = await _dbContext.DynamicDocumentProcessDefinitions
@@ -305,6 +309,7 @@ public class DocumentProcessController : BaseController
     [HttpGet("{id:guid}/metadata-fields")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [Produces("application/json")]
     [Produces<List<DocumentProcessMetadataFieldInfo>>]
     public async Task<ActionResult<List<DocumentProcessMetadataFieldInfo>>> GetDocumentProcessMetadataFields(Guid id)
     {
@@ -331,13 +336,15 @@ public class DocumentProcessController : BaseController
     /// <param name="metadataFields">List of metadata fields to store</param>
     /// <returns>A list of metadata fields.
     /// Produces Status Codes:
-    ///   202 Accepted: When the metadata fields have been successfully created or updated
+    ///   201 Created: When the metadata fields have been successfully created or updated
     ///   400 Bad Request: When no metadata fields were passed in the request or the Id is empty
     /// </returns>
     [HttpPost("{id:guid}/metadata-fields")]
-    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [Consumes("application/json")]
+    [Produces("application/json")]
+    [Produces<List<DocumentProcessMetadataFieldInfo>>]
     public async Task<ActionResult<List<DocumentProcessMetadataFieldInfo>>> CreateOrUpdateDocumentProcessMetadataFields(Guid id, [FromBody] List<DocumentProcessMetadataFieldInfo> metadataFields)
     {
         if (metadataFields.Count < 1 || id == Guid.Empty)

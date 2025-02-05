@@ -104,7 +104,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers.Tests
 
             // Assert
             var actionResult = Assert.IsAssignableFrom<ActionResult>(result);
-            Assert.IsType<AcceptedResult>(actionResult);
+            Assert.IsType<OkObjectResult>(actionResult);
         }
 
         [Fact]

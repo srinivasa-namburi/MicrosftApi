@@ -35,7 +35,7 @@ public interface IPromptInfoService
     /// </summary>
     /// <param name="promptInfo">The prompt information to add.</param>
     /// <returns>A <see cref="Task"/> that represents the asynchronous add operation.</returns>
-    Task AddPromptAsync(PromptInfo promptInfo);
+    Task<Guid> AddPromptAsync(PromptInfo promptInfo);
 
     /// <summary>
     /// Updates an existing prompt.

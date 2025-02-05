@@ -45,8 +45,15 @@ public class FileController : BaseController
     /// Downloads a file from the specified URL.
     /// </summary>
     /// <param name="fileUrl">The URL of the file to download.</param>
-    /// <returns>The file stream if found, otherwise NotFound.</returns>
+    /// <returns>The file stream if found
+    /// Produces Status Codes:
+    ///     200 OK: When completed sucessfully
+    ///     404 Not Found: When the file can't be found using the file url provided
+    /// </returns>
     [HttpGet("download/{fileUrl}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [Produces("application/octet-stream")]
     public async Task<IActionResult> DownloadFile(string fileUrl)
     {
         var decodedFileUrl = Uri.UnescapeDataString(fileUrl);
@@ -70,8 +77,15 @@ public class FileController : BaseController
     /// Downloads a file by its link ID.
     /// </summary>
     /// <param name="linkId">The link ID of the file to download.</param>
-    /// <returns>The file stream if found, otherwise NotFound.</returns>
+    /// <returns>The file stream if found
+    /// Produces Status Codes:
+    ///     200 OK: When completed sucessfully
+    ///     404 Not Found: When the file can't be found using the file url provided
+    /// </returns>
     [HttpGet("download/asset/{linkId}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [Produces("application/octet-stream")]
     public async Task<IActionResult> DownloadFileById(string linkId)
     {
         var file = _dbContext.ExportedDocumentLinks.FirstOrDefault(edl => edl.Id == new Guid(linkId));
@@ -114,7 +128,8 @@ public class FileController : BaseController
     [DisableRequestSizeLimit]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [Produces(typeof(string))]
+    [Produces("application/json")]
+    [Produces<string>]
     [SwaggerIgnore]
     public async Task<IActionResult> UploadFile(string containerName, string fileName, [FromForm] IFormFile? file = null)
     {
@@ -171,7 +186,8 @@ public class FileController : BaseController
     [DisableRequestSizeLimit]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [Produces(typeof(string))]
+    [Produces("application/json")]
+    [Produces<string>]
     [SwaggerIgnore]
     public async Task<IActionResult> UploadFileDirect(string containerName, string fileName, [FromForm] IFormFile? file = null)
     {
@@ -226,7 +242,8 @@ public class FileController : BaseController
     [DisableRequestSizeLimit]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [Produces(typeof(ExportedDocumentLinkInfo))]
+    [Produces("application/json")]
+    [Produces<ExportedDocumentLinkInfo>]
     [SwaggerIgnore]
     public async Task<IActionResult> UploadFileReturnFileInfo(string containerName, string fileName, [FromForm] IFormFile file)
     {
@@ -273,7 +290,8 @@ public class FileController : BaseController
     [HttpGet("file-info/{fileAccessUrl}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [Produces(typeof(ExportedDocumentLinkInfo))]
+    [Produces("application/json")]
+    [Produces<ExportedDocumentLinkInfo>]
     public async Task<ActionResult<ExportedDocumentLinkInfo>> GetFileInfo(string fileAccessUrl)
     {
         //The asset id is the last part of the URL. It's a Guid. The string may be URL encoded.

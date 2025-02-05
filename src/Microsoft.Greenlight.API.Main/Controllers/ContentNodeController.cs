@@ -42,7 +42,8 @@ public class ContentNodeController : BaseController
     [HttpGet("{contentNodeId}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [Produces(typeof(ContentNodeInfo))]
+    [Produces("application/json")]
+    [Produces<ContentNodeInfo>]
     public async Task<ActionResult<ContentNodeInfo>> GetContentNode(string contentNodeId)
     {
         var contentNodeGuid = Guid.Parse(contentNodeId);
@@ -105,6 +106,7 @@ public class ContentNodeController : BaseController
     /// </returns>
     [HttpGet("content-node-system-item/{contentNodeSystemItemId:guid}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/json")]
     [Produces<ContentNodeSystemItemInfo>]
     public async Task<ActionResult<ContentNodeSystemItemInfo>> GetContentNodeSystemItem(Guid contentNodeSystemItemId)

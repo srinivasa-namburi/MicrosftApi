@@ -39,8 +39,8 @@ public class ReviewController : BaseController
     /// </returns>
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [Produces(typeof(ActionResult<List<ReviewDefinitionInfo>>))]
+    [Produces("application/json")]
+    [Produces<ActionResult<List<ReviewDefinitionInfo>>>]
     public async Task<ActionResult<List<ReviewDefinitionInfo>>> GetReviews()
     {
         var reviews = await _dbContext.ReviewDefinitions.AsNoTracking().ToListAsync();
@@ -61,7 +61,8 @@ public class ReviewController : BaseController
     [HttpGet("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [Produces(typeof(ActionResult<ReviewDefinitionInfo>))]
+    [Produces("application/json")]
+    [Produces<ActionResult<ReviewDefinitionInfo>>]
     public async Task<ActionResult<ReviewDefinitionInfo>> GetReviewById(Guid id)
     {
         var review = await _dbContext.ReviewDefinitions
@@ -89,9 +90,9 @@ public class ReviewController : BaseController
     /// </returns>
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status201Created)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [Consumes("application/json")]
-    [Produces(typeof(ReviewDefinitionInfo))]
+    [Produces("application/json")]
+    [Produces<ReviewDefinitionInfo>]
     public async Task<ActionResult<ReviewDefinitionInfo>> CreateReview([FromBody] ReviewDefinitionInfo reviewInfo)
     {
         var review = _mapper.Map<ReviewDefinition>(reviewInfo);
@@ -109,13 +110,13 @@ public class ReviewController : BaseController
     /// <param name="changeRequest">The change request containing updated review information.</param>
     /// <returns>The updated <see cref="ReviewDefinitionInfo"/>.
     /// Produces Status Codes:
-    ///     202 Accepted: When completed sucessfully
+    ///     200 OK: When completed sucessfully
     /// </returns>
     [HttpPut("{id:guid}")]
-    [ProducesResponseType(StatusCodes.Status202Accepted)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
     [Consumes("application/json")]
+    [Produces("application/json")]
+    [Produces<ReviewDefinitionInfo>]
     public async Task<ActionResult<ReviewDefinitionInfo>> UpdateReview(Guid id, [FromBody] ReviewChangeRequest changeRequest)
     {
         var existingReview = await _dbContext.ReviewDefinitions
@@ -197,11 +198,11 @@ public class ReviewController : BaseController
     /// <param name="id">The review identifier.</param>
     /// <returns>An <see cref="IActionResult"/> indicating the result of the operation.
     /// Produces Status Codes:
-    ///     202 Accepted: When completed sucessfully
+    ///     204 No Content: When completed sucessfully
     ///     404 Not Found: When the review could not be found using the id provided
     /// </returns>
     [HttpDelete("{id:guid}")]
-    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> DeleteReview(Guid id)
     {
@@ -217,7 +218,7 @@ public class ReviewController : BaseController
         _dbContext.ReviewDefinitions.Remove(review);
         await _dbContext.SaveChangesAsync();
 
-        return Accepted();
+        return NoContent();
     }
 }
 

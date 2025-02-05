@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # Configuration variables
-TOKENS_PER_WORKER=50000
+TOKENS_PER_WORKER=75000
 
 # Read the environment and resource group names from environment variables
 envName=$(echo $AZURE_CONTAINER_REGISTRY_ENDPOINT | cut -d'.' -f1 | cut -c4-)
-resourceGroup="rg-$AZURE_ENV_NAME"
+resourceGroup="$AZURE_RESOURCE_GROUP"
 workloadProfileType="$AZURE_CAE_WORKLOAD_TYPE"
 openai_subscription_id="$AZURE_SUBSCRIPTION_ID"
 

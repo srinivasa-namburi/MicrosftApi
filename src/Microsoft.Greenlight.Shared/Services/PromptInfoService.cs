@@ -151,7 +151,7 @@ namespace Microsoft.Greenlight.Shared.Services
         }
 
         /// <inheritdoc/>
-        public async Task AddPromptAsync(PromptInfo promptInfo)
+        public async Task<Guid> AddPromptAsync(PromptInfo promptInfo)
         {
             var promptImplementation = new PromptImplementation
             {
@@ -162,6 +162,7 @@ namespace Microsoft.Greenlight.Shared.Services
                 Text = promptInfo.Text
             };
             await _promptImplementationRepository.AddAsync(promptImplementation);
+            return promptImplementation.Id;
         }
 
         /// <inheritdoc/>

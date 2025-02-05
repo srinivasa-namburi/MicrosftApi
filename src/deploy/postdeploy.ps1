@@ -1,9 +1,8 @@
 # Configuration variables
-$TOKENS_PER_WORKER = 50000
+$TOKENS_PER_WORKER = 75000
 
 # Read the environment and resource group names from environment variables
-$envName = ($Env:AZURE_CONTAINER_REGISTRY_ENDPOINT -split '\.')[0]
-$resourceGroup = "rg-$Env:AZURE_ENV_NAME"
+$resourceGroup = $Env:AZURE_ENV_NAME
 $workloadProfileType = $Env:AZURE_CAE_WORKLOAD_TYPE
 $openai_subscription_id = $Env:AZURE_SUBSCRIPTION_ID
 

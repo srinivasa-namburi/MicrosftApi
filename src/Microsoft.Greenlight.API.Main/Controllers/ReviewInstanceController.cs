@@ -136,7 +136,8 @@ public class ReviewInstanceController : BaseController
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [Consumes("application/json")]
-    [Produces(typeof(ActionResult<ReviewInstanceInfo>))]
+    [Produces("application/json")]
+    [Produces<ActionResult<ReviewInstanceInfo>>]
     public async Task<ActionResult<ReviewInstanceInfo>> CreateReviewInstance(
         [FromBody] ReviewInstanceInfo reviewInstanceInfo)
     {

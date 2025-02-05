@@ -44,8 +44,10 @@ public class AuthorizationController : BaseController
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [Consumes("application/json")]
+    [Produces("application/json")]
+    [Produces<UserInfoDTO>]
     [AllowAnonymous]
-    public async Task<IActionResult> StoreOrUpdateUserDetails([FromBody] UserInfoDTO? userInfoDto)
+    public async Task<ActionResult<UserInfoDTO>> StoreOrUpdateUserDetails([FromBody] UserInfoDTO? userInfoDto)
     {
         if (userInfoDto == null)
         {
@@ -84,12 +86,15 @@ public class AuthorizationController : BaseController
     /// Produces Status Codes:
     ///     200 OK: When completed sucessfully
     ///     400 Bad Request: When a Provider Subject Id is not provided
+    ///     404 Not Found: When a Provider Subject Id is not found
     /// </returns>
     [HttpGet("{providerSubjectId}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult<UserInfoDTO>> GetUserInfo(String providerSubjectId)
+    [Produces("application/json")]
+    [Produces<UserInfoDTO>]
+    public async Task<ActionResult<UserInfoDTO>> GetUserInfo(string providerSubjectId)
     {
         var userInformation = await _dbContext.UserInformations
             .FirstOrDefaultAsync(x => x.ProviderSubjectId == providerSubjectId);
@@ -117,6 +122,8 @@ public class AuthorizationController : BaseController
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Consumes("application/text")]
+    [Produces("application/json")]
+    [Produces<ThemePreference>]
     public async Task<ActionResult<ThemePreference>> GetThemePreference(string providerSubjectId)
     {
         var userInformation = await _dbContext.UserInformations
@@ -138,11 +145,11 @@ public class AuthorizationController : BaseController
     /// <returns>
     /// An <see cref="IActionResult"/> representing the result of the operation.
     /// Produces Status Codes:
-    ///     200 OK: When completed sucessfully
+    ///     204 No Content: When completed sucessfully
     ///     404 Not Found: When a Provider Subject Id is not found
     /// </returns>
     [HttpPost("theme")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Consumes("application/json")]
     public async Task<IActionResult> SetThemePreference([FromBody] ThemePreferenceDTO themePreferenceDto)
@@ -159,6 +166,6 @@ public class AuthorizationController : BaseController
         _dbContext.UserInformations.Update(userInformation);
         await _dbContext.SaveChangesAsync();
 
-        return Ok();
+        return NoContent();
     }
 }

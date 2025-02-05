@@ -10,7 +10,7 @@ public interface IDocumentProcessApiClient : IServiceClient
 
     Task<List<PromptInfo>> GetPromptsByProcessIdAsync(Guid processId);
     Task<PromptInfo> GetPromptByIdAsync(Guid id);
-    Task CreatePromptAsync(PromptInfo promptInfo);
+    Task<PromptInfo?> CreatePromptAsync(PromptInfo promptInfo);
     Task UpdatePromptAsync(PromptInfo promptInfo);
     Task UpdateDynamicDocumentProcessDefinitionAsync(DocumentProcessInfo? documentProcessInfo);
     Task<DocumentProcessInfo?> GetDocumentProcessInfoByIdAsync(Guid? id);

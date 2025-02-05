@@ -39,7 +39,8 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         /// </returns>
         [HttpGet]
         [ProducesResponseType(StatusCodes.Status200OK)]
-        [Produces(typeof(List<DocumentLibraryInfo>))]
+        [Produces("application/json")]
+        [Produces<List<DocumentLibraryInfo>>]
         public async Task<ActionResult<List<DocumentLibraryInfo>>> GetAllDocumentLibraries()
         {
             var libraries = await _documentLibraryInfoService.GetAllDocumentLibrariesAsync();
@@ -58,7 +59,8 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         [HttpGet("{id:guid}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [Produces(typeof(DocumentLibraryInfo))]
+        [Produces("application/json")]
+        [Produces<DocumentLibraryInfo>]
         public async Task<ActionResult<DocumentLibraryInfo>> GetDocumentLibraryById(Guid id)
         {
             var library = await _documentLibraryInfoService.GetDocumentLibraryByIdAsync(id);
@@ -81,7 +83,8 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         [HttpGet("shortname/{shortName}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [Produces(typeof(DocumentLibraryInfo))]
+        [Produces("application/json")]
+        [Produces<DocumentLibraryInfo>]
         public async Task<ActionResult<DocumentLibraryInfo>> GetDocumentLibraryByShortName(string shortName)
         {
             var library = await _documentLibraryInfoService.GetDocumentLibraryByShortNameAsync(shortName);
@@ -104,7 +107,8 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         [HttpGet("by-document-process/{processId:guid}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [Produces(typeof(List<DocumentLibraryInfo>))]
+        [Produces("application/json")]
+        [Produces<List<DocumentLibraryInfo>>]
         public async Task<ActionResult<List<DocumentLibraryInfo>>> GetDocumentLibrariesByProcessId(Guid processId)
         {
             var libraries = await _documentLibraryInfoService.GetDocumentLibrariesByProcessIdAsync(processId);
@@ -121,10 +125,15 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         /// <param name="documentLibraryInfo">The document library info.</param>
         /// <returns>The created document library.
         /// Produces Status Codes:
-        ///     200 OK: When completed sucessfully
+        ///     201 Created: When completed sucessfully
         ///     400 Bad Request: When the Document Library Info isn't provided
         /// </returns>
         [HttpPost]
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [Consumes("application/json")]
+        [Produces("application/json")]
+        [Produces<DocumentLibraryInfo>]
         public async Task<ActionResult<DocumentLibraryInfo>> CreateDocumentLibrary([FromBody] DocumentLibraryInfo? documentLibraryInfo)
         {
             if (documentLibraryInfo == null)
@@ -154,6 +163,11 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         ///     Document Library Inofo object provided
         /// </returns>
         [HttpPut("{id:guid}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [Consumes("application/json")]
+        [Produces("application/json")]
+        [Produces<DocumentLibraryInfo>]
         public async Task<ActionResult<DocumentLibraryInfo>> UpdateDocumentLibrary(Guid id, [FromBody] DocumentLibraryInfo? documentLibraryInfo)
         {
             if (documentLibraryInfo == null || id != documentLibraryInfo.Id)
@@ -171,11 +185,13 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         /// <param name="id">The ID of the document library to delete.</param>
         /// <returns>No content if the deletion was successful.
         /// Produces Status Codes:
-        ///     200 OK: When completed sucessfully
+        ///     204 No Content: When completed sucessfully
         ///     404 Not found: When the document library can't be found using the Id provided
         /// </returns>
         [HttpDelete("{id:guid}")]
-        public async Task<ActionResult> DeleteDocumentLibrary(Guid id)
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> DeleteDocumentLibrary(Guid id)
         {
             var success = await _documentLibraryInfoService.DeleteDocumentLibraryAsync(id);
             if (!success)
@@ -198,13 +214,14 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         /// <param name="documentProcessId">The ID of the document process.</param>
         /// <returns>Ok result if the association was successful.
         /// Produces Status Codes:
-        ///     200 OK: When completed sucessfully
+        ///     204 No Content: When completed sucessfully
         /// </returns>
         [HttpPost("{documentLibraryId:guid}/document-processes/{documentProcessId:guid}/associate")]
-        public async Task<ActionResult> AssociateDocumentProcess(Guid documentLibraryId, Guid documentProcessId)
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        public async Task<IActionResult> AssociateDocumentProcess(Guid documentLibraryId, Guid documentProcessId)
         {
             await _documentLibraryInfoService.AssociateDocumentProcessAsync(documentLibraryId, documentProcessId);
-            return Ok();
+            return NoContent();
         }
 
         /// <summary>
@@ -214,13 +231,14 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         /// <param name="documentProcessId">The ID of the document process.</param>
         /// <returns>Ok result if the disassociation was successful.
         /// Produces Status Codes:
-        ///     200 OK: When completed sucessfully
+        ///     204 No Content: When completed sucessfully
         /// </returns>
         [HttpPost("{documentLibraryId:guid}/document-processes/{documentProcessId:guid}/disassociate")]
-        public async Task<ActionResult> DisassociateDocumentProcess(Guid documentLibraryId, Guid documentProcessId)
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        public async Task<IActionResult> DisassociateDocumentProcess(Guid documentLibraryId, Guid documentProcessId)
         {
             await _documentLibraryInfoService.DisassociateDocumentProcessAsync(documentLibraryId, documentProcessId);
-            return Ok();
+            return NoContent();
         }
     }
 }

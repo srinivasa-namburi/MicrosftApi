@@ -339,7 +339,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers.Tests
             mockPublishEndpoint.Verify(publish => publish.Publish(It.IsAny<RestartWorker>(), default), Times.Once);
         }
 
-        private static Task<ActionResult> DeleteDocumentLibraryArrangeAndActAsync(
+        private static Task<IActionResult> DeleteDocumentLibraryArrangeAndActAsync(
             Guid id,
             bool isSuccessful,
             Mock<IPublishEndpoint>? mockPublishEndpoint = null,

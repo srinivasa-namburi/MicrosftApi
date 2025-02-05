@@ -1,9 +1,9 @@
-targetScope = 'subscription'
+targetScope = 'resourceGroup'
 
 @minLength(1)
 @maxLength(64)
-@description('Name of the environment used as part of the naming convention. The resource group will be named rg-<environmentName>')
-param environmentName string
+@description('Name of the resource group')
+param resourceGroupName string
 
 @minLength(1)
 @description('The location used for all deployed resources')
@@ -30,17 +30,11 @@ param deploymentModel string = 'public'
 
 var isPrivate = deploymentModel == 'private'
 var tags = {
-  'azd-env-name': environmentName
-}
-
-resource rg 'Microsoft.Resources/resourceGroups@2022-09-01' = {
-  name: 'rg-${environmentName}'
-  location: location
-  tags: tags
+  'azd-env-name': resourceGroupName
 }
 
 module resources 'resources.bicep' = {
-  scope: rg
+  scope: resourceGroup('${resourceGroupName}')
   name: 'resources'
   params: {
     location: location
@@ -53,7 +47,7 @@ module resources 'resources.bicep' = {
 
 module aiSearch 'aiSearch/aiSearch.module.bicep' = {
   name: 'aiSearch'
-  scope: rg
+  scope: resourceGroup('${resourceGroupName}')
   params: {
     location: location
     principalId: resources.outputs.MANAGED_IDENTITY_PRINCIPAL_ID
@@ -64,7 +58,7 @@ module aiSearch 'aiSearch/aiSearch.module.bicep' = {
 
 module docing 'docing/docing.module.bicep' = {
   name: 'docing'
-  scope: rg
+  scope: resourceGroup('${resourceGroupName}')
   params: {
     location: location
     principalId: resources.outputs.MANAGED_IDENTITY_PRINCIPAL_ID
@@ -75,7 +69,7 @@ module docing 'docing/docing.module.bicep' = {
 
 module insights 'insights/insights.module.bicep' = {
   name: 'insights'
-  scope: rg
+  scope: resourceGroup('${resourceGroupName}')
   params: {
     location: location
     logAnalyticsWorkspaceId: resources.outputs.AZURE_LOG_ANALYTICS_WORKSPACE_ID
@@ -84,7 +78,7 @@ module insights 'insights/insights.module.bicep' = {
 
 module redis 'redis/redis.module.bicep' = {
   name: 'redis'
-  scope: rg
+  scope: resourceGroup('${resourceGroupName}')
   params: {
     location: location
     principalId: resources.outputs.MANAGED_IDENTITY_PRINCIPAL_ID
@@ -95,7 +89,7 @@ module redis 'redis/redis.module.bicep' = {
 
 module sbus 'sbus/sbus.module.bicep' = {
   name: 'sbus'
-  scope: rg
+  scope: resourceGroup('${resourceGroupName}')
   params: {
     location: location
     principalId: resources.outputs.MANAGED_IDENTITY_PRINCIPAL_ID
@@ -106,7 +100,7 @@ module sbus 'sbus/sbus.module.bicep' = {
 
 module signalr 'signalr/signalr.module.bicep' = {
   name: 'signalr'
-  scope: rg
+  scope: resourceGroup('${resourceGroupName}')
   params: {
     location: location
     principalId: resources.outputs.MANAGED_IDENTITY_PRINCIPAL_ID
@@ -117,7 +111,7 @@ module signalr 'signalr/signalr.module.bicep' = {
 
 module sqldocgen 'sqldocgen/sqldocgen.module.bicep' = {
   name: 'sqldocgen'
-  scope: rg
+  scope: resourceGroup('${resourceGroupName}')
   params: {
     location: location
     sqlAdminLogin: 'sqladmin'
@@ -128,7 +122,7 @@ module sqldocgen 'sqldocgen/sqldocgen.module.bicep' = {
 // Deploy private endpoints if deploymentModel is private.
 module privateEndpoints 'privateEndpoints.bicep' = if (isPrivate) {
   name: 'privateEndpoints'
-  scope: rg
+  scope: resourceGroup('${resourceGroupName}')
   params: {
     location: location
     peSubnet: peSubnet

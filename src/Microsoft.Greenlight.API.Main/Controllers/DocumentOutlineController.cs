@@ -104,7 +104,6 @@ public class DocumentOutlineController : BaseController
     [HttpPost("{id:guid}/changes")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [Produces("application/json")]
     [Produces<DocumentOutlineInfo>]
     public async Task<ActionResult<DocumentOutlineInfo>> UpdateDocumentOutline(Guid id, DocumentOutlineChangeRequest changeRequest)
@@ -209,16 +208,16 @@ public class DocumentOutlineController : BaseController
     /// </returns>
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status201Created)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [Consumes("application/json")]
     [Produces("application/json")]
+    [Produces<DocumentOutlineInfo>]
     public async Task<ActionResult<DocumentOutlineInfo>> CreateDocumentOutline(DocumentOutlineInfo documentOutline)
     {
         var newDocumentOutline = _mapper.Map<DocumentOutline>(documentOutline);
         await _dbContext.DocumentOutlines.AddAsync(newDocumentOutline);
         await _dbContext.SaveChangesAsync();
 
-        return Created("/api/document-outline/{newDocumentOutline.Id}", newDocumentOutline);
+        return Created($"/api/document-outline/{newDocumentOutline.Id}", newDocumentOutline);
     }
 
     /// <summary>
@@ -233,8 +232,9 @@ public class DocumentOutlineController : BaseController
     [HttpPost("generate-from-text")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [Produces(typeof(List<DocumentOutlineItemInfo>))]
     [Consumes("application/json")]
+    [Produces("application/json")]
+    [Produces<List<DocumentOutlineItemInfo>>]
     public ActionResult<List<DocumentOutlineItemInfo>> GenerateOutlineFromText(SimpleTextDTO textDto)
     {
         var outlineText = textDto.Text;

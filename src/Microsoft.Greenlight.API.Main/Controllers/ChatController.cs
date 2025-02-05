@@ -47,16 +47,15 @@ public class ChatController : BaseController
     /// <param name="chatMessageDto">The chat message DTO.</param>
     /// <returns>An <see cref="IActionResult"/> representing the result of the operation.
     /// Produces Status Codes:
-    ///     200 OK: When completed sucessfully
+    ///     204 No content: When completed sucessfully
     /// </returns>
     [HttpPost("")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
     [Consumes("application/json")]
     public async Task<IActionResult> SendChatMessage([FromBody] ChatMessageDTO chatMessageDto)
     {
-        await _publishEndpoint.Publish<ProcessChatMessage>(new ProcessChatMessage(chatMessageDto.ConversationId, chatMessageDto));
-        return Ok();
+        await _publishEndpoint.Publish(new ProcessChatMessage(chatMessageDto.ConversationId, chatMessageDto));
+        return NoContent();
     }
 
     /// <summary>
@@ -64,7 +63,7 @@ public class ChatController : BaseController
     /// </summary>
     /// <param name="documentProcessName">The name of the document process.</param>
     /// <param name="conversationId">The ID of the conversation.</param>
-    /// <returns>An <see cref="IActionResult"/> containing the chat messages.
+    /// <returns>An <see cref="ActionResult"/> containing the chat messages.
     /// Produces Status Codes:
     ///     200 OK: When completed sucessfully
     ///     400 Bad Request: When a required parameter is not provided. 
@@ -74,7 +73,9 @@ public class ChatController : BaseController
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> GetChatMessages(string documentProcessName, Guid conversationId)
+    [Produces("application/json")]
+    [Produces<List<ChatMessageDTO>>]
+    public async Task<ActionResult<List<ChatMessageDTO>>> GetChatMessages(string documentProcessName, Guid conversationId)
     {
         if (conversationId == Guid.Empty || string.IsNullOrEmpty(documentProcessName))
         {

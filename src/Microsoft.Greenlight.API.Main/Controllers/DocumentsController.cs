@@ -59,7 +59,6 @@ public partial class DocumentsController : BaseController
     /// </returns>
     [HttpPost("generatemultiple")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [Consumes("application/json")]
     public async Task<IActionResult> GenerateDocuments([FromBody] GenerateDocumentsDTO generateDocumentsDto)
     {
@@ -68,7 +67,7 @@ public partial class DocumentsController : BaseController
         foreach (var generateDocumentDto in generateDocumentsDto.Documents)
         {
             generateDocumentDto.AuthorOid = claimsPrincipal.GetObjectId();
-            await _publishEndpoint.Publish<GenerateDocumentDTO>(generateDocumentDto);
+            await _publishEndpoint.Publish(generateDocumentDto);
         }
 
         return Accepted();
@@ -84,14 +83,13 @@ public partial class DocumentsController : BaseController
     /// </returns>
     [HttpPost("generate")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [Consumes("application/json")]
     public async Task<IActionResult> GenerateDocument([FromBody] GenerateDocumentDTO generateDocumentDto)
     {
         var claimsPrincipal = HttpContext.User;
         generateDocumentDto.AuthorOid = claimsPrincipal.GetObjectId();
 
-        await _publishEndpoint.Publish<GenerateDocumentDTO>(generateDocumentDto);
+        await _publishEndpoint.Publish(generateDocumentDto);
 
         return Accepted();
     }
@@ -103,6 +101,7 @@ public partial class DocumentsController : BaseController
     /// <returns>The full generated document information.
     /// Produces Status Codes:
     ///     200 OK: When completed sucessfully
+    ///     404 Not Found: When no document can be found using the document id provided
     /// </returns>
     [HttpGet("{documentId}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -115,6 +114,11 @@ public partial class DocumentsController : BaseController
 
         // Load the GeneratedDocument
         var document = await AssembleFullDocument(documentGuid);
+
+        if (document == null)
+        {
+            return NotFound();
+        }
 
         var documentInfo = _mapper.Map<GeneratedDocumentInfo>(document);
 
@@ -303,6 +307,7 @@ public partial class DocumentsController : BaseController
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/json")]
+    [Produces<string>]
     public async Task<ActionResult<string>> GetDocumentExportPermalink(string documentId)
     {
         var document = await AssembleFullDocument(Guid.Parse(documentId));

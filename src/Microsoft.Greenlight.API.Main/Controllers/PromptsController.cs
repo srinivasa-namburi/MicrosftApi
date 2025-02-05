@@ -33,7 +33,8 @@ public class PromptsController : BaseController
     [HttpGet("by-process/{processId:guid}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [Produces(typeof(List<PromptInfo>))]
+    [Produces("application/json")]
+    [Produces<List<PromptInfo>>]
     public async Task<ActionResult<List<PromptInfo>>> GetPromptsByProcessId(Guid processId)
     {
         var prompts = await _promptInfoService.GetPromptsByProcessIdAsync(processId);
@@ -57,7 +58,8 @@ public class PromptsController : BaseController
     [HttpGet("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [Produces(typeof(PromptInfo))]
+    [Produces("application/json")]
+    [Produces<PromptInfo>]
     public async Task<ActionResult<PromptInfo>> GetPromptById(Guid id)
     {
         var prompt = await _promptInfoService.GetPromptByIdAsync(id);
@@ -79,13 +81,13 @@ public class PromptsController : BaseController
     /// </returns>
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status201Created)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [Consumes("application/json")]
-    [Produces(typeof(PromptInfo))]
+    [Produces("application/json")]
+    [Produces<PromptInfo>]
     public async Task<ActionResult<PromptInfo>> CreatePrompt([FromBody] PromptInfo promptInfo)
     {
-        await _promptInfoService.AddPromptAsync(promptInfo);
-        return Created();
+        var id = await _promptInfoService.AddPromptAsync(promptInfo);
+        return Created($"/api/prompts/{id}", promptInfo);
     }
 
     /// <summary>
@@ -95,13 +97,15 @@ public class PromptsController : BaseController
     /// <param name="promptInfo">The prompt information.</param>
     /// <returns>An accepted result.
     /// Produces Status Codes:
-    ///     202 Accepted: When updated sucessfully
+    ///     200 Ok: When updated sucessfully
     ///     400 Bad Request: When the id provided doesn't match the id on the PromptInfo
     /// </returns>
     [HttpPut("{id:guid}")]
-    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [Consumes("application/json")]
+    [Produces("application/json")]
+    [Produces<PromptInfo>]
     public async Task<ActionResult> UpdatePrompt(Guid id, [FromBody] PromptInfo promptInfo)
     {
         if (id != promptInfo.Id)
@@ -110,7 +114,7 @@ public class PromptsController : BaseController
         }
 
         await _promptInfoService.UpdatePromptAsync(promptInfo);
-        return Accepted();
+        return Ok(promptInfo);
     }
 
     /// <summary>

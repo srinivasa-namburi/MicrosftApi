@@ -16,6 +16,7 @@ jobs:
     env:
       AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
       AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
       AZURE_SUBNET_CAE: ${{ vars.AZURE_SUBNET_CAE }}
       AZURE_SUBNET_PE: ${{ vars.AZURE_SUBNET_PE }}
@@ -29,6 +30,30 @@ jobs:
 
       - name: Validate deployment parameters
         run: |
+          # Ensure that only one of AZURE_RESOURCE_GROUP or AZURE_ENV_NAME is provided.
+          if [ -n "${AZURE_RESOURCE_GROUP}" ] && [ -n "${AZURE_ENV_NAME}" ]; then
+            echo "Error: Both AZURE_RESOURCE_GROUP and AZURE_ENV_NAME are defined. Please provide only AZURE_RESOURCE_GROUP."
+            exit 1
+          fi
+
+          # If only AZURE_ENV_NAME is provided, set AZURE_RESOURCE_GROUP to "rg-<AZURE_ENV_NAME>"
+          if [ -z "${AZURE_RESOURCE_GROUP}" ] && [ -n "${AZURE_ENV_NAME}" ]; then
+            AZURE_RESOURCE_GROUP="rg-${AZURE_ENV_NAME}"
+            echo "Setting AZURE_RESOURCE_GROUP to ${AZURE_RESOURCE_GROUP} based on AZURE_ENV_NAME."
+            echo "AZURE_RESOURCE_GROUP=${AZURE_RESOURCE_GROUP}" >> $GITHUB_ENV
+          fi
+
+          # If neither is provided, exit with an error.
+          if [ -z "${AZURE_RESOURCE_GROUP}" ]; then
+            echo "Error: Either AZURE_RESOURCE_GROUP or AZURE_ENV_NAME must be defined."
+            exit 1
+          fi
+
+          # Set AZURE_ENV_NAME to AZURE_RESOURCE_GROUP, but remove "rg-" prefix if present.
+          AZURE_ENV_NAME=$(echo "${AZURE_RESOURCE_GROUP}" | sed 's/^rg-//')
+          echo "AZURE_ENV_NAME=${AZURE_ENV_NAME}" >> $GITHUB_ENV
+
+          # Existing validations (e.g. for private deployments)
           if [ "${DEPLOYMENT_MODEL}" == "private" ]; then
             if [ "${AZURE_CAE_WORKLOAD_TYPE}" == "consumption" ]; then
               echo "Error: When DEPLOYMENT_MODEL is 'private', AZURE_CAE_WORKLOAD_TYPE cannot be 'consumption'."
@@ -39,18 +64,6 @@ jobs:
               exit 1
             fi
           fi
-
-      - name: Use DotNet SDK 8.0.x
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.0.404
-
-      - name: Install WASM Tools workload
-        run: dotnet workload install wasm-tools
-
-      - name: Install AZD
-        uses: Azure/setup-azd@v2
-
       - name: Rewrite Azure Credentials to old format if necessary
         run: |
           echo "Original AZURE_CREDENTIALS:"
@@ -65,6 +78,40 @@ jobs:
         env:
           AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
 
+      - name: Login with Azure CLI (Client Credentials)
+        uses: Azure/login@v2
+        with:
+          creds: ${{ env.AZURE_CREDENTIALS_REWRITTEN }}
+          environment: ${{ vars.AZURE_CLOUD }}
+
+      - name: Validate Resource Group settings
+        run: |
+          echo "Validating Resource Group settings for ${AZURE_RESOURCE_GROUP}..."
+          exists=$(az group exists --name "${AZURE_RESOURCE_GROUP}")
+          if [ "$exists" != "true" ]; then
+            echo "Resource group ${AZURE_RESOURCE_GROUP} does not exist."
+            echo "Attempting to create resource group ${AZURE_RESOURCE_GROUP} in ${AZURE_LOCATION}..."
+            if az group create --name "${AZURE_RESOURCE_GROUP}" --location "${AZURE_LOCATION}"; then
+              echo "Resource group ${AZURE_RESOURCE_GROUP} created successfully."
+            else
+              echo "Error: Failed to create resource group ${AZURE_RESOURCE_GROUP}. The service principal may not have subscription-level permissions."
+              exit 1
+            fi
+          else
+            echo "Resource group ${AZURE_RESOURCE_GROUP} already exists."
+          fi
+
+      - name: Use DotNet SDK 8.0.x
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.404
+
+      - name: Install WASM Tools workload
+        run: dotnet workload install wasm-tools
+
+      - name: Install AZD
+        uses: Azure/setup-azd@v2
+
       - name: Set up infra folder
         run: |
           rm -rf infra
@@ -78,12 +125,6 @@ jobs:
         run: |
           rm -f azure.yaml
           cp azure-ci.yaml azure.yaml
-
-      - name: Login with Azure CLI (Client Credentials)
-        uses: Azure/login@v2
-        with:
-          creds: ${{ env.AZURE_CREDENTIALS_REWRITTEN }}
-          environment: ${{ vars.AZURE_CLOUD }}
 
       - name: Log in with Azure Developer CLI (Client Credentials)
         if: ${{ env.AZURE_CREDENTIALS != '' }}
@@ -112,15 +153,17 @@ jobs:
 
       - name: Provision Infrastructure
         run: |
-          RG_NAME="rg-${AZURE_ENV_NAME}"
-          sqlServers=$(az sql server list --resource-group "$RG_NAME" --query "[].name" -o tsv)
-          echo "SQL Servers found: '$sqlServers'"
+          # Use the canonical AZURE_RESOURCE_GROUP variable.
+          RG_NAME="${AZURE_RESOURCE_GROUP}"
+          echo "Using Resource Group: ${RG_NAME}"
 
+          # Check if any SQL servers exist in the resource group.
+          sqlServers=$(az sql server list --resource-group "$RG_NAME" --query "[].name" -o tsv)
           if [ -z "$sqlServers" ]; then
             echo "No SQL servers found. Setting EXISTING_SQL_SERVER to false."
             export EXISTING_SQL_SERVER="false"
           else
-            echo "SQL servers found. Setting EXISTING_SQL_SERVER to true. SQL Server Name: $sqlServers"
+            echo "SQL servers found. Setting EXISTING_SQL_SERVER to true. SQL Server Name(s): $sqlServers"
             export EXISTING_SQL_SERVER="true"
           fi
 
@@ -132,15 +175,16 @@ jobs:
           DEPLOYMENT_MODEL: ${{ vars.DEPLOYMENT_MODEL }}
           AZURE_SUBNET_CAE: ${{ vars.AZURE_SUBNET_CAE }}
           AZURE_SUBNET_PE: ${{ vars.AZURE_SUBNET_PE }}
-          AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
+          AZURE_RESOURCE_GROUP: ${{ env.AZURE_RESOURCE_GROUP }}
+          AZURE_ENV_NAME: ${{ env.AZURE_ENV_NAME }}
 
       - name: Configure Azure SQL Server for Azure AD authentication
         run: |
           set -e
-          # Assume the resource group is named "rg-<AZURE_ENV_NAME>"
-          RG_NAME="rg-${AZURE_ENV_NAME}"
+          # Use the canonical AZURE_RESOURCE_GROUP variable.
+          RG_NAME="${AZURE_RESOURCE_GROUP}"
 
-          # Check if SQL server exists and get its name
+          # Check if SQL server exists and get its name.
           sqlServers=$(az sql server list --resource-group "$RG_NAME" --query "[].name" -o tsv)
           if [ "$sqlServers" = '' ]; then
               echo "No SQL server found in $RG_NAME. Exiting."
@@ -150,7 +194,7 @@ jobs:
           sqlServerName=$sqlServers
           echo "SQL Server Name: $sqlServerName"
 
-          # Check for Azure AD admin and get objectId
+          # Check for Azure AD admin and get objectId.
           existingAdmin=$(az sql server ad-admin list \
               --resource-group "$RG_NAME" \
               --server-name "$sqlServerName" \
@@ -159,7 +203,7 @@ jobs:
           if [ "$existingAdmin" = '' ]; then
               echo "No Azure AD admin found. Configuring SQL server..."
               
-              # Check for and get Managed Identity
+              # Check for and get Managed Identity.
               miResourceId=$(az resource list \
                   --resource-type "Microsoft.ManagedIdentity/userAssignedIdentities" \
                   --resource-group "$RG_NAME" \
@@ -174,11 +218,11 @@ jobs:
               miName=$(az resource show --ids "$miResourceId" --query "name" -o tsv)
               echo "Managed Identity: $miName (Object ID: $miObjectId)"
               
-              # Sanitize the MI's name to produce a valid SQL login
+              # Sanitize the MI's name to produce a valid SQL login.
               sanitizedLogin=$(echo "$miName" | cut -c1-16 | tr -d ' ')
               echo "Sanitized login: $sanitizedLogin"
               
-              # Create the Azure AD admin using the Managed Identity
+              # Create the Azure AD admin using the Managed Identity.
               az sql server ad-admin create \
                   --resource-group "$RG_NAME" \
                   --server-name "$sqlServerName" \
@@ -188,7 +232,7 @@ jobs:
               echo "Azure AD admin already exists for SQL server ($sqlServerName). Skipping admin configuration."
           fi
 
-          # Check Azure AD-only authentication setting
+          # Check Azure AD-only authentication setting.
           currentAuth=$(az sql server ad-only-auth get \
               --resource-group "$RG_NAME" \
               --name "$sqlServerName" \
@@ -203,9 +247,8 @@ jobs:
           else
               echo "Azure AD–only authentication is already enabled. Skipping command."
           fi
-
         env:
-          AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
+          AZURE_RESOURCE_GROUP: ${{ env.AZURE_RESOURCE_GROUP }}
 
       - name: Create appsettings.Production.json file
         run: |
@@ -245,7 +288,7 @@ jobs:
           export SKIP_POSTDEPLOY=true
           azd deploy db-setupmanager --no-prompt
         env:
-          AZURE_RESOURCE_GROUP: rg-${{ env.AZURE_ENV_NAME }}
+          AZURE_RESOURCE_GROUP: ${{ env.AZURE_RESOURCE_GROUP }}
           AZURE_CAE_WORKLOAD_TYPE: ${{ vars.AZURE_CAE_WORKLOAD_TYPE }}
 
       - name: Deploy Rest of Application
@@ -253,7 +296,7 @@ jobs:
           export SKIP_POSTDEPLOY=false
           azd deploy --no-prompt
         env:
-          AZURE_RESOURCE_GROUP: rg-${{ env.AZURE_ENV_NAME }}
+          AZURE_RESOURCE_GROUP: ${{ env.AZURE_RESOURCE_GROUP }}
           AZURE_CAE_WORKLOAD_TYPE: ${{ vars.AZURE_CAE_WORKLOAD_TYPE }}
           PVICO_OPENAI_CONNECTIONSTRING: ${{ secrets.PVICO_OPENAI_CONNECTIONSTRING }}
           PVICO_OPENAI_RESOURCEGROUP: ${{ vars.PVICO_OPENAI_RESOURCEGROUP }}

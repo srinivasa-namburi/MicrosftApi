@@ -161,11 +161,13 @@ public class DocumentProcessApiClient : BaseServiceClient<DocumentProcessApiClie
         return await response?.Content.ReadFromJsonAsync<PromptInfo>() ?? throw new KeyNotFoundException("Prompt not found");
     }
 
-    public async Task CreatePromptAsync(PromptInfo promptInfo)
+    public async Task<PromptInfo?> CreatePromptAsync(PromptInfo promptInfo)
     {
         var url = "/api/prompts";
         var response = await SendPostRequestMessage(url, promptInfo);
         response?.EnsureSuccessStatusCode();
+
+        return await response?.Content.ReadFromJsonAsync<PromptInfo>()!;
     }
 
     public async Task UpdatePromptAsync(PromptInfo promptInfo)
