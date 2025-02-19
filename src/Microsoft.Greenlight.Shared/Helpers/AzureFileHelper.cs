@@ -34,7 +34,7 @@ public class AzureFileHelper
     /// <param name="containerName">The name of the container.</param>
     /// <param name="overwriteIfExists">Whether to overwrite the file if it exists.</param>
     /// <returns>The URL of the uploaded file.</returns>
-    public async Task<string> UploadFileToBlobAsync(Stream stream, string fileName, string containerName, bool overwriteIfExists)
+    public virtual async Task<string> UploadFileToBlobAsync(Stream stream, string fileName, string containerName, bool overwriteIfExists)
     {
         var container = _blobServiceClient.GetBlobContainerClient(containerName);
         await container.CreateIfNotExistsAsync();
@@ -55,7 +55,7 @@ public class AzureFileHelper
     /// <param name="fileName">The name of the file.</param>
     /// <param name="generatedDocumentId">The ID of the generated document.</param>
     /// <returns>The saved ExportedDocumentLink entity.</returns>
-    public async Task<ExportedDocumentLink> SaveFileInfoAsync(string absoluteUrl, string containerName, string fileName, Guid? generatedDocumentId = null)
+    public virtual async Task<ExportedDocumentLink> SaveFileInfoAsync(string absoluteUrl, string containerName, string fileName, Guid? generatedDocumentId = null)
     {
         var documentType = containerName switch
         {
@@ -87,7 +87,7 @@ public class AzureFileHelper
     /// </summary>
     /// <param name="fullBlobUrl">The full URL of the blob.</param>
     /// <returns>The file stream.</returns>
-    public async Task<Stream?> GetFileAsStreamFromFullBlobUrlAsync(string fullBlobUrl)
+    public virtual async Task<Stream?> GetFileAsStreamFromFullBlobUrlAsync(string fullBlobUrl)
     {
         var url = new Uri(fullBlobUrl);
         var containerName = url.Segments[1].TrimEnd('/');

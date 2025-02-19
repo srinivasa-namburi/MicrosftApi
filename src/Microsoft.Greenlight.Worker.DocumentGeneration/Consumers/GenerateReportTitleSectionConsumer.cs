@@ -151,12 +151,21 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
 
             if (existingContentNode.ContentNodeSystemItem != null)
             {
-                await _dbContext.ContentNodeSystemItems.AddAsync(existingContentNode.ContentNodeSystemItem);
+                var systemItem = existingContentNode.ContentNodeSystemItem;
+                var existingSystemItem = await _dbContext.ContentNodeSystemItems.FindAsync(systemItem.Id);
+                if (existingSystemItem == null)
+                {
+                    await _dbContext.ContentNodeSystemItems.AddAsync(systemItem);
+                }
+                else
+                {
+                    _dbContext.Entry(existingSystemItem).CurrentValues.SetValues(systemItem);
+                }
             }
 
             await _dbContext.ContentNodes.AddRangeAsync(bodyContentNodes);
-
             await _dbContext.SaveChangesAsync();
+
 
             existingContentNode.Children.AddRange(bodyContentNodes);
 

@@ -116,6 +116,8 @@ namespace Microsoft.Greenlight.Worker.DocumentGeneration.Consumers.Review.Tests
                     CorrelationId = correlationId
                 };
             _mockConsumeContext.SetupGet(x => x.Message).Returns(fakeReviewQuestionMessage);
+            // AzureFileHelper
+            _mockAzureFileHelper.Setup(fh => fh.GetFileAsStreamFromFullBlobUrlAsync(It.IsAny<string>())).CallBase();
             // BlobClient setup
             _mockBlobClient
                 .Setup(client => client

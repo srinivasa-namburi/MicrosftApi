@@ -25,6 +25,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Microsoft.Greenlight.API.Main\Microsoft.Greenlight.API.Main.csproj" />
+    <ProjectReference Include="..\Microsoft.Greenlight.Shared.Testing\Microsoft.Greenlight.Shared.Testing.csproj" />
   </ItemGroup>
 
   <ItemGroup>
