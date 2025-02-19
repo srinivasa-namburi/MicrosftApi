@@ -1,0 +1,71 @@
+﻿@page "/domain-groups"
+@inject IDomainGroupsApiClient DomainGroupsApiClient
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Domain Groups</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="pa-4">
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h4" GutterBottom="true">Domain Groups</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateNewDomainGroup" Class="mb-4">Create New Domain Group</MudButton>
+        <MudTable Items="_domainGroups" Hover="true" Striped="true">
+            <HeaderContent>
+                <MudTh>Name</MudTh>
+                <MudTh>Description</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Name">@context.Name</MudTd>
+                <MudTd DataLabel="Description">@context.Description</MudTd>
+                <MudTd DataLabel="Actions">
+                    <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="() => EditDomainGroup(context.Id)">Edit</MudButton>
+                    <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="() => DeleteDomainGroup(context.Id)">Delete</MudButton>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<DomainGroupInfo> _domainGroups = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDomainGroups();
+    }
+
+    private async Task LoadDomainGroups()
+    {
+        _domainGroups = await DomainGroupsApiClient.GetDomainGroupsAsync();
+    }
+
+    private void CreateNewDomainGroup()
+    {
+        Navigation.NavigateTo("/domain-groups/edit");
+    }
+
+    private void EditDomainGroup(Guid domainGroupId)
+    {
+        Navigation.NavigateTo($"/domain-groups/edit/{domainGroupId}");
+    }
+
+    private async Task DeleteDomainGroup(Guid domainGroupId)
+    {
+        var confirmed = await DialogService.ShowMessageBox("Confirm Delete", "Are you sure you want to delete this domain group?", yesText: "Yes", noText: "No");
+        if (confirmed == true)
+        {
+            var success = await DomainGroupsApiClient.DeleteDomainGroupAsync(domainGroupId);
+            if (success)
+            {
+                Snackbar.Add("Domain group deleted successfully.", Severity.Success);
+                await LoadDomainGroups();
+            }
+            else
+            {
+                Snackbar.Add("Failed to delete domain group.", Severity.Error);
+            }
+        }
+    }
+}

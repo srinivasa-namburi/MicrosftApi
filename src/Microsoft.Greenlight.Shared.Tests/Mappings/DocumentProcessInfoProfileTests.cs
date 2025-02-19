@@ -98,7 +98,7 @@ namespace Microsoft.Greenlight.Shared.Tests.Mappings
 
             // Assert
             Assert.Equal(definition.Repositories, result.Repositories);
-            Assert.Null(result.OutlineText);
+            Assert.Equal("", result.OutlineText);
             Assert.Equal(definition.DocumentOutlineId, result.DocumentOutlineId);
         }
 

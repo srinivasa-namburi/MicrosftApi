@@ -3,6 +3,8 @@ using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Models.DocumentProcess;
+using Microsoft.Greenlight.Shared.Models.DomainGroups;
+using System.Linq.Expressions;
 
 namespace Microsoft.Greenlight.Shared.Mappings;
 
@@ -18,6 +20,7 @@ public class DocumentProcessInfoProfile : Profile
     /// </summary>
     public DocumentProcessInfoProfile()
     {
+
         CreateMap<DocumentProcessOptions, DocumentProcessInfo>()
             // For the Id property, set it to Guid.Empty as this isn't used in static document process definitions
             .ForMember(x => x.Id, y => y.MapFrom(source => Guid.Empty))
@@ -42,11 +45,16 @@ public class DocumentProcessInfoProfile : Profile
 
         CreateMap<DynamicDocumentProcessDefinition, DocumentProcessInfo>()
             .ForMember(dest => dest.Repositories, opt => opt.MapFrom(src => src.Repositories))
-            .ForMember(x => x.OutlineText, y => y.MapFrom(source => source.DocumentOutline!.FullText ?? string.Empty))
-            .ForMember(x => x.DocumentOutlineId, DocumentOutlineIdCheck);
+            .ForMember(x => x.OutlineText, y => y.MapFrom(MapDocumentOutline()))
+            .ForMember(x => x.DocumentOutlineId, MapDocumentOutlineId);
     }
 
-    private void DocumentOutlineIdCheck(
+    private static Expression<Func<DynamicDocumentProcessDefinition, string>> MapDocumentOutline()
+    {
+        return source => source.DocumentOutline != null ? source.DocumentOutline.FullText : string.Empty;
+    }
+
+    private void MapDocumentOutlineId(
         IMemberConfigurationExpression<DynamicDocumentProcessDefinition, DocumentProcessInfo, Guid?> obj)
     {
         obj.MapFrom((source, dest) => source.DocumentOutlineId ?? source.DocumentOutline?.Id ?? Guid.Empty);

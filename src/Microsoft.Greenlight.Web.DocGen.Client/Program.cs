@@ -86,6 +86,11 @@ builder.Services.AddHttpClient<IFileApiClient, FileApiClient>(client =>
     return handler;
 });;
 
+builder.Services.AddHttpClient<IDomainGroupsApiClient, DomainGroupsApiClient>(client =>
+{
+    client.BaseAddress = serverBaseAddress;
+});
+
 
 
 await builder.Build().RunAsync();

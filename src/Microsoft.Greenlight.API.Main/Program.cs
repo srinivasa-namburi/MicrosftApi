@@ -8,11 +8,15 @@ using Microsoft.Greenlight.DocumentProcess.Shared;
 using Microsoft.Greenlight.ServiceDefaults;
 using Microsoft.Greenlight.Shared;
 using Microsoft.Greenlight.Shared.Configuration;
+using Microsoft.Greenlight.Shared.Core;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Mappings;
 
-var builder = WebApplication.CreateBuilder(args);
+//var builder = WebApplication.CreateBuilder(args);
+var builder = new GreenlightDynamicWebApplicationBuilder(args);
+builder.Services.AddSingleton<AzureCredentialHelper>();
+var credentialHelper = new AzureCredentialHelper(builder.Configuration);
 
 // Due to a bug, this MUST come before .AddServiceDefaults() (keyed services can't be present in container)
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -20,8 +24,6 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .EnableTokenAcquisitionToCallDownstreamApi().AddInMemoryTokenCaches();
 
 builder.AddServiceDefaults();
-builder.Services.AddSingleton<AzureCredentialHelper>();
-var credentialHelper = new AzureCredentialHelper(builder.Configuration);
 
 builder.Services.AddOptions<ServiceConfigurationOptions>().Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
@@ -33,7 +35,7 @@ await builder.DelayStartup(serviceConfigurationOptions.GreenlightServices.Docume
 builder.AddGreenlightServices(credentialHelper, serviceConfigurationOptions);
 builder.Services.AddAutoMapper(typeof(ChatMessageProfile));
 
-//builder.DynamicallyRegisterPlugins(serviceConfigurationOptions);
+builder.RegisterStaticPlugins(serviceConfigurationOptions);
 builder.AddRepositories();
 builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
 builder.AddSemanticKernelServices(serviceConfigurationOptions);

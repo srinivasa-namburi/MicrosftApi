@@ -14,6 +14,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Prompts;
 using Microsoft.Greenlight.Shared.Services;
+using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
 using Scriban;
 
 namespace Microsoft.Greenlight.Worker.Chat.Consumers;
@@ -153,7 +154,7 @@ public class ProcessChatMessageConsumer(
                 conversation.DocumentProcessName);
 
 
-        var openAiSettings = new OpenAIPromptExecutionSettings()
+        var openAiSettings = new AzureOpenAIPromptExecutionSettings()
         {
             ChatSystemPrompt = systemPrompt,
             ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions,

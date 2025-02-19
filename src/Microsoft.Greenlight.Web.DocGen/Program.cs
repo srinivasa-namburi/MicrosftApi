@@ -106,6 +106,11 @@ builder.Services.AddHttpClient<IFileApiClient, FileApiClient>(httpClient =>
     return handler;
 });
 
+builder.Services.AddHttpClient<IDomainGroupsApiClient, DomainGroupsApiClient>(httpClient =>
+{
+    httpClient.BaseAddress = apiUri;
+});
+
 // Add services to the container.
 builder.Services.AddAuthentication("MicrosoftOidc")
     .AddOpenIdConnect("MicrosoftOidc", oidcOptions =>

@@ -1,0 +1,134 @@
+﻿@page "/domain-groups/edit/{DomainGroupId:guid?}"
+@using Microsoft.Greenlight.Shared.Contracts.DTO
+@inject IDomainGroupsApiClient DomainGroupsApiClient
+@inject IDocumentProcessApiClient DocumentProcessApiClient
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<PageTitle>Edit Domain Group</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="pa-4">
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h4" GutterBottom="true">Edit Domain Group</MudText>
+        <MudTextField @bind-Value="_domainGroup.Name" Label="Name" Required="true" Class="mb-4" />
+        <MudTextField @bind-Value="_domainGroup.Description" Label="Description" Class="mb-4" />
+        <MudCheckBox @bind-Value="_domainGroup.ExposeCoPilotAgentEndpoint" Label="Expose CoPilot Agent Endpoint" Class="mb-4" />
+        <MudCheckBox @bind-Value="_domainGroup.AuthenticateCoPilotAgentEndpoint" Label="Authenticate CoPilot Agent Endpoint" Class="mb-4" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveDomainGroup" Class="mb-4">Save</MudButton>
+        <MudButton Variant="Variant.Text" OnClick="Cancel" Class="mb-4">Cancel</MudButton>
+
+        @if (_domainGroup.Id != Guid.Empty)
+        {
+            <MudDivider Class="my-4" />
+            <MudText Typo="Typo.h5" GutterBottom="true">Associated Document Processes</MudText>
+            <MudTable Items="_domainGroup.DocumentProcesses" Hover="true" Striped="true" Class="mb-4">
+                <HeaderContent>
+                    <MudTh>Name</MudTh>
+                    <MudTh>Description</MudTh>
+                    <MudTh>Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Name">@context.ShortName</MudTd>
+                    <MudTd DataLabel="Description">@context.Description</MudTd>
+                    <MudTd DataLabel="Actions">
+                        <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="() => DisassociateDocumentProcess(context.Id)">Disassociate</MudButton>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+
+            <MudDivider Class="my-4" />
+            <MudText Typo="Typo.h5" GutterBottom="true">Associate Document Process</MudText>
+            <MudSelect T="DocumentProcessInfo" @bind-Value="_selectedDocumentProcess" Label="Select Document Process" Class="mb-4">
+                @foreach (var process in _availableDocumentProcesses)
+                {
+                    <MudSelectItem Value="@process">@process.ShortName</MudSelectItem>
+                }
+            </MudSelect>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AssociateDocumentProcess">Associate</MudButton>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    [Parameter] public Guid? DomainGroupId { get; set; }
+
+    private DomainGroupInfo? _domainGroup = new();
+
+    private List<DocumentProcessInfo> _availableDocumentProcesses = new();
+    private DocumentProcessInfo? _selectedDocumentProcess;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (DomainGroupId.HasValue)
+        {
+            _domainGroup = await DomainGroupsApiClient.GetDomainGroupAsync(DomainGroupId.Value) ?? new DomainGroupInfo();
+        }
+
+        await LoadAvailableDocumentProcesses();
+    }
+
+    private async Task LoadAvailableDocumentProcesses()
+    {
+        var allDocumentProcesses = await DocumentProcessApiClient.GetAllDocumentProcessInfoAsync();
+        _availableDocumentProcesses = allDocumentProcesses
+            .Except(_domainGroup.DocumentProcesses)
+            .Where(x => x.Source == ProcessSource.Dynamic).ToList();
+    }
+
+    private async Task SaveDomainGroup()
+    {
+        if (_domainGroup.Id == Guid.Empty)
+        {
+            // Create new domain group
+            _domainGroup.Id = Guid.NewGuid();
+            await DomainGroupsApiClient.CreateDomainGroupAsync(_domainGroup);
+            Snackbar.Add("Domain group created successfully.", Severity.Success);
+        }
+        else
+        {
+            // Update existing domain group
+            await DomainGroupsApiClient.UpdateDomainGroupAsync(_domainGroup);
+            Snackbar.Add("Domain group updated successfully.", Severity.Success);
+        }
+
+        Navigation.NavigateTo("/domain-groups");
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo("/domain-groups");
+    }
+
+    private async Task AssociateDocumentProcess()
+    {
+        if (_selectedDocumentProcess != null)
+        {
+            var updatedDomainGroup = await DomainGroupsApiClient.AssociateDocumentProcessAsync(_domainGroup.Id, _selectedDocumentProcess.Id);
+            if (updatedDomainGroup != null)
+            {
+                _domainGroup = updatedDomainGroup;
+                Snackbar.Add("Document process associated successfully.", Severity.Success);
+                await LoadAvailableDocumentProcesses();
+            }
+            else
+            {
+                Snackbar.Add("Failed to associate document process.", Severity.Error);
+            }
+        }
+    }
+
+    private async Task DisassociateDocumentProcess(Guid documentProcessId)
+    {
+        var updatedDomainGroup = await DomainGroupsApiClient.DisassociateDocumentProcessAsync(_domainGroup.Id, documentProcessId);
+        if (updatedDomainGroup != null)
+        {
+            _domainGroup = updatedDomainGroup;
+            Snackbar.Add("Document process disassociated successfully.", Severity.Success);
+            await LoadAvailableDocumentProcesses();
+        }
+        else
+        {
+            Snackbar.Add("Failed to disassociate document process.", Severity.Error);
+        }
+    }
+}

@@ -32,6 +32,7 @@
 		<ProjectReference Include="..\Microsoft.Greenlight.DocumentProcesses\Microsoft.Greenlight.DocumentProcesses.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.ServiceDefaults\Microsoft.Greenlight.ServiceDefaults.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.Shared\Microsoft.Greenlight.Shared.csproj" />
+		<ProjectReference Include="..\Plugins\Microsoft.Greenlight.Plugins.Default\Microsoft.Greenlight.Plugins.Default.csproj" />
 	</ItemGroup>
 	<ItemGroup>
 		<Folder Include="Hubs\" />

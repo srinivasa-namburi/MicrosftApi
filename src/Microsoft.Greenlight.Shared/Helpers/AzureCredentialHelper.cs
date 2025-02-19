@@ -1,3 +1,4 @@
+using Azure.Core;
 using Azure.Identity;
 using Microsoft.Extensions.Configuration;
 
@@ -22,10 +23,10 @@ public class AzureCredentialHelper
     /// <summary>
     /// Gets the Azure credential based on the configuration.
     /// </summary>
-    /// <returns>A <see cref="DefaultAzureCredential"/> instance.</returns>
-    public DefaultAzureCredential GetAzureCredential()
+    /// <returns>A <see cref="TokenCredential"/> instance.</returns>
+    public TokenCredential GetAzureCredential()
     {
-        DefaultAzureCredential? credential;
+        TokenCredential? credential;
         // If there is no specific tenant ID, use the default Azure credential
         if (string.IsNullOrEmpty(_configuration["Azure:TenantId"]))
         {
@@ -36,10 +37,22 @@ public class AzureCredentialHelper
         }
         else
         {
-            credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions
+            var credentialSource = _configuration["Azure:CredentialSource"];
+            if (credentialSource == "AzureCli")
             {
-                TenantId = _configuration["Azure:TenantId"]
-            });
+                credential = new AzureCliCredential(new AzureCliCredentialOptions()
+                {
+                    TenantId = _configuration["Azure:TenantId"]
+                });
+
+            }
+            else
+            {
+                credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions
+                {
+                    TenantId = _configuration["Azure:TenantId"]
+                });
+            }
         }
 
         return credential;

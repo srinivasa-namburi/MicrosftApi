@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Microsoft.Greenlight.Shared.Models;
 using Microsoft.Greenlight.Shared.Models.DocumentLibrary;
 using Microsoft.Greenlight.Shared.Models.DocumentProcess;
+using Microsoft.Greenlight.Shared.Models.DomainGroups;
 using Microsoft.Greenlight.Shared.Models.Plugins;
 using Microsoft.Greenlight.Shared.Models.Review;
 using Microsoft.Greenlight.Shared.Models.SourceReferences;
@@ -110,6 +111,18 @@ public class DocGenerationDbContext : DbContext
             (c1, c2) => c1!.SequenceEqual(c2!),
             c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
             c => c.ToList());
+
+        modelBuilder.Entity<DomainGroup>()
+            .ToTable("DomainGroups");
+
+        modelBuilder.Entity<DomainGroup>()
+            .HasIndex(nameof(DomainGroup.Name))
+            .IsUnique();
+
+        modelBuilder.Entity<DomainGroup>()
+            .HasMany(x => x.DocumentProcesses)
+            .WithMany(x => x.DomainGroupMemberships)
+            ;
 
         modelBuilder.Entity<ContentNodeSystemItem>()
             .ToTable("ContentNodeSystemItems");
@@ -964,4 +977,9 @@ public class DocGenerationDbContext : DbContext
     /// Gets or sets the document library document process associations.
     /// </summary>
     public DbSet<DocumentLibraryDocumentProcessAssociation> DocumentLibraryDocumentProcessAssociations { get; set; }
+
+    /// <summary>
+    /// Gets or sets the domain groups.
+    /// </summary>
+    public DbSet<DomainGroup> DomainGroups { get; set; }
 }

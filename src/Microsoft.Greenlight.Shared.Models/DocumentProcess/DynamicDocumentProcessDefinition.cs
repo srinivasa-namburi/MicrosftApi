@@ -1,6 +1,7 @@
 using Microsoft.Greenlight.Shared.Contracts;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Models.DocumentLibrary;
+using Microsoft.Greenlight.Shared.Models.DomainGroups;
 using Microsoft.Greenlight.Shared.Models.Plugins;
 
 namespace Microsoft.Greenlight.Shared.Models.DocumentProcess;
@@ -110,4 +111,9 @@ public class DynamicDocumentProcessDefinition : EntityBase, IDocumentProcessInfo
     /// List of metadata fields associated with the document process.
     /// </summary>
     public List<DynamicDocumentProcessMetaDataField> MetaDataFields { get; set; } = [];
+
+    /// <summary>
+    /// Domain Groups that this document process is associated with. Managed from the Domain Group side.
+    /// </summary>
+    public List<DomainGroup> DomainGroupMemberships { get; set; } = [];
 }
