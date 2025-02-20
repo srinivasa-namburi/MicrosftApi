@@ -1,5 +1,4 @@
 ﻿@page "/domain-groups/edit/{DomainGroupId:guid?}"
-@using Microsoft.Greenlight.Shared.Contracts.DTO
 @inject IDomainGroupsApiClient DomainGroupsApiClient
 @inject IDocumentProcessApiClient DocumentProcessApiClient
 @inject NavigationManager Navigation
@@ -12,8 +11,24 @@
         <MudText Typo="Typo.h4" GutterBottom="true">Edit Domain Group</MudText>
         <MudTextField @bind-Value="_domainGroup.Name" Label="Name" Required="true" Class="mb-4" />
         <MudTextField @bind-Value="_domainGroup.Description" Label="Description" Class="mb-4" />
-        <MudCheckBox @bind-Value="_domainGroup.ExposeCoPilotAgentEndpoint" Label="Expose CoPilot Agent Endpoint" Class="mb-4" />
-        <MudCheckBox @bind-Value="_domainGroup.AuthenticateCoPilotAgentEndpoint" Label="Authenticate CoPilot Agent Endpoint" Class="mb-4" />
+        <MudGrid>
+            <MudItem xs="12">
+                <MudCheckBox @bind-Value="_domainGroup.ExposeCoPilotAgentEndpoint" Label="Expose CoPilot Agent Endpoint" />
+            </MudItem>
+            
+            <MudItem xs="12">
+                <MudCheckBox @bind-Value="_domainGroup.AuthenticateCoPilotAgentEndpoint" Label="Authenticate CoPilot Agent Endpoint" />
+            </MudItem>
+            
+            <MudItem xs="12">
+                @if (_domainGroup is { ExposeCoPilotAgentEndpoint: true })
+                {
+                    <MudText Typo="Typo.body1">
+                        OpenAPI Endpoint: <a href="@_openApiEndpointUrl" target="_blank">@_openApiEndpointUrl</a>
+                    </MudText>
+                }
+            </MudItem>
+        </MudGrid>
         <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveDomainGroup" Class="mb-4">Save</MudButton>
         <MudButton Variant="Variant.Text" OnClick="Cancel" Class="mb-4">Cancel</MudButton>
 
@@ -53,6 +68,7 @@
     [Parameter] public Guid? DomainGroupId { get; set; }
 
     private DomainGroupInfo? _domainGroup = new();
+    private string? _openApiEndpointUrl;
 
     private List<DocumentProcessInfo> _availableDocumentProcesses = new();
     private DocumentProcessInfo? _selectedDocumentProcess;
@@ -65,6 +81,23 @@
         }
 
         await LoadAvailableDocumentProcesses();
+
+        if (_domainGroup is { ExposeCoPilotAgentEndpoint: true })
+        {
+            var uri = new Uri(Navigation.Uri);
+            var hostname = uri.Host.Replace("web-docgen", "api-main");
+
+            // Include the port number if it's not the default port
+            if (uri.Port != 443 && uri.Port != 80)
+            {
+                hostname += $":{uri.Port}";
+            }
+
+            // Get the protocol from the current URL
+            var protocol = uri.Scheme;
+            
+            _openApiEndpointUrl = $"{protocol}://{hostname}/api/copilot-agent/{_domainGroup.Id.ToString()}/openapi.json";
+        }
     }
 
     private async Task LoadAvailableDocumentProcesses()

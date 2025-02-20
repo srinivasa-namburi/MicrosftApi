@@ -7,6 +7,8 @@ using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
+using System.Collections.Concurrent;
+using System.Threading.Tasks.Dataflow;
 
 namespace Microsoft.Greenlight.API.Main.Controllers
 {
@@ -51,7 +53,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
                 ;
 
             var documentProcessInfos = await _mapper.ProjectTo<DocumentProcessInfo>(documentProcesses).ToListAsync();
-            return Ok( documentProcessInfos );
+            return Ok(documentProcessInfos);
         }
 
         /// <summary>
@@ -65,31 +67,28 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         [Produces("application/json")]
         public async Task<ActionResult<string>> ProcessQuery(Guid domainGroupId, string query)
         {
-
             var documentProcesses = _dbContext.DomainGroups
                 .Where(x => x.Id == domainGroupId)
                 .SelectMany(x => x.DocumentProcesses)
                 .AsNoTracking()
-                .AsSplitQuery()
-                ;
+                .AsSplitQuery();
 
             var systemPrompt = $"""
-                                Please answer the queries provided by the user.
+                                    Please answer the queries provided by the user.
 
-                                When calling plugins for a query, make sure to take note of the document process name, which may be required input.
-                                """;
+                                    When calling plugins for a query, make sure to take note of the document process name, which may be required input.
+                                    """;
 
             var kernelDictionary = new Dictionary<string, Kernel>();
-            var resultDictionary = new Dictionary<string, string>();
+            var resultDictionary = new ConcurrentDictionary<string, string>();
 
             var openAiSettings = new AzureOpenAIPromptExecutionSettings()
             {
                 ChatSystemPrompt = systemPrompt,
                 ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions,
-                MaxTokens = 1000,
+                MaxTokens = 2000,
                 Temperature = 1.0
             };
-
 
             foreach (var dp in documentProcesses)
             {
@@ -105,35 +104,44 @@ namespace Microsoft.Greenlight.API.Main.Controllers
                 kernelDictionary.Add(dp.ShortName, dpKernel);
             }
 
-            foreach (var kernelDictionaryItem in kernelDictionary)
+            var actionBlock = new ActionBlock<KeyValuePair<string, Kernel>>(async kernelDictionaryItem =>
             {
                 var dpQuery = "Query for DocumentProcessName" + kernelDictionaryItem.Key + ":\n" + query;
                 var kernel = kernelDictionaryItem.Value;
                 kernel.Data["DocumentProcessName"] = kernelDictionaryItem.Key;
                 var result = await kernel.InvokePromptAsync(dpQuery, new KernelArguments(openAiSettings));
 
-                resultDictionary.Add(kernelDictionaryItem.Key, result.ToString());
-            };
+                resultDictionary.TryAdd(kernelDictionaryItem.Key, result.ToString());
+            }, new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = 3 });
 
-            // For each result in the result dictionary, append it to a full text. Lead with the document process name on its own line and a semicolon
+            foreach (var kernelDictionaryItem in kernelDictionary)
+            {
+                actionBlock.Post(kernelDictionaryItem);
+            }
+
+            actionBlock.Complete();
+            await actionBlock.Completion;
+
             var fullText = "";
             foreach (var resultDictionaryItem in resultDictionary)
             {
                 fullText += $"{resultDictionaryItem.Key}:\n{resultDictionaryItem.Value}\n\n";
             }
 
-
             var summarizePrompt = $"""
-                                   Here is a set of results from several queries. Can you please summarize them 
-                                   into a single response?
+                                       Here is a set of results from several queries. Can you please summarize them 
+                                       into a single response?
 
-                                   Don't mention that this is a summarized response. Don't mention or sort into document processes. Treat the
-                                   result as one unified result without reference to any specific document process.
-                                   
-                                   [RESULTS]
-                                   {fullText}
-                                   [/RESULTS]
-                                   """;
+                                       Don't mention that this is a summarized response. Don't mention or sort into document processes. Treat the
+                                       result as one unified result without reference to any specific document process.
+
+                                       If you were ask to provide sample text for a section of a document, please respond
+                                       only with the text that would be included in the document.
+                                       
+                                       [RESULTS]
+                                       {fullText}
+                                       [/RESULTS]
+                                       """;
 
             var summarizeKernel = _sp.GetRequiredService<Kernel>();
 
@@ -141,6 +149,5 @@ namespace Microsoft.Greenlight.API.Main.Controllers
 
             return Ok(summarizeResult.ToString());
         }
-
     }
 }
