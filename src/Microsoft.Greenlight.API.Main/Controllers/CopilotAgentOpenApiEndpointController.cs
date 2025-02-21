@@ -106,6 +106,23 @@ namespace Microsoft.Greenlight.API.Main.Controllers
             swaggerDoc.Info.Title = "Domain Expert CoPilot : " + domainGroup.Name;
             swaggerDoc.Info.Description = domainGroup.Description;
 
+            var requestPort = Request.Host.Port;
+            if (requestPort.HasValue && (requestPort != 443 || requestPort != 80))
+            {
+                swaggerDoc.Servers.Add(new OpenApiServer()
+                {
+                    Url = $"{Request.Scheme}://{Request.Host.Host}:{requestPort}"
+                });
+            }
+            else
+            {
+                swaggerDoc.Servers.Add(new OpenApiServer()
+                {
+                    Url = $"{Request.Scheme}://{Request.Host.Host}"
+                });
+            }
+            
+
             // Cache the generated document for 5 minutes.
             if (!bypassCache)
             {
