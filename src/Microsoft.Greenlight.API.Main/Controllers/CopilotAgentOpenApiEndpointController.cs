@@ -121,7 +121,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
                     Url = $"{Request.Scheme}://{Request.Host.Host}"
                 });
             }
-            
+
 
             // Cache the generated document for 5 minutes.
             if (!bypassCache)
@@ -151,112 +151,160 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         {
             var usedSchemas = new HashSet<string>();
 
-            // Collect references from all operations in all paths.
+            // --------------------------------------------
+            // 1. Collect references appearing in the path ops
+            // --------------------------------------------
             foreach (var pathItem in swaggerDoc.Paths.Values)
             {
                 foreach (var operation in pathItem.Operations.Values)
                 {
-                    // Check parameters
+                    // Collect parameter references
                     foreach (var parameter in operation.Parameters)
                     {
                         if (parameter.Schema != null)
                         {
-                            CollectSchemaReferences(parameter.Schema, usedSchemas);
+                            CollectSchemaReferences(parameter.Schema, usedSchemas, swaggerDoc.Components?.Schemas);
                         }
                     }
-                    // Check request bodies
+
+                    // Collect request body references
                     if (operation.RequestBody != null)
                     {
                         foreach (var media in operation.RequestBody.Content.Values)
                         {
                             if (media.Schema != null)
                             {
-                                CollectSchemaReferences(media.Schema, usedSchemas);
+                                CollectSchemaReferences(media.Schema, usedSchemas, swaggerDoc.Components?.Schemas);
                             }
                         }
                     }
-                    // Check responses
+
+                    // Collect response references
                     foreach (var response in operation.Responses.Values)
                     {
                         foreach (var media in response.Content.Values)
                         {
                             if (media.Schema != null)
                             {
-                                CollectSchemaReferences(media.Schema, usedSchemas);
+                                CollectSchemaReferences(media.Schema, usedSchemas, swaggerDoc.Components?.Schemas);
                             }
                         }
                     }
                 }
             }
 
-            // Remove schemas that are not referenced.
-            var keysToRemove = swaggerDoc.Components.Schemas
-                .Where(kvp => !usedSchemas.Contains(kvp.Key))
-                .Select(kvp => kvp.Key)
-                .ToList();
+            // --------------------------------------------
+            // 2. Recursively collect references from each used schema
+            //    until there are no more new references
+            // --------------------------------------------
+            if (swaggerDoc.Components?.Schemas == null)
+                return;
 
-            foreach (var key in keysToRemove)
+            bool foundNew;
+            do
+            {
+                foundNew = false;
+                var currentList = usedSchemas.ToList();
+
+                foreach (var key in currentList)
+                {
+                    if (swaggerDoc.Components.Schemas.TryGetValue(key, out var subSchema))
+                    {
+                        var beforeCount = usedSchemas.Count;
+                        CollectSchemaReferences(subSchema, usedSchemas, swaggerDoc.Components.Schemas);
+                        if (usedSchemas.Count > beforeCount) foundNew = true;
+                    }
+                }
+            }
+            while (foundNew);
+
+            // --------------------------------------------
+            // 3. Remove anything that isn't actually used
+            // --------------------------------------------
+            var unusedSchemaKeys = swaggerDoc.Components.Schemas.Keys
+                .Where(schemaName => !usedSchemas.Contains(schemaName))
+                .ToArray();
+
+            foreach (var key in unusedSchemaKeys)
             {
                 swaggerDoc.Components.Schemas.Remove(key);
             }
         }
 
-        /// <summary>
-        /// Recursively collects schema references from the provided schema.
-        /// </summary>
-        private static void CollectSchemaReferences(OpenApiSchema schema, HashSet<string> usedSchemas)
+
+        private static void CollectSchemaReferences(OpenApiSchema schema, HashSet<string> usedSchemas, IDictionary<string, OpenApiSchema>? allSchemas)
         {
             if (schema == null)
             {
                 return;
             }
 
+            // Handle direct reference
             if (schema.Reference != null && !string.IsNullOrEmpty(schema.Reference.Id))
             {
                 usedSchemas.Add(schema.Reference.Id);
-            }
 
-            if (schema.Properties != null)
-            {
-                foreach (var prop in schema.Properties.Values)
+                // If this is an enum schema, we need to include it
+                if (allSchemas?.TryGetValue(schema.Reference.Id, out var referencedSchema) == true)
                 {
-                    CollectSchemaReferences(prop, usedSchemas);
+                    if (referencedSchema.Enum?.Any() == true)
+                    {
+                        usedSchemas.Add(schema.Reference.Id);
+                    }
                 }
             }
 
+            // Handle properties
+            if (schema.Properties != null)
+            {
+                foreach (var prop in schema.Properties)
+                {
+                    CollectSchemaReferences(prop.Value, usedSchemas, allSchemas);
+                }
+            }
+
+            // Handle additional properties
             if (schema.AdditionalProperties != null)
             {
-                CollectSchemaReferences(schema.AdditionalProperties, usedSchemas);
+                CollectSchemaReferences(schema.AdditionalProperties, usedSchemas, allSchemas);
             }
 
+            // Handle array items
             if (schema.Items != null)
             {
-                CollectSchemaReferences(schema.Items, usedSchemas);
+                CollectSchemaReferences(schema.Items, usedSchemas, allSchemas);
             }
 
+            // Handle allOf
             if (schema.AllOf != null)
             {
                 foreach (var subSchema in schema.AllOf)
                 {
-                    CollectSchemaReferences(subSchema, usedSchemas);
+                    CollectSchemaReferences(subSchema, usedSchemas, allSchemas);
                 }
             }
 
+            // Handle anyOf
             if (schema.AnyOf != null)
             {
                 foreach (var subSchema in schema.AnyOf)
                 {
-                    CollectSchemaReferences(subSchema, usedSchemas);
+                    CollectSchemaReferences(subSchema, usedSchemas, allSchemas);
                 }
             }
 
+            // Handle oneOf
             if (schema.OneOf != null)
             {
                 foreach (var subSchema in schema.OneOf)
                 {
-                    CollectSchemaReferences(subSchema, usedSchemas);
+                    CollectSchemaReferences(subSchema, usedSchemas, allSchemas);
                 }
             }
         }
+
+
+
+
     }
 }

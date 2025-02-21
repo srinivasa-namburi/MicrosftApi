@@ -1,5 +1,7 @@
 # Configuration variables
 $TOKENS_PER_WORKER = 75000
+$MAX_DOCUMENT_WORKERS = 8
+$DEFAULT_DOCUMENT_WORKERS = 4
 
 # Read the environment and resource group names from environment variables
 $resourceGroup = $Env:AZURE_ENV_NAME
@@ -64,29 +66,61 @@ function Get-Tpm {
     }
 }
 
+# Function to get current replica count
+function Get-CurrentReplicas {
+    param (
+        [string]$appName,
+        [string]$resourceGroup
+    )
+
+    try {
+        $app = Get-AzContainerApp -Name $appName -ResourceGroupName $resourceGroup -ErrorAction SilentlyContinue
+        if ($app) {
+            return $app.Configuration.ActiveReplicaCount
+        }
+        return 0
+    }
+    catch {
+        Write-Warning "Error getting replica count for $appName"
+        return 0
+    }
+}
+
 # Determine the number of workers based on TPM
 if ($use_default_workers) {
-    $documentGenerationWorkers = 8
+    $documentGenerationWorkers = $DEFAULT_DOCUMENT_WORKERS
 } else {
-    # Try to get TPM for gpt-4o first, then gpt-4-128k if gpt-4o is not found
-    $tpm = Get-Tpm -deploymentName "gpt-4o"
-    if ([string]::IsNullOrEmpty($tpm) -or $tpm -eq 0) {
-        Write-Host "gpt-4o not found or no tokens available, trying gpt-4-128k..."
-        $tpm = Get-Tpm -deploymentName "gpt-4-128k"
-    }
-
-    # Display the number of tokens available
-    if ([string]::IsNullOrEmpty($tpm) -or $tpm -eq 0) {
-        Write-Warning "No tokens available for either gpt-4o or gpt-4-128k. Using default number of workers (8)."
-        $documentGenerationWorkers = 8
+    # Check if the app already exists and get its current replica count
+    $current_replicas = Get-CurrentReplicas -appName "worker-documentgeneration" -resourceGroup $resourceGroup
+    
+    if ($current_replicas -gt 0) {
+        Write-Host "Container app worker-documentgeneration already exists with $current_replicas replicas. Maintaining existing count."
+        $documentGenerationWorkers = $current_replicas
     } else {
-        # Calculate the number of document generation workers (rounded down)
-        $documentGenerationWorkers = [Math]::Floor($tpm / $TOKENS_PER_WORKER)
-        if ($documentGenerationWorkers -lt 1) {
-            $documentGenerationWorkers = 1
+        # Try to get TPM for gpt-4o first, then gpt-4-128k if gpt-4o is not found
+        $tpm = Get-Tpm -deploymentName "gpt-4o"
+        if ([string]::IsNullOrEmpty($tpm) -or $tpm -eq 0) {
+            Write-Host "gpt-4o not found or no tokens available, trying gpt-4-128k..."
+            $tpm = Get-Tpm -deploymentName "gpt-4-128k"
         }
-        Write-Host "Available tokens per minute: $tpm"
-        Write-Host "Calculated number of document generation workers: $documentGenerationWorkers (based on TPM / $TOKENS_PER_WORKER)"
+
+        # Display the number of tokens available
+        if ([string]::IsNullOrEmpty($tpm) -or $tpm -eq 0) {
+            Write-Warning "No tokens available for either gpt-4o or gpt-4-128k. Using default number of workers ($DEFAULT_DOCUMENT_WORKERS)."
+            $documentGenerationWorkers = $DEFAULT_DOCUMENT_WORKERS
+        } else {
+            # Calculate the number of document generation workers (rounded down)
+            $documentGenerationWorkers = [Math]::Floor($tpm / $TOKENS_PER_WORKER)
+            # Ensure we never exceed maximum workers for new deployments
+            if ($documentGenerationWorkers -gt $MAX_DOCUMENT_WORKERS) {
+                Write-Host "Calculated workers ($documentGenerationWorkers) exceeds maximum limit. Setting to $MAX_DOCUMENT_WORKERS workers."
+                $documentGenerationWorkers = $MAX_DOCUMENT_WORKERS
+            } elseif ($documentGenerationWorkers -lt 1) {
+                $documentGenerationWorkers = 1
+            }
+            Write-Host "Available tokens per minute: $tpm"
+            Write-Host "Final number of document generation workers: $documentGenerationWorkers"
+        }
     }
 }
 

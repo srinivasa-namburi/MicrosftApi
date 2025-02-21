@@ -2,6 +2,8 @@
 
 # Configuration variables
 TOKENS_PER_WORKER=75000
+MAX_DOCUMENT_WORKERS=8
+DEFAULT_DOCUMENT_WORKERS=4
 
 # Read the environment and resource group names from environment variables
 envName=$(echo $AZURE_CONTAINER_REGISTRY_ENDPOINT | cut -d'.' -f1 | cut -c4-)
@@ -35,7 +37,7 @@ fi
 
 # Define the container apps and their desired instance counts (initial values)
 declare -A containerApps=(
-    ["worker-documentgeneration"]=8  # Default value
+    ["worker-documentgeneration"]=$DEFAULT_DOCUMENT_WORKERS
     ["worker-chat"]=2
     ["worker-documentingestion"]=4
     ["web-docgen"]=1
@@ -63,29 +65,55 @@ get_tpm() {
     fi
 }
 
+# Function to get the current replica count for a container app
+get_current_replicas() {
+    local app_name=$1
+    local resource_group=$2
+    
+    # Check if the container app exists and get its current replica count
+    if az containerapp show --name "$app_name" --resource-group "$resource_group" &>/dev/null; then
+        local current_replicas=$(az containerapp show --name "$app_name" --resource-group "$resource_group" --query "properties.configuration.activeReplicaCount" -o tsv)
+        echo "$current_replicas"
+    else
+        echo "0"  # Return 0 if app doesn't exist
+    fi
+}
+
 # Determine the number of workers based on TPM
 if [ "$use_default_workers" = true ]; then
-    documentGenerationWorkers=8
+    documentGenerationWorkers=$DEFAULT_DOCUMENT_WORKERS
 else
-    # Try to get TPM for gpt-4o first, then gpt-4-128k if gpt-4o is not found
-    tpm=$(get_tpm "gpt-4o")
-    if [ -z "$tpm" ] || [ "$tpm" -eq 0 ]; then
-        echo "gpt-4o not found or no tokens available, trying gpt-4-128k..." >&2
-        tpm=$(get_tpm "gpt-4-128k")
-    fi
-
-    # Display the number of tokens available
-    if [ -z "$tpm" ] || [ "$tpm" -eq 0 ]; then
-        echo "No tokens available for either gpt-4o or gpt-4-128k. Using default number of workers (8)." >&2
-        documentGenerationWorkers=8
+    # Check if the app already exists and get its current replica count
+    current_replicas=$(get_current_replicas "worker-documentgeneration" "$resourceGroup")
+    
+    if [ "$current_replicas" -gt 0 ]; then
+        echo "Container app worker-documentgeneration already exists with $current_replicas replicas. Maintaining existing count." >&2
+        documentGenerationWorkers=$current_replicas
     else
-        # Calculate the number of document generation workers (rounded down)
-        documentGenerationWorkers=$((tpm / TOKENS_PER_WORKER))
-        if [ "$documentGenerationWorkers" -lt 1 ]; then
-            documentGenerationWorkers=1
+        # Try to get TPM for gpt-4o first, then gpt-4-128k if gpt-4o is not found
+        tpm=$(get_tpm "gpt-4o")
+        if [ -z "$tpm" ] || [ "$tpm" -eq 0 ]; then
+            echo "gpt-4o not found or no tokens available, trying gpt-4-128k..." >&2
+            tpm=$(get_tpm "gpt-4-128k")
         fi
-        echo "Available tokens per minute: $tpm" >&2
-        echo "Calculated number of document generation workers: $documentGenerationWorkers (based on TPM / $TOKENS_PER_WORKER)" >&2
+
+        # Display the number of tokens available
+        if [ -z "$tpm" ] || [ "$tpm" -eq 0 ]; then
+            echo "No tokens available for either gpt-4o or gpt-4-128k. Using default number of workers ($MAX_DOCUMENT_WORKERS)." >&2
+            documentGenerationWorkers=$DEFAULT_DOCUMENT_WORKERS
+        else
+            # Calculate the number of document generation workers (rounded down)
+            documentGenerationWorkers=$((tpm / TOKENS_PER_WORKER))
+            # Ensure we never exceed maximum workers for new deployments
+            if [ "$documentGenerationWorkers" -gt $MAX_DOCUMENT_WORKERS ]; then
+                echo "Calculated workers ($documentGenerationWorkers) exceeds maximum limit. Setting to $MAX_DOCUMENT_WORKERS workers." >&2
+                documentGenerationWorkers=$MAX_DOCUMENT_WORKERS
+            elif [ "$documentGenerationWorkers" -lt 1 ]; then
+                documentGenerationWorkers=1
+            fi
+            echo "Available tokens per minute: $tpm" >&2
+            echo "Final number of document generation workers: $documentGenerationWorkers" >&2
+        fi
     fi
 fi
 
