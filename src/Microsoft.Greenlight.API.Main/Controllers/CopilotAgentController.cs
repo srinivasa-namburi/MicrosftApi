@@ -43,6 +43,8 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         [ProducesResponseType(StatusCodes.Status200OK)]
         [Produces("application/json")]
         [Produces<List<DocumentProcessInfo>>]
+        [EndpointName("GetDocumentProcesses")]
+        [EndpointDescription("Returns the document processes for the domain group")]
         public async Task<ActionResult<DocumentProcessInfo>> GetDocumentProcesses(Guid domainGroupId)
         {
             var documentProcesses = _dbContext.DomainGroups
@@ -65,6 +67,8 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         [HttpPost("{domainGroupId:guid}/query/{query}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [Produces("application/json")]
+        [EndpointName("ProcessQuery")]
+        [EndpointDescription("Processes a query against all document processes in the domain group, then summarizes the results into a single response.")]
         public async Task<ActionResult<string>> ProcessQuery(Guid domainGroupId, string query)
         {
             var documentProcesses = _dbContext.DomainGroups

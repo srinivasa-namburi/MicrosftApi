@@ -72,13 +72,17 @@ get_current_replicas() {
     
     # Check if the container app exists and get its current replica count
     if az containerapp show --name "$app_name" --resource-group "$resource_group" &>/dev/null; then
-        local current_replicas=$(az containerapp show --name "$app_name" --resource-group "$resource_group" --query "properties.configuration.activeReplicaCount" -o tsv)
-        echo "$current_replicas"
+        local current_replicas=$(az containerapp show --name "$app_name" --resource-group "$resource_group" --query "properties.template.scale.maxReplicas" -o tsv)
+        # Verify we got a valid number
+        if [[ "$current_replicas" =~ ^[0-9]+$ ]]; then
+            echo "$current_replicas"
+        else
+            echo "0"  # Return 0 if not a valid number
+        fi
     else
         echo "0"  # Return 0 if app doesn't exist
     fi
 }
-
 # Determine the number of workers based on TPM
 if [ "$use_default_workers" = true ]; then
     documentGenerationWorkers=$DEFAULT_DOCUMENT_WORKERS
