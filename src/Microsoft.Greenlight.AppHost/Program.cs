@@ -162,6 +162,8 @@ var docGenFrontend = builder
     .WithConfigSection(envConnectionStringsConfigurationSection)
     .WithConfigSection(envAzureConfigurationSection)
     .WithConfigSection(envKestrelConfigurationSection)
+    .WithReference(blobStorage)
+    .WithReference(docGenSql)
     .WithReference(signalr)
     .WithReference(redisResource)
     .WithReference(apiMain)

@@ -5,6 +5,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="manifests\**" />
+    <Content Remove="manifests\**" />
+    <EmbeddedResource Remove="manifests\**" />
+    <None Remove="manifests\**" />
+  </ItemGroup>
+  <ItemGroup>
     <Content Remove="Properties\launchSettings.json" />
   </ItemGroup>
   <ItemGroup>
@@ -27,9 +33,6 @@
     <ProjectReference Include="..\Microsoft.Greenlight.Shared\Microsoft.Greenlight.Shared.csproj" />
     <ProjectReference Include="..\Microsoft.Greenlight.Web.DocGen.Client\Microsoft.Greenlight.Web.DocGen.Client.csproj" />
     <ProjectReference Include="..\Microsoft.Greenlight.Web.Shared\Microsoft.Greenlight.Web.Shared.csproj" />
-  </ItemGroup>
-  <ItemGroup>
-    <Folder Include="manifests\" />
   </ItemGroup>
   <ItemGroup>
     <_WebToolingArtifacts Remove="Properties\launchSettings.json" />

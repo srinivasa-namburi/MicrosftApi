@@ -6,6 +6,7 @@ using Microsoft.Greenlight.Shared.Contracts.Messages.Review.Commands;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Review.Events;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
+using Microsoft.Greenlight.Shared.Services;
 
 namespace Microsoft.Greenlight.Worker.DocumentGeneration.Consumers.Review;
 
@@ -14,10 +15,11 @@ namespace Microsoft.Greenlight.Worker.DocumentGeneration.Consumers.Review;
 /// </summary>
 public class AnalyzeReviewQuestionAnswerSentimentConsumer : IConsumer<AnalyzeReviewQuestionAnswerSentiment>
 {
-    private readonly Kernel _sk;
+    private Kernel _sk;
     private readonly DocGenerationDbContext _dbContext;
     private readonly ILogger<AnalyzeReviewQuestionAnswerSentimentConsumer> _logger;
     private readonly IMapper _mapper;
+    private readonly IKernelFactory _kernelFactory;
 
     /// <summary>
     /// Initializes a new instance of the AnalyzeReviewQuestionAnswerSentimentConsumer class.
@@ -26,27 +28,32 @@ public class AnalyzeReviewQuestionAnswerSentimentConsumer : IConsumer<AnalyzeRev
     /// <param name="dbContext">The <see cref="DocGenerationDbContext"/> database context.</param>
     /// <param name="logger">The <see cref="ILogger"/> instance for this class.</param>
     /// <param name="mapper">The AutoMapper mapper instance.</param>
+    /// <param name="sp"></param>
+    /// <param name="kernelFactory"></param>
     public AnalyzeReviewQuestionAnswerSentimentConsumer(
-        Kernel sk,
         DocGenerationDbContext dbContext,
         ILogger<AnalyzeReviewQuestionAnswerSentimentConsumer> logger,
-        IMapper mapper
+        IMapper mapper,
+        IServiceProvider sp,
+        IKernelFactory kernelFactory
         )
     {
-        _sk = sk;
         _dbContext = dbContext;
         _logger = logger;
         _mapper = mapper;
+        _kernelFactory = kernelFactory;
     }
 
     /// <summary>
     /// Consumes the <see cref="AnalyzeReviewQuestionAnswerSentiment"/> context.
     /// </summary>
     /// <param name="context">The <see cref="AnalyzeReviewQuestionAnswerSentiment"/> context.</param>
-    /// <returns>The long running consuming <see cref="Task"/>.</returns>
+    /// <returns>The long-running consuming <see cref="Task"/>.</returns>
     public async Task Consume(ConsumeContext<AnalyzeReviewQuestionAnswerSentiment> context)
     {
         // Using Semantic Kernel, analyze the sentiment of the answer
+
+        _sk = await _kernelFactory.GetGenericKernelAsync("gpt-4o");
 
         var sentimentScorePrompt = $"""
                       Given the following question:
