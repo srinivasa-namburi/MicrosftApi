@@ -152,7 +152,7 @@ public class DynamicDocumentProcessDefinitionRepository : GenericRepository<Dyna
     }
 
     /// <inheritdoc />
-    public virtual new async Task UpdateAsync(
+    public new virtual async Task UpdateAsync(
         DynamicDocumentProcessDefinition updatedDefinition, bool saveChanges = true)
     {
         await base.UpdateAsync(updatedDefinition, saveChanges);
@@ -165,9 +165,13 @@ public class DynamicDocumentProcessDefinitionRepository : GenericRepository<Dyna
         await Cache.KeyDeleteAsync(CacheKeyAll);
 
         // Invalidate the cache for the document outline as well
-        if (updatedDefinition.DocumentOutline != null && updatedDefinition.DocumentOutline.Id != Guid.Empty)
+        if ((updatedDefinition.DocumentOutline != null && updatedDefinition.DocumentOutline.Id != Guid.Empty) ||
+            updatedDefinition.DocumentOutlineId != null)
         {
-            var documentOutlineCacheKey = $"{nameof(DocumentOutline)}_{updatedDefinition.DocumentOutline.Id}";
+            // Set the document outline id to either updatedDefinition.DocumentOutlineId or updatedDefinition.DocumentOutline.Id
+            // If the updatedDefinition.DocumentOutlineId is null, then use updatedDefinition.DocumentOutline.Id
+            var documentOutlineId = updatedDefinition.DocumentOutlineId ?? updatedDefinition.DocumentOutline!.Id;
+            var documentOutlineCacheKey = $"{nameof(DocumentOutline)}_{documentOutlineId}";
             await Cache.KeyDeleteAsync(documentOutlineCacheKey);
         }
     }

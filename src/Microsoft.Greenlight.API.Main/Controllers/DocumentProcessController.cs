@@ -8,6 +8,7 @@ using Microsoft.Greenlight.Shared.Contracts.Messages;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Models.DocumentProcess;
+using Microsoft.Greenlight.Shared.Repositories;
 using Microsoft.Greenlight.Shared.Services;
 
 
@@ -24,6 +25,7 @@ public class DocumentProcessController : BaseController
     private readonly IDocumentProcessInfoService _documentProcessInfoService;
     private readonly IPluginService _pluginService;
     private readonly IDocumentLibraryInfoService _documentLibraryInfoService;
+    private readonly DynamicDocumentProcessDefinitionRepository _dynamicDocumentProcessDefinitionRepository;
     private readonly IMapper _mapper;
     private readonly IPublishEndpoint _publishEndpoint;
 
@@ -36,14 +38,15 @@ public class DocumentProcessController : BaseController
     /// <param name="documentLibraryInfoService">The document library info service.</param>
     /// <param name="mapper">The mapper.</param>
     /// <param name="publishEndpoint">The publish endpoint.</param>
+    /// <param name="dynamicDocumentProcessDefinitionRepository"></param>
     public DocumentProcessController(
         DocGenerationDbContext dbContext,
         IDocumentProcessInfoService documentProcessInfoService,
         IPluginService pluginService,
         IDocumentLibraryInfoService documentLibraryInfoService,
         IMapper mapper,
-        IPublishEndpoint publishEndpoint
-    )
+        IPublishEndpoint publishEndpoint, 
+        DynamicDocumentProcessDefinitionRepository dynamicDocumentProcessDefinitionRepository)
     {
         _dbContext = dbContext;
         _documentProcessInfoService = documentProcessInfoService;
@@ -51,6 +54,7 @@ public class DocumentProcessController : BaseController
         _documentLibraryInfoService = documentLibraryInfoService;
         _mapper = mapper;
         _publishEndpoint = publishEndpoint;
+        _dynamicDocumentProcessDefinitionRepository = dynamicDocumentProcessDefinitionRepository;
     }
 
     /// <summary>
@@ -197,9 +201,10 @@ public class DocumentProcessController : BaseController
         }
 
         _mapper.Map(documentProcessInfo, existingDocumentProcess);
-        _dbContext.DynamicDocumentProcessDefinitions.Update(existingDocumentProcess);
-        await _dbContext.SaveChangesAsync();
 
+        // This also invalidates the cache for both the document process and the document outline
+        await _dynamicDocumentProcessDefinitionRepository.UpdateAsync(existingDocumentProcess, saveChanges: true);
+        
         if (AdminHelper.IsRunningInProduction())
         {
             await _publishEndpoint.Publish(new RestartWorker(Guid.NewGuid()));

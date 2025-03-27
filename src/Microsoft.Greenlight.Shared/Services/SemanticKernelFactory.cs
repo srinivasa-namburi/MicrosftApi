@@ -17,6 +17,7 @@ using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 using OpenAI.Chat;
 using System.Collections.Concurrent;
+using System.Globalization;
 
 #pragma warning disable SKEXP0011
 #pragma warning disable SKEXP0010
@@ -145,9 +146,22 @@ namespace Microsoft.Greenlight.Shared.Services
         public async Task<AzureOpenAIPromptExecutionSettings> GetPromptExecutionSettingsForDocumentProcessAsync(
             DocumentProcessInfo documentProcess, AiTaskType aiTaskType)
         {
+            Guid? aiModelDeploymentId;
+            if (documentProcess.Source != ProcessSource.Static)
+            {
+                // For dynamic document processes, use the AI model deployment ID from the document process,
+                // or fall back to the known value for gpt-4o
+                aiModelDeploymentId = documentProcess.AiModelDeploymentId ?? Guid.Parse("453a06c4-3ce8-4468-a7a8-7444f8352aa6", CultureInfo.InvariantCulture);
+            }
+            else
+            {
+                // Set the AI model deployment ID to the known value for gpt-4o
+                aiModelDeploymentId = Guid.Parse("453a06c4-3ce8-4468-a7a8-7444f8352aa6", CultureInfo.InvariantCulture);
+            }
+
             var aiModelDeployment = await _dbContext.AiModelDeployments
-                .Where(x => x.Id == documentProcess.AiModelDeploymentId)
-                .Include(x=>x.AiModel)
+                .Where(x => x.Id == aiModelDeploymentId!)
+                .Include(x => x.AiModel)
                 .AsNoTracking()
                 .AsSplitQuery()
                 .FirstOrDefaultAsync();
@@ -207,7 +221,7 @@ namespace Microsoft.Greenlight.Shared.Services
                 // If we're using a reasoning model, if there are no ReasoningSettings set, set all to AiModelReasoningLevel Medium
                 // which is the default value for all task types in a new AiModelReasoningSettings object.
                 aiModelDeployment.ReasoningSettings ??= new AiModelReasoningSettings();
-                
+
                 // Decide reasoning effort level based on the AiTaskType
                 AiModelReasoningLevel reasoningLevel;
                 switch (aiTaskType)
@@ -344,7 +358,7 @@ namespace Microsoft.Greenlight.Shared.Services
             });
 
             var kernel = kernelBuilder.Build();
-            
+
             // Add required plugins to the kernel
             await EnrichKernelWithPluginsAsync(documentProcess, kernel);
 
@@ -388,7 +402,7 @@ namespace Microsoft.Greenlight.Shared.Services
                 {
                     deploymentName = _serviceConfigurationOptions.OpenAi.Gpt4o_Or_Gpt4128KDeploymentName;
                 }
-               
+
 
                 // Create the chat completion service with the document-specific model
                 return new AzureOpenAIChatCompletionService(
@@ -449,7 +463,7 @@ namespace Microsoft.Greenlight.Shared.Services
             var aiModelDeployment = _dbContext.AiModelDeployments.Where(x => x.Id == aiModelDeploymentId)
                 .AsNoTracking()
                 .FirstOrDefault();
-            
+
             return aiModelDeployment?.DeploymentName;
         }
     }
