@@ -1,30 +1,31 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-
 	<PropertyGroup>
-		<TargetFramework>net8.0</TargetFramework>
+		<TargetFramework>net9.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 		<CodeAnalysisTreatWarningsAsErrors>true</CodeAnalysisTreatWarningsAsErrors>
 	</PropertyGroup>
-
 	<ItemGroup>
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
 	</ItemGroup>
-
 	<ItemGroup>
-		<PackageReference Include="Aspire.Azure.Search.Documents" Version="9.0.0" />
-		<PackageReference Include="Aspire.Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.0" />
-		<PackageReference Include="Aspire.Azure.AI.OpenAI" Version="8.0.0-preview.7.24251.11" />
-		<PackageReference Include="Aspire.Azure.Messaging.ServiceBus" Version="9.0.0" />
-		<PackageReference Include="Aspire.Azure.Storage.Blobs" Version="9.0.0" />
-		<PackageReference Include="Aspire.RabbitMQ.Client" Version="9.0.0" />
-		<PackageReference Include="Aspire.StackExchange.Redis" Version="9.0.0" />
+		<PackageReference Include="Microsoft.Extensions.Caching.Hybrid" Version="9.3.0" />
+		<PackageReference Include="Scrutor" Version="6.0.1" />
+		<PackageReference Include="System.Text.Json" Version="9.0.3" />
+		<PackageReference Include="Aspire.Azure.Search.Documents" Version="9.1.0" />
+		<PackageReference Include="Aspire.Microsoft.EntityFrameworkCore.SqlServer" Version="9.1.0" />
+		<PackageReference Include="Aspire.Azure.AI.OpenAI" Version="9.1.0-preview.1.25121.10" />
+		<PackageReference Include="Aspire.Azure.Messaging.ServiceBus" Version="9.1.0" />
+		<PackageReference Include="Aspire.Azure.Storage.Blobs" Version="9.1.0" />
+		<PackageReference Include="Aspire.RabbitMQ.Client" Version="9.1.0" />
+		<PackageReference Include="Aspire.StackExchange.Redis" Version="9.1.0" />
 		<PackageReference Include="AutoMapper" Version="13.0.1" />
 		<PackageReference Include="Azure.Search.Documents" Version="11.6.0" />
 		<PackageReference Include="Azure.AI.FormRecognizer" Version="4.1.0" />
 		<PackageReference Include="Azure.Storage.Blobs" Version="12.23.0" />
+		<PackageReference Include="Azure.AI.OpenAI" Version="2.2.0-beta.1" />
 		<PackageReference Include="Humanizer" Version="2.14.1" />
 		<PackageReference Include="Humanizer.Core" Version="2.14.1" />
 		<PackageReference Include="Markdig" Version="0.37.0" />
@@ -33,55 +34,47 @@
 		<PackageReference Include="MassTransit.EntityFrameworkCore" Version="8.2.1" />
 		<PackageReference Include="MassTransit.Quartz" Version="8.2.1" />
 		<PackageReference Include="MassTransit.RabbitMQ" Version="8.2.1" />
-		<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.8" />
+		<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.3" />
 		<PackageReference Include="Microsoft.Azure.StackExchangeRedis" Version="3.2.0" />
-		<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.11">
-		  <PrivateAssets>all</PrivateAssets>
-		  <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.3">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
-		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
-		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
-		<PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
-		<PackageReference Include="Microsoft.Extensions.ServiceDiscovery" Version="8.2.0" />
-		<PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="8.8.0" />
-		<PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="9.0.0" />
-		<PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="8.0.1" />
-		<PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.1" />
-		<PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="8.0.0" />
-
-		<PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.11" />
-		<PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.11" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.3" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.3" />
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.3" />
+		<PackageReference Include="Microsoft.Extensions.ServiceDiscovery" Version="9.1.0" />
+		<PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="9.3.0" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="9.0.3" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="9.0.3" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.3" />
+		<PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="9.0.3" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.3" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.3" />
 		<PackageReference Include="Microsoft.KernelMemory.AI.AzureOpenAI" Version="0.94.241201.1" />
 		<PackageReference Include="Microsoft.KernelMemory.Core" Version="0.94.241201.1" />
 		<PackageReference Include="Microsoft.KernelMemory.DataFormats.AzureAIDocIntel" Version="0.94.241201.1" />
 		<PackageReference Include="Microsoft.KernelMemory.DocumentStorage.AzureBlobs" Version="0.94.241201.1" />
 		<PackageReference Include="Microsoft.KernelMemory.MemoryDb.AzureAISearch" Version="0.94.241201.1" />
 		<PackageReference Include="Microsoft.KernelMemory.SemanticKernelPlugin" Version="0.94.241201.1" />
-		<PackageReference Include="Microsoft.SemanticKernel" Version="1.32.0" />
-		<PackageReference Include="Microsoft.SemanticKernel.Abstractions" Version="1.32.0" />
-		<PackageReference Include="Microsoft.SemanticKernel.Agents.Abstractions" Version="1.32.0-alpha" />
-		<PackageReference Include="Microsoft.SemanticKernel.Agents.Core" Version="1.32.0-alpha" />
-		<PackageReference Include="Microsoft.SemanticKernel.Agents.OpenAI" Version="1.32.0-alpha" />
-		<PackageReference Include="Microsoft.SemanticKernel.Connectors.AzureOpenAI" Version="1.32.0" />
-		<PackageReference Include="Microsoft.SemanticKernel.PromptTemplates.Handlebars" Version="1.32.0" />
-		<PackageReference Include="Microsoft.SemanticKernel.Plugins.OpenApi" Version="1.11.1-alpha" />
+		<PackageReference Include="Microsoft.SemanticKernel" Version="1.42.0" />
+		<PackageReference Include="Microsoft.SemanticKernel.Abstractions" Version="1.42.0" />
+		<PackageReference Include="Microsoft.SemanticKernel.Agents.Abstractions" Version="1.42.0-preview" />
+		<PackageReference Include="Microsoft.SemanticKernel.Agents.Core" Version="1.42.0-preview" />
+		<PackageReference Include="Microsoft.SemanticKernel.Agents.OpenAI" Version="1.42.0-preview" />
+		<PackageReference Include="Microsoft.SemanticKernel.Connectors.AzureOpenAI" Version="1.42.0" />
+		<PackageReference Include="Microsoft.SemanticKernel.PromptTemplates.Handlebars" Version="1.42.0" />
+		<PackageReference Include="Microsoft.SemanticKernel.Plugins.OpenApi" Version="1.42.0" />
 		<PackageReference Include="NLipsum" Version="1.1.0" />
 		<PackageReference Include="Scriban" Version="5.10.0" />
-		<PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.11">
+		<PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="9.0.3">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
-
 		<!--Disabled temporarily, using project reference to keep compat with existing solutions 
 		    until we have completed Nuget package signing setup -->
 		<!--<PackageReference Include="Microsoft.Greenlight.Extensions.Plugins" Version="0.1.523" />-->
-
 	</ItemGroup>
-
-	<ItemGroup>
-		<Folder Include="Migrations\" />
-	</ItemGroup>
-
 	<ItemGroup>
 		<ProjectReference Include="..\Extensibility\Microsoft.Greenlight.Extensions.Plugins\Microsoft.Greenlight.Extensions.Plugins.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.Shared.Configuration\Microsoft.Greenlight.Shared.Configuration.csproj" />
@@ -90,5 +83,4 @@
 		<ProjectReference Include="..\Microsoft.Greenlight.Shared.Models\Microsoft.Greenlight.Shared.Models.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.Web.Shared\Microsoft.Greenlight.Web.Shared.csproj" />
 	</ItemGroup>
-
 </Project>

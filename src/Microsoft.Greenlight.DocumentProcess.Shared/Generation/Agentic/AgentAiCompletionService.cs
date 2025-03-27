@@ -1,20 +1,17 @@
-﻿using System.Text;
-using Azure.AI.OpenAI;
+﻿using AutoMapper;
+using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Agents;
 using Microsoft.SemanticKernel.Agents.Chat;
 using Microsoft.SemanticKernel.ChatCompletion;
-using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
-using Microsoft.SemanticKernel.Connectors.OpenAI;
 using Scriban;
-using Microsoft.Greenlight.Shared.Configuration;
+using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Models;
 using Microsoft.Greenlight.Shared.Models.SourceReferences;
-using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Plugins;
 using Microsoft.Greenlight.Shared.Services;
 
@@ -26,42 +23,36 @@ namespace Microsoft.Greenlight.DocumentProcess.Shared.Generation.Agentic
     public class AgentAiCompletionService : IAiCompletionService
     {
         private readonly string ProcessName;
-        private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
-        private readonly AzureOpenAIClient _openAIClient;
         private readonly DocGenerationDbContext _dbContext;
         private readonly ILogger<AgentAiCompletionService> _logger;
         private readonly IServiceProvider _sp;
-        private readonly Kernel _sk;
+        private Kernel _sk;
         private readonly IDocumentProcessInfoService _documentProcessInfoService;
         private readonly IPluginSourceReferenceCollector _pluginSourceReferenceCollector;
         private readonly IPromptInfoService _promptInfoService;
+        private readonly IMapper _mapper;
         private const int InitialBlockSize = 100;
 
         private readonly string _executionIdString;
         private ContentNode _createdBodyContentNode;
         private AgentGroupChat _agentGroupChat;
         private ContentStatePlugin _contentStatePlugin;
+        private DocumentHistoryPlugin _documentHistoryPlugin;
+        private readonly IKernelFactory _kernelFactory;
 
         public AgentAiCompletionService(
             AiCompletionServiceParameters<AgentAiCompletionService> parameters,
             string processName)
         {
-            _serviceConfigurationOptions = parameters.ServiceConfigurationOptions.Value;
-            _openAIClient = parameters.OpenAIClient;
             _dbContext = parameters.DbContext;
             _sp = parameters.ServiceProvider;
             _logger = parameters.Logger;
             _documentProcessInfoService = parameters.DocumentProcessInfoService;
             _promptInfoService = parameters.PromptInfoService;
+            _kernelFactory = parameters.KernelFactory;
             ProcessName = processName;
 
-            var documentProcess = _documentProcessInfoService
-                .GetDocumentProcessInfoByShortNameAsync(ProcessName).Result;
-            _sk = _sp.GetRequiredServiceForDocumentProcess<Kernel>(documentProcess!.ShortName);
-
-            // Clear and re-add relevant plugins
-            _sk.Plugins.Clear();
-            _sk.Plugins.AddSharedAndDocumentProcessPluginsToPluginCollection(_sp, documentProcess);
+            _mapper = _sp.GetRequiredService<IMapper>();
 
             _executionIdString = Guid.NewGuid().ToString();
             _pluginSourceReferenceCollector = _sp.GetRequiredService<IPluginSourceReferenceCollector>();
@@ -79,9 +70,21 @@ namespace Microsoft.Greenlight.DocumentProcess.Shared.Generation.Agentic
             // Prepare an empty ContentNode for the final text
             InitializeContentNode(sectionContentNode);
 
+            var documentProcess = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(ProcessName);
+            if (documentProcess == null)
+            {
+                throw new InvalidOperationException($"Document process '{ProcessName}' not found.");
+            }
+
+            // Retrieve a Semantic Kernel instance for this document process
+            _sk = await _kernelFactory.GetKernelForDocumentProcessAsync(documentProcess);
+
             // Extract custom metadata (if any)
             var documentMetaData = await _dbContext.DocumentMetadata.FindAsync(metadataId);
             var customDataString = documentMetaData?.MetadataJson ?? "No custom data available for this query";
+
+            // Get the Document ID from the metadata
+            var generatedDocumentId = sectionContentNode?.AssociatedGeneratedDocumentId;
 
             // Create a user-facing name for the section
             var fullSectionName = string.IsNullOrEmpty(sectionOrTitleNumber)
@@ -117,8 +120,11 @@ namespace Microsoft.Greenlight.DocumentProcess.Shared.Generation.Agentic
             // Create our plugin for storing / retrieving partial content
             _contentStatePlugin = new ContentStatePlugin(exampleString, InitialBlockSize);
 
+            // Create our Document History plugin for tracking content
+            _documentHistoryPlugin = new DocumentHistoryPlugin(_dbContext, _mapper, generatedDocumentId, sectionContentNode!);
+
             // Set up the group chat with two agents: ContentAgent & ReviewerAgent
-            _agentGroupChat = SetupAgents(fullSectionName, mainPrompt, customDataString);
+            _agentGroupChat = await SetupAgentsAsync(documentProcess, fullSectionName, mainPrompt, customDataString);
 
             // Kick off the conversation
             const string initialMessage = "Please begin drafting the content.";
@@ -229,13 +235,13 @@ Pass count: {{ numberOfPasses }}
         /// Sets up our two agents: ContentAgent (merged writer+knowledge) and ReviewerAgent.
         /// We also provide simpler instructions to each agent.
         /// </summary>
-        private AgentGroupChat SetupAgents(
-            string fullSectionName,
+        private async Task<AgentGroupChat> SetupAgentsAsync(DocumentProcessInfo documentProcess, string fullSectionName,
             string mainPrompt,
             string customDataString)
         {
-            // Add our plugin to the kernel
+            // Add our plugins to the kernel
             _sk.ImportPluginFromObject(_contentStatePlugin, "ContentState");
+            _sk.ImportPluginFromObject(_documentHistoryPlugin, "DocumentHistory");
 
             // Add execution ID to the kernel for tracking plugin invocations
             _sk.Data.Add("System-ExecutionId", _executionIdString);
@@ -253,30 +259,30 @@ Pass count: {{ numberOfPasses }}
             };
 
             // 1) ContentAgent: does both writing + knowledge retrieval
+            var contentAgentPromptExecutionSettings =
+                await _kernelFactory.GetPromptExecutionSettingsForDocumentProcessAsync(documentProcess,
+                    AiTaskType.ContentGeneration);
+
             var contentAgent = new ChatCompletionAgent
             {
                 Name = "ContentAgent",
                 Instructions = BuildContentAgentInstructions(fullSectionName, mainPrompt, customDataString),
                 Kernel = _sk,
-                Arguments = new KernelArguments(new AzureOpenAIPromptExecutionSettings
-                {
-                    MaxTokens = 2500,
-                    ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions
-                }),
+                Arguments = new KernelArguments(contentAgentPromptExecutionSettings),
                 LoggerFactory = loggerFactory
             };
 
             // 2) ReviewerAgent: checks content, potentially signals [COMPLETE]
+            var reviewerAgentPromptExecutionSettings =
+                await _kernelFactory.GetPromptExecutionSettingsForDocumentProcessAsync(documentProcess,
+                    AiTaskType.ContentGeneration);
+
             var reviewerAgent = new ChatCompletionAgent
             {
                 Name = "ReviewerAgent",
                 Instructions = BuildReviewerAgentInstructions(fullSectionName),
                 Kernel = _sk.Clone(), // Or you can keep the same
-                Arguments = new KernelArguments(new AzureOpenAIPromptExecutionSettings
-                {
-                    MaxTokens = 1500,
-                    ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions
-                }),
+                Arguments = new KernelArguments(reviewerAgentPromptExecutionSettings),
                 LoggerFactory = loggerFactory
             };
 
@@ -313,6 +319,7 @@ Follow these guidelines:
 - Include the sequence number(s) in your message if you have stored content you'd like the reviewer to see.
 - Use GetNextSequenceNumber() to get the next available sequence number for appending content.
 - When adding (or revising) sequences, don't repeat section name in later sections, add (continued) or similar. The content will be assembled in order.
+- Use the DocumentHistory plugin to look at previously written sections to maintain consistency and avoid duplication.
 
 Below is your main prompt context:
 [MAIN_PROMPT]
@@ -361,6 +368,7 @@ Rules:
 - Focus only on the current section: {fullSectionName} 
 - Make sure there is no repetition across sequences, and especially make sure there are no (continued) or similar tags in the final content. 
   Don't repeat section headlines several times.
+- Use the DocumentHistory plugin to look at previously written sections to maintain consistency and avoid duplication.
 ";
         }
 
@@ -378,6 +386,7 @@ Rules:
                 Text = string.Empty,
                 Type = ContentNodeType.BodyText,
                 GenerationState = ContentNodeGenerationState.InProgress,
+                ParentId = sectionContentNode?.ParentId,
                 ContentNodeSystemItemId = contentNodeSystemItemId,
                 ContentNodeSystemItem = new ContentNodeSystemItem
                 {

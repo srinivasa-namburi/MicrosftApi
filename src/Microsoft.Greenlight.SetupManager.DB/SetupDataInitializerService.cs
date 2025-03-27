@@ -1,8 +1,13 @@
 using System.Diagnostics;
 using Humanizer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Greenlight.Shared.Contracts.Components;
 using Microsoft.Greenlight.Shared.Data.Sql;
-using Microsoft.Greenlight.Shared.Models.Plugins;
+using Microsoft.Greenlight.Shared.Enums;
+using Microsoft.Greenlight.Shared.Models.Configuration;
+using Microsoft.Greenlight.Shared.Models.Validation;
+using System.Globalization;
+using System.Text.Json;
 
 namespace Microsoft.Greenlight.SetupManager.DB;
 
@@ -26,6 +31,10 @@ public class SetupDataInitializerService(
     private readonly ILogger<SetupDataInitializerService> _logger = logger;
     private readonly IHostApplicationLifetime _lifetime = lifetime;
     private readonly ActivitySource _activitySource = new(ActivitySourceName);
+
+    private readonly Guid _gpt4OModelId = Guid.Parse("f7ece6e1-af11-4f90-a69f-c77fcef73486", CultureInfo.InvariantCulture);
+    private readonly Guid _gpt4OModelDeploymentId = Guid.Parse("453a06c4-3ce8-4468-a7a8-7444f8352aa6", CultureInfo.InvariantCulture);
+    private readonly Guid _o3MiniModelId = Guid.Parse("656d6371-8d78-4c4b-be7b-05254ff4045a", CultureInfo.InvariantCulture);
 
     /// <summary>
     /// The method that is called when the <see cref="SetupDataInitializerService"/> starts.
@@ -71,13 +80,182 @@ public class SetupDataInitializerService(
         await Seed2024_04_07_IngestedDocumentDocumentProcess(dbContext, cancellationToken);
         await Seed2024_05_24_OrphanedChatMessagesCleanup(dbContext, cancellationToken);
         await Seed2024_05_24_ChatConversationsWithNoMessagesCleanup(dbContext, cancellationToken);
-        //await Seed2024_10_01_CreateDummyPlugin(dbContext, cancellationToken);
-
+        await Seed2025_02_27_CreateDefaultSequentialValidationPipeline(dbContext, cancellationToken);
+        await Seed2025_03_18_DefaultConfiguration(dbContext, cancellationToken);
+        await Seed2025_04_24_AiModelSettings(dbContext, cancellationToken);
+        await Seed2025_04_24_DefaultAiModelDeploymentForDocumentProcesses(dbContext, cancellationToken);
+        
         sw.Stop();
         _logger.LogInformation(
             "Seeding Document Generation Database completed in {ElapsedMilliseconds}ms", sw.ElapsedMilliseconds);
 
         activity!.Stop();
+    }
+
+    private async Task Seed2025_04_24_DefaultAiModelDeploymentForDocumentProcesses(DocGenerationDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        // Get all DocumentProcesses that do not have an AiModelDeploymentId set
+        var documentProcesses = await dbContext.DynamicDocumentProcessDefinitions
+            .Where(x => x.AiModelDeploymentId == null || x.AiModelDeploymentForValidationId == null)
+            .ToListAsync(cancellationToken);
+
+        if (documentProcesses.Count == 0)
+        {
+            _logger.LogInformation(
+                "No DocumentProcesses found without an AiModelDeploymentId. Skipping seeding logic.");
+            return;
+        }
+
+        foreach (var documentProcess in documentProcesses)
+        {
+            // Set the default model to gpt-4o for the document process if it's not already set
+            documentProcess.AiModelDeploymentId ??= _gpt4OModelDeploymentId;
+
+            // Set the default validation model to gpt-4o for the document process if it's not already set
+            documentProcess.AiModelDeploymentForValidationId ??= _gpt4OModelDeploymentId;
+
+            // Track updates, if any
+
+            if (dbContext.ChangeTracker.HasChanges())
+            {
+                dbContext.DynamicDocumentProcessDefinitions.Update(documentProcess);
+            }
+
+            _logger.LogInformation(@"Set default model to gpt-4o for document process {dpName}", documentProcess.ShortName);
+        }
+
+        if (dbContext.ChangeTracker.HasChanges())
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    private async Task Seed2025_04_24_AiModelSettings(DocGenerationDbContext dbContext, CancellationToken cancellationToken)
+    {
+        // Check if the GPT-4o model exists
+        var gpt4OAiModel = await dbContext.AiModels.FindAsync([_gpt4OModelId], cancellationToken);
+
+        if (gpt4OAiModel == null)
+        {
+            gpt4OAiModel = new AiModel
+            {
+                Id = _gpt4OModelId,
+                Name = "gpt-4o",
+                TokenSettings = new AiModelMaxTokenSettings
+                {
+                    MaxTokensForContentGeneration = 8000,
+                    MaxTokensForSummarization = 4000,
+                    MaxTokensForValidation = 8000,
+                    MaxTokensForChatReplies = 4000,
+                    MaxTokensForQuestionAnswering = 4000,
+                    MaxTokensGeneral = 1024
+                },
+                IsReasoningModel = false
+            };
+
+            dbContext.AiModels.Add(gpt4OAiModel);
+        }
+        else
+        {
+            _logger.LogInformation("GPT-4o model already exists. Skipping seeding logic.");
+        }
+
+        // Check if the GPT-4o model deployment exists
+        var gpt4ODeployment = await dbContext.AiModelDeployments.FindAsync([_gpt4OModelDeploymentId], cancellationToken);
+
+        if (gpt4ODeployment == null)
+        {
+            gpt4ODeployment = new AiModelDeployment
+            {
+                Id = _gpt4OModelDeploymentId,
+                DeploymentName = "gpt-4o",
+                AiModelId = _gpt4OModelId,
+                TokenSettings = gpt4OAiModel.TokenSettings
+            };
+
+            dbContext.AiModelDeployments.Add(gpt4ODeployment);
+        }
+        else
+        {
+            _logger.LogInformation("GPT-4o model deployment already exists. Skipping seeding logic.");
+        }
+
+        // Check if the o3-mini model exists
+        var o3MiniAiModel = await dbContext.AiModels.FindAsync([_o3MiniModelId], cancellationToken);
+        if (o3MiniAiModel == null)
+        {
+            o3MiniAiModel = new AiModel
+            {
+                Id = _o3MiniModelId,
+                Name = "o3-mini",
+                TokenSettings = new AiModelMaxTokenSettings
+                {
+                    MaxTokensForContentGeneration = 90000,
+                    MaxTokensForSummarization = 4000,
+                    MaxTokensForValidation = 90000,
+                    MaxTokensForChatReplies = 4000,
+                    MaxTokensForQuestionAnswering = 7000,
+                    MaxTokensGeneral = 1024
+                },
+                IsReasoningModel = true
+            };
+            dbContext.AiModels.Add(o3MiniAiModel);
+        }
+        else
+        {
+            _logger.LogInformation("o3-mini model already exists. Skipping seeding logic.");
+        }
+
+        // Only save changes if we've made changes
+        if (dbContext.ChangeTracker.HasChanges())
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    private async Task Seed2025_02_27_CreateDefaultSequentialValidationPipeline(DocGenerationDbContext dbContext, CancellationToken cancellationToken)
+    {
+        // For each DocumentProcess that does not have a default validation pipeline, create a default validation pipeline
+        // with a single step that validates the document content
+
+        var documentProcesses = await dbContext.DynamicDocumentProcessDefinitions
+            .Where(x => x.ValidationPipelineId == null)
+            .ToListAsync(cancellationToken);
+
+        if (documentProcesses.Count == 0)
+            return;
+
+        _logger.LogInformation("Seeding : Creating default validation pipeline for {Count} DocumentProcesses", documentProcesses.Count);
+
+        foreach (var dp in documentProcesses)
+        {
+            var pipeline = new DocumentProcessValidationPipeline
+            {
+                Id = Guid.NewGuid(),
+                DocumentProcessId = dp.Id,
+                ValidationPipelineSteps = new List<DocumentProcessValidationPipelineStep>
+                {
+                    new DocumentProcessValidationPipelineStep()
+                    {
+                        Id = Guid.NewGuid(),
+                        DocumentProcessValidationPipelineId = dp.Id,
+                        PipelineExecutionType = ValidationPipelineExecutionType.SequentialFullDocument
+                    }
+                }
+            };
+            
+            dp.ValidationPipelineId = pipeline.Id;
+
+
+            dbContext.DocumentProcessValidationPipelines.Add(pipeline);
+            dbContext.DynamicDocumentProcessDefinitions.Update(dp);
+
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        _logger.LogInformation("Seeding : Created default validation pipeline for {Count} DocumentProcesses", documentProcesses.Count);
+        
     }
 
     private async Task Seed2024_04_07_IngestedDocumentDocumentProcess(DocGenerationDbContext dbContext,
@@ -183,32 +361,69 @@ public class SetupDataInitializerService(
 
     }
 
-    private async Task Seed2024_10_01_CreateDummyPlugin(DocGenerationDbContext dbContext,
-        CancellationToken cancellationToken)
+    private async Task Seed2025_03_18_DefaultConfiguration(DocGenerationDbContext dbContext,
+     CancellationToken cancellationToken)
     {
-        var plugin = new DynamicPlugin
-        {
-            Id = Guid.Parse("a63fbbac-fbc1-4d23-ac98-0367a22c78df"),
-            Name = "Microsoft.Greenlight.Demos.PluginDemo",
-            BlobContainerName = "plugintest",
-            Versions = [
-                new DynamicPluginVersion(1, 0, 0)
-            ]
-        };
+        // Check if the default configuration record already exists
+        var configExists = await dbContext.Configurations.AnyAsync(c => c.Id == 1, cancellationToken);
 
-        if (await dbContext.DynamicPlugins.AnyAsync(x => x.Name == plugin.Name, cancellationToken))
+        const string keyName = "ServiceConfiguration:GreenlightServices:FrontEnd:SiteName";
+
+        if (!configExists)
         {
-            _logger.LogInformation("Plugin {PluginName} already exists. Skipping creation.", plugin.Name);
-            return;
+            _logger.LogInformation("Creating default configuration record");
+
+            // Create a dictionary with the default configuration values
+            var configValues = new Dictionary<string, string>
+            {
+                [keyName] = "Generative AI for Permitting"
+            };
+
+            // Create the default configuration with the initial values
+            var defaultConfig = new DbConfiguration
+            {
+                ConfigurationValues = JsonSerializer.Serialize(configValues),
+                LastUpdated = DateTime.UtcNow,
+                LastUpdatedBy = "System"
+            };
+
+            dbContext.Configurations.Add(defaultConfig);
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            _logger.LogInformation("Default configuration record created successfully");
         }
         else
         {
-            dbContext.DynamicPlugins.Add(plugin);
-            await dbContext.SaveChangesAsync(cancellationToken);
-            _logger.LogInformation(
-                "Plugin {PluginName} with version {PluginVersion} created.",
-                plugin.Name,
-                plugin.LatestVersion);
+            // Check if we need to update existing configuration with the site name
+            var config = await dbContext.Configurations.FirstAsync(c => c.Id == 1, cancellationToken);
+            var configValues = JsonSerializer.Deserialize<Dictionary<string, string>>(
+                config.ConfigurationValues,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new Dictionary<string, string>();
+
+            bool updated = false;
+
+            // Add site name if it doesn't exist
+            if (!configValues.ContainsKey(keyName))
+            {
+                configValues[keyName] = "Generative AI for Permitting";
+                updated = true;
+            }
+
+            if (updated)
+            {
+                config.ConfigurationValues = JsonSerializer.Serialize(configValues);
+                config.LastUpdated = DateTime.UtcNow;
+                config.LastUpdatedBy = "System";
+
+                await dbContext.SaveChangesAsync(cancellationToken);
+                _logger.LogInformation("Updated existing configuration with site name");
+            }
+            else
+            {
+                _logger.LogInformation("Default configuration record already exists with required values. No updates needed.");
+            }
         }
     }
+
+
 }

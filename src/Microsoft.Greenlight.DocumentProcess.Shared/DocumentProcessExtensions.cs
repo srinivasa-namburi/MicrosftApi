@@ -95,6 +95,8 @@ public static class DocumentProcessExtensions
         // Add the Search Options Factory
         builder.Services.AddScoped<IConsolidatedSearchOptionsFactory, ConsolidatedSearchOptionsFactory>();
 
+        // Add the Semantic Kernel Factory
+        builder.Services.AddSingleton<IKernelFactory, SemanticKernelFactory>();
         
         return builder;
     }

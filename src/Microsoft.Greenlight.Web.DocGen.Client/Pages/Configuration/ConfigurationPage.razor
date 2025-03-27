@@ -1,0 +1,91 @@
+﻿@page "/configuration"
+@using Microsoft.Greenlight.Shared.Configuration
+@inject IConfigurationApiClient ConfigurationApiClient
+@inject IDialogService DialogService
+
+<PageTitle>Configuration</PageTitle>
+
+<MudPaper Class="pa-4">
+    <MudText Typo="Typo.h5">Configuration Management</MudText>
+    <MudDivider Class="my-2" />
+
+    <MudCard Class="mb-4">
+        <MudCardContent>
+            <MudText Typo="Typo.h6">Frontend Options</MudText>
+            <MudDivider Class="my-2" />
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_frontendOptions.SiteName" Label="Site Name" Variant="Variant.Filled" />
+            </MudItem>
+        </MudCardContent>
+    </MudCard>
+
+    <MudCard Class="mb-4">
+        <MudCardContent>
+            <MudText Typo="Typo.h6">Feature Toggles</MudText>
+            <MudDivider Class="my-2" />
+            <MudItem xs="12">
+                <MudSwitch @bind-Value="_featureFlags.EnableMassDocumentProduction" Color="Color.Primary" Label="Enable Mass Document Production" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudSwitch @bind-Value="_featureFlags.EnableReviews" Color="Color.Primary" Label="Enable Reviews" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudSwitch @bind-Value="_featureFlags.EnableReferenceFrontend" Color="Color.Primary" Label="Enable Reference Frontend" />
+            </MudItem>
+        </MudCardContent>
+    </MudCard>
+
+    <MudCard>
+        <MudCardContent>
+            <MudDivider Class="my-2" />
+            <AiModelEditorComponent />
+        </MudCardContent>
+    </MudCard>
+
+    <MudItem xs="12" Class="mt-4">
+        <MudDivider Class="my-2" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OnValidSubmit">Save</MudButton>
+    </MudItem>
+</MudPaper>
+
+@code {
+    private ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions _featureFlags = new();
+    private ServiceConfigurationOptions.GreenlightServicesOptions.FrontendOptions _frontendOptions = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _featureFlags = await ConfigurationApiClient.GetFeatureFlagsAsync();
+            _frontendOptions = await ConfigurationApiClient.GetFrontEndAsync();
+        }
+        catch (Exception ex)
+        {
+            await DialogService.ShowMessageBox("Error", $"Failed to load configuration: {ex.Message}");
+        }
+    }
+
+    private async Task OnValidSubmit()
+    {
+        try
+        {
+            var request = new ConfigurationUpdateRequest
+            {
+                ConfigurationItems = new Dictionary<string, string>
+                {
+                    { "ServiceConfiguration:GreenlightServices:FeatureFlags:EnableMassDocumentProduction", _featureFlags.EnableMassDocumentProduction.ToString() },
+                    { "ServiceConfiguration:GreenlightServices:FeatureFlags:EnableReviews", _featureFlags.EnableReviews.ToString() },
+                    { "ServiceConfiguration:GreenlightServices:FeatureFlags:EnableReferenceFrontend", _featureFlags.EnableReferenceFrontend.ToString() },
+                    { "ServiceConfiguration:GreenlightServices:FrontEnd:SiteName", _frontendOptions.SiteName }
+                }
+            };
+
+            await ConfigurationApiClient.UpdateConfigurationAsync(request);
+            await DialogService.ShowMessageBox("Success", "Configuration updated successfully.");
+        }
+        catch (Exception ex)
+        {
+            await DialogService.ShowMessageBox("Error", $"Failed to update configuration: {ex.Message}");
+        }
+    }
+}

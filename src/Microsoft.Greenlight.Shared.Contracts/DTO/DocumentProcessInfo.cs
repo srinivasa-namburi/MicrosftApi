@@ -91,4 +91,20 @@ public class DocumentProcessInfo : IDocumentProcessInfo
     /// Minimum relevance threshold for citations.
     /// </summary>
     public double MinimumRelevanceForCitations { get; set; } = 0.7;
+
+    /// <summary>
+    /// ID of the validation pipeline associated with the document process. May be null.
+    /// </summary>
+    public Guid? ValidationPipelineId { get; set; }
+
+    /// <summary>
+    /// Unique identifier of the AI model deployment.
+    /// </summary>
+    public Guid? AiModelDeploymentId { get; set; }
+
+    /// <summary>
+    /// Unique identifier of the AI model deployment used for validation.
+    /// </summary>
+    public Guid? AiModelDeploymentForValidationId { get; set; }
+
 }

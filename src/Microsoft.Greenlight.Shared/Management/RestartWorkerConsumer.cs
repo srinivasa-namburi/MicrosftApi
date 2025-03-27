@@ -1,9 +1,9 @@
-﻿using System.Security.Cryptography;
-using System.Text;
-using MassTransit;
+﻿using MassTransit;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Shared.Contracts.Messages;
+using Microsoft.Greenlight.Shared.Enums;
+using Microsoft.Greenlight.Shared.Helpers;
 
 namespace Microsoft.Greenlight.Shared.Management;
 
@@ -14,33 +14,6 @@ public class RestartWorkerConsumer : IConsumer<RestartWorker>
 {
     private readonly ILogger<RestartWorkerConsumer> _logger;
     private readonly IHostApplicationLifetime _appLifetime;
-
-    /// <summary>
-    /// Gets the endpoint name for the <see cref="RestartWorker"/>.
-    /// </summary>
-    /// <returns>The endpoint name as a string.</returns>
-    public static string GetRestartWorkerEndpointName()
-    {
-        var domainName = AppDomain.CurrentDomain.FriendlyName;
-
-        // Get only the last part from the full domainName
-        var domainNameParts = domainName.Split('.');
-        var domainNameShort = domainNameParts[^1];
-
-        //Compute an MD5 hash based on the machine name
-        var machineName = Environment.MachineName;
-        var machineNameHashBytes = MD5.HashData(Encoding.UTF8.GetBytes(machineName));
-        var machineNameHash = BitConverter.ToString(machineNameHashBytes).Replace("-", "").ToLower();
-
-        machineNameHash = machineNameHash.Substring(0, 14);
-
-        // Computed subscription name
-
-        var processId = Environment.ProcessId;
-        var subscriptionName = $"rw-{domainNameShort}-{machineNameHash}-{processId}";
-
-        return subscriptionName;
-    }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="RestartWorkerConsumer"/> class.
@@ -60,13 +33,44 @@ public class RestartWorkerConsumer : IConsumer<RestartWorker>
     /// <returns>A task that represents the asynchronous operation.</returns>
     public async Task Consume(ConsumeContext<RestartWorker> context)
     {
-        _logger.LogWarning("Restart command received. Stopping the worker ...");
+        _logger.LogInformation("Restart command received. Making restart determination based on node type.");
 
-        // Signal the application to stop
+        if (DetermineNodeShouldBeRestarted(context.Message))
+        {
+            _logger.LogInformation("Restarting worker node.");
+            // Signal the application to stop
+            _appLifetime.StopApplication();
 
-        _appLifetime.StopApplication();
+            // Optionally, wait for any cleanup tasks
+            await Task.Delay(TimeSpan.FromSeconds(3));
+        }
+        else
+        {
+            _logger.LogInformation("Determined this node should not be restarted due to RestartWorker configuration");
+        }
+        
+    }
 
-        // Optionally, wait for any cleanup tasks
-        await Task.Delay(TimeSpan.FromSeconds(3));
+    private bool DetermineNodeShouldBeRestarted(RestartWorker contextMessage)
+    {
+        var workerNodeType = AdminHelper.DetermineCurrentlyRunningWorkerNodeType();
+        _logger.LogInformation($"Restart determination - Worker node type: {workerNodeType}");
+
+        // Determine if the worker node should be restarted based on the boolean is set to true
+        // for the type that is running
+
+        switch (workerNodeType)
+        {
+            case WorkerNodeType.Web:
+                return contextMessage.RestartWebNodes;
+            case WorkerNodeType.Api:
+                return contextMessage.RestartApiNodes;
+            case WorkerNodeType.Worker:
+                return contextMessage.RestartWorkerNodes;
+            case WorkerNodeType.System:
+                return contextMessage.RestartSystemNodes;
+            default:
+                return false;
+        }
     }
 }

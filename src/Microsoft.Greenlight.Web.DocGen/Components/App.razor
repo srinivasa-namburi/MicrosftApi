@@ -13,19 +13,26 @@
 
     <link rel="icon" type="image/png" href="favicon.ico" />
     <HeadOutlet @rendermode="@InteractiveWebAssembly" />
-    @* <HeadOutlet @rendermode="new InteractiveWebAssemblyRenderMode(prerender: true)" /> *@
 
     <link rel="stylesheet" href="https://atlas.microsoft.com/sdk/javascript/mapcontrol/3/atlas.min.css" type="text/css">
     <script src="https://atlas.microsoft.com/sdk/javascript/mapcontrol/3/atlas.min.js"></script>
+
+    <!-- Blazor Monaco (vscode) editor javascript interop -->
+    <script src="_content/BlazorMonaco/jsInterop.js"></script>
 </head>
 
 <body>
-     <Routes @rendermode="@InteractiveWebAssembly" />
-    @* <Routes @rendermode="new InteractiveWebAssemblyRenderMode(prerender: true)" /> *@
+    <Routes @rendermode="@InteractiveWebAssembly" />
+    
+    <script src="_content/BlazorMonaco/jsInterop.js"></script>
+    <script src="_content/BlazorMonaco/lib/monaco-editor/min/vs/loader.js"></script>
+    <script src="_content/BlazorMonaco/lib/monaco-editor/min/vs/editor/editor.main.js"></script>
+
     <script src="_framework/blazor.web.js"></script>
     <script src="_content/MudBlazor/MudBlazor.min.js"></script>
     <script src="js/azure-maps.js"></script>
     <script src="js/helpers.js"></script>
+
 </body>
 
 </html>

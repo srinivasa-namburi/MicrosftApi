@@ -1,26 +1,20 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
-	<PropertyGroup>
-		<TargetFramework>net8.0</TargetFramework>
-		<ImplicitUsings>enable</ImplicitUsings>
-		<Nullable>enable</Nullable>
-	</PropertyGroup>
-
-	<ItemGroup>
-		<FrameworkReference Include="Microsoft.AspNetCore.App" />
-	</ItemGroup>
-
-	<ItemGroup>
-		<PackageReference Include="GeoJSON" Version="2.3.1" />
-		<PackageReference Include="Azure.Maps.Rendering" Version="1.0.0-beta.2" />
-		<PackageReference Include="Azure.Maps.Search" Version="1.0.0-beta.4" />
-		<PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
-	</ItemGroup>
-
-	<ItemGroup>
-	  <ProjectReference Include="..\..\Microsoft.Greenlight.DocumentProcess.Shared\Microsoft.Greenlight.DocumentProcess.Shared.csproj" />
-	  <ProjectReference Include="..\..\Microsoft.Greenlight.Shared\Microsoft.Greenlight.Shared.csproj" />
-	</ItemGroup>
-
-	
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="GeoJSON" Version="2.3.1" />
+    <PackageReference Include="Azure.Maps.Rendering" Version="1.0.0-beta.2" />
+    <PackageReference Include="Azure.Maps.Search" Version="1.0.0-beta.4" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.3" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Microsoft.Greenlight.DocumentProcess.Shared\Microsoft.Greenlight.DocumentProcess.Shared.csproj" />
+    <ProjectReference Include="..\..\Microsoft.Greenlight.Shared\Microsoft.Greenlight.Shared.csproj" />
+  </ItemGroup>
 </Project>

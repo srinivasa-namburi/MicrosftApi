@@ -9,7 +9,6 @@ using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Models;
-using Microsoft.Greenlight.Shared.Models.SourceReferences;
 
 namespace Microsoft.Greenlight.Worker.DocumentGeneration.Consumers;
 
@@ -109,6 +108,10 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
 
             // Set GenerationState to InProgress
             existingContentNode.GenerationState = ContentNodeGenerationState.InProgress;
+
+            // Associate the tracked document with the ContentNode
+            existingContentNode.AssociatedGeneratedDocumentId = trackedDocument.Id;
+
             await _dbContext.SaveChangesAsync();
 
             // Publish the InProgress event
@@ -133,6 +136,7 @@ public class GenerateReportTitleSectionConsumer : IConsumer<GenerateReportTitleS
             foreach (var bodyContentNode in bodyContentNodes)
             {
                 bodyContentNode.ParentId = existingContentNode.Id;
+                bodyContentNode.AssociatedGeneratedDocumentId = existingContentNode.AssociatedGeneratedDocumentId;
 
                 if (bodyContentNodeNumber == 1)
                 {

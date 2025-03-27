@@ -11,6 +11,7 @@ using Microsoft.Greenlight.Shared.Models;
 using System.Text.RegularExpressions;
 using AutoMapper;
 using Microsoft.Greenlight.Shared.Contracts.DTO.Document;
+using Microsoft.Greenlight.Shared.Services;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
@@ -23,6 +24,7 @@ public partial class DocumentsController : BaseController
     private readonly IPublishEndpoint _publishEndpoint;
     private readonly DocGenerationDbContext _dbContext;
     private readonly IDocumentExporter _wordDocumentExporter;
+    private readonly IContentNodeService _contentNodeService;
     private readonly AzureFileHelper _fileHelper;
     private readonly IMapper _mapper;
 
@@ -32,6 +34,7 @@ public partial class DocumentsController : BaseController
     /// <param name="publishEndpoint">The publish endpoint for sending messages.</param>
     /// <param name="dbContext">The database context for document generation.</param>
     /// <param name="wordDocumentExporter">The document exporter for Word documents.</param>
+    /// <param name="contentNodeService">The content node service for retrieving and sorting Content Nodes</param>
     /// <param name="fileHelper">The Azure file helper for managing files.</param>
     /// <param name="mapper">The AutoMapper instance for mapping objects.</param>
     public DocumentsController(
@@ -39,12 +42,15 @@ public partial class DocumentsController : BaseController
         DocGenerationDbContext dbContext,
         [FromKeyedServices("IDocumentExporter-Word")]
         IDocumentExporter wordDocumentExporter,
-        AzureFileHelper fileHelper, IMapper mapper
+        IContentNodeService contentNodeService,
+        AzureFileHelper fileHelper, 
+        IMapper mapper
     )
     {
         _publishEndpoint = publishEndpoint;
         _dbContext = dbContext;
         _wordDocumentExporter = wordDocumentExporter;
+        _contentNodeService = contentNodeService;
         _fileHelper = fileHelper;
         _mapper = mapper;
     }
@@ -141,73 +147,18 @@ public partial class DocumentsController : BaseController
             return document;
         }
 
-        // Step 1: Load top-level ContentNodes
-        var topLevelNodes = await _dbContext.ContentNodes
-            .AsNoTracking()
-            .Include(cn => cn.ContentNodeSystemItem)
-            .Where(cn => cn.GeneratedDocumentId == documentGuid)
-            .ToListAsync();
+        // Fetch Content Nodes from the Content Node Service
+        var contentNodes = await _contentNodeService.GetContentNodesHierarchicalAsyncForDocumentId(documentGuid);
 
-        // Step 2: Load all descendants
-        var descendantNodes = await GetAllDescendantContentNodesAsync(topLevelNodes.Select(cn => cn.Id).ToList());
-
-        // Combine all ContentNodes
-        var allContentNodes = topLevelNodes.Concat(descendantNodes).ToList();
-
-        // Build the hierarchy
-        var contentNodeDict = allContentNodes.ToDictionary(cn => cn.Id);
-
-        // Initialize Children collections
-        foreach (var node in allContentNodes)
+        if (contentNodes == null)
         {
-            node.Children = [];
+            return null;
         }
 
-        // Link parents and children
-        foreach (var node in allContentNodes)
-        {
-            if (node.ParentId.HasValue && contentNodeDict.TryGetValue(node.ParentId.Value, out var parentNode))
-            {
-                parentNode.Children.Add(node);
-            }
-        }
+        document.ContentNodes= contentNodes;
 
-        // Assign the root ContentNodes to the document
-        document.ContentNodes = topLevelNodes;
+
         return document;
-    }
-
-    /// <summary>
-    /// Gets all descendant content nodes for the given parent IDs.
-    /// </summary>
-    /// <param name="parentIds">The list of parent IDs to get descendants for.</param>
-    /// <returns>The list of all descendant content nodes.</returns>
-    private async Task<List<ContentNode>> GetAllDescendantContentNodesAsync(List<Guid> parentIds)
-    {
-        var allDescendants = new List<ContentNode>();
-        var currentLevelIds = parentIds;
-
-        while (currentLevelIds.Count != 0)
-        {
-            // Load the children of the current level
-            var childNodes = await _dbContext.ContentNodes
-                .AsNoTracking()
-                .Include(cn => cn.ContentNodeSystemItem)
-                .Where(cn => cn.ParentId.HasValue && currentLevelIds.Contains(cn.ParentId.Value))
-                .ToListAsync();
-
-            if (childNodes.Count == 0)
-            {
-                break;
-            }
-
-            allDescendants.AddRange(childNodes);
-
-            // Prepare for the next level
-            currentLevelIds = childNodes.Select(cn => cn.Id).ToList();
-        }
-
-        return allDescendants;
     }
 
     /// <summary>

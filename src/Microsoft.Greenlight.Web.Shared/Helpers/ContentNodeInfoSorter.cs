@@ -4,7 +4,7 @@ using Microsoft.Greenlight.Shared.Enums;
 
 namespace Microsoft.Greenlight.Web.Shared.Helpers;
 
-public static class ContentNodeSorter
+public static class ContentNodeInfoSorter
 {
     public static void SortContentNodes(List<ContentNodeInfo> nodes)
     {
@@ -46,3 +46,6 @@ public static class ContentNodeSorter
         return String.Compare(x.Text, y.Text, StringComparison.Ordinal);
     }
 }
+
+
+

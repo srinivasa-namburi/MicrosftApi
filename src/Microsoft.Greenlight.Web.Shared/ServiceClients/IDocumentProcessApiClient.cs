@@ -18,4 +18,5 @@ public interface IDocumentProcessApiClient : IServiceClient
     Task<DocumentProcessExportInfo?> ExportDocumentProcessByIdAsync(Guid processId);
     Task <List<DocumentProcessMetadataFieldInfo>> GetDocumentProcessMetadataFieldsAsync(Guid processId);
     Task<List<DocumentProcessMetadataFieldInfo>> StoreMetaDataFieldsForDocumentProcess(Guid processId, List<DocumentProcessMetadataFieldInfo> metadataFields);
+    Task<List<string>> GetRequiredPromptVariablesForPromptName(string promptName);
 }

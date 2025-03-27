@@ -177,4 +177,16 @@ public class DocumentProcessApiClient : BaseServiceClient<DocumentProcessApiClie
         var response = await SendPutRequestMessage(url, promptInfo);
         response?.EnsureSuccessStatusCode();
     }
+
+    public async Task<List<string>> GetRequiredPromptVariablesForPromptName(string promptName)
+    {
+        var url = $"/api/prompts/{promptName}/variables";
+        var response = await SendGetRequestMessage(url);
+        if (response?.StatusCode == HttpStatusCode.NotFound)
+        {
+            return new List<string>();
+        }
+        response?.EnsureSuccessStatusCode();
+        return await response?.Content.ReadFromJsonAsync<List<string>>()! ?? [];
+    }
 }

@@ -23,8 +23,6 @@ public static class DbContextExtensions
     /// <returns>The updated IHostApplicationBuilder.</returns>
     public static IHostApplicationBuilder AddDocGenDbContext(this IHostApplicationBuilder builder, ServiceConfigurationOptions serviceConfigurationOptions)
     {
-        var sp = builder.Services.BuildServiceProvider();
-
         builder.Services.AddDbContext<DocGenerationDbContext>(options =>
         {
             options.UseSqlServer(

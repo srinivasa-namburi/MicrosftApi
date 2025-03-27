@@ -10,6 +10,7 @@ namespace Microsoft.Greenlight.Shared.Helpers;
 public class AzureCredentialHelper
 {
     private readonly IConfiguration _configuration;
+    private Uri? _authorityHost;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AzureCredentialHelper"/> class.
@@ -18,6 +19,7 @@ public class AzureCredentialHelper
     public AzureCredentialHelper(IConfiguration configuration)
     {
         _configuration = configuration;
+        Initialize();
     }
 
     /// <summary>
@@ -26,14 +28,21 @@ public class AzureCredentialHelper
     /// <returns>A <see cref="TokenCredential"/> instance.</returns>
     public TokenCredential GetAzureCredential()
     {
+
+        // We need to determine if we're running Azure Public Cloud or Azure Government Cloud and set the appropriate environment
+        
+
         TokenCredential? credential;
         // If there is no specific tenant ID, use the default Azure credential
         if (string.IsNullOrEmpty(_configuration["Azure:TenantId"]))
         {
+
             credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions
             {
+                AuthorityHost = _authorityHost,
                 AdditionallyAllowedTenants = { "*" }
             });
+
         }
         else
         {
@@ -42,6 +51,7 @@ public class AzureCredentialHelper
             {
                 credential = new AzureCliCredential(new AzureCliCredentialOptions()
                 {
+                    AuthorityHost = _authorityHost,
                     TenantId = _configuration["Azure:TenantId"]
                 });
 
@@ -50,11 +60,25 @@ public class AzureCredentialHelper
             {
                 credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions
                 {
+                    AuthorityHost = _authorityHost,
                     TenantId = _configuration["Azure:TenantId"]
                 });
             }
         }
 
         return credential;
+    }
+
+    private void Initialize()
+    {
+
+        var azureInstance = _configuration["AzureAd:Instance"];
+        
+        if (azureInstance != null && azureInstance.Contains(AzureAuthorityHosts.AzureGovernment.ToString()))
+        {
+            _authorityHost = AzureAuthorityHosts.AzureGovernment;
+        }
+
+        _authorityHost = AzureAuthorityHosts.AzurePublicCloud;
     }
 }

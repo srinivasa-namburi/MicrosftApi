@@ -3,7 +3,6 @@ using AutoMapper;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.Connectors.OpenAI;
 using Microsoft.Greenlight.Shared.Contracts.Chat;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Commands;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Events;
@@ -11,12 +10,11 @@ using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Models;
 using Microsoft.Data.SqlClient;
-using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Prompts;
 using Microsoft.Greenlight.Shared.Services;
-using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
 using Scriban;
 
+#pragma warning disable SKEXP0010
 namespace Microsoft.Greenlight.Worker.Chat.Consumers;
 
 /// <summary>
@@ -25,40 +23,60 @@ namespace Microsoft.Greenlight.Worker.Chat.Consumers;
 /// <remarks>
 /// Initializes a new instance of the <see cref="ProcessChatMessageConsumer"/> class.
 /// </remarks>
-/// <param name="dbContext">
-/// The <see cref="DocGenerationDbContext"/>.
-/// </param>
-/// <param name="mapper">
-/// An instance of AutoMapper - <see cref="IMapper"/>.
-/// </param>
-/// <param name="sp">
-/// The <see cref="IServiceProvider"/>.
-/// </param>
-/// <param name="promptInfoService">
-/// The <see cref="IPromptInfoService"/>.
-/// </param>
-/// <param name="logger">
-/// The <see cref="ILogger"/>.
-/// </param>
-/// <param name="documentProcessInfoService">
-/// The <see cref="IDocumentProcessInfoService"/>.
-/// </param>
-public class ProcessChatMessageConsumer(
-    DocGenerationDbContext dbContext,
-    IMapper mapper,
-    IServiceProvider sp,
-    IPromptInfoService promptInfoService,
-    ILogger<ProcessChatMessageConsumer> logger,
-    IDocumentProcessInfoService documentProcessInfoService
-        ) : IConsumer<ProcessChatMessage>
+public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
 {
     private Kernel? _kernel;
-    private readonly DocGenerationDbContext _dbContext = dbContext;
-    private readonly IMapper _mapper = mapper;
-    private readonly IServiceProvider _sp = sp;
-    private readonly IPromptInfoService _promptInfoService = promptInfoService;
-    private readonly ILogger<ProcessChatMessageConsumer> _logger = logger;
-    private readonly IDocumentProcessInfoService _documentProcessInfoService = documentProcessInfoService;
+    private readonly DocGenerationDbContext _dbContext;
+    private readonly IMapper _mapper;
+    private readonly IServiceProvider _sp;
+    private readonly IPromptInfoService _promptInfoService;
+    private readonly ILogger<ProcessChatMessageConsumer> _logger;
+    private readonly IDocumentProcessInfoService _documentProcessInfoService;
+    private readonly IKernelFactory _kernelFactory;
+
+    /// <summary>
+    /// Consumer class for messages of <see cref="ProcessChatMessage"/>.
+    /// </summary>
+    /// <remarks>
+    /// Initializes a new instance of the <see cref="ProcessChatMessageConsumer"/> class.
+    /// </remarks>
+    /// <param name="dbContext">
+    /// The <see cref="DocGenerationDbContext"/>.
+    /// </param>
+    /// <param name="mapper">
+    /// An instance of AutoMapper - <see cref="IMapper"/>.
+    /// </param>
+    /// <param name="sp">
+    /// The <see cref="IServiceProvider"/>.
+    /// </param>
+    /// <param name="promptInfoService">
+    /// The <see cref="IPromptInfoService"/>.
+    /// </param>
+    /// <param name="logger">
+    /// The <see cref="ILogger"/>.
+    /// </param>
+    /// <param name="documentProcessInfoService">
+    /// The <see cref="IDocumentProcessInfoService"/>.
+    /// </param>
+    /// <param name="kernelFactory">
+    /// The <see cref="IKernelFactory"/>.
+    /// </param>
+    public ProcessChatMessageConsumer(DocGenerationDbContext dbContext,
+        IMapper mapper,
+        IServiceProvider sp,
+        IPromptInfoService promptInfoService,
+        ILogger<ProcessChatMessageConsumer> logger,
+        IDocumentProcessInfoService documentProcessInfoService, 
+        IKernelFactory kernelFactory)
+    {
+        _dbContext = dbContext;
+        _mapper = mapper;
+        _sp = sp;
+        _promptInfoService = promptInfoService;
+        _logger = logger;
+        _documentProcessInfoService = documentProcessInfoService;
+        _kernelFactory = kernelFactory;
+    }
 
     /// <summary>
     /// Consumes the <see cref="ProcessChatMessage"/> command and proccesses chat messages from the user.
@@ -141,28 +159,21 @@ public class ProcessChatMessageConsumer(
 
         var documentProcessInfo = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(conversation!.DocumentProcessName);
 
-        // Set up Semantic Kernel for the right Document Process
-
-        _kernel ??= _sp.GetRequiredServiceForDocumentProcess<Kernel>(conversation.DocumentProcessName);
-        if (_kernel.Plugins.Count == 0)
+        if (documentProcessInfo == null)
         {
-            await _kernel.Plugins.AddSharedAndDocumentProcessPluginsToPluginCollectionAsync(_sp, documentProcessInfo!);
+            throw new InvalidOperationException($"Document process with short name {conversation.DocumentProcessName} not found");
         }
 
+        _kernel = await _kernelFactory.GetKernelForDocumentProcessAsync(conversation.DocumentProcessName);
+
+        var openAiSettings = await _kernelFactory.GetPromptExecutionSettingsForDocumentProcessAsync(
+            documentProcessInfo, AiTaskType.ChatReplies);
+
         var systemPrompt =
-            await _promptInfoService.GetPromptTextByShortCodeAndProcessNameAsync(PromptNames.ChatSystemPrompt,
-                conversation.DocumentProcessName);
-
-
-        var openAiSettings = new AzureOpenAIPromptExecutionSettings()
-        {
-            ChatSystemPrompt = systemPrompt,
-            ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions,
-            MaxTokens = 3512,
-            Temperature = 1.0
-        };
-
-
+            await _promptInfoService.GetPromptTextByShortCodeAndProcessNameAsync(
+                PromptNames.ChatSystemPrompt, conversation.DocumentProcessName);
+        
+        openAiSettings.ChatDeveloperPrompt = systemPrompt;
 
         var chatHistoryString = await CreateChatHistoryString(context, userMessageDto, 10);
         var previousSummariesForConversationString = await GetSummariesConversationString(userMessageDto);

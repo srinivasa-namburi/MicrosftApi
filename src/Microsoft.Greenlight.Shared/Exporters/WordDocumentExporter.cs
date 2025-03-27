@@ -108,7 +108,7 @@ public class WordDocumentExporter : IDocumentExporter
                 AddHeaderAndFooterToDocument(mainPart, generatedDocument.Title, "Revision 1");
 
                 var contentNodeInfos = _mapper.Map<List<ContentNodeInfo>>(generatedDocument.ContentNodes);
-                ContentNodeSorter.SortContentNodes(contentNodeInfos);
+                ContentNodeInfoSorter.SortContentNodes(contentNodeInfos);
 
                 var reverseMap = _mapper.Map<List<ContentNode>>(contentNodeInfos);
 

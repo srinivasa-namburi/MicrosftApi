@@ -1,8 +1,11 @@
 using Microsoft.Greenlight.Shared.Contracts;
 using Microsoft.Greenlight.Shared.Enums;
+using Microsoft.Greenlight.Shared.Models.Configuration;
 using Microsoft.Greenlight.Shared.Models.DocumentLibrary;
 using Microsoft.Greenlight.Shared.Models.DomainGroups;
 using Microsoft.Greenlight.Shared.Models.Plugins;
+using Microsoft.Greenlight.Shared.Models.Validation;
+using System.Text.Json.Serialization;
 
 namespace Microsoft.Greenlight.Shared.Models.DocumentProcess;
 
@@ -116,4 +119,37 @@ public class DynamicDocumentProcessDefinition : EntityBase, IDocumentProcessInfo
     /// Domain Groups that this document process is associated with. Managed from the Domain Group side.
     /// </summary>
     public List<DomainGroup> DomainGroupMemberships { get; set; } = [];
+
+    /// <summary>
+    /// Validation pipeline ID associated with the document process.
+    /// </summary>
+    public Guid? ValidationPipelineId { get; set; }
+
+    /// <summary>
+    /// Validation pipeline associated with the document process.
+    /// </summary>
+    [JsonIgnore]
+    public DocumentProcessValidationPipeline? ValidationPipeline { get; set; }
+
+    /// <summary>
+    /// Unique identifier of the AI model deployment used for regular tasks
+    /// </summary>
+    public Guid? AiModelDeploymentId { get; set; }
+
+    /// <summary>
+    /// AI model deployment associated with the document process for regular tasks
+    /// </summary>
+    [JsonIgnore]
+    public AiModelDeployment? AiModelDeployment { get; set; }
+
+    /// <summary>
+    /// AI model deployment ID used for validation tasks
+    /// </summary>
+    public Guid? AiModelDeploymentForValidationId { get; set; }
+
+    /// <summary>
+    /// AI model deployment associated with the document process for validation tasks
+    /// </summary>
+    [JsonIgnore]
+    public AiModelDeployment? AiModelDeploymentForValidation { get; set; }
 }

@@ -19,7 +19,7 @@ public class BelgiumNuclearLicensingDSARRagRepository : BaseRagRepository, IRagR
     public BelgiumNuclearLicensingDSARRagRepository(
         IIndexingProcessor indexingProcessor, 
         ILogger<BelgiumNuclearLicensingDSARRagRepository> logger, 
-        IOptions<ServiceConfigurationOptions> serviceConfigurationOptionsSelector) 
+        IOptionsSnapshot<ServiceConfigurationOptions> serviceConfigurationOptionsSelector) 
         : base(indexingProcessor, logger)
     {
         _serviceConfigurationOptions = serviceConfigurationOptionsSelector.Value;

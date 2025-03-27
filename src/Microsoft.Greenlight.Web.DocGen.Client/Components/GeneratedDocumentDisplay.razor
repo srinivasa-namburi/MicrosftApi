@@ -69,7 +69,7 @@ else
     {
         var token = await DocumentGenerationApiClient.GetAccessTokenAsync();
         Document = await GetDocumentAsync(DocumentId);
-        ContentNodeSorter.SortContentNodes(Document.ContentNodes);
+        ContentNodeInfoSorter.SortContentNodes(Document.ContentNodes);
         areNodesGenerated = AllNodesGenerated(Document.ContentNodes);
 
         await StartHubConnections();
@@ -186,7 +186,7 @@ else
 
         // Apply the updates.
         documentContentNodes = UpdateNodes(documentContentNodes, updatedNodeFromEvent);
-        ContentNodeSorter.SortContentNodes(documentContentNodes);
+        ContentNodeInfoSorter.SortContentNodes(documentContentNodes);
         await CheckDocumentState();
         await InvokeAsync(StateHasChanged);
 
@@ -231,7 +231,7 @@ else
                 {
                     Document = document;
                     // Sort the ContentNodes by their Text property in ascending order
-                    ContentNodeSorter.SortContentNodes(document.ContentNodes);
+                    ContentNodeInfoSorter.SortContentNodes(document.ContentNodes);
                 }
             }
             catch
@@ -282,7 +282,7 @@ else
 
                     }
 
-                    if (Document?.ContentNodes != null) ContentNodeSorter.SortContentNodes(Document!.ContentNodes);
+                    if (Document?.ContentNodes != null) ContentNodeInfoSorter.SortContentNodes(Document!.ContentNodes);
                 }
                 else
                 {

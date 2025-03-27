@@ -180,10 +180,15 @@ public class DocumentProcessApiClient : WebAssemblyBaseServiceClient<DocumentPro
         response?.EnsureSuccessStatusCode();
     }
 
-    public async Task DeletePromptAsync(Guid promptId)
+    public async Task<List<string>> GetRequiredPromptVariablesForPromptName(string promptName)
     {
-        var url = $"/api/prompts/{promptId}";
-        var response = await SendDeleteRequestMessage(url);
+        var url = $"/api/prompts/{promptName}/variables";
+        var response = await SendGetRequestMessage(url);
+        if (response?.StatusCode == HttpStatusCode.NotFound)
+        {
+            return new List<string>();
+        }
         response?.EnsureSuccessStatusCode();
+        return await response?.Content.ReadFromJsonAsync<List<string>>()! ?? [];
     }
 }

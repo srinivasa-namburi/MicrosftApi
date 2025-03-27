@@ -62,15 +62,30 @@ public class ContentNode : EntityBase
 
     /// <summary>
     /// Unique ID for generated document.
+    /// This is only used for outer parent nodes to establish the hierarchy.
     /// </summary>
     public Guid? GeneratedDocumentId { get; set; }
 
     /// <summary>
     /// Generated document associated with the content node.
+    /// This is only used for outer parent nodes to establish the hierarchy.
     /// </summary>
     [JsonIgnore]
     public virtual GeneratedDocument? GeneratedDocument { get; set; }
 
+    /// <summary>
+    /// Unique ID for the associated generated document.
+    /// This is used for inner nodes to establish what document they are associated with. Not to be used
+    /// to establish hierarchy of the content nodes.
+    /// </summary>
+    public Guid? AssociatedGeneratedDocumentId { get; set; }
+
+    /// <summary>
+    /// Associated generated document with the content node.
+    /// </summary>
+    [JsonIgnore]
+    public virtual GeneratedDocument? AssociatedGeneratedDocument { get; set; } 
+    
     /// <summary>
     /// Unique ID for the content node system item.
     /// </summary>

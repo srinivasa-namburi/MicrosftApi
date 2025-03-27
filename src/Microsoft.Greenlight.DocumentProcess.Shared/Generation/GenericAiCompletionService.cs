@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 using Microsoft.Greenlight.Shared.Configuration;
+using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Extensions;
@@ -14,7 +15,8 @@ using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
 using Scriban;
 using Microsoft.Greenlight.Shared.Models.SourceReferences;
 using Microsoft.Greenlight.Shared.Plugins;
-using Microsoft.KernelMemory;
+using Microsoft.SemanticKernel.ChatCompletion;
+using OpenAI.Chat;
 
 namespace Microsoft.Greenlight.DocumentProcess.Shared.Generation;
 
@@ -34,6 +36,7 @@ public class GenericAiCompletionService : IAiCompletionService
     private readonly int _numberOfPasses = 6;
     private readonly IDocumentProcessInfoService _documentProcessInfoService;
     private readonly IPromptInfoService _promptInfoService;
+    private readonly IKernelFactory _kernelFactory;
 
     private ContentNode _createdBodyContentNode;
 
@@ -48,6 +51,7 @@ public class GenericAiCompletionService : IAiCompletionService
         _logger = parameters.Logger;
         _documentProcessInfoService = parameters.DocumentProcessInfoService;
         _promptInfoService = parameters.PromptInfoService;
+        _kernelFactory = parameters.KernelFactory;
         ProcessName = processName;
     }
 
@@ -100,17 +104,16 @@ public class GenericAiCompletionService : IAiCompletionService
         ContentNodeType contentNodeType, string tableOfContentsString, Guid? metadataId, ContentNode? sectionContentNode)
     {
 
-        var plugins = new KernelPluginCollection();
         var documentProcess = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(ProcessName);
         var pluginSourceReferenceCollector = _sp.GetRequiredService<IPluginSourceReferenceCollector>();
 
-        // Set up Semantic Kernel for the right Document Process
-        _sk ??= _sp.GetRequiredServiceForDocumentProcess<Kernel>(documentProcess!.ShortName);
-        if (_sk.Plugins.Count == 0)
-        {
-            await _sk.Plugins.AddSharedAndDocumentProcessPluginsToPluginCollectionAsync(_sp, documentProcess!);
-        }
+        _sk = await _kernelFactory.GetKernelForDocumentProcessAsync(documentProcess!.ShortName);
 
+        if (_sk == null)
+        {
+            throw new InvalidOperationException("Semantic Kernel instance not set for GenericAiCompletionService");
+        }
+    
         _sk.PrepareSemanticKernelInstanceForGeneration(documentProcess!.ShortName);
 
         var sectionExample = new StringBuilder();
@@ -180,12 +183,12 @@ public class GenericAiCompletionService : IAiCompletionService
             }
             else
             {
-                var summary = await SummarizeOutput(string.Join("\n\n", chatResponses));
+                var summary = await SummarizeOutput(documentProcess, string.Join("\n\n", chatResponses));
                 prompt = await BuildContinuationPrompt(summary, string.Join("\n\n", lastPassResponse), (i + 1).ToString(), _numberOfPasses.ToString(), originalPrompt);
             }
 
             var responseLine = "";
-            await foreach (var stringUpdate in ReturnCompletionsForPromptWithSemanticKernelFunctionCalling(systemPrompt,
+            await foreach (var stringUpdate in ReturnCompletionsForPromptWithSemanticKernelFunctionCalling(documentProcess, systemPrompt,
                                prompt, pluginSourceReferenceCollector))
             {
                 Console.Write(stringUpdate);
@@ -298,21 +301,15 @@ public class GenericAiCompletionService : IAiCompletionService
     }
 
     private async IAsyncEnumerable<string> ReturnCompletionsForPromptWithSemanticKernelFunctionCalling(
-        string systemPrompt,
+        DocumentProcessInfo documentProcess, string systemPrompt,
         string userPrompt, IPluginSourceReferenceCollector pluginSourceReferenceCollector)
     {
-        var openAiExecutionSettings = new AzureOpenAIPromptExecutionSettings
-        {
-            ChatSystemPrompt = systemPrompt,
-            ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions,
-            MaxTokens = 4000,
-            Temperature = 0.4f,
-            FrequencyPenalty = 0.5f
-        };
 
-        int pluginsadded = 0;
+        var executionSettings =
+            await _kernelFactory.GetPromptExecutionSettingsForDocumentProcessAsync(documentProcess, AiTaskType.ContentGeneration);
+
         var executionIdString = Guid.NewGuid().ToString();
-        var kernelArguments = new KernelArguments(openAiExecutionSettings)
+        var kernelArguments = new KernelArguments(executionSettings)
         {
             {"System-ExecutionId", executionIdString}
         };
@@ -332,7 +329,7 @@ public class GenericAiCompletionService : IAiCompletionService
         pluginSourceReferenceCollector.Clear(executionId);
     }
 
-    private async Task<string> SummarizeOutput(string originalContent)
+    private async Task<string> SummarizeOutput(DocumentProcessInfo documentProcess, string originalContent)
     {
         // Using a streaming OpenAi ChatCompletion, summarize the originalContent with up to 8000 tokens and return the summary
         // No need to render templates for these two prompts as they don't have any placeholders
@@ -341,14 +338,8 @@ public class GenericAiCompletionService : IAiCompletionService
 
         var summarizePrompt = await BuildSummarizePrompt(originalContent);
 
-
-        var openAiExecutionSettings = new AzureOpenAIPromptExecutionSettings
-        {
-            ChatSystemPrompt = systemPrompt,
-            MaxTokens = 4000,
-            Temperature = 0.5f,
-            FrequencyPenalty = 0.5f
-        };
+        var executionSettings =
+            await _kernelFactory.GetPromptExecutionSettingsForDocumentProcessAsync(documentProcess, AiTaskType.Summarization);
 
         var summaryResult = "";
         var chatStringBuilder = new StringBuilder();
@@ -357,7 +348,7 @@ public class GenericAiCompletionService : IAiCompletionService
         Console.WriteLine("SUMMARY SO FAR:");
         Console.WriteLine("********************************");
 
-        await foreach (var update in _sk.InvokePromptStreamingAsync(summarizePrompt, new KernelArguments(openAiExecutionSettings)))
+        await foreach (var update in _sk.InvokePromptStreamingAsync(summarizePrompt, new KernelArguments(executionSettings)))
         {
             if (string.IsNullOrEmpty(update.ToString())) continue;
 

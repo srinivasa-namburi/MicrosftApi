@@ -10,7 +10,8 @@ namespace Microsoft.Greenlight.DocumentProcess.Shared.Generation;
 
 public class AiCompletionServiceParameters<T> where T : IAiCompletionService
 {
-    public IOptions<ServiceConfigurationOptions> ServiceConfigurationOptions { get; }
+    public IKernelFactory KernelFactory { get; }
+    public IOptionsSnapshot<ServiceConfigurationOptions> ServiceConfigurationOptions { get; }
     public AzureOpenAIClient OpenAIClient { get; }
     public DocGenerationDbContext DbContext { get; }
     public IServiceProvider ServiceProvider { get; }
@@ -19,14 +20,16 @@ public class AiCompletionServiceParameters<T> where T : IAiCompletionService
     public IPromptInfoService PromptInfoService { get; }
 
     public AiCompletionServiceParameters(
-        IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
+        IOptionsSnapshot<ServiceConfigurationOptions> serviceConfigurationOptions,
         [FromKeyedServices("openai-planner")] AzureOpenAIClient openAIClient,
         DocGenerationDbContext dbContext,
         IServiceProvider serviceProvider,
         ILogger<T> logger,
         IDocumentProcessInfoService documentProcessInfoService,
-        IPromptInfoService promptInfoService)
+        IPromptInfoService promptInfoService,
+        IKernelFactory kernelFactory)
     {
+        KernelFactory = kernelFactory;
         ServiceConfigurationOptions = serviceConfigurationOptions;
         OpenAIClient = openAIClient;
         DbContext = dbContext;

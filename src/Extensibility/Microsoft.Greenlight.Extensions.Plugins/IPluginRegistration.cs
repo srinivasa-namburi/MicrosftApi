@@ -4,13 +4,15 @@ namespace Microsoft.Greenlight.Extensions.Plugins;
 
 /// <summary>
 /// Interface for registering plugins with the service collection.
+/// If you have advanced implementation needs, use the <see cref="IPluginInitializer.InitializeAsync"/> method in addition
+/// to this interface.
 /// </summary>
-public interface IPluginRegistration
+public interface IPluginRegistration : IPluginInitializer
 {
     /// <summary>
-    /// Registers a plugin with the specified service collection and service provider.
+    /// Registers any dependencies (and the plugin itself if neccessary) for the plugin with the service collection.
     /// </summary>
     /// <param name="serviceCollection">The service collection to register the plugin with.</param>
-    /// <param name="serviceProvider">The service provider to use for plugin registration.</param>
-    void RegisterPlugin(IServiceCollection serviceCollection, IServiceProvider serviceProvider);
+
+    void RegisterPlugin(IServiceCollection serviceCollection);
 }

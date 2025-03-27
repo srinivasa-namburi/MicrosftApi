@@ -1,24 +1,96 @@
+@using System.Text.RegularExpressions
 @inject IDocumentProcessApiClient DocumentProcessApiClient
 @inject IDialogService DialogService
 
+<style>
+    /* 3 columns, auto-wrap to the next row as needed */
+    .required-vars-grid {
+    display: grid;
+    grid-template-columns: repeat(3, auto);
+    column-gap: 1rem; /* horizontal space between columns */
+    row-gap: 4px; /* minimal vertical space between rows */
+    }
+
+    /* Keep each variable in a horizontal row with icon + text */
+    .required-var {
+    display: flex;
+    align-items: center;
+    }
+</style>
+
 <MudDialog MaxWidth="MaxWidth.Medium">
     <TitleContent>
-        <MudText Typo="Typo.h6">@((IsEditMode ? "Edit Prompt" : "Add Prompt"))</MudText>
+        <MudText Typo="Typo.h6">@((IsEditMode ? $"Edit Prompt: {Prompt.ShortCode}" : "Add Prompt"))</MudText>
     </TitleContent>
     <DialogContent>
-        <MudTextField @bind-Value="Prompt.ShortCode" Label="Short Code" Disabled="true" />
-        <MudTextField @bind-Value="Prompt.Description" Label="Description" Disabled="true" />
-        <MudTextField @bind-Value="Prompt.Text" Label="Text" T="string"
-                      Immediate="true"
-                      DebounceInterval="100"
-                      Lines="8"
-                      MaxLines="25"
-                      AutoGrow="true"
-                      AutoFocus="true" FullWidth="true" 
-                      />
+        <MudGrid>
+            <MudItem xs="12">
+                <MudPaper Class="pa-3" Elevation="0">
+                    <MudText Typo="Typo.subtitle1">Required Variables</MudText>
+                    @if (_loadingVariables)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                    }
+                    else if (_requiredVariables.Count == 0)
+                    {
+                        <MudText Typo="Typo.caption">No required variables</MudText>
+                    }
+                    else
+                    {
+                        <!-- Wrap in a container that uses CSS grid to form up to 3 columns -->
+                        <div class="required-vars-grid">
+                            @foreach (var variable in _requiredVariables)
+                            {
+                                <div class="required-var">
+                                    <!-- Use MudIcon for check/error icon -->
+                                    <MudIcon Icon="@(IsVariablePresentInText(variable)
+                                                       ? Icons.Material.Filled.CheckCircle
+                                                       : Icons.Material.Filled.Error)"
+                                    Color="@(IsVariablePresentInText(variable)
+                                                        ? Color.Success
+                                                        : Color.Error)"
+                                    Size="Size.Small" />
+                                    <MudText Typo="Typo.body2" Class="ms-1">@variable</MudText>
+                                </div>
+                            }
+                        </div>
+                    }
+                </MudPaper>
+
+
+            </MudItem>
+            @*             <MudItem xs="12">
+                <MudTextField @ref="_promptEditor" @bind-Value="Prompt.Text" Label="Text" T="string"
+                              Immediate="true"
+                              DebounceInterval="100"
+                              Lines="8"
+                              MaxLines="25"
+                              AutoGrow="true"
+                              AutoFocus="true" FullWidth="true"
+                              OnKeyUp="CheckRequiredVariables" />
+            </MudItem> *@
+            @if (Prompt != null)
+            {
+                <MudItem xs="12">
+                    <EditorComponent @ref="_promptEditor"
+                                     @bind-Value="Prompt.Text"
+                                     IsDarkMode="IsDarkMode"
+                                     WidthStyle="100%"
+                                     HeightStyle="500px"
+                                     OnContentChanged="CheckRequiredVariables"/>
+                </MudItem>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2">Loading Editor</MudText>
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+            }
+
+        </MudGrid>
     </DialogContent>
     <DialogActions>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SavePrompt">Save</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SavePrompt"
+        Disabled="@(!_allRequiredVariablesPresent)">Save</MudButton>
         <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="Cancel">Cancel</MudButton>
     </DialogActions>
 </MudDialog>
@@ -28,6 +100,17 @@
     [Parameter] public EventCallback<Guid> OnPromptSaved { get; set; }
     [Parameter] public PromptInfo? Prompt { get; set; }
     [Parameter] public bool IsEditMode { get; set; }
+    [Parameter] public bool IsDarkMode { get; set; }
+
+    private List<string> _requiredVariables = new();
+    private bool _loadingVariables = true;
+    private bool _allRequiredVariablesPresent = true;
+    private EditorComponent _promptEditor = new EditorComponent();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRequiredVariables();
+    }
 
     protected override void OnParametersSet()
     {
@@ -36,6 +119,65 @@
         {
             throw new InvalidOperationException("Prompt parameter is required.");
         }
+    }
+
+    private async Task LoadRequiredVariables()
+    {
+        _loadingVariables = true;
+        try
+        {
+            if (!string.IsNullOrEmpty(Prompt.ShortCode))
+            {
+                _requiredVariables = await DocumentProcessApiClient.GetRequiredPromptVariablesForPromptName(Prompt.ShortCode);
+                CheckRequiredVariables();
+            }
+        }
+        catch (Exception)
+        {
+            // If we can't load the variables, we'll just assume there are none
+            _requiredVariables = new List<string>();
+        }
+        finally
+        {
+            _loadingVariables = false;
+        }
+    }
+
+    private void CheckRequiredVariables()
+    {
+        if (_requiredVariables.Count == 0)
+        {
+            _allRequiredVariablesPresent = true;
+            return;
+        }
+
+        // First, normalize variables in the prompt text (add spaces inside double curly braces)
+        if (!string.IsNullOrEmpty(Prompt?.Text))
+        {
+            var modifiedText = Regex.Replace(
+                Prompt.Text,
+                @"\{\{(\w+)\}\}",
+                "{{ $1 }}"
+            );
+
+            if (modifiedText != Prompt.Text)
+            {
+                // Force the _promptEditor to re-render so the modifiedText is immediately implemented
+                Prompt.Text = modifiedText;
+                // _promptEditor.Value = modifiedText;
+
+            }
+
+        }
+
+        _allRequiredVariablesPresent = _requiredVariables.All(IsVariablePresentInText);
+        StateHasChanged();
+    }
+
+    private bool IsVariablePresentInText(string variable)
+    {
+        return !string.IsNullOrEmpty(Prompt?.Text) &&
+               Prompt.Text.Contains($"{{ {variable} }}", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task SavePrompt()

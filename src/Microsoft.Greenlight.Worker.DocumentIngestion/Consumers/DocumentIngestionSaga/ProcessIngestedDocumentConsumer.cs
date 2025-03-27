@@ -31,7 +31,7 @@ public class ProcessIngestedDocumentConsumer : IConsumer<ProcessIngestedDocument
     /// <param name="serviceProvider">The service provider.</param>
     public ProcessIngestedDocumentConsumer(
         DocGenerationDbContext dbContext,
-        IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
+        IOptionsSnapshot<ServiceConfigurationOptions> serviceConfigurationOptions,
         ILogger<ProcessIngestedDocumentConsumer> logger,
         IServiceProvider serviceProvider)
     {

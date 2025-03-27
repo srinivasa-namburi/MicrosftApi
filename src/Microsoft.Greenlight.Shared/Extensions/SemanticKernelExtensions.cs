@@ -1,4 +1,5 @@
 using AutoMapper;
+using Azure.AI.OpenAI;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -7,6 +8,8 @@ using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
+using Microsoft.SemanticKernel.ChatCompletion;
+using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
 
 
 namespace Microsoft.Greenlight.Shared.Extensions;
@@ -35,11 +38,15 @@ public static class SemanticKernelExtensions
             return kernel;
         });
 
+        // UnKeyed Kernel used for document validation
+
         // Get all document processes (both static and dynamic)
         var documentProcesses = GetAllDocumentProcesses(builder.Services, serviceConfigurationOptions);
 
         foreach (var documentProcess in documentProcesses)
         {
+
+            // Keyed Kernel for each Document Process. 
             builder.Services.AddKeyedScoped<Kernel>(documentProcess.ShortName + "-Kernel", (provider, o) =>
             {
                 KernelPluginCollection plugins = [];
@@ -47,11 +54,87 @@ public static class SemanticKernelExtensions
                 // Add plugins from the document process
                 plugins.AddSharedAndDocumentProcessPluginsToPluginCollection(provider, documentProcess, null);
 
-                var kernel = new Kernel(provider, plugins);
+                // Create kernel with document process-specific completion service
+                var kernelBuilder = Kernel.CreateBuilder();
+                kernelBuilder.Services.AddSingleton(provider);
+            
+                // Add a document process-specific chat completion service
+                kernelBuilder.Services.AddSingleton<IChatCompletionService>(sp =>
+                {
+                    // Get the OpenAI client from the parent service provider
+                    var openAIClient = provider.GetRequiredKeyedService<AzureOpenAIClient>("openai-planner");
+
+                    // Determine the model deployment name to use - fall back to the system-wide default if not specified
+                    string deploymentName = //documentProcess.AiCompletionModelDeploymentName ?? 
+                                            serviceConfigurationOptions.OpenAi.Gpt4o_Or_Gpt4128KDeploymentName;
+                
+                    // Create the chat completion service with the document-specific model
+                    return new AzureOpenAIChatCompletionService(
+                        deploymentName, 
+                        openAIClient, 
+                        $"openai-chatcompletion-{documentProcess.ShortName}");
+                });
+            
+                var kernel = kernelBuilder.Build();
+
+                kernel.Plugins.AddRange(plugins.ToList());
+            
                 kernel.FunctionInvocationFilters.Add(
                     provider.GetRequiredKeyedService<IFunctionInvocationFilter>("InputOutputTrackingPluginInvocationFilter"));
                 return kernel;
             });
+
+            // Keyed Kernel for document validation for each Document Process that has a dynamic source
+            if (documentProcess.Source == ProcessSource.Dynamic)
+            {
+                // Keyed Kernel for document validation for each Document Process
+                builder.Services.AddKeyedScoped<Kernel>(documentProcess.ShortName + "-ValidationKernel",
+                    (provider, o) =>
+                    {
+                        KernelPluginCollection plugins = [];
+                        // Add plugins from the document process
+                        plugins.AddSharedAndDocumentProcessPluginsToPluginCollection(provider, documentProcess, null);
+                        // Create kernel with document process-specific completion service
+                        var kernelBuilder = Kernel.CreateBuilder();
+                        kernelBuilder.Services.AddSingleton(provider);
+
+                        // Add a document process-specific chat completion service
+                        kernelBuilder.Services.AddSingleton<IChatCompletionService>(sp =>
+                        {
+                            // Get the OpenAI client from the parent service provider
+                            var openAIClient = provider.GetRequiredKeyedService<AzureOpenAIClient>("openai-planner");
+
+                            // Determine the model deployment name to use - fall back to the system-wide default if not specified
+                            string deploymentName;
+
+                            //if (documentProcess.AiValidationModelDeploymentName != null)
+                            //{
+                            //    deploymentName = documentProcess.AiValidationModelDeploymentName;
+                            //}
+                            //else if (documentProcess.AiValidationModelDeploymentName == null &&
+                            //         !string.IsNullOrEmpty(serviceConfigurationOptions.OpenAi
+                            //             .O3MiniModelDeploymentName))
+                            //{
+                            //    deploymentName = serviceConfigurationOptions.OpenAi.O3MiniModelDeploymentName;
+                            //}
+                            //else
+                            //{
+                                deploymentName = serviceConfigurationOptions.OpenAi.Gpt4o_Or_Gpt4128KDeploymentName;
+                            //}
+
+                            // Create the chat completion service with the document-specific model
+                            return new AzureOpenAIChatCompletionService(
+                                deploymentName,
+                                openAIClient,
+                                $"openai-chatvalidation-{documentProcess.ShortName}");
+                        });
+
+                        var kernel = kernelBuilder.Build();
+                        kernel.Plugins.AddRange(plugins.ToList());
+
+                        return kernel;
+                    });
+            }
         }
 
         return builder;
@@ -69,7 +152,8 @@ public static class SemanticKernelExtensions
 
         foreach (var kmDocsPlugin in kmDocsPlugins
                      .Where(kmDocsPlugin => kmDocsPlugin.Name.Contains(documentProcessName) ||
-                                            kmDocsPlugin.Name.Contains("native")))
+                                            kmDocsPlugin.Name.Contains("native") ||
+                                            kmDocsPlugin.Name.ToLower() == "kmdocsplugin"))
         {
             kernel.Plugins.Remove(kmDocsPlugin);
         }

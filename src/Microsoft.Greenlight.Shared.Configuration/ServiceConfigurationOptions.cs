@@ -56,6 +56,10 @@ public class ServiceConfigurationOptions
     /// </summary>
     public class GreenlightServicesOptions
     {
+        
+        /// <inheritdoc cref="FrontendOptions"/>>
+        public FrontendOptions FrontEnd { get; set; } = new FrontendOptions();
+
         /// <summary>
         /// Options for feature flags.
         /// </summary>
@@ -75,6 +79,18 @@ public class ServiceConfigurationOptions
         /// Options for document processes.
         /// </summary>
         public List<DocumentProcessOptions?> DocumentProcesses { get; set; } = new List<DocumentProcessOptions?>();
+
+
+        /// <summary>
+        /// Options for frontend - these are typically used for display manipulation
+        /// </summary>
+        public class FrontendOptions
+        {
+            /// <summary>
+            /// The name of the site/application as displayed in the user interface.
+            /// </summary>
+            public string SiteName { get; set; } = "Generative AI for Permitting";
+        }
 
         /// <summary>
         /// Options for feature flags.
@@ -188,6 +204,11 @@ public class ServiceConfigurationOptions
                     : GPT4oModelDeploymentName;
             }
         }
+
+        /// <summary>
+        /// Gets the deployment name for the o3-mini model.
+        /// </summary>
+        public string O3MiniModelDeploymentName { get; set; } = string.Empty;
 
         /// <summary>
         /// The deployment name for embedding model.

@@ -2,13 +2,18 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Microsoft.Greenlight.Shared.Contracts.Components;
+using Microsoft.Greenlight.Shared.Contracts.Messages.Validation;
+using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Models;
+using Microsoft.Greenlight.Shared.Models.Configuration;
 using Microsoft.Greenlight.Shared.Models.DocumentLibrary;
 using Microsoft.Greenlight.Shared.Models.DocumentProcess;
 using Microsoft.Greenlight.Shared.Models.DomainGroups;
 using Microsoft.Greenlight.Shared.Models.Plugins;
 using Microsoft.Greenlight.Shared.Models.Review;
 using Microsoft.Greenlight.Shared.Models.SourceReferences;
+using Microsoft.Greenlight.Shared.Models.Validation;
 using Microsoft.Greenlight.Shared.SagaState;
 
 namespace Microsoft.Greenlight.Shared.Data.Sql;
@@ -112,6 +117,175 @@ public class DocGenerationDbContext : DbContext
             c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
             c => c.ToList());
 
+        modelBuilder.Entity<AiModel>(entity =>
+        {
+            entity.ToTable("AiModels");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired();
+
+            entity.Property(e => e.TokenSettings)
+                .HasConversion(
+                    v => JsonSerializer.Serialize(v, (JsonSerializerOptions)null!),
+                    v => JsonSerializer.Deserialize<AiModelMaxTokenSettings>(v, (JsonSerializerOptions)null!) ?? new AiModelMaxTokenSettings()
+                );
+
+            entity.HasIndex(nameof(AiModel.Name)).IsUnique();
+        });
+
+        modelBuilder.Entity<AiModelDeployment>(entity =>
+        {
+            entity.ToTable("AiModelDeployments");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.DeploymentName).IsRequired();
+            entity.Property(e => e.AiModelId).IsRequired();
+
+            // Always include the AiModel when querying for an AiModelDeployment
+            entity.Navigation(n => n.AiModel)
+                .AutoInclude();
+
+            entity.HasOne(e => e.AiModel)
+                .WithMany()
+                .HasForeignKey(e => e.AiModelId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.Property(e => e.TokenSettings)
+                .HasConversion(
+                    v => JsonSerializer.Serialize(v, (JsonSerializerOptions)null!),
+                    v => JsonSerializer.Deserialize<AiModelMaxTokenSettings>(v, (JsonSerializerOptions)null!) ?? new AiModelMaxTokenSettings()
+                );
+
+            entity.Property(e => e.ReasoningSettings)
+                .HasConversion(
+                    v => JsonSerializer.Serialize(v, (JsonSerializerOptions)null!),
+                    v => JsonSerializer.Deserialize<AiModelReasoningSettings>(v, (JsonSerializerOptions)null!) ?? new AiModelReasoningSettings()
+                );
+
+            entity.HasIndex(nameof(AiModelDeployment.DeploymentName)).IsUnique();
+        });
+
+        modelBuilder.Entity<DocumentProcessValidationPipeline>()
+            .ToTable("DocumentProcessValidationPipelines");
+
+        modelBuilder.Entity<DocumentProcessValidationPipeline>()
+            .HasIndex(nameof(DocumentProcessValidationPipeline.DocumentProcessId))
+            .IsUnique();
+
+        modelBuilder.Entity<DocumentProcessValidationPipeline>()
+            .HasOne(x => x.DocumentProcess)
+            .WithOne(x => x.ValidationPipeline)
+            .HasForeignKey<DynamicDocumentProcessDefinition>(x => x.ValidationPipelineId)
+            .IsRequired(true)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<DocumentProcessValidationPipeline>()
+            .HasMany(x => x.ValidationPipelineSteps)
+            .WithOne(x => x.DocumentProcessValidationPipeline)
+            .HasForeignKey(x => x.DocumentProcessValidationPipelineId)
+            .IsRequired()
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<DocumentProcessValidationPipelineStep>()
+            .ToTable("DocumentProcessValidationPipelineSteps");
+
+        modelBuilder.Entity<DocumentProcessValidationPipelineStep>()
+            .HasIndex(nameof(DocumentProcessValidationPipelineStep.DocumentProcessValidationPipelineId),
+                nameof(DocumentProcessValidationPipelineStep.Order));
+
+        modelBuilder.Entity<ValidationPipelineExecution>()
+            .ToTable("ValidationPipelineExecutions");
+
+        modelBuilder.Entity<ValidationPipelineExecution>()
+            .HasIndex(nameof(ValidationPipelineExecution.DocumentProcessValidationPipelineId))
+            .IsUnique(false);
+
+        modelBuilder.Entity<ValidationPipelineExecution>()
+            .HasOne(x => x.DocumentProcessValidationPipeline)
+            .WithMany(x => x.ValidationPipelineExecutions)
+            .HasForeignKey(x => x.DocumentProcessValidationPipelineId)
+            .IsRequired();
+        
+        modelBuilder.Entity<ValidationPipelineExecution>()
+            .HasMany(x=>x.ExecutionSteps)
+            .WithOne(x => x.ValidationPipelineExecution)
+            .HasForeignKey(x => x.ValidationPipelineExecutionId)
+            .IsRequired()
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ValidationPipelineExecution>()
+            .HasOne(x=>x.GeneratedDocument)
+            .WithMany(x => x.ValidationPipelineExecutions)
+            .HasForeignKey(x => x.GeneratedDocumentId)
+            .IsRequired()
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ValidationPipelineExecutionStep>()
+            .ToTable("ValidationPipelineExecutionSteps");
+
+        modelBuilder.Entity<ValidationPipelineExecutionStep>()
+            .HasIndex(nameof(ValidationPipelineExecutionStep.ValidationPipelineExecutionId),
+                nameof(ValidationPipelineExecutionStep.Order));
+
+        modelBuilder.Entity<ValidationPipelineExecutionStep>()
+            .HasOne(x => x.ValidationPipelineExecution)
+            .WithMany(x => x.ExecutionSteps)
+            .HasForeignKey(x => x.ValidationPipelineExecutionId)
+            .IsRequired()
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ValidationPipelineExecutionStep>()
+            .HasMany(x => x.ValidationExecutionStepContentNodeResults)
+            .WithOne(x => x.ValidationPipelineExecutionStep)
+            .HasForeignKey(x => x.ValidationPipelineExecutionStepId)
+            .IsRequired()
+            .OnDelete(DeleteBehavior.NoAction);
+
+        modelBuilder.Entity<ValidationPipelineExecutionStepResult>()
+            .ToTable("ValidationPipelineExecutionStepResults");
+
+        modelBuilder.Entity<ValidationPipelineExecutionStepResult>()
+            .HasOne(x => x.ValidationPipelineExecutionStep)
+            .WithOne(x => x.ValidationPipelineExecutionStepResult)
+            .HasForeignKey<ValidationPipelineExecutionStepResult>(x => x.ValidationPipelineExecutionStepId)
+            .IsRequired()
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ValidationPipelineExecutionStepResult>()
+            .HasIndex(nameof(ValidationPipelineExecutionStepResult.ValidationPipelineExecutionStepId))
+            .IsUnique();
+
+        modelBuilder.Entity<ValidationPipelineExecutionStepResult>()
+            .HasMany(x=>x.ContentNodeResults)
+            .WithOne(x => x.ValidationPipelineExecutionStepResult)
+            .HasForeignKey(x => x.ValidationPipelineExecutionStepResultId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        modelBuilder.Entity<ValidationExecutionStepContentNodeResult>()
+            .ToTable("ValidationExecutionStepContentNodeResults");
+
+        
+        modelBuilder.Entity<ValidationExecutionStepContentNodeResult>()
+            .HasIndex(nameof(ValidationExecutionStepContentNodeResult.ValidationPipelineExecutionStepResultId))
+            .IsUnique(false);
+
+        modelBuilder.Entity<ValidationExecutionStepContentNodeResult>()
+            .HasIndex(nameof(ValidationExecutionStepContentNodeResult.OriginalContentNodeId))
+            .IsUnique(false);
+      
+        modelBuilder.Entity<ValidationExecutionStepContentNodeResult>()
+            .HasOne(x => x.OriginalContentNode)
+            .WithMany()
+            .HasForeignKey(x => x.OriginalContentNodeId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.ClientSetNull);
+
+        modelBuilder.Entity<ValidationExecutionStepContentNodeResult>()
+            .HasOne(x=>x.ResultantContentNode)
+            .WithMany()
+            .HasForeignKey(x => x.ResultantContentNodeId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.ClientSetNull);
+
         modelBuilder.Entity<DomainGroup>()
             .ToTable("DomainGroups");
 
@@ -158,8 +332,8 @@ public class DocGenerationDbContext : DbContext
             .HasValue<PluginSourceReferenceItem>("PluginSourceReferenceItem")
             .HasValue<KernelMemoryDocumentSourceReferenceItem>("KernelMemoryDocumentSourceReferenceItem")
             .HasValue<DocumentProcessRepositorySourceReferenceItem>("DocumentProcessRepositorySourceReferenceItem")
-            .HasValue<DocumentLibrarySourceReferenceItem>("DocumentLibrarySourceReferenceItem")
-            .HasValue<PluginSourceReferenceItem>("PluginSourceReferenceItem");
+            .HasValue<DocumentLibrarySourceReferenceItem>("DocumentLibrarySourceReferenceItem");
+            
 
         modelBuilder.Entity<SourceReferenceItem>()
             .Property("Discriminator")
@@ -476,6 +650,20 @@ public class DocGenerationDbContext : DbContext
             .ToTable("DynamicDocumentProcessDefinitions");
 
         modelBuilder.Entity<DynamicDocumentProcessDefinition>()
+            .HasOne(x => x.AiModelDeployment)
+            .WithMany()
+            .HasForeignKey(x => x.AiModelDeploymentId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<DynamicDocumentProcessDefinition>()
+            .HasOne(x => x.AiModelDeploymentForValidation)
+            .WithMany()
+            .HasForeignKey(x => x.AiModelDeploymentForValidationId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<DynamicDocumentProcessDefinition>()
             .HasOne(x => x.DocumentOutline)
             .WithOne(x => x.DocumentProcessDefinition)
             .HasForeignKey<DocumentOutline>(x => x.DocumentProcessDefinitionId)
@@ -501,7 +689,21 @@ public class DocGenerationDbContext : DbContext
             .HasForeignKey(x => x.DynamicDocumentProcessDefinitionId)
             .IsRequired(false)
             .OnDelete(DeleteBehavior.Cascade);
-        
+
+        modelBuilder.Entity<DynamicDocumentProcessDefinition>()
+            .HasMany(x => x.AdditionalDocumentLibraries)
+            .WithOne(x => x.DynamicDocumentProcessDefinition)
+            .HasForeignKey(x => x.DynamicDocumentProcessDefinitionId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<DynamicDocumentProcessDefinition>()
+            .HasOne(x=>x.ValidationPipeline)
+            .WithOne(x=>x.DocumentProcess)
+            .HasForeignKey<DynamicDocumentProcessDefinition>(x => x.ValidationPipelineId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Cascade);
+
         modelBuilder.Entity<PromptDefinition>()
             .ToTable("PromptDefinitions");
 
@@ -680,6 +882,13 @@ public class DocGenerationDbContext : DbContext
             .IsRequired(false)
             .OnDelete(DeleteBehavior.Restrict);
 
+        modelBuilder.Entity<ContentNode>()
+            .HasOne(x=>x.AssociatedGeneratedDocument)
+            .WithMany()
+            .HasForeignKey(x => x.AssociatedGeneratedDocumentId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Restrict);
+
         modelBuilder.Entity<GeneratedDocument>()
             .HasOne(x => x.Metadata)
             .WithOne(x => x.GeneratedDocument)
@@ -781,6 +990,25 @@ public class DocGenerationDbContext : DbContext
         modelBuilder.Entity<DocumentGenerationSagaState>()
             .HasKey(x => x.CorrelationId);
 
+        // Mass Transit SAGA for Validation Pipeline Execution
+        modelBuilder.Entity<ValidationPipelineSagaState>()
+            .ToTable("ValidationPipelineSagaStates");
+
+        modelBuilder.Entity<ValidationPipelineSagaState>()
+            .HasKey(x => x.CorrelationId);
+
+        modelBuilder.Entity<ValidationPipelineSagaState>()
+            .Property(x => x.OrderedSteps)
+            .HasConversion(
+                v => JsonSerializer.Serialize(v, (JsonSerializerOptions)null!),
+                v => JsonSerializer.Deserialize<List<ValidationPipelineSagaStepInfo>>(v, (JsonSerializerOptions)null!) ?? new List<ValidationPipelineSagaStepInfo>())
+            .Metadata.SetValueComparer(new ValueComparer<List<ValidationPipelineSagaStepInfo>>(
+                (c1, c2) => c1!.SequenceEqual(c2!),
+                c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
+                c => c.ToList()
+            ));
+
+        
         // Table per hierarchy for Document Ingestion SAGA
         modelBuilder.Entity<DocumentIngestionSagaState>()
             .HasDiscriminator<string>("Discriminator")
@@ -982,4 +1210,47 @@ public class DocGenerationDbContext : DbContext
     /// Gets or sets the domain groups.
     /// </summary>
     public DbSet<DomainGroup> DomainGroups { get; set; }
+
+    /// <summary>
+    /// Gets or sets the database configurations.
+    /// </summary>
+    public DbSet<DbConfiguration> Configurations { get; set; } = null!;
+
+    /// <summary>
+    /// Gets or sets the document process validation pipelines.
+    /// </summary>
+    public DbSet<DocumentProcessValidationPipeline> DocumentProcessValidationPipelines { get; set; }
+
+    /// <summary>
+    /// Gets or sets the document process validation pipeline steps.
+    /// </summary>
+    public DbSet<DocumentProcessValidationPipelineStep> DocumentProcessValidationPipelineSteps { get; set; }
+    /// <summary>
+    /// Gets or sets the validation pipeline executions
+    /// </summary>
+    public DbSet<ValidationPipelineExecution> ValidationPipelineExecutions { get; set; }
+
+    /// <summary>
+    /// Gets or sets the validation pipeline execution
+    /// </summary>
+    public DbSet<ValidationPipelineExecutionStep> ValidationPipelineExecutionSteps { get; set; }
+    /// <summary>
+    /// Gets or sets the validation pipeline execution step results
+    /// </summary>
+    public DbSet<ValidationPipelineExecutionStepResult> ValidationPipelineExecutionStepResults { get; set; }
+
+    /// <summary>
+    /// Gets or sets the validation execution step content node results
+    /// </summary>
+    public DbSet<ValidationExecutionStepContentNodeResult> ValidationExecutionStepContentNodeResults { get; set; }
+
+    /// <summary>
+    /// Gets or sets the AI Models
+    /// </summary>
+    public DbSet<AiModel?> AiModels { get; set; }
+
+    /// <summary>
+    /// Gets or sets the AI Model Deployments
+    /// </summary>
+    public DbSet<AiModelDeployment> AiModelDeployments { get; set; }
 }

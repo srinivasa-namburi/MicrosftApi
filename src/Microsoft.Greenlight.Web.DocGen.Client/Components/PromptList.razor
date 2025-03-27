@@ -34,6 +34,8 @@
     [Parameter] public EventCallback OnPromptEdited { get; set; }
     [Parameter] public Guid ProcessId { get; set; }
 
+    // Add the cascading parameter to receive the dark mode setting
+    [CascadingParameter(Name = "IsDarkMode")] public bool IsDarkMode { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
@@ -55,10 +57,12 @@
         {
             { nameof(EditPromptDialog.Prompt), prompt },
             { nameof(EditPromptDialog.IsEditMode), isEditMode },
-            { nameof(EditPromptDialog.OnPromptSaved), EventCallback.Factory.Create<Guid>(this, OnPromptSaved) }
+            { nameof(EditPromptDialog.OnPromptSaved), EventCallback.Factory.Create<Guid>(this, OnPromptSaved) },
+            // Pass the IsDarkMode value directly to the dialog as dialogs don't inherit cascading parameters
+            { "IsDarkMode", IsDarkMode }
         };
 
-        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var options = new DialogOptions { MaxWidth = MaxWidth.ExtraLarge, FullWidth = true };
 
         DialogService.Show<EditPromptDialog>(isEditMode ? "Edit Prompt" : "Add Prompt", parameters, options);
     }

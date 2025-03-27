@@ -8,57 +8,62 @@ using Microsoft.Greenlight.Shared.Contracts;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
-using Microsoft.Greenlight.Shared.Models.DocumentProcess;
-using Microsoft.Greenlight.Shared.Services;
-using Microsoft.Greenlight.Shared.Services.Search;
+using Microsoft.Greenlight.Shared.Plugins;
 
 namespace Microsoft.Greenlight.DocumentProcess.Shared.Plugins.KmDocs;
 
-public class PluginRegistration : IPluginRegistration
+/// <summary>
+/// This particular Plugin Registration doesn't use registration, only initialization, because it creates
+/// many instances of the same plugin type with different configurations.
+/// </summary>
+public class PluginRegistration : IPluginInitializer
 {
     private readonly ConsolidatedSearchOptions _defaultSearchOptions = new ConsolidatedSearchOptions
-            {
-                DocumentLibraryType = DocumentLibraryType.PrimaryDocumentProcessLibrary,
-                IndexName = "default",
-                Top = 5,
-                MinRelevance = 0.7,
-                PrecedingPartitionCount = 0,
-                FollowingPartitionCount = 0
-            };
-
-    public void RegisterPlugin(IServiceCollection serviceCollection, IServiceProvider serviceProvider)
     {
-        var docDbContext = serviceProvider.GetRequiredService<DocGenerationDbContext>();
-        var configuration = serviceProvider.GetRequiredService<IConfiguration>();
-       
-        var dynamicDocumentProcessDefinitions = docDbContext.DynamicDocumentProcessDefinitions
-            .Where(x => x.LogicType == DocumentProcessLogicType.KernelMemory)
-            .Include(x=>x.DocumentOutline)
-            .ToList();
+        DocumentLibraryType = DocumentLibraryType.PrimaryDocumentProcessLibrary,
+        IndexName = "default",
+        Top = 5,
+        MinRelevance = 0.7,
+        PrecedingPartitionCount = 0,
+        FollowingPartitionCount = 0
+    };
 
+    public async Task InitializeAsync(IServiceProvider serviceProvider)
+    {
+        // Resolve required services from the built container.
+        var dbContext = serviceProvider.GetRequiredService<DocGenerationDbContext>();
+        var configuration = serviceProvider.GetRequiredService<IConfiguration>();
         var mapper = serviceProvider.GetRequiredService<IMapper>();
+        var registry = serviceProvider.GetRequiredService<IPluginRegistry>();
+
+        // For static plugins, query configuration if needed.
+        var serviceConfigurationOptions = configuration
+            .GetSection(ServiceConfigurationOptions.PropertyName)
+            .Get<ServiceConfigurationOptions>()!;
+
+        // Process static document processes from configuration.
+        foreach (var staticDocumentProcess in serviceConfigurationOptions.GreenlightServices.DocumentProcesses)
+        {
+            var documentProcessInfo = mapper.Map<DocumentProcessInfo>(staticDocumentProcess);
+            var consolidatedSearchOptions = GetConsolidatedSearchOptionsForDocumentProcess(documentProcessInfo);
+            var pluginInstance = new KmDocsPlugin(serviceProvider, documentProcessInfo, consolidatedSearchOptions);
+
+            registry.AddPlugin(documentProcessInfo.ShortName + "-KmDocsPlugin", pluginInstance, isDynamic: false);
+        }
+
+        var dynamicDocumentProcessDefinitions = dbContext.DynamicDocumentProcessDefinitions
+            .Where(x => x.LogicType == DocumentProcessLogicType.KernelMemory)
+            .Include(x => x.DocumentOutline)
+            .ToList();
 
         foreach (var documentProcess in dynamicDocumentProcessDefinitions)
         {
             var documentProcessInfo = mapper.Map<DocumentProcessInfo>(documentProcess);
-            // We can't use IConsolidatedSearchOptionsFactory here because it's not registered in the service collection yet
             var consolidatedSearchOptions = GetConsolidatedSearchOptionsForDocumentProcess(documentProcessInfo);
 
-            serviceCollection.AddKeyedSingleton<KmDocsPlugin>(documentProcess.ShortName + "-KmDocsPlugin",
-                (provider, o) => new KmDocsPlugin(provider, documentProcessInfo, consolidatedSearchOptions));
-        }
+            var pluginInstance = new KmDocsPlugin(serviceProvider, documentProcessInfo, consolidatedSearchOptions);
 
-        var serviceConfigurationOptions = configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
-        
-        foreach (var staticDocumentProcess in serviceConfigurationOptions.GreenlightServices.DocumentProcesses)
-        {
-            var documentProcessInfo = mapper.Map<DocumentProcessInfo>(staticDocumentProcess);
-
-            // We can't use IConsolidatedSearchOptionsFactory here because it's not registered in the service collection yet
-            var consolidatedSearchOptions = GetConsolidatedSearchOptionsForDocumentProcess(documentProcessInfo);
-            
-            serviceCollection.AddKeyedSingleton<KmDocsPlugin>(documentProcessInfo.ShortName + "-KmDocsPlugin",
-                (provider, o) => new KmDocsPlugin(provider, documentProcessInfo, consolidatedSearchOptions));
+            registry.AddPlugin(documentProcessInfo.ShortName + "-KmDocsPlugin", pluginInstance, isDynamic: false);
         }
     }
 

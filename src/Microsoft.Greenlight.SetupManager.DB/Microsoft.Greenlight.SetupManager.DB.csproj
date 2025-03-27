@@ -1,29 +1,25 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Worker">
-
-	<PropertyGroup>
-		<TargetFramework>net8.0</TargetFramework>
-		<Nullable>enable</Nullable>
-		<ImplicitUsings>enable</ImplicitUsings>
-		<ErrorOnDuplicatePublishOutputFiles>false</ErrorOnDuplicatePublishOutputFiles>
-		<UserSecretsId>dotnet-Microsoft.Greenlight.SetupManager.DB-cb1dcc0c-1e16-4630-afce-9dce1855d181</UserSecretsId>
-		<EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
-		<GenerateDocumentationFile>true</GenerateDocumentationFile>
-	</PropertyGroup>
-
-	<ItemGroup>
-	  <Compile Remove="manifests\**" />
-	  <Content Remove="manifests\**" />
-	  <EmbeddedResource Remove="manifests\**" />
-	  <None Remove="manifests\**" />
-	</ItemGroup>
-
-	<ItemGroup>
-		<ProjectReference Include="..\Microsoft.Greenlight.DocumentProcesses\Microsoft.Greenlight.DocumentProcesses.csproj" />
-		<ProjectReference Include="..\Microsoft.Greenlight.ServiceDefaults\Microsoft.Greenlight.ServiceDefaults.csproj" />
-		<ProjectReference Include="..\Microsoft.Greenlight.Shared\Microsoft.Greenlight.Shared.csproj" />
-	</ItemGroup>
-
-	<ItemGroup>
-	  <Folder Include="Properties\" />
-	</ItemGroup>
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ErrorOnDuplicatePublishOutputFiles>false</ErrorOnDuplicatePublishOutputFiles>
+    <UserSecretsId>dotnet-Microsoft.Greenlight.SetupManager.DB-cb1dcc0c-1e16-4630-afce-9dce1855d181</UserSecretsId>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="manifests\**" />
+    <Content Remove="manifests\**" />
+    <EmbeddedResource Remove="manifests\**" />
+    <None Remove="manifests\**" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Microsoft.Greenlight.DocumentProcesses\Microsoft.Greenlight.DocumentProcesses.csproj" />
+    <ProjectReference Include="..\Microsoft.Greenlight.ServiceDefaults\Microsoft.Greenlight.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\Microsoft.Greenlight.Shared\Microsoft.Greenlight.Shared.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Properties\" />
+  </ItemGroup>
 </Project>

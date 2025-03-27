@@ -31,6 +31,19 @@ public class ContentNodeInfo
     /// Unique identifier of the parent content node.
     /// </summary>
     public Guid? ParentId { get; set; }
+    
+    /// <summary>
+    /// Unique ID for generated document.
+    /// This is only used for outer parent nodes to establish the hierarchy.
+    /// </summary>
+    public Guid? GeneratedDocumentId { get; set; }
+
+    /// <summary>
+    /// Unique ID for the associated generated document.
+    /// This is used for inner nodes to establish what document they are associated with. Not to be used
+    /// to establish hierarchy of the content nodes.
+    /// </summary>
+    public Guid? AssociatedGeneratedDocumentId { get; set; }
 
     /// <summary>
     /// Value indicating whether to render the title only.

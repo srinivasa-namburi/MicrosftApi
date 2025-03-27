@@ -173,7 +173,7 @@ namespace Microsoft.Greenlight.Shared.Plugins
                                 }
                             }
 
-                            RegisterPluginTypes(assembly, scope.ServiceProvider, services);
+                            RegisterPluginTypes(assembly, services);
                             var pluginInfo = CreatePluginInfo(assembly, plugin, version, pluginDirectory);
                             PluginContainer.AddPlugin(plugin.Name, version.ToString(), pluginInfo);
                         }
@@ -216,7 +216,7 @@ namespace Microsoft.Greenlight.Shared.Plugins
             return pluginDirectory;
         }
 
-        private static void RegisterPluginTypes(Assembly assembly, IServiceProvider sp, IServiceCollection services)
+        private static void RegisterPluginTypes(Assembly assembly, IServiceCollection services)
         {
             const string registrationInterfaceFullName = "Microsoft.Greenlight.Extensions.Plugins.IPluginRegistration";
             var registrationTypes = GetImplementingTypes(assembly, registrationInterfaceFullName);
@@ -225,7 +225,7 @@ namespace Microsoft.Greenlight.Shared.Plugins
             {
                 if (Activator.CreateInstance(type) is IPluginRegistration pluginInstance)
                 {
-                    pluginInstance.RegisterPlugin(services, sp);
+                    pluginInstance.RegisterPlugin(services);
                 }
             }
         }

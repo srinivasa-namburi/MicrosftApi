@@ -1,49 +1,59 @@
-using System.Security.Claims;
+using MassTransit;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.IdentityModel.JsonWebTokens;
-using Microsoft.IdentityModel.Protocols.OpenIdConnect;
-using MudBlazor.Services;
 using Microsoft.Greenlight.ServiceDefaults;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
+using Microsoft.Greenlight.Shared.Core;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Helpers;
+using Microsoft.Greenlight.Shared.Management;
 using Microsoft.Greenlight.Web.DocGen.Auth;
 using Microsoft.Greenlight.Web.DocGen.Components;
 using Microsoft.Greenlight.Web.DocGen.ServiceClients;
 using Microsoft.Greenlight.Web.Shared;
 using Microsoft.Greenlight.Web.Shared.Auth;
 using Microsoft.Greenlight.Web.Shared.ServiceClients;
+using Microsoft.IdentityModel.JsonWebTokens;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
+using MudBlazor.Services;
 using StackExchange.Redis;
+using System.Security.Claims;
 using Yarp.ReverseProxy.Transforms;
-using Microsoft.AspNetCore.Mvc;
 
-var builder = WebApplication.CreateBuilder(args);
+var builder = new GreenlightDynamicWebApplicationBuilder(args);
 
 builder.AddServiceDefaults();
 
-//builder.Services.AddReverseProxy();
+//Initialize AdminHelper with configuration
+AdminHelper.Initialize(builder.Configuration);
+
+// UPDATED: First add the DbContext and configuration provider
+builder.AddGreenlightDbContextAndConfiguration();
+
+// Bind the ServiceConfigurationOptions to configuration
+builder.Services.AddOptions<ServiceConfigurationOptions>()
+    .Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
 
 var azureAdSection = builder.Configuration.GetSection("AzureAd");
 builder.Services.Configure<AzureAdOptions>(azureAdSection);
 var azureAdSettings = azureAdSection.Get<AzureAdOptions>();
 
-var serviceConfigurationSection = builder.Configuration.GetSection("ServiceConfiguration");
-builder.Services.Configure<ServiceConfigurationOptions>(serviceConfigurationSection);
-var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
-
 builder.Services.AddSingleton<AzureCredentialHelper>();
 var credentialHelper = new AzureCredentialHelper(builder.Configuration);
 
-//Initialize AdminHelper with configuration
-AdminHelper.Initialize(builder.Configuration);
-
+builder.AddGreenlightServices(credentialHelper, serviceConfigurationOptions);
 
 var apiUri = new Uri("https+http://api-main");
 
@@ -133,7 +143,7 @@ builder.Services.AddAuthentication("MicrosoftOidc")
         // for multi-tenant apps. You can also use the "common" Authority for 
         // single-tenant apps, but it requires a custom IssuerValidator as shown 
         // in the comments below. 
-        oidcOptions.Authority = $"https://login.microsoftonline.com/{azureAdSettings.TenantId}/v2.0/";
+        oidcOptions.Authority = $"{azureAdSettings.Instance.TrimEnd('/')}/{azureAdSettings.TenantId}/v2.0/";
         oidcOptions.ClientId = azureAdSettings.ClientId;
         oidcOptions.ClientSecret = azureAdSettings.ClientSecret;
         oidcOptions.ResponseType = OpenIdConnectResponseType.Code;
@@ -158,18 +168,20 @@ builder.Services.AddAuthentication("MicrosoftOidc")
         {
             OnRedirectToIdentityProvider = context =>
             {
-                // When we're hosting outside localhost, we need to rewrite to use https
-                // This is because we're behind a reverse proxy that terminates SSL and renders the URLs internally as http, not https
-                if (!context.ProtocolMessage.RedirectUri.Contains("localhost"))
-                {
-                    var urlBuilder = new UriBuilder(context.ProtocolMessage.RedirectUri)
-                    {
-                        Scheme = "https",
-                        Port = -1
-                    };
-                    context.ProtocolMessage.RedirectUri = urlBuilder.Uri.ToString();
-                }
-                return Task.FromResult(0);
+                // Build the external URL using the forwarded scheme, host and path base.
+                // This ensures the RedirectUri uses the browser-visible domain (e.g. https://web.example.com)
+                
+                var request = context.HttpContext.Request;
+
+                string selectedScheme = !context.ProtocolMessage.RedirectUri.Contains("localhost") ? "https" : request.Scheme;
+
+                var externalRedirectUri = 
+                    $"{selectedScheme}://{request.Host.ToString().TrimEnd('/')}" +
+                    $"{request.PathBase.ToString().TrimEnd('/')}" +
+                    $"/signin-oidc";
+
+                context.ProtocolMessage.RedirectUri = externalRedirectUri;
+                return Task.CompletedTask;
             },
             OnTokenValidated = async context =>
             {
@@ -205,11 +217,6 @@ builder.Services.AddRazorComponents()
 
 builder.Services.AddScoped<AuthenticationStateProvider, PersistingAuthenticationStateProvider>();
 builder.Services.AddHttpForwarderWithServiceDiscovery();
-
-builder.AddAzureBlobClient("blob-docing");
-
-builder.AddGreenLightRedisClient("redis", credentialHelper, serviceConfigurationOptions);
-
 builder.Services.AddSingleton<IUserIdProvider, SignalRCustomUserIdProvider>();
 
 builder.Services.AddMudServices();
@@ -246,12 +253,42 @@ builder.Services.Configure<FormOptions>(options =>
     options.MultipartBodyLengthLimit = 10 * 1024 * 1024 * 20; // 200MB
 });
 
+var serviceBusConnectionString = builder.Configuration.GetConnectionString("sbus");
+serviceBusConnectionString = serviceBusConnectionString?.Replace("https://", "sb://").Replace(":443/", "/");
+
+builder.Services.AddMassTransit(x =>
+{
+    x.SetKebabCaseEndpointNameFormatter();
+    
+    // FanOut consumers are the only use for this in the Web Docgen project.
+    x.AddFanOutConsumersForNonWorkerNode();
+    x.UsingAzureServiceBus((context, cfg) =>
+    {
+        cfg.Host(serviceBusConnectionString, configure: config =>
+        {
+            config.TokenCredential = credentialHelper.GetAzureCredential();
+        });
+
+        cfg.AddFanOutSubscriptionEndpointsForNonWorkerNode(context);
+
+    });
+});
+
+builder.Services.AddSingleton<IHostedService, ShutdownCleanupService>();
+
 var redisConnection = builder.Services.BuildServiceProvider().GetRequiredService<IConnectionMultiplexer>();
 
 builder.Services.AddDataProtection()
     .PersistKeysToStackExchangeRedis(redisConnection, "DataProtection-Keys");
 
 var app = builder.Build();
+
+var forwardedHeadersOptions = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost
+};
+
+app.UseForwardedHeaders(forwardedHeadersOptions);
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
@@ -276,6 +313,9 @@ app.MapRazorComponents<App>()
 
 // BFF Forwarders for the client.
 // Use MapForwarder to forward requests to the API. API address is https://api-main, and all paths starting with /api will be forwarded.
+
+// This does not require authorization.
+app.MapForwarder("/api/configuration/frontend", "https://api-main/");
 
 app.MapForwarder("/api/{**catch-all}", "https://api-main/", transformBuilder =>
 {

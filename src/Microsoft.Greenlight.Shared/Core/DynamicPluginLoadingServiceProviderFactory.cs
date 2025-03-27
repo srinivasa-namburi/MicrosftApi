@@ -51,6 +51,9 @@ namespace Microsoft.Greenlight.Shared.Core
             // Now that all services are registered, create the final ServiceProvider
             var serviceProvider = _innerFactory.CreateServiceProvider(containerBuilder);
 
+            // We add the plugin registry as a singleton to have it ready for dynamic plugin registration
+            containerBuilder.AddSingleton<IPluginRegistry, DefaultPluginRegistry>();
+
             // Now that the ServiceProvider is built, load plugins
             var pluginManager = serviceProvider.GetRequiredService<DynamicPluginManager>();
             pluginManager.EnsurePluginsLoadedAsync(containerBuilder).GetAwaiter().GetResult();

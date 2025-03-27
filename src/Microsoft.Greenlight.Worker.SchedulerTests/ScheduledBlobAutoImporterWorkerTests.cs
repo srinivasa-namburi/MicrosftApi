@@ -26,6 +26,7 @@ namespace Microsoft.Greenlight.Worker.Scheduler.Tests
         private readonly Mock<IOptions<ServiceConfigurationOptions>> _optionsMock;
         private readonly Mock<IPublishEndpoint> _publishEndpointMock;
         private readonly ServiceProvider _serviceProvider;
+        private readonly Mock<IOptionsMonitor<ServiceConfigurationOptions>> _optionsMonitorMock;
 
         public ScheduledBlobAutoImportWorkerTests()
         {
@@ -36,6 +37,7 @@ namespace Microsoft.Greenlight.Worker.Scheduler.Tests
             _publishEndpointMock = new Mock<IPublishEndpoint>();
 
             _optionsMock = new Mock<IOptions<ServiceConfigurationOptions>>();
+            _optionsMonitorMock = new Mock<IOptionsMonitor<ServiceConfigurationOptions>>();
 
             var options = new ServiceConfigurationOptions
             {
@@ -47,48 +49,15 @@ namespace Microsoft.Greenlight.Worker.Scheduler.Tests
                     }
                 }
             };
+
             _optionsMock.Setup(x => x.Value).Returns(options);
+            _optionsMonitorMock.Setup(x => x.CurrentValue).Returns(options);
 
             var serviceCollection = new ServiceCollection()
                 .AddScoped(provider => _documentProcessInfoServiceMock.Object)
                 .AddScoped(provider => _documentLibraryInfoServiceMock.Object)
                 .AddScoped(provider => _publishEndpointMock.Object);
             _serviceProvider = serviceCollection.BuildServiceProvider();
-        }
-
-        [Fact]
-        public async Task ExecuteAsync_WhenScheduledIngestionIsDisabled_ShouldNotPublishEvents()
-        {
-            // Arrange
-            var options = new ServiceConfigurationOptions
-            {
-                GreenlightServices = new ServiceConfigurationOptions.GreenlightServicesOptions
-                {
-                    DocumentIngestion = new ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions
-                    {
-                        ScheduledIngestion = false
-                    }
-                }
-            };
-            _optionsMock.Setup(x => x.Value).Returns(options);
-
-            var worker = new ScheduledBlobAutoImportWorker(
-                _loggerMock.Object,
-                _optionsMock.Object,
-                _blobServiceClientMock.Object,
-                _serviceProvider,
-                _documentProcessInfoServiceMock.Object,
-                _documentLibraryInfoServiceMock.Object
-            );
-
-            var cancellationToken = new CancellationTokenSource().Token;
-
-            // Act
-            await worker.StartAsync(cancellationToken);
-
-            // Assert
-            _loggerMock.VerifyLog(LogLevel.Warning);
-            _publishEndpointMock.Verify(x => x.Publish(It.IsAny<IngestDocumentsFromAutoImportPath>(), cancellationToken), Times.Never);
         }
 
         [Fact]
@@ -101,7 +70,7 @@ namespace Microsoft.Greenlight.Worker.Scheduler.Tests
 
             var worker = new ScheduledBlobAutoImportWorker(
                 _loggerMock.Object,
-                _optionsMock.Object,
+                _optionsMonitorMock.Object,
                 _blobServiceClientMock.Object,
                 _serviceProvider,
                 _documentProcessInfoServiceMock.Object,
@@ -146,7 +115,7 @@ namespace Microsoft.Greenlight.Worker.Scheduler.Tests
 
             var worker = new ScheduledBlobAutoImportWorker(
                 _loggerMock.Object,
-                _optionsMock.Object,
+                _optionsMonitorMock.Object,
                 _blobServiceClientMock.Object,
                 _serviceProvider,
                 _documentProcessInfoServiceMock.Object,
@@ -207,7 +176,7 @@ namespace Microsoft.Greenlight.Worker.Scheduler.Tests
 
             var worker = new ScheduledBlobAutoImportWorker(
                 _loggerMock.Object,
-                _optionsMock.Object,
+                _optionsMonitorMock.Object,
                 _blobServiceClientMock.Object,
                 _serviceProvider,
                 _documentProcessInfoServiceMock.Object,

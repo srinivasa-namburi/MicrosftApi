@@ -1,3 +1,5 @@
+using Microsoft.Greenlight.Shared.Models.Validation;
+
 namespace Microsoft.Greenlight.Shared.Models;
 
 /// <summary>
@@ -44,4 +46,9 @@ public class GeneratedDocument : EntityBase
     /// List of links to exported versions of the document.
     /// </summary>
     public List<ExportedDocumentLink> ExportedDocumentLinks { get; set; } = [];
+
+    /// <summary>
+    /// List of validation pipeline executions associated with the document.
+    /// </summary>
+    public List<ValidationPipelineExecution> ValidationPipelineExecutions { get; set; } = [];
 }

@@ -8,9 +8,13 @@ var builder = Host.CreateApplicationBuilder(args);
 
 builder.AddServiceDefaults();
 
+// Initialize AdminHelper with configuration
+AdminHelper.Initialize(builder.Configuration);
+
 builder.Services.AddSingleton<AzureCredentialHelper>();
 builder.Services.AddOptions<ServiceConfigurationOptions>()
                 .Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
+
 builder.Services.AddSingleton<SetupDataInitializerService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<SetupDataInitializerService>());
 builder.Services.AddOpenTelemetry()
@@ -18,8 +22,9 @@ builder.Services.AddOpenTelemetry()
 
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName)
                                                        .Get<ServiceConfigurationOptions>()!;
-// Initialize AdminHelper with configuration
-AdminHelper.Initialize(builder.Configuration);
+builder.AddDocGenDbContext(serviceConfigurationOptions);
+
+
 var credentialHelper = new AzureCredentialHelper(builder.Configuration);
 builder.AddGreenlightServices(credentialHelper, serviceConfigurationOptions);
 

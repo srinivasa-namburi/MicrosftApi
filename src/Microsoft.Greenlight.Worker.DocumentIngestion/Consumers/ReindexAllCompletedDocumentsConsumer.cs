@@ -29,7 +29,7 @@ public class ReindexAllCompletedDocumentsConsumer : IConsumer<ReindexAllComplete
     public ReindexAllCompletedDocumentsConsumer(
         ILogger<ReindexAllCompletedDocumentsConsumer> logger,
         DocGenerationDbContext dbContext,
-        IOptions<ServiceConfigurationOptions> options,
+        IOptionsSnapshot<ServiceConfigurationOptions> options,
         IServiceProvider sp)
     {
         _logger = logger;

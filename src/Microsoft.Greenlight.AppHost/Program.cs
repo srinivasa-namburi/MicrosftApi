@@ -119,6 +119,7 @@ var dbSetupManager = builder
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
     .WithConfigSection(envAzureConfigurationSection)
+    .WithConfigSection(envAzureAdConfigurationSection)
     .WithReference(docGenSql)
     .WaitFor(docGenSql);
 
@@ -144,6 +145,7 @@ var servicesSetupManager = builder
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
     .WithConfigSection(envAzureConfigurationSection)
+    .WithConfigSection(envAzureAdConfigurationSection)
     .WithReference(azureAiSearch)
     .WithReference(blobStorage)
     .WithReference(sbus)
@@ -173,6 +175,7 @@ var workerScheduler = builder
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
     .WithConfigSection(envAzureConfigurationSection)
+    .WithConfigSection(envAzureAdConfigurationSection)
     .WithReference(blobStorage)
     .WithReference(docGenSql)
     .WithReference(sbus)
@@ -188,6 +191,7 @@ var workerDocumentGeneration = builder
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
     .WithConfigSection(envAzureConfigurationSection)
+    .WithConfigSection(envAzureAdConfigurationSection)
     .WithReference(azureAiSearch)
     .WithReference(blobStorage)
     .WithReference(docGenSql)
@@ -203,6 +207,7 @@ var workerDocumentIngestion = builder
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
     .WithConfigSection(envAzureConfigurationSection)
+    .WithConfigSection(envAzureAdConfigurationSection)
     .WithReference(azureAiSearch)
     .WithReference(blobStorage)
     .WithReference(docGenSql)
@@ -215,6 +220,22 @@ var workerChat = builder.AddProject<Projects.Microsoft_Greenlight_Worker_Chat>("
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
     .WithConfigSection(envAzureConfigurationSection)
+    .WithConfigSection(envAzureAdConfigurationSection)
+    .WithReference(azureAiSearch)
+    .WithReference(blobStorage)
+    .WithReference(docGenSql)
+    .WithReference(sbus)
+    .WithReference(redisResource)
+    .WithReference(apiMain)
+    .WaitForCompletion(dbSetupManager);
+
+var workerValidation = builder.AddProject<Projects.Microsoft_Greenlight_Worker_Validation>("worker-validation")
+    .WithReplicas(Convert.ToUInt16(
+        builder.Configuration["ServiceConfiguration:GreenlightServices:DocumentValidation:NumberOfValidationWorkers"]))
+    .WithConfigSection(envServiceConfigurationConfigurationSection)
+    .WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithConfigSection(envAzureConfigurationSection)
+    .WithConfigSection(envAzureAdConfigurationSection)
     .WithReference(azureAiSearch)
     .WithReference(blobStorage)
     .WithReference(docGenSql)
@@ -231,6 +252,8 @@ if(insights is not null)
     workerDocumentIngestion.WithReference(insights);
     workerChat.WithReference(insights);
 }
+
+
 
 builder.Build().Run();
 

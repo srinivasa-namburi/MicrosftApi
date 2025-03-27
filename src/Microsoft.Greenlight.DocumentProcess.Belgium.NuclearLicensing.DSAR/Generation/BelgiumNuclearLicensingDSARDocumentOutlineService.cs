@@ -18,7 +18,7 @@ public class BelgiumNuclearLicensingDSARDocumentOutlineService : IDocumentOutlin
     private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
 
     public BelgiumNuclearLicensingDSARDocumentOutlineService(
-        IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
+        IOptionsSnapshot<ServiceConfigurationOptions> serviceConfigurationOptions,
         Kernel sk,
         DocGenerationDbContext dbContext,
         ILogger<BelgiumNuclearLicensingDSARDocumentOutlineService> logger

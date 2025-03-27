@@ -1,5 +1,8 @@
+@using Microsoft.Greenlight.Shared.Configuration
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Configuration
 @inject IDocumentProcessApiClient DocumentProcessApiClient
 @inject IDocumentLibraryApiClient DocumentLibraryApiClient
+@inject IConfigurationApiClient ConfigurationApiClient
 @inject IPluginApiClient PluginApiClient
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
@@ -23,6 +26,26 @@
                         <MudSelectItem Value="@(completionType as DocumentProcessCompletionServiceType?)">@completionType.ToString()</MudSelectItem>
                     }
                 </MudSelect>
+                <MudSelect T="AiModelDeploymentInfo" @bind-Value="SelectedDeployment" Label="AI Model Deployment" 
+                           ToStringFunc="@(d => d.DeploymentName)">
+                    @foreach (var deployment in _aiModelDeployments)
+                    {
+                        <MudSelectItem Value="@deployment">
+                            @deployment.DeploymentName
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+                
+                <MudSelect T="AiModelDeploymentInfo" @bind-Value="SelectedValidationDeployment" Label="AI Model Deployment for Validation" 
+                           ToStringFunc="@(d => d.DeploymentName)">
+                    @foreach (var deployment in _aiModelDeployments)
+                    {
+                        <MudSelectItem Value="@deployment">
+                            @deployment.DeploymentName
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+
             </MudItem>
 
             <MudItem xs="12" md="6">
@@ -174,7 +197,8 @@
     private DocumentProcessInfo? _process = new();
     private bool _isEditMode;
     private bool _showPrompts;
-    private List<PromptInfo> _prompts = new();
+    private List<PromptInfo> _prompts = [];
+
 
     private string _indexName = string.Empty;
     private double _minimumRelevancePercentage
@@ -187,7 +211,50 @@
         }
     }
 
-    private string[] _minimumRelevanceStepLabels = Enumerable.Range(0, 11).Select(i => $"{i * 10}%").ToArray();
+    // Intermediate property for binding the selected deployment.
+    private AiModelDeploymentInfo? SelectedDeployment
+    {
+        get
+        {
+            // Return the deployment that matches the currently selected ID (if any).
+            return _aiModelDeployments.FirstOrDefault(d => d.Id == _process.AiModelDeploymentId);
+        }
+        set
+        {
+            if (value is not null)
+            {
+                _process.AiModelDeploymentId = value.Id;
+            }
+            else
+            {
+                _process.AiModelDeploymentId = null;
+            }
+        }
+    }
+
+    // Intermediate property for binding the selected validation deployment.
+    private AiModelDeploymentInfo? SelectedValidationDeployment
+    {
+        get
+        {
+            // Return the deployment that matches the currently selected validation ID (if any).
+            return _aiModelDeployments.FirstOrDefault(d => d.Id == _process.AiModelDeploymentForValidationId);
+        }
+        set
+        {
+            if (value is not null)
+            {
+                _process.AiModelDeploymentForValidationId = value.Id;
+            }
+            else
+            {
+                _process.AiModelDeploymentForValidationId = null;
+            }
+        }
+    }
+
+    private readonly string[] _minimumRelevanceStepLabels = Enumerable.Range(0, 11).Select(i => $"{i * 10}%").ToArray();
+
     // Plugin-related fields
     private List<DynamicPluginInfo> _availablePlugins = new();
     private List<PluginAssociationViewModel> _associatedPlugins = new();
@@ -195,11 +262,15 @@
     // Document Library-related fields
     private List<DocumentLibraryInfo> _associatedLibraries = new();
     private List<DocumentLibraryInfo> _availableLibraries = new();
+    private List<AiModelDeploymentInfo> _aiModelDeployments = new();
 
     protected override async Task OnInitializedAsync()
     {
         if (ProcessId.HasValue)
         {
+            // Load AI Model Deployments
+            _aiModelDeployments = await ConfigurationApiClient.GetAiModelDeploymentsAsync();
+
             _isEditMode = true;
             _process = await DocumentProcessApiClient.GetDocumentProcessInfoByIdAsync(ProcessId.Value) ?? new DocumentProcessInfo();
 
@@ -323,7 +394,7 @@
             { "DocumentProcessId", _process.Id },
             { "DocumentProcessName", _process.ShortName}
         };
-        var options = new DialogOptions { MaxWidth = MaxWidth.ExtraExtraLarge, FullScreen = true};
+        var options = new DialogOptions { MaxWidth = MaxWidth.ExtraExtraLarge, FullScreen = true };
         var dialog = await DialogService.ShowAsync<EditMetadataFieldsDialog>("Metadata Fields Editor", parameters, options);
         var result = await dialog.Result;
 

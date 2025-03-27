@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Greenlight.Shared.Enums;
 
 namespace Microsoft.Greenlight.Shared.Helpers
 {
@@ -75,6 +76,45 @@ namespace Microsoft.Greenlight.Shared.Helpers
 
             Console.WriteLine("AdminHelper check false : Not running in Azure Container Apps");
             return false;
+        }
+
+        /// <summary>
+        /// Determine the worker node type based on the currently running AppDomain
+        /// </summary>
+        /// <returns></returns>
+        public static WorkerNodeType DetermineCurrentlyRunningWorkerNodeType()
+        {
+            // Get AppDomain friendly name
+            var friendlyName = AppDomain.CurrentDomain.FriendlyName.ToLowerInvariant();
+
+            // Check for Web node
+            if (friendlyName.Contains("web."))
+            {
+                return WorkerNodeType.Web;
+            }
+
+            // Check for API node
+            if (friendlyName.Contains("api."))
+            {
+                return WorkerNodeType.Api;
+            }
+
+            // Check for Worker node
+            if (friendlyName.Contains("worker."))
+            {
+                return WorkerNodeType.Worker;
+            }
+
+            // Check for System node
+            // ReSharper disable once StringLiteralTypo
+            if (friendlyName.Contains("setupmanager."))
+            {
+                return WorkerNodeType.System;
+            }
+
+            // By default return Worker node
+            return WorkerNodeType.Worker;
+
         }
     }
 }

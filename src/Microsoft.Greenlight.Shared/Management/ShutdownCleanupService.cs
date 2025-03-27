@@ -18,6 +18,8 @@ public class ShutdownCleanupService : IHostedService
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ShutdownCleanupService"/> class.
+    /// This service is responsible for cleaning up resources during application shutdown and is run for every
+    /// worker node type except the SetupManager.DB worker type.
     /// </summary>
     /// <param name="configuration">The configuration instance.</param>
     /// <param name="credentialHelper">The Azure credential helper instance.</param>
@@ -32,7 +34,7 @@ public class ShutdownCleanupService : IHostedService
         var domainNameShort = domainNameParts[^1];
 
         // Register the restart worker subscription for this node
-        _subscriptionName = RestartWorkerConsumer.GetRestartWorkerEndpointName();
+        _subscriptionName = ServiceBusSubscriptionNameHelper.GetRestartWorkerEndpointName();
         _topicPath = "microsoft.greenlight.shared.contracts.messages/restartworker";
 
         var serviceBusConnectionString = configuration.GetConnectionString("sbus");
@@ -85,18 +87,20 @@ public class ShutdownCleanupService : IHostedService
     /// <returns>A task that represents the asynchronous operation.</returns>
     private void RemovePluginTemporaryDirectories(CancellationToken cancellationToken)
     {
-        if (Directory.Exists(_pluginTemporaryBasePath))
+        if (!Directory.Exists(_pluginTemporaryBasePath))
         {
-            foreach (var directory in Directory.GetDirectories(_pluginTemporaryBasePath, "*", SearchOption.AllDirectories))
+            return;
+        }
+
+        foreach (var directory in Directory.GetDirectories(_pluginTemporaryBasePath, "*", SearchOption.AllDirectories))
+        {
+            try
             {
-                try
-                {
-                    Directory.Delete(directory, true);
-                }
-                catch
-                {
-                    continue;
-                }
+                Directory.Delete(directory, true);
+            }
+            catch
+            {
+                continue;
             }
         }
     }

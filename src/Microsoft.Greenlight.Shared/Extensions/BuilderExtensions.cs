@@ -6,20 +6,26 @@ using Azure.AI.OpenAI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
+using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Exporters;
 using Microsoft.Greenlight.Shared.Helpers;
+using Microsoft.Greenlight.Shared.Management.Configuration;
 using Microsoft.Greenlight.Shared.Mappings;
 using Microsoft.Greenlight.Shared.Plugins;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.Shared.Services.Search;
+using Microsoft.Greenlight.Shared.Services.Validation;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
 using Microsoft.SemanticKernel.Embeddings;
 using StackExchange.Redis;
 using StackExchange.Redis.Configuration;
+using System.Reflection;
+using Microsoft.Extensions.Options;
 
 namespace Microsoft.Greenlight.Shared.Extensions;
 #pragma warning disable SKEXP0011
@@ -31,6 +37,48 @@ namespace Microsoft.Greenlight.Shared.Extensions;
 /// </summary>
 public static class BuilderExtensions
 {
+    /// <summary>
+    /// Sets up the database context and configuration provider.
+    /// </summary>
+    /// <param name="builder">The host application builder.</param>
+    /// <returns>The updated host application builder.</returns>
+    public static IHostApplicationBuilder AddGreenlightDbContextAndConfiguration(this IHostApplicationBuilder builder)
+    {
+        // Get service configuration options from static configuration
+        var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
+
+        // Add the database context
+        builder.AddDocGenDbContext(serviceConfigurationOptions);
+
+        // Skip database configuration provider setup if running in "Microsoft.Greenlight.SetupManager.DB"
+        var entryAssemblyName = Assembly.GetEntryAssembly()?.GetName().Name;
+        if (entryAssemblyName != "Microsoft.Greenlight.SetupManager.DB")
+        {
+            // Create the source first
+            var configSource = new EfCoreConfigurationProviderSource(builder.Services);
+
+            // Add the database configuration provider
+            builder.Services.AddSingleton<EfCoreConfigurationProvider>(sp =>
+            {
+                var dbContext = sp.GetRequiredService<DocGenerationDbContext>();
+                var logger = sp.GetRequiredService<ILogger<EfCoreConfigurationProvider>>();
+                var optionsMonitor = sp.GetRequiredService<IOptionsMonitor<ServiceConfigurationOptions>>();
+                var configuration = (IConfigurationRoot)sp.GetRequiredService<IConfiguration>();
+
+                var provider = new EfCoreConfigurationProvider(dbContext, logger, optionsMonitor, configuration);
+
+                // Store the reference to this instance in the source
+                configSource.SetProviderInstance(provider);
+
+                return provider;
+            });
+
+            // Add the EfCoreConfigurationProvider to the configuration sources
+            builder.Configuration.Add(configSource);
+        }
+
+        return builder;
+    }
     /// <summary>
     /// Adds Greenlight services to the host application builder.
     /// </summary>
@@ -79,26 +127,38 @@ public static class BuilderExtensions
                 service.GetRequiredKeyedService<AzureOpenAIClient>("openai-planner"), "openai-chatcompletion")
         );
 
-        
+
         builder.Services.AddScoped<ITextEmbeddingGenerationService>(service =>
             new AzureOpenAITextEmbeddingGenerationService(serviceConfigurationOptions.OpenAi.EmbeddingModelDeploymentName,
                 service.GetRequiredKeyedService<AzureOpenAIClient>("openai-planner"), "openai-embeddinggeneration")
         );
 
-        builder.AddRabbitMQClient("rabbitmqdocgen");
-
         builder.AddGreenLightRedisClient("redis", credentialHelper, serviceConfigurationOptions);
-        
 
         builder.Services.AddScoped<AzureFileHelper>();
         builder.Services.AddSingleton<SearchClientFactory>();
 
         builder.Services.AddKeyedTransient<IDocumentExporter, WordDocumentExporter>("IDocumentExporter-Word");
 
-        builder.AddDocGenDbContext(serviceConfigurationOptions);
-
         builder.Services.AddSingleton<IPluginSourceReferenceCollector, PluginSourceReferenceCollector>();
         builder.Services.AddKeyedScoped<IFunctionInvocationFilter, InputOutputTrackingPluginInvocationFilter>("InputOutputTrackingPluginInvocationFilter");
+
+        builder.Services.AddSingleton<ValidationStepExecutionLogicFactory>();
+
+        // Add all IValidationStepExecutionLogic implementations
+        builder.Services
+            .AddKeyedScoped<IValidationStepExecutionLogic, ParallelByOuterChapterValidationStepExecutionLogic>(
+                nameof(ParallelByOuterChapterValidationStepExecutionLogic));
+
+        builder.Services
+            .AddKeyedScoped<IValidationStepExecutionLogic, ParallelFullDocumentValidationStepExecutionLogic>(
+                nameof(ParallelFullDocumentValidationStepExecutionLogic));
+
+        builder.Services
+            .AddKeyedScoped<IValidationStepExecutionLogic, SequentialFullDocumentValidationStepExecutionLogic>(
+                nameof(SequentialFullDocumentValidationStepExecutionLogic));
+
+        builder.Services.AddScoped<IContentNodeService, ContentNodeService>();
 
         return builder;
     }
@@ -111,7 +171,7 @@ public static class BuilderExtensions
     /// <param name="credentialHelper">The Azure credential helper.</param>
     /// <param name="serviceConfigurationOptions">The service configuration options.</param>
     /// <returns>The updated host application builder.</returns>
-    public static IHostApplicationBuilder AddGreenLightRedisClient(this IHostApplicationBuilder builder,
+    private static IHostApplicationBuilder AddGreenLightRedisClient(this IHostApplicationBuilder builder,
         string redisConnectionStringName, AzureCredentialHelper credentialHelper,
         ServiceConfigurationOptions serviceConfigurationOptions)
     {
@@ -139,6 +199,7 @@ public static class BuilderExtensions
 
         return builder;
     }
+
 
     /// <summary>
     /// Gets a service for the specified document process.
@@ -185,6 +246,7 @@ public static class BuilderExtensions
         return service;
     }
 
+
     /// <summary>
     /// Gets a service for the specified document process.
     /// </summary>
@@ -218,7 +280,7 @@ public static class BuilderExtensions
                   scope.ServiceProvider.GetKeyedService<T>(dynamicServiceKey) ??
                   scope.ServiceProvider.GetKeyedService<T>($"Default-{typeof(T).Name}") ??
                   scope.ServiceProvider.GetService<T>();
-        
+
         // If the service is still null - it may not be scoped but exists as a singleton. Try to get the singleton service.
         if (service == null)
         {
@@ -229,5 +291,29 @@ public static class BuilderExtensions
         }
 
         return service;
+    }
+
+    /// <summary>
+    /// Get a Semantic Kernel instance specifically for document validation for a given document process.
+    /// </summary>
+    /// <param name="sp"></param>
+    /// <param name="documentProcessName"></param>
+    /// <returns></returns>
+    public static Kernel? GetValidationSemanticKernelForDocumentProcess(this IServiceProvider sp, string documentProcessName)
+    {
+        if (sp == null)
+        {
+            throw new ArgumentNullException(nameof(sp));
+        }
+
+        if (documentProcessName == null)
+        {
+            throw new ArgumentNullException(nameof(documentProcessName));
+        }
+
+        var kernelFactory = sp.GetRequiredService<IKernelFactory>();
+        var kernel = kernelFactory.GetValidationKernelForDocumentProcessAsync(documentProcessName).Result;
+        
+        return kernel;
     }
 }

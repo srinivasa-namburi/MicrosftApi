@@ -3,10 +3,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Data.Sql;
-using Microsoft.Greenlight.Shared.Extensions;
+using Microsoft.Greenlight.Shared.Enums;
+using Microsoft.Greenlight.Shared.Services;
 using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
-using Microsoft.SemanticKernel.Connectors.OpenAI;
 using System.Collections.Concurrent;
 using System.Threading.Tasks.Dataflow;
 
@@ -20,18 +19,19 @@ namespace Microsoft.Greenlight.API.Main.Controllers
     {
         private readonly DocGenerationDbContext _dbContext;
         private readonly IMapper _mapper;
-        private readonly IServiceProvider _sp;
+        private readonly IKernelFactory _kernelFactory;
 
         /// <inheritdoc />
         public CopilotAgentController(
             DocGenerationDbContext dbContext,
             IMapper mapper,
-            IServiceProvider sp
+            IServiceProvider sp,
+            IKernelFactory kernelFactory
             )
         {
             _dbContext = dbContext;
             _mapper = mapper;
-            _sp = sp;
+            _kernelFactory = kernelFactory;
         }
 
         /// <summary>
@@ -86,30 +86,15 @@ namespace Microsoft.Greenlight.API.Main.Controllers
             var kernelDictionary = new Dictionary<string, Kernel>();
             var resultDictionary = new ConcurrentDictionary<string, string>();
 
-            var openAiSettings = new AzureOpenAIPromptExecutionSettings()
-            {
-                ChatSystemPrompt = systemPrompt,
-                ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions,
-                MaxTokens = 2000,
-                Temperature = 1.0
-            };
-
             foreach (var dp in documentProcesses)
             {
-                var dpKernel = _sp.GetRequiredServiceForDocumentProcess<Kernel>(dp.ShortName);
-
-                if (dpKernel.Plugins.Count == 0)
-                {
-                    dpKernel.Plugins.Clear();
-                    await dpKernel.Plugins.AddSharedAndDocumentProcessPluginsToPluginCollectionAsync(_sp,
-                        _mapper.Map<DocumentProcessInfo>(dp));
-                }
-
+                var dpKernel = await _kernelFactory.GetKernelForDocumentProcessAsync(dp.ShortName);
                 kernelDictionary.Add(dp.ShortName, dpKernel);
             }
 
             var actionBlock = new ActionBlock<KeyValuePair<string, Kernel>>(async kernelDictionaryItem =>
             {
+                var openAiSettings = await _kernelFactory.GetPromptExecutionSettingsForDocumentProcessAsync(kernelDictionaryItem.Key, AiTaskType.ChatReplies);
                 var dpQuery = "Query for DocumentProcessName" + kernelDictionaryItem.Key + ":\n" + query;
                 var kernel = kernelDictionaryItem.Value;
                 kernel.Data["DocumentProcessName"] = kernelDictionaryItem.Key;
@@ -147,9 +132,17 @@ namespace Microsoft.Greenlight.API.Main.Controllers
                                        [/RESULTS]
                                        """;
 
-            var summarizeKernel = _sp.GetRequiredService<Kernel>();
+            // We get a kernel for the first document process in the dictionary to use for summarization
+            var summarizeKernel = await _kernelFactory.GetKernelForDocumentProcessAsync(kernelDictionary.Keys.First());
 
-            var summarizeResult = await summarizeKernel.InvokePromptAsync(summarizePrompt);
+            // Plugins aren't used for summarization, so we clear them out
+            summarizeKernel.Plugins.Clear();
+
+            // We get the prompt execution settings for the document process - for task type summarization
+            var openAiSettings = await _kernelFactory.GetPromptExecutionSettingsForDocumentProcessAsync(
+                kernelDictionary.Keys.First(), AiTaskType.Summarization);
+            
+            var summarizeResult = await summarizeKernel.InvokePromptAsync(summarizePrompt, new KernelArguments(openAiSettings));
 
             return Ok(summarizeResult.ToString());
         }

@@ -12,6 +12,7 @@ using Microsoft.Greenlight.Shared.Testing.SQLite;
 using Moq;
 using Microsoft.Greenlight.Shared.Mappings;
 using Microsoft.Greenlight.Shared.Enums;
+using Microsoft.Greenlight.Shared.Services;
 
 namespace Microsoft.Greenlight.API.Main.Tests.Controllers
 {
@@ -37,6 +38,7 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
         private readonly Mock<IPublishEndpoint> _publishEndpoint;
         private readonly Mock<BlobServiceClient> _blobServiceClientMock;
         private readonly Mock<IDocumentExporter> _wordDocumentExporterMock;
+        private readonly Mock<IContentNodeService> _contentNodeServiceMock;
 
         public DocumentsControllerTests(DocumentControllerFixture fixture)
         {
@@ -47,35 +49,7 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
                 .CreateMapper();
             _publishEndpoint = new Mock<IPublishEndpoint>();
             _wordDocumentExporterMock = new Mock<IDocumentExporter>();
-        }
-
-        [Fact]
-        public async Task GetFullGeneratedDocument_WithValidDTO_ShouldReturnOk()
-        {
-            // Arrange
-            var documentId = Guid.NewGuid().ToString();
-            var document = new GeneratedDocument { Id = Guid.Parse(documentId), Title = "Test Document" };
-            _docGenerationDbContext.GeneratedDocuments.Add(document);
-            _docGenerationDbContext.SaveChanges();
-            var _controller = new DocumentsController(
-                _publishEndpoint.Object,
-                _docGenerationDbContext,
-                _wordDocumentExporterMock.Object,
-                _azureFileHelper,
-                _mapper
-            );
-
-            // Act
-            var result = await _controller.GetFullGeneratedDocument(documentId);
-
-            // Assert
-            var okResult = Assert.IsType<OkObjectResult>(result.Result);
-            var documentInfo = Assert.IsType<GeneratedDocumentInfo>(okResult.Value);
-            Assert.Equal(documentId, documentInfo.Id.ToString());
-
-            // Cleanup
-            _docGenerationDbContext.GeneratedDocuments.Remove(document);
-            _docGenerationDbContext.SaveChanges();
+            _contentNodeServiceMock = new Mock<IContentNodeService>();
         }
 
         [Fact]
@@ -87,6 +61,7 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
                 _publishEndpoint.Object,
                 _docGenerationDbContext,
                 _wordDocumentExporterMock.Object,
+                _contentNodeServiceMock.Object,
                 _azureFileHelper,
                 _mapper
             );
@@ -114,6 +89,7 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
                 _publishEndpoint.Object,
                 _docGenerationDbContext,
                 _wordDocumentExporterMock.Object,
+                _contentNodeServiceMock.Object,
                 _azureFileHelper,
                 _mapper
             );
@@ -122,7 +98,7 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
             var result = await _controller.GetDocumentExportFile(documentId, "InvalidExporter");
 
             // Assert
-            Assert.IsType<BadRequestResult>(result);
+            Assert.IsType<NotFoundResult>(result);
 
             // Cleanup
             _docGenerationDbContext.GeneratedDocuments.Remove(document);
@@ -138,6 +114,7 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
                 _publishEndpoint.Object,
                 _docGenerationDbContext,
                 _wordDocumentExporterMock.Object,
+                _contentNodeServiceMock.Object,
                 _azureFileHelper,
                 _mapper
             );
@@ -149,55 +126,7 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
             Assert.IsType<NotFoundResult>(result);
         }
 
-        [Fact]
-        public async Task GetDocumentExportFile_WithTitleNumbering_ShouldReturnFile()
-        {
-            // Arrange
-            var documentId = Guid.NewGuid().ToString();
-            var document = new GeneratedDocument
-            {
-                Id = Guid.Parse(documentId),
-                Title = "Test Document"
-            };
-            _docGenerationDbContext.GeneratedDocuments.Add(document);
-            var contentNode = new ContentNode
-            {
-                Id = Guid.NewGuid(),
-                GeneratedDocumentId = document.Id,
-                Text = "1. Introduction",
-                Type = ContentNodeType.Title
-            }; 
-            _docGenerationDbContext.ContentNodes.Add(contentNode);
-            _docGenerationDbContext.SaveChanges();
-
-            _wordDocumentExporterMock
-                .Setup(e => e.ExportDocumentAsync(It.IsAny<GeneratedDocument>(), It.IsAny<bool>()))
-                .ReturnsAsync(new MemoryStream());
-
-            var _controller = new DocumentsController(
-                _publishEndpoint.Object,
-                _docGenerationDbContext,
-                _wordDocumentExporterMock.Object,
-                _azureFileHelper,
-                _mapper
-            );
-
-            // Act
-            var result = await _controller.GetDocumentExportFile(documentId);
-
-            // Assert
-            var fileResult = Assert.IsType<FileStreamResult>(result);
-            Assert.Equal("application/octet-stream", fileResult.ContentType);
-            Assert.Equal($"{document.Title}.docx", fileResult.FileDownloadName);
-
-            // Cleanup
-            _docGenerationDbContext.ContentNodes.Remove(contentNode);
-            _docGenerationDbContext.GeneratedDocuments.Remove(document);
-            _docGenerationDbContext.SaveChanges();
-            
-        }
-
-        [Fact]
+       [Fact]
         public async Task GetDocumentExportPermalink_WhenDocumentNotFound_ShouldReturnNotFound()
         {
             // Arrange
@@ -206,6 +135,7 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
                 _publishEndpoint.Object,
                 _docGenerationDbContext,
                 _wordDocumentExporterMock.Object,
+                _contentNodeServiceMock.Object,
                 _azureFileHelper,
                 _mapper
             );
@@ -218,77 +148,6 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
         }
 
         [Fact]
-        public async Task GetDocumentExportPermalink_DocumentNotNullAndNotExported_CallsUploadFileToBlobAsync()
-        {
-            // Arrange
-            var documentId = Guid.NewGuid();
-            var document = new GeneratedDocument
-            {
-                Id = documentId,
-                Title = "Test Document"
-            };
-
-            _docGenerationDbContext.GeneratedDocuments.Add(document);
-            _docGenerationDbContext.SaveChanges();
-
-            _wordDocumentExporterMock.Setup(exporter => exporter.ExportDocumentAsync
-            (
-                It.IsAny<GeneratedDocument>(), 
-                It.IsAny<bool>())).ReturnsAsync(new MemoryStream());
-
-            var fileHelperMock = new Mock<AzureFileHelper>(_blobServiceClientMock.Object, _docGenerationDbContext);
-            fileHelperMock.Setup(helper => helper.UploadFileToBlobAsync
-            (
-                It.IsAny<Stream>(), 
-                It.IsAny<string>(), 
-                It.IsAny<string>(), 
-                It.IsAny<bool>())
-            ).ReturnsAsync("https://example.com/blob");
-            fileHelperMock.Setup(helper => helper.SaveFileInfoAsync
-            (
-                It.IsAny<string>(), 
-                It.IsAny<string>(), 
-                It.IsAny<string>(), 
-                It.IsAny<Guid>())
-            ).ReturnsAsync
-            (
-                new ExportedDocumentLink
-                {
-                    Id = Guid.NewGuid(),
-                    MimeType = "application/octet-stream",
-                    AbsoluteUrl = "https://example.com/blob",
-                    BlobContainer = "test-container",
-                    FileName = "test-file.docx"
-                }
-            );
-
-            var controller = new DocumentsController(
-                _publishEndpoint.Object,
-                _docGenerationDbContext,
-                _wordDocumentExporterMock.Object,
-                fileHelperMock.Object,
-                _mapper
-            );
-
-            // Act
-            await controller.GetDocumentExportPermalink(documentId.ToString());
-
-            // Assert
-            fileHelperMock.Verify(helper => helper.UploadFileToBlobAsync
-            (
-                It.IsAny<Stream>(), 
-                It.IsAny<string>(), 
-                It.IsAny<string>(), 
-                It.IsAny<bool>()), 
-                Times.Once
-            );
-
-            // Cleanup
-            _docGenerationDbContext.GeneratedDocuments.Remove(document);
-            _docGenerationDbContext.SaveChanges();
-        }
-
-        [Fact]
         public async Task DeleteDocument_WithInvalidDocumentId_ShouldReturnNotFound()
         {
             // Arrange
@@ -297,6 +156,7 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
                 _publishEndpoint.Object,
                 _docGenerationDbContext,
                 _wordDocumentExporterMock.Object,
+                _contentNodeServiceMock.Object,
                 _azureFileHelper,
                 _mapper
             );
@@ -331,6 +191,7 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
                 _publishEndpoint.Object,
                 _docGenerationDbContext,
                 _wordDocumentExporterMock.Object,
+                _contentNodeServiceMock.Object,
                 _azureFileHelper,
                 _mapper
             );

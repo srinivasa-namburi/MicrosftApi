@@ -18,7 +18,7 @@ namespace Microsoft.Greenlight.Worker.DocumentIngestion.Consumers.DocumentIngest
 /// </summary>
 public class ClassifyIngestedDocumentConsumer(
     ILogger<ClassifyIngestedDocumentConsumer> logger,
-    IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
+    IOptionsSnapshot<ServiceConfigurationOptions> serviceConfigurationOptions,
     DocGenerationDbContext dbContext,
     AzureFileHelper azureFileHelper,
     IServiceProvider serviceProvider

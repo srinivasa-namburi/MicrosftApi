@@ -50,12 +50,18 @@ namespace Microsoft.Greenlight.Shared.Services
             var staticDefinitionOptions = _serviceConfigurationOptions.GreenlightServices.DocumentProcesses;
             var mappedStaticDefinitions = staticDefinitionOptions.Select(x => _mapper.Map<DocumentProcessInfo>(x)).ToList();
 
+            // Remove duplicates from the static definitions
+            var distinctStaticDefinitions = mappedStaticDefinitions
+                .GroupBy(x => x.ShortName)
+                .Select(x => x.First())
+                .ToList();
+
             // Retrieve and map all dynamic definitions
             var dynamicDefinitions = await _documentProcessRepository.GetAllDynamicDocumentProcessDefinitionsAsync();
             var mappedDynamicDefinitions = dynamicDefinitions.Select(x => _mapper.Map<DocumentProcessInfo>(x)).ToList();
 
             // Combine static and dynamic definitions in memory
-            return mappedStaticDefinitions.Concat(mappedDynamicDefinitions).ToList();
+            return distinctStaticDefinitions.Concat(mappedDynamicDefinitions).ToList();
         }
 
         /// <inheritdoc/>

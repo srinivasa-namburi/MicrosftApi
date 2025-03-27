@@ -18,7 +18,7 @@ public class ScheduledBlobAutoImportWorker : BackgroundService
     private readonly IServiceProvider _sp;
     private readonly IDocumentProcessInfoService _documentProcessInfoService;
     private readonly IDocumentLibraryInfoService _documentLibraryInfoService;
-    private readonly ServiceConfigurationOptions _options;
+    private readonly IOptionsMonitor<ServiceConfigurationOptions> _optionsMonitor;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ScheduledBlobAutoImportWorker"/> class.
@@ -31,7 +31,7 @@ public class ScheduledBlobAutoImportWorker : BackgroundService
     /// <param name="documentLibraryInfoService">The document library info service.</param>
     public ScheduledBlobAutoImportWorker(
         ILogger<ScheduledBlobAutoImportWorker> logger,
-        IOptions<ServiceConfigurationOptions> options,
+        IOptionsMonitor<ServiceConfigurationOptions> optionsMonitor,
         BlobServiceClient blobServiceClient,
         IServiceProvider sp,
         IDocumentProcessInfoService documentProcessInfoService,
@@ -42,7 +42,7 @@ public class ScheduledBlobAutoImportWorker : BackgroundService
         _sp = sp;
         _documentProcessInfoService = documentProcessInfoService;
         _documentLibraryInfoService = documentLibraryInfoService;
-        _options = options.Value;
+        _optionsMonitor = optionsMonitor;
     }
 
     /// <summary>
@@ -52,7 +52,7 @@ public class ScheduledBlobAutoImportWorker : BackgroundService
     /// <returns>A task that represents the asynchronous operation.</returns>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (_options.GreenlightServices.DocumentIngestion.ScheduledIngestion == false)
+        if (_optionsMonitor.CurrentValue.GreenlightServices.DocumentIngestion.ScheduledIngestion == false)
         {
             _logger.LogWarning("ScheduledBlobAutoImportWorker: Scheduled ingestion is disabled in configuration. Exiting worker.");
             return;

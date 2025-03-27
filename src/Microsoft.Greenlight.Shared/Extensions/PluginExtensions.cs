@@ -33,18 +33,35 @@ namespace Microsoft.Greenlight.Shared.Extensions
             string[] documentProcessAssemblyPaths = Directory.GetFiles(baseDirectory, "Microsoft.Greenlight.DocumentProcess.*.dll")
                 .ToArray();
 
-            var configuredDocumentProcesses = options.GreenlightServices.DocumentProcesses.Select(documentProcess => documentProcess!.Name).ToList();
+            var configuredDocumentProcesses = options.GreenlightServices.DocumentProcesses.Select(dp => dp!.Name).ToList();
 
             documentProcessAssemblyPaths = documentProcessAssemblyPaths
-                .Where(path => configuredDocumentProcesses.Any(documentProcess => path.Contains(documentProcess)))
+                .Where(path => configuredDocumentProcesses.Any(dp => path.Contains(dp)))
                 .Concat(new[] { Path.Combine(baseDirectory, "Microsoft.Greenlight.DocumentProcess.Shared.dll") })
                 .ToArray();
 
-            builder.RegisterPluginsForAssemblies(pluginAssemblyPaths);
-            builder.RegisterPluginsForAssemblies(documentProcessAssemblyPaths);
+            // Combine all assembly paths and load them.
+            var allAssemblyPaths = pluginAssemblyPaths.Concat(documentProcessAssemblyPaths).Distinct().ToArray();
+            var assemblies = allAssemblyPaths.Select(Assembly.LoadFrom).ToArray();
+
+            // Use Scrutor assembly scanning to scan these assemblies for types implementing IPluginInitializer
+            // These will all be added to the DI container as singleton for later execution using the PluginInitializerHostedService.
+
+            builder.Services.Scan(scan => scan
+                .FromAssemblies(assemblies)
+                .AddClasses(classes => classes.AssignableTo<IPluginInitializer>())
+                .AsImplementedInterfaces()
+                .WithSingletonLifetime());
+
+            // Register plugins from the specified assembly paths.
+            builder.RegisterPluginsForAssemblies(allAssemblyPaths);
+
+            // Optionally, if your plugins need to perform deferred initialization, register a hosted service.
+            builder.Services.AddHostedService<PluginInitializerHostedService>();
 
             return builder;
         }
+
 
         /// <summary>
         /// Registers plugins from the specified assembly paths.
@@ -55,8 +72,6 @@ namespace Microsoft.Greenlight.Shared.Extensions
         private static IHostApplicationBuilder RegisterPluginsForAssemblies(this IHostApplicationBuilder builder,
             IEnumerable<string> assemblyPaths)
         {
-            // Build the Service Provider here
-            var sp = builder.Services.BuildServiceProvider();
 
             foreach (var path in assemblyPaths)
             {
@@ -72,7 +87,7 @@ namespace Microsoft.Greenlight.Shared.Extensions
                     {
                         if (Activator.CreateInstance(type) is IPluginRegistration pluginInstance)
                         {
-                            pluginInstance.RegisterPlugin(builder.Services, sp);
+                            pluginInstance.RegisterPlugin(builder.Services);
                         }
                     }
                 }
@@ -187,129 +202,77 @@ namespace Microsoft.Greenlight.Shared.Extensions
         }
 
         private static async Task AddSharedAndDynamicDocumentProcessPluginsToPluginCollectionAsync(
-             this KernelPluginCollection kernelPlugins,
-             IServiceProvider serviceProvider,
-             DocumentProcessInfo documentProcess,
-             List<Type>? excludedPluginTypes)
+            this KernelPluginCollection kernelPlugins,
+            IServiceProvider serviceProvider,
+            DocumentProcessInfo documentProcess,
+            List<Type>? excludedPluginTypes)
         {
-            AddSharedPluginsToPluginCollection(kernelPlugins, serviceProvider, excludedPluginTypes);
+            var pluginRegistry = serviceProvider.GetRequiredService<IPluginRegistry>();
 
-            var sharedStaticPlugins = GetPluginsByAssemblyPrefix("Microsoft.Greenlight.DocumentProcess.Shared")
-                .ToList();
+            // Get all plugins from the registry
+            var allPlugins = pluginRegistry.AllPlugins;
 
-            // Only load dynamic plugins if we can find the DynamicPluginManager in the DI container
-            var dynamicPlugins = new List<Type>();
-            if (serviceProvider.GetServices<DynamicPluginManager>().Any())
+            // Separate shared/static plugins and dynamic plugins
+            var sharedStaticPlugins = allPlugins.Where(p => !p.IsDynamic).ToList();
+            var dynamicPlugins = allPlugins.Where(p => p.IsDynamic).ToList();
+
+            // Filter dynamic plugins based on the document process
+            var dynamicPluginManager = serviceProvider.GetRequiredService<DynamicPluginManager>();
+            var assignedDynamicPlugins = new List<PluginRegistryEntry>();
+            if (dynamicPlugins.Any())
             {
-                var dynamicPluginManager = serviceProvider.GetRequiredService<DynamicPluginManager>();
-                var dynamicPluginEnumerable = await dynamicPluginManager.GetPluginTypesAsync(documentProcess);
-                dynamicPlugins = dynamicPluginEnumerable.ToList();
+                var dynamicPluginTypes = await dynamicPluginManager.GetPluginTypesAsync(documentProcess);
+                assignedDynamicPlugins = dynamicPlugins
+                    .Where(p => dynamicPluginTypes.Contains(p.PluginInstance.GetType()))
+                    .ToList();
             }
 
-            var allPlugins = sharedStaticPlugins.Concat(dynamicPlugins);
+            // Combine shared/static plugins and assigned dynamic plugins
+            var combinedPlugins = sharedStaticPlugins.Concat(assignedDynamicPlugins);
 
-            foreach (var pluginType in allPlugins)
+            foreach (var pluginEntry in combinedPlugins)
             {
-                if (excludedPluginTypes != null && excludedPluginTypes.Contains(pluginType))
+                if (excludedPluginTypes != null &&
+                    excludedPluginTypes.Contains(pluginEntry.PluginInstance.GetType()))
                 {
                     continue;
                 }
 
+                // Ensure only the relevant KmDocsPlugin for the specific DocumentProcess is added
+                if (pluginEntry.Key.Contains("KmDocsPlugin"))
+                {
+                    // Get the document process name from the plugin key
+                    var pluginDocumentProcessName = pluginEntry.Key.Split('-')[0];
+                    if (pluginDocumentProcessName != documentProcess.ShortName)
+                    {
+                        continue;
+                    }
+                }
+
                 try
                 {
-                    string? pluginRegistrationKey = pluginType.GetServiceKeyForPluginType();
-                    object pluginInstance;
-                    if (sharedStaticPlugins.Contains(pluginType))
+                    string? pluginRegistrationKey =
+                        pluginEntry.PluginInstance.GetType().GetServiceKeyForPluginType();
+
+                    if (sharedStaticPlugins.Contains(pluginEntry))
                     {
-                        //This is a shared, static plugin and not a dynamic one
-                        try
-                        {
-                            // We try to resolve for DocumentProcessName-PluginType first
-                            try
-                            {
-                                pluginInstance = serviceProvider.GetRequiredKeyedService(pluginType,
-                                    documentProcess.ShortName + "-" + pluginType.Name);
-                                pluginRegistrationKey = documentProcess.ShortName.Replace(".", "_").Replace("-","_").Replace(" ","_") + "__" + pluginType.Name;
-                            }
-                            catch
-                            {
-                                pluginInstance = serviceProvider.GetRequiredKeyedService(pluginType, pluginRegistrationKey);
-                            }
-                        }
-                        catch
-                        {
-                            pluginInstance = serviceProvider.GetRequiredService(pluginType);
-                        }
-
-                        if (pluginInstance == null)
-                        {
-                            Console.WriteLine($"Not found in container : {pluginType.FullName}");
-                            continue;
-                        }
-
-                    }
-                    else
-                    {
-                        //This is a dynamic plugin
-                        try
-                        {
-                            using var scope = serviceProvider.CreateScope();
-                            var scopedProvider = scope.ServiceProvider;
-                            pluginInstance = scopedProvider.GetRequiredKeyedService(pluginType, pluginRegistrationKey);
-
-                        }
-                        catch
-                        {
-                            Console.WriteLine($"Not found in container : {pluginType.FullName}");
-                            continue;
-                        }
+                        // This is a shared, static plugin and not a dynamic one
+                        pluginRegistrationKey =
+                            //documentProcess.ShortName.Replace(".", "_").Replace("-", "_").Replace(" ", "_") + "__" +
+                            pluginEntry.PluginInstance.GetType().Name;
                     }
 
-                    kernelPlugins.AddFromObject(pluginInstance, pluginRegistrationKey);
+                    kernelPlugins.AddFromObject(pluginEntry.PluginInstance, pluginRegistrationKey);
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error loading or registering plugin {pluginType.FullName}: {ex.Message}");
+                    Console.WriteLine(
+                        $"Error loading or registering plugin {pluginEntry.PluginInstance.GetType().FullName}: {ex.Message}");
                 }
             }
         }
 
-        private static async Task<LoadedDynamicPluginInfo> GetDynamicPluginInfoAsync(
-            DynamicPluginManager dynamicPluginManager,
-            DocumentProcessInfo documentProcess,
-            Type pluginType)
-        {
-            var pluginInfo = await dynamicPluginManager.GetPluginInfoForTypeAsync(documentProcess, pluginType);
-            if (pluginInfo == null)
-            {
-                throw new InvalidOperationException($"Could not find plugin info for type {pluginType.FullName}");
-            }
-            return pluginInfo;
-        }
-
-        private static List<Type> GetImplementingTypes(Assembly assembly, string interfaceFullName)
-        {
-            var pluginTypes = new List<Type>();
-
-            // First attempt: Use interface name
-            pluginTypes.AddRange(assembly.GetExportedTypes()
-                .Where(t => t.GetInterfaces().Any(i => i.FullName == interfaceFullName) &&
-                            t is { IsAbstract: false, IsInterface: false, IsClass: true }));
-
-            // Second attempt: Use Type.GetType if first attempt yields no results
-            if (pluginTypes.Count == 0)
-            {
-                var interfaceType = Type.GetType(interfaceFullName);
-                if (interfaceType != null)
-                {
-                    pluginTypes.AddRange(assembly.GetExportedTypes()
-                        .Where(t => interfaceType.IsAssignableFrom(t) &&
-                                    t is { IsAbstract: false, IsInterface: false, IsClass: true }));
-                }
-            }
-
-            return pluginTypes;
-        }
+        
 
         private static void AddSharedAndStaticDocumentProcessPluginsToPluginCollection(
             this KernelPluginCollection kernelPlugins,

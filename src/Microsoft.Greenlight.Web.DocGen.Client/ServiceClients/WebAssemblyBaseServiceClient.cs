@@ -27,7 +27,7 @@ public abstract class WebAssemblyBaseServiceClient<T> where T : IServiceClient
     protected async Task<HttpResponseMessage?> SendGetRequestMessage(string requestUri, bool authorize = false)
     {
         using var requestMessage = new HttpRequestMessage(HttpMethod.Get, requestUri);
-         if (authorize)
+        if (authorize)
         {
             requestMessage.Headers.Authorization = new("Bearer", this.AccessToken);
         }
@@ -49,7 +49,7 @@ public abstract class WebAssemblyBaseServiceClient<T> where T : IServiceClient
         var response = await HttpClient.SendAsync(requestMessage);
         return response;
     }
-    
+
     protected async Task<HttpResponseMessage?> SendPostRequestMessage(string requestUri, object? payload, bool authorize = false)
     {
         using var requestMessage = new HttpRequestMessage(HttpMethod.Post, requestUri);
@@ -75,7 +75,7 @@ public abstract class WebAssemblyBaseServiceClient<T> where T : IServiceClient
         }
 
         Logger.LogInformation("Sending POST request to {RequestUri}", requestUri);
-    
+
         return await HttpClient.SendAsync(requestMessage);
     }
 
@@ -96,11 +96,11 @@ public abstract class WebAssemblyBaseServiceClient<T> where T : IServiceClient
         requestMessage.Content = new StringContent(JsonSerializer.Serialize(pocoPayload), Encoding.UTF8, "application/json");
 
         Logger.LogInformation("Sending PUT request to {RequestUri}", requestUri);
-        
+
         var response = await HttpClient.SendAsync(requestMessage);
         return response;
     }
-    
+
     public async Task<string> GetAccessTokenAsync()
     {
         var response = await SendGetRequestMessage($"/configuration/token");

@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Greenlight.DocumentProcess.Shared.Prompts;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Services;
+using System.Text.RegularExpressions;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
@@ -115,6 +117,44 @@ public class PromptsController : BaseController
 
         await _promptInfoService.UpdatePromptAsync(promptInfo);
         return Ok(promptInfo);
+    }
+
+    /// <summary>
+    /// Returns a list of variables that are required for a given prompt using reflection and pattern matching
+    /// on the default prompt catalog
+    /// </summary>
+    /// <param name="promptName"></param>
+    /// <returns></returns>
+    [HttpGet("{promptName}/variables")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [Produces("application/json")]
+    [Produces<List<string>>]
+    public ActionResult<List<string>> GetRequiredPromptVariablesForPromptName(string promptName)
+    {
+        var defaultPrompts = new DefaultPromptCatalogTypes();
+
+        // There are string Properties on the DefaultPromptCatalogTypes class that are the names of the prompts
+        // We can use reflection to get the value of the property with the name of the promptName
+
+        var prompt = defaultPrompts.GetType().GetProperty(promptName)?.GetValue(defaultPrompts) as string;
+
+        if (string.IsNullOrEmpty(prompt))
+        {
+            return NotFound();
+        }
+
+        var matches = Regex.Matches(prompt, @"\{\{ ([^\}]+) \}\}");
+        // Removed duplicates from the matches, as well as trimming spaces and curly braces
+        if (matches.Count > 0) {
+            var matchedStrings = matches.Select(m => m.Groups[1].Value).Distinct().ToList();
+            return Ok(matchedStrings);
+        }
+        else
+        {
+            return NotFound();
+        }
+        
     }
 
     /// <summary>

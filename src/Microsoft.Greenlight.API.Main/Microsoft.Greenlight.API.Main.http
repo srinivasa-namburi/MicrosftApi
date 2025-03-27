@@ -1,6 +1,0 @@
-@ProjectVico.V2.API.Main_HostAddress = http://localhost:5085
-
-GET {{ProjectVico.V2.API.Main_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###

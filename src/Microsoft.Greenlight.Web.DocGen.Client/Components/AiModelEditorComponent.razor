@@ -1,0 +1,539 @@
+﻿@using Microsoft.Greenlight.Shared.Contracts.DTO.Configuration
+@using Microsoft.Greenlight.Shared.Contracts.Components
+
+@inject IConfigurationApiClient ConfigurationApiClient
+@inject ISnackbar Snackbar
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudGrid>
+        <!-- AI Models List Section -->
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4" Style="height: 100%;">
+                <MudText Typo="Typo.h6" Class="mb-4">AI Models</MudText>
+
+                <MudList Clickable Dense>
+                    @foreach (var model in _aiModels)
+                    {
+                        <MudListItem Icon="@Icons.Material.Filled.SmartToy"
+                                     Style="@(model.Id == _selectedAiModelId ? "background-color: var(--mud-palette-action-default-hover);" : "")"
+                                     OnClick="() => SelectAiModel(model)">
+                            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                                <MudText>@model.Name</MudText>
+                                @if (model.IsReasoningModel)
+                                {
+                                    <MudChip Size="Size.Small" Color="Color.Info">Reasoning</MudChip>
+                                }
+                            </div>
+                        </MudListItem>
+                    }
+                </MudList>
+
+                <MudButton StartIcon="@Icons.Material.Filled.Add"
+                           Color="Color.Primary"
+                           Variant="Variant.Filled"
+                           OnClick="CreateNewAiModel"
+                           Class="mt-4 w-100">
+                    New AI Model
+                </MudButton>
+            </MudPaper>
+        </MudItem>
+
+        <!-- AI Model Editor Section -->
+        <MudItem xs="12" md="8">
+            @if (_selectedAiModel != null)
+            {
+                <MudPaper Class="pa-4 mb-4">
+                    <MudText Typo="Typo.h6" Class="mb-4">Edit AI Model</MudText>
+
+                    <MudGrid>
+                        <MudItem xs="12">
+                            <MudTextField @bind-Value="_selectedAiModel.Name"
+                                          Label="Model Name"
+                                          Required="true" />
+                        </MudItem>
+
+                        <MudItem xs="12">
+                            <MudSwitch @bind-Value="_selectedAiModel.IsReasoningModel"
+                                       Label="Reasoning Model (o1*, o3* etc)"
+                                       Color="Color.Primary" />
+                        </MudItem>
+
+                        <MudItem xs="12">
+                            <MudExpansionPanels>
+                                <MudExpansionPanel Text="Default Token Settings for new Deployments">
+                                    <MudGrid>
+                                        <MudItem xs="12" sm="6">
+                                            <MudNumericField @bind-Value="_selectedAiModel.TokenSettings.MaxTokensForContentGeneration"
+                                                             Label="Max Content Generation Tokens"
+                                                             Min="50"
+                                                             Max="200000" />
+                                        </MudItem>
+                                        <MudItem xs="12" sm="6">
+                                            <MudNumericField @bind-Value="_selectedAiModel.TokenSettings.MaxTokensForSummarization"
+                                                             Label="Max Summarization Tokens"
+                                                             Min="50"
+                                                             Max="200000" />
+                                        </MudItem>
+                                        <MudItem xs="12" sm="6">
+                                            <MudNumericField @bind-Value="_selectedAiModel.TokenSettings.MaxTokensForChatReplies"
+                                                             Label="Max Chat Reply Tokens"
+                                                             Min="50"
+                                                             Max="200000" />
+                                        </MudItem>
+                                        <MudItem xs="12" sm="6">
+                                            <MudNumericField @bind-Value="_selectedAiModel.TokenSettings.MaxTokensForQuestionAnswering"
+                                                             Label="Max Question Answering Tokens"
+                                                             Min="50"
+                                                             Max="200000" />
+                                        </MudItem>
+                                        <MudItem xs="12" sm="6">
+                                            <MudNumericField @bind-Value="_selectedAiModel.TokenSettings.MaxTokensForValidation"
+                                                             Label="Max Validation Tokens"
+                                                             Min="50"
+                                                             Max="200000" />
+                                        </MudItem>
+                                        <MudItem xs="12" sm="6">
+                                            <MudNumericField @bind-Value="_selectedAiModel.TokenSettings.MaxTokensGeneral"
+                                                             Label="Max General Usage Tokens"
+                                                             Min="50"
+                                                             Max="200000" />
+                                        </MudItem>
+                                    </MudGrid>
+                                </MudExpansionPanel>
+                            </MudExpansionPanels>
+                        </MudItem>
+
+                        <MudItem xs="12">
+                            <MudButton Color="Color.Primary"
+                                       Variant="Variant.Filled"
+                                       OnClick="SaveAiModel"
+                                       Class="mr-2">
+                                Save
+                            </MudButton>
+                            <MudButton Color="Color.Error"
+                                       Variant="Variant.Outlined"
+                                       OnClick="DeleteAiModel">
+                                Delete
+                            </MudButton>
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+
+                <!-- AI Model Deployments Section -->
+                <MudPaper Class="pa-4">
+                    <MudText Typo="Typo.h6" Class="mb-4">AI Model Deployments</MudText>
+
+                    <MudTable Items="_deployments"
+                              Dense="true"
+                              Hover="true"
+                              Class="mb-4">
+                        <HeaderContent>
+                            <MudTh>Deployment Name</MudTh>
+                            <MudTh>Actions</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Name">@context.DeploymentName</MudTd>
+                            <MudTd DataLabel="Actions">
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                               Color="Color.Primary"
+                                               OnClick="() => EditDeployment(context)" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                               Color="Color.Error"
+                                               OnClick="() => DeleteDeployment(context)" />
+                            </MudTd>
+                        </RowTemplate>
+                        <NoRecordsContent>
+                            <MudText>No deployments found for this model.</MudText>
+                        </NoRecordsContent>
+                    </MudTable>
+
+                    <MudButton StartIcon="@Icons.Material.Filled.Add"
+                               Color="Color.Primary"
+                               Variant="Variant.Filled"
+                               OnClick="CreateNewDeployment"
+                               Class="w-100">
+                        New Deployment
+                    </MudButton>
+                </MudPaper>
+            }
+            else
+            {
+                <MudPaper Class="pa-4">
+                    <MudText Typo="Typo.body1" Align="Align.Center">Select an AI Model or create a new one</MudText>
+                </MudPaper>
+            }
+        </MudItem>
+    </MudGrid>
+
+    <!-- AI Model Deployment Dialog -->
+    <MudDialog @bind-IsVisible="_deploymentDialogVisible" Options="new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true }">
+        <TitleContent>
+            <MudText Typo="Typo.h6">
+                @(_isNewDeployment ? "Create New Deployment" : "Edit Deployment")
+            </MudText>
+        </TitleContent>
+        <DialogContent>
+            @if (_selectedDeployment != null)
+            {
+                <MudTextField @bind-Value="_selectedDeployment.DeploymentName"
+                              Label="Deployment Name (must match deployment name on instance)"
+                              Required="true"
+                              Class="mb-3" />
+
+                <MudExpansionPanels>
+                    <MudExpansionPanel Text="Token Settings">
+                        <MudGrid>
+                            <MudItem xs="12" sm="6">
+                                <MudNumericField @bind-Value="_selectedDeployment.TokenSettings.MaxTokensForContentGeneration"
+                                                 Label="Max Content Generation Tokens"
+                                                 Min="50"
+                                                 Max="200000" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudNumericField @bind-Value="_selectedDeployment.TokenSettings.MaxTokensForSummarization"
+                                                 Label="Max Summarization Tokens"
+                                                 Min="50"
+                                                 Max="200000" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudNumericField @bind-Value="_selectedDeployment.TokenSettings.MaxTokensForChatReplies"
+                                                 Label="Max Chat Reply Tokens"
+                                                 Min="50"
+                                                 Max="200000" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudNumericField @bind-Value="_selectedDeployment.TokenSettings.MaxTokensForQuestionAnswering"
+                                                 Label="Max Question Answering Tokens"
+                                                 Min="50"
+                                                 Max="200000" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudNumericField @bind-Value="_selectedDeployment.TokenSettings.MaxTokensForValidation"
+                                                 Label="Max Validation Tokens"
+                                                 Min="50"
+                                                 Max="200000" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudNumericField @bind-Value="_selectedDeployment.TokenSettings.MaxTokensGeneral"
+                                                 Label="Max General Usage Tokens"
+                                                 Min="50"
+                                                 Max="200000" />
+                            </MudItem>
+                        </MudGrid>
+                    </MudExpansionPanel>
+
+                    @if (_selectedAiModel is { IsReasoningModel: true })
+                    {
+                        <MudExpansionPanel Text="Reasoning Settings">
+                            @{
+                                _selectedDeployment.ReasoningSettings ??= new AiModelReasoningSettings();
+                            }
+                            <MudGrid>
+                                <MudItem xs="12">
+                                    <MudText Typo="Typo.subtitle1" Class="mb-3">Reasoning Levels</MudText>
+
+                                    <MudSelect T="AiModelReasoningLevel"
+                                               Label="Content Generation Reasoning"
+                                               @bind-Value="_selectedDeployment.ReasoningSettings.ReasoningLevelForContentGeneration"
+                                               Class="mb-3">
+                                        <MudSelectItem Value="@(AiModelReasoningLevel.Low)">Low</MudSelectItem>
+                                        <MudSelectItem Value="@(AiModelReasoningLevel.Medium)">Medium</MudSelectItem>
+                                        <MudSelectItem Value="@(AiModelReasoningLevel.High)">High</MudSelectItem>
+                                    </MudSelect>
+
+                                    <MudSelect T="AiModelReasoningLevel"
+                                               Label="Summarization Reasoning"
+                                               @bind-Value="_selectedDeployment.ReasoningSettings.ReasoningLevelForSummarization"
+                                               Class="mb-3">
+                                        <MudSelectItem Value="@(AiModelReasoningLevel.Low)">Low</MudSelectItem>
+                                        <MudSelectItem Value="@(AiModelReasoningLevel.Medium)">Medium</MudSelectItem>
+                                        <MudSelectItem Value="@(AiModelReasoningLevel.High)">High</MudSelectItem>
+                                    </MudSelect>
+
+                                    <MudSelect T="AiModelReasoningLevel"
+                                               Label="Validation Reasoning"
+                                               @bind-Value="_selectedDeployment.ReasoningSettings.ReasoningLevelForValidation"
+                                               Class="mb-3">
+                                        <MudSelectItem Value="@(AiModelReasoningLevel.Low)">Low</MudSelectItem>
+                                        <MudSelectItem Value="@(AiModelReasoningLevel.Medium)">Medium</MudSelectItem>
+                                        <MudSelectItem Value="@(AiModelReasoningLevel.High)">High</MudSelectItem>
+                                    </MudSelect>
+
+                                    <MudSelect T="AiModelReasoningLevel"
+                                               Label="Chat Replies Reasoning"
+                                               @bind-Value="_selectedDeployment.ReasoningSettings.ReasoningLevelForChatReplies"
+                                               Class="mb-3">
+                                        <MudSelectItem Value="@(AiModelReasoningLevel.Low)">Low</MudSelectItem>
+                                        <MudSelectItem Value="@(AiModelReasoningLevel.Medium)">Medium</MudSelectItem>
+                                        <MudSelectItem Value="@(AiModelReasoningLevel.High)">High</MudSelectItem>
+                                    </MudSelect>
+
+                                    <MudSelect T="AiModelReasoningLevel"
+                                               Label="Question Answering Reasoning"
+                                               @bind-Value="_selectedDeployment.ReasoningSettings.ReasoningLevelForQuestionAnswering"
+                                               Class="mb-3">
+                                        <MudSelectItem Value="@(AiModelReasoningLevel.Low)">Low</MudSelectItem>
+                                        <MudSelectItem Value="@(AiModelReasoningLevel.Medium)">Medium</MudSelectItem>
+                                        <MudSelectItem Value="@(AiModelReasoningLevel.High)">High</MudSelectItem>
+                                    </MudSelect>
+
+                                    <MudSelect T="AiModelReasoningLevel"
+                                               Label="General Reasoning"
+                                               @bind-Value="_selectedDeployment.ReasoningSettings.ReasoningLevelGeneral">
+                                        <MudSelectItem Value="@(AiModelReasoningLevel.Low)">Low</MudSelectItem>
+                                        <MudSelectItem Value="@(AiModelReasoningLevel.Medium)">Medium</MudSelectItem>
+                                        <MudSelectItem Value="@(AiModelReasoningLevel.High)">High</MudSelectItem>
+                                    </MudSelect>
+                                </MudItem>
+                            </MudGrid>
+                        </MudExpansionPanel>
+                    }
+                </MudExpansionPanels>
+            }
+        </DialogContent>
+        <DialogActions>
+            <MudButton Color="Color.Default" OnClick="CancelDeploymentDialog">Cancel</MudButton>
+            <MudButton Color="Color.Primary" OnClick="SaveDeployment">Save</MudButton>
+        </DialogActions>
+    </MudDialog>
+</MudContainer>
+
+@code {
+    private List<AiModelInfo> _aiModels = new();
+    private AiModelInfo? _selectedAiModel;
+    private Guid? _selectedAiModelId;
+
+    private List<AiModelDeploymentInfo> _deployments = new();
+
+    // For deployment dialog
+    private bool _deploymentDialogVisible;
+    private AiModelDeploymentInfo? _selectedDeployment;
+    private bool _isNewDeployment;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAiModels();
+    }
+
+    private async Task LoadAiModels()
+    {
+        try
+        {
+            _aiModels = await ConfigurationApiClient.GetAiModelsAsync();
+
+            // Auto-select the first model if available and none is currently selected
+            if (_aiModels.Any() && _selectedAiModelId == null)
+            {
+                await SelectAiModel(_aiModels.First());
+            }
+            else if (_selectedAiModelId != null)
+            {
+                // If we had a selected model, make sure it's still selected after reload
+                var previouslySelectedModel = _aiModels.FirstOrDefault(m => m.Id == _selectedAiModelId);
+                if (previouslySelectedModel != null)
+                {
+                    await SelectAiModel(previouslySelectedModel);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load AI models: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task SelectAiModel(AiModelInfo model)
+    {
+        _selectedAiModel = model;
+        _selectedAiModelId = model.Id;
+        await LoadDeployments();
+    }
+
+    private async Task LoadDeployments()
+    {
+        try
+        {
+            if (_selectedAiModelId == null) return;
+
+            var allDeployments = await ConfigurationApiClient.GetAiModelDeploymentsAsync();
+            _deployments = allDeployments.Where(d => d.AiModelId == _selectedAiModelId).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load deployments: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void CreateNewAiModel()
+    {
+        _selectedAiModel = new AiModelInfo
+        {
+            Id = Guid.NewGuid(),
+            Name = "New Model",
+            TokenSettings = new AiModelMaxTokenSettings
+            {
+                MaxTokensForContentGeneration = 8000,
+                MaxTokensForSummarization = 4000,
+                MaxTokensForValidation = 8000,
+                MaxTokensForChatReplies = 4000,
+                MaxTokensForQuestionAnswering = 4000,
+                MaxTokensGeneral = 1024
+            },
+            IsReasoningModel = false
+        };
+        _selectedAiModelId = _selectedAiModel.Id;
+        _deployments = new List<AiModelDeploymentInfo>();
+    }
+
+    private async Task SaveAiModel()
+    {
+        if (_selectedAiModel == null) return;
+
+        try
+        {
+            var exists = _aiModels.Any(m => m.Id == _selectedAiModel.Id);
+
+            if (exists)
+            {
+                await ConfigurationApiClient.UpdateAiModelAsync(_selectedAiModel);
+                Snackbar.Add("AI model updated successfully", Severity.Success);
+            }
+            else
+            {
+                var result = await ConfigurationApiClient.CreateAiModelAsync(_selectedAiModel);
+                _selectedAiModel = result;
+                _selectedAiModelId = result.Id;
+                Snackbar.Add("AI model created successfully", Severity.Success);
+            }
+
+            await LoadAiModels();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to save AI model: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteAiModel()
+    {
+        if (_selectedAiModel == null) return;
+
+        try
+        {
+            // Check if there are deployments using this model
+            if (_deployments.Any())
+            {
+                Snackbar.Add("Cannot delete model with existing deployments. Delete all deployments first.", Severity.Warning);
+                return;
+            }
+
+            await ConfigurationApiClient.DeleteAiModelAsync(_selectedAiModel.Id);
+
+            Snackbar.Add("AI model deleted successfully", Severity.Success);
+
+            _selectedAiModel = null;
+            _selectedAiModelId = null;
+            _deployments.Clear();
+
+            await LoadAiModels();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to delete AI model: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void CreateNewDeployment()
+    {
+        if (_selectedAiModel == null) return;
+
+        _selectedDeployment = new AiModelDeploymentInfo
+        {
+            Id = Guid.NewGuid(),
+            DeploymentName = $"{_selectedAiModel.Name}-deployment",
+            AiModelId = _selectedAiModel.Id,
+            // Copy token settings from the model as defaults
+            TokenSettings = new AiModelMaxTokenSettings
+            {
+                MaxTokensForContentGeneration = _selectedAiModel.TokenSettings.MaxTokensForContentGeneration,
+                MaxTokensForSummarization = _selectedAiModel.TokenSettings.MaxTokensForSummarization,
+                MaxTokensForValidation = _selectedAiModel.TokenSettings.MaxTokensForValidation,
+                MaxTokensForChatReplies = _selectedAiModel.TokenSettings.MaxTokensForChatReplies,
+                MaxTokensForQuestionAnswering = _selectedAiModel.TokenSettings.MaxTokensForQuestionAnswering,
+                MaxTokensGeneral = _selectedAiModel.TokenSettings.MaxTokensGeneral
+            },
+            // Only initialize reasoning settings if this is a reasoning model
+            ReasoningSettings = _selectedAiModel.IsReasoningModel ? new AiModelReasoningSettings() : null
+        };
+
+        _isNewDeployment = true;
+        _deploymentDialogVisible = true;
+    }
+
+    private void EditDeployment(AiModelDeploymentInfo deployment)
+    {
+        // Create a deep copy to avoid modifying the original deployment directly
+        _selectedDeployment = new AiModelDeploymentInfo
+        {
+            Id = deployment.Id,
+            DeploymentName = deployment.DeploymentName,
+            AiModelId = deployment.AiModelId,
+            TokenSettings = deployment.TokenSettings,
+            ReasoningSettings = deployment.ReasoningSettings
+        };
+
+        _isNewDeployment = false;
+        _deploymentDialogVisible = true;
+    }
+
+    private async Task SaveDeployment()
+    {
+        if (_selectedDeployment == null) return;
+
+        try
+        {
+            // If model is not a reasoning model, ensure reasoning settings are null
+            if (_selectedAiModel is { IsReasoningModel: false })
+            {
+                _selectedDeployment.ReasoningSettings = null;
+            }
+
+            if (_isNewDeployment)
+            {
+                var result = await ConfigurationApiClient.CreateAiModelDeploymentAsync(_selectedDeployment);
+                Snackbar.Add("Deployment created successfully", Severity.Success);
+            }
+            else
+            {
+                var result = await ConfigurationApiClient.UpdateAiModelDeploymentAsync(_selectedDeployment);
+                Snackbar.Add("Deployment updated successfully", Severity.Success);
+            }
+
+            _deploymentDialogVisible = false;
+            await LoadDeployments();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to save deployment: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void CancelDeploymentDialog()
+    {
+        _deploymentDialogVisible = false;
+    }
+
+    private async Task DeleteDeployment(AiModelDeploymentInfo deployment)
+    {
+        try
+        {
+            await ConfigurationApiClient.DeleteAiModelDeploymentAsync(deployment.Id);
+            Snackbar.Add("Deployment deleted successfully", Severity.Success);
+            await LoadDeployments();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to delete deployment: {ex.Message}", Severity.Error);
+        }
+    }
+}
