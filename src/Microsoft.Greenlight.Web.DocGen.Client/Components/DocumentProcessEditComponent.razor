@@ -1,8 +1,10 @@
-@using Microsoft.Greenlight.Shared.Configuration
+@using System.Net
 @using Microsoft.Greenlight.Shared.Contracts.DTO.Configuration
+@using Microsoft.Greenlight.Web.DocGen.Client.ServiceClients
 @inject IDocumentProcessApiClient DocumentProcessApiClient
 @inject IDocumentLibraryApiClient DocumentLibraryApiClient
 @inject IConfigurationApiClient ConfigurationApiClient
+@inject IFileApiClient FileApiClient
 @inject IPluginApiClient PluginApiClient
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
@@ -45,6 +47,28 @@
                         </MudSelectItem>
                     }
                 </MudSelect>
+
+                <!-- File Upload Section -->
+                @if (ProcessId != null && _isEditMode)
+                {
+                    <MudDivider Class="my-4" />
+
+                    <MudPaper Class="pa-4">
+                        <MudFileUpload T="IReadOnlyList<IBrowserFile>"
+                                       FilesChanged="HandleFileSelected"
+                                       MaximumFileCount="16384">
+                            <ButtonTemplate>
+                                <MudButton HtmlTag="label"
+                                           Variant="Variant.Filled"
+                                           Color="Color.Primary"
+                                           StartIcon="@Icons.Material.Filled.CloudUpload"
+                                           for="@context">
+                                    Upload RAG Documents to Repository
+                                </MudButton>
+                            </ButtonTemplate>
+                        </MudFileUpload>
+                    </MudPaper>
+                }
 
             </MudItem>
 
@@ -299,6 +323,31 @@
             // Load prompts
             _prompts = await DocumentProcessApiClient.GetPromptsByProcessIdAsync(ProcessId.Value);
             _showPrompts = true;
+        }
+    }
+
+    private async Task HandleFileSelected(IReadOnlyList<IBrowserFile>? files)
+    {
+        if (files == null || files.Count == 0)
+        {
+            Snackbar.Add("No files selected for upload.", Severity.Warning);
+            return;
+        }
+        foreach (var file in files)
+        {
+            var fileName = $"{_process.BlobStorageAutoImportFolderName}/{file.Name}";
+            // URL encode the file name
+            fileName = WebUtility.UrlEncode(fileName);
+
+            try
+            {
+                var result = await FileApiClient.UploadFileDirectAsync(_process.BlobStorageContainerName, fileName, file);
+                Snackbar.Add($"File '{file.Name}' uploaded successfully.", Severity.Success);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error uploading file '{file.Name}': {ex.Message}", Severity.Error);
+            }
         }
     }
 
