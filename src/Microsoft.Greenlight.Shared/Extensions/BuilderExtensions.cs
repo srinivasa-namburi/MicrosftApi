@@ -143,7 +143,7 @@ public static class BuilderExtensions
         builder.Services.AddSingleton<IPluginSourceReferenceCollector, PluginSourceReferenceCollector>();
         builder.Services.AddKeyedScoped<IFunctionInvocationFilter, InputOutputTrackingPluginInvocationFilter>("InputOutputTrackingPluginInvocationFilter");
 
-        builder.Services.AddSingleton<ValidationStepExecutionLogicFactory>();
+        builder.Services.AddScoped<ValidationStepExecutionLogicFactory>();
 
         // Add all IValidationStepExecutionLogic implementations
         builder.Services
@@ -171,7 +171,7 @@ public static class BuilderExtensions
     /// <param name="credentialHelper">The Azure credential helper.</param>
     /// <param name="serviceConfigurationOptions">The service configuration options.</param>
     /// <returns>The updated host application builder.</returns>
-    private static IHostApplicationBuilder AddGreenLightRedisClient(this IHostApplicationBuilder builder,
+    public static IHostApplicationBuilder AddGreenLightRedisClient(this IHostApplicationBuilder builder,
         string redisConnectionStringName, AzureCredentialHelper credentialHelper,
         ServiceConfigurationOptions serviceConfigurationOptions)
     {

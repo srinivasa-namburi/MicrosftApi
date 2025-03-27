@@ -217,9 +217,13 @@ namespace Microsoft.Greenlight.Shared.Extensions
             var dynamicPlugins = allPlugins.Where(p => p.IsDynamic).ToList();
 
             // Filter dynamic plugins based on the document process
-            var dynamicPluginManager = serviceProvider.GetRequiredService<DynamicPluginManager>();
+            var dynamicPluginManager = serviceProvider.GetService<DynamicPluginManager>();
             var assignedDynamicPlugins = new List<PluginRegistryEntry>();
-            if (dynamicPlugins.Any())
+
+            // Get the dynamic plugins that are assigned to the document process - if the 
+            // dynamic plugin manager is available
+
+            if (dynamicPlugins.Any() && dynamicPluginManager != null)
             {
                 var dynamicPluginTypes = await dynamicPluginManager.GetPluginTypesAsync(documentProcess);
                 assignedDynamicPlugins = dynamicPlugins
@@ -272,7 +276,7 @@ namespace Microsoft.Greenlight.Shared.Extensions
             }
         }
 
-        
+
 
         private static void AddSharedAndStaticDocumentProcessPluginsToPluginCollection(
             this KernelPluginCollection kernelPlugins,

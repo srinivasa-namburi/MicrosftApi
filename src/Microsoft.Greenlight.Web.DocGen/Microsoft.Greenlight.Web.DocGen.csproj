@@ -22,6 +22,7 @@
     <PackageReference Include="System.Formats.Asn1" Version="9.0.3" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Microsoft.Greenlight.DocumentProcesses\Microsoft.Greenlight.DocumentProcesses.csproj" />
     <ProjectReference Include="..\Microsoft.Greenlight.ServiceDefaults\Microsoft.Greenlight.ServiceDefaults.csproj" />
     <ProjectReference Include="..\Microsoft.Greenlight.Shared\Microsoft.Greenlight.Shared.csproj" />
     <ProjectReference Include="..\Microsoft.Greenlight.Web.DocGen.Client\Microsoft.Greenlight.Web.DocGen.Client.csproj" />

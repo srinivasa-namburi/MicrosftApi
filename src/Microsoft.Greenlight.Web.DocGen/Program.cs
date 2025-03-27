@@ -1,3 +1,4 @@
+using Aspire.Azure.Storage.Blobs;
 using MassTransit;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -8,10 +9,10 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Greenlight.DocumentProcess.Shared;
 using Microsoft.Greenlight.ServiceDefaults;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
-using Microsoft.Greenlight.Shared.Core;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Management;
@@ -28,7 +29,7 @@ using StackExchange.Redis;
 using System.Security.Claims;
 using Yarp.ReverseProxy.Transforms;
 
-var builder = new GreenlightDynamicWebApplicationBuilder(args);
+var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 
@@ -57,7 +58,14 @@ var azureAdSettings = azureAdSection.Get<AzureAdOptions>();
 builder.Services.AddSingleton<AzureCredentialHelper>();
 var credentialHelper = new AzureCredentialHelper(builder.Configuration);
 
-builder.AddGreenlightServices(credentialHelper, serviceConfigurationOptions);
+// We build these here as we can't use the full registration system on the Web Host
+builder.AddAzureBlobClient("blob-docing", configureSettings: delegate (AzureStorageBlobsSettings settings)
+{
+    settings.Credential = credentialHelper.GetAzureCredential();
+});
+builder.AddGreenLightRedisClient("redis", credentialHelper, serviceConfigurationOptions);
+builder.Services.AddScoped<AzureFileHelper>();
+
 
 var apiUri = new Uri("https+http://api-main");
 
@@ -280,10 +288,13 @@ builder.Services.AddMassTransit(x =>
 
 builder.Services.AddSingleton<IHostedService, ShutdownCleanupService>();
 
-var redisConnection = builder.Services.BuildServiceProvider().GetRequiredService<IConnectionMultiplexer>();
-
 builder.Services.AddDataProtection()
-    .PersistKeysToStackExchangeRedis(redisConnection, "DataProtection-Keys");
+    .PersistKeysToStackExchangeRedis(() =>
+    {
+        var serviceProvider = builder.Services.BuildServiceProvider();
+        var redisConnection = serviceProvider.GetRequiredService<IConnectionMultiplexer>();
+        return redisConnection.GetDatabase();
+    }, "DataProtection-Keys");
 
 var app = builder.Build();
 
