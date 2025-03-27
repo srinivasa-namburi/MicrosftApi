@@ -35,7 +35,7 @@ builder.AddServiceDefaults();
 //Initialize AdminHelper with configuration
 AdminHelper.Initialize(builder.Configuration);
 
-// UPDATED: First add the DbContext and configuration provider
+// First add the DbContext and configuration provider
 builder.AddGreenlightDbContextAndConfiguration();
 
 // Bind the ServiceConfigurationOptions to configuration
@@ -43,6 +43,10 @@ builder.Services.AddOptions<ServiceConfigurationOptions>()
     .Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName))
     .ValidateDataAnnotations()
     .ValidateOnStart();
+
+// This enables reloading:
+builder.Services.Configure<ServiceConfigurationOptions>(
+    builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
 
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
 

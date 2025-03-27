@@ -100,9 +100,17 @@ namespace Microsoft.Greenlight.Shared.Plugins
         private async Task LoadDynamicPluginsAsync(IServiceCollection services)
         {
             using var scope = _serviceScopeFactory.CreateScope();
-            var dbContext = scope.ServiceProvider.GetRequiredService<DocGenerationDbContext>();
-            var azureFileHelper = scope.ServiceProvider.GetRequiredService<AzureFileHelper>();
-            var mapper = scope.ServiceProvider.GetRequiredService<IMapper>();
+            
+            var dbContext = scope.ServiceProvider.GetService<DocGenerationDbContext>();
+            var azureFileHelper = scope.ServiceProvider.GetService<AzureFileHelper>();
+            var mapper = scope.ServiceProvider.GetService<IMapper>();
+
+            if (dbContext == null || azureFileHelper == null || mapper == null)
+            {
+                Console.WriteLine("Unable to load dynamic plugins yet: missing dependencies");
+                return;
+            }
+
 
             List<DynamicPlugin> dynamicPlugins;
             try

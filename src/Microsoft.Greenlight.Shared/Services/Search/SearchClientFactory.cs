@@ -12,10 +12,8 @@ namespace Microsoft.Greenlight.Shared.Services.Search;
 /// </summary>
 public class SearchClientFactory
 {
-    private readonly IConfiguration _configuration;
     private readonly SearchIndexClient _baseSearchIndexClient;
     private readonly AzureCredentialHelper _azureCredentialHelper;
-    private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
 
     private Dictionary<string, SearchClient>? searchClients;
     private Dictionary<string, SearchIndexClient>? searchIndexClients;
@@ -34,10 +32,8 @@ public class SearchClientFactory
         AzureCredentialHelper azureCredentialHelper
         )
     {
-        _configuration = configuration;
         _baseSearchIndexClient = baseSearchIndexClient;
         _azureCredentialHelper = azureCredentialHelper;
-        _serviceConfigurationOptions = serviceConfigurationOptions.Value;
     }
 
     /// <summary>
