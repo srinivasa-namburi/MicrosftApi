@@ -44,6 +44,7 @@ declare -A containerApps=(
     ["api-main"]=1
     ["worker-scheduler"]=1
     ["services-setupmanager"]=1
+    ["worker-validation"]=2
 )
 
 # Function to get the TPM for a specific deployment

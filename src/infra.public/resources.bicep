@@ -61,7 +61,7 @@ resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2024-10-02-p
     workloadProfiles: workloadProfileType != 'consumption' ? [
       {
         maximumCount: 10
-        minimumCount: 3
+        minimumCount: 2
         name: 'dedicated'
         workloadProfileType: workloadProfileType
       }
