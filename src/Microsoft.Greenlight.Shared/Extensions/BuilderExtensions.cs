@@ -159,7 +159,7 @@ public static class BuilderExtensions
                 nameof(SequentialFullDocumentValidationStepExecutionLogic));
 
         builder.Services.AddScoped<IContentNodeService, ContentNodeService>();
-
+        
         return builder;
     }
 

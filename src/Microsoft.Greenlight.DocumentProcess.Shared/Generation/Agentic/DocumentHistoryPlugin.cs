@@ -80,6 +80,7 @@ namespace Microsoft.Greenlight.DocumentProcess.Shared.Generation.Agentic
                 .FirstOrDefaultAsync(x => x.Id == _documentId);
 
             // Map these to DocumentInfos
+
             if (document == null)
             {
                 return "The document history was not found. Maybe this is the first node being generated in it?";

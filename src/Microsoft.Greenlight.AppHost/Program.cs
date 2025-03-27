@@ -162,10 +162,12 @@ var docGenFrontend = builder
     .WithConfigSection(envConnectionStringsConfigurationSection)
     .WithConfigSection(envAzureConfigurationSection)
     .WithConfigSection(envKestrelConfigurationSection)
+    .WithReference(azureAiSearch)
     .WithReference(blobStorage)
+    .WithReference(sbus)
     .WithReference(docGenSql)
-    .WithReference(signalr)
     .WithReference(redisResource)
+    .WithReference(signalr)
     .WithReference(apiMain)
     .WaitForCompletion(dbSetupManager);
 
