@@ -4,6 +4,23 @@
 @inject NavigationManager Navigation
 @inject IDocumentProcessApiClient DocumentProcessApiClient
 
+@if (_dpError)
+{
+    <div class="alert alert-danger" role="alert">
+        <strong>Loading</strong>
+        @if (string.IsNullOrEmpty(DocumentProcessName))
+        {
+            <span>Document Process not found</span>
+        }
+    </div>
+}
+else
+{
+    <CoPilotComponent ConversationId="@ConversationId"
+                      DocumentProcessName="@DocumentProcessName"
+                      InternalConversationIdCreate="false" />
+}
+
 @code {
     [Parameter] public string? ConversationIdString { get; set; }
     [Parameter] public string? DocumentProcessName { get; set; }
@@ -50,19 +67,4 @@
     }
 }
 
-@if (_dpError)
-{
-    <div class="alert alert-danger" role="alert">
-        <strong>Loading</strong>
-        @if (string.IsNullOrEmpty(DocumentProcessName))
-        {
-            <span>Document Process not found</span>
-        }
-    </div>
-}
-else
-{
-    <CoPilotComponent ConversationId="@ConversationId" 
-                      DocumentProcessName="@DocumentProcessName" 
-                      InternalConversationIdCreate="false"/>
-}
+

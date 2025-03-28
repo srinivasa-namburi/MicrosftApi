@@ -14,4 +14,9 @@ public enum ChatMessageCreationState
     /// The chat message creation is complete.
     /// </summary>
     Complete = 100,
+
+    /// <summary>
+    /// The chat message creation has failed
+    /// </summary>
+    Failed = 999
 }

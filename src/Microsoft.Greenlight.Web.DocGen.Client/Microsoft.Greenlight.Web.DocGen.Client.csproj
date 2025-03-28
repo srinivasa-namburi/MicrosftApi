@@ -48,7 +48,7 @@
     <Content Update="Layout\NavMenu.razor">
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </Content>
-    <Content Update="Pages\Documents\Copilot.razor">
+    <Content Update="Pages\Chat\Copilot.razor">
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </Content>
     <Content Update="Pages\Documents\Generate.razor">

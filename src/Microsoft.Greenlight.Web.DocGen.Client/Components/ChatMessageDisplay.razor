@@ -4,22 +4,18 @@
 @code {
     [Parameter] public ChatMessageDTO ChatMessage { get; set; }
     [Parameter] public UserInfoDTO CurrentUser { get; set; }
+    [CascadingParameter] public bool IsDarkMode { get; set; }
 
     private Timer? _timer;
-    private bool _showProgressCircular = true;
+    private bool _showTypingIndicator = true;
 
     protected override void OnInitialized()
     {
-        // The timer is used to hide the progress circular after 5 seconds
-        // This call in OnInitialized is necessary to ensure the timer is started when the component is first rendered
         InitializeOrRestartTimer();
     }
 
     protected override void OnParametersSet()
     {
-        // The timer is used to hide the progress circular after 5 seconds
-        // This call in OnParametersSet is necessary to ensure the timer is restarted when the component is re-rendered due
-        // to updates in the ChatMessage (which is streamed from the server)
         InitializeOrRestartTimer();
     }
 
@@ -29,19 +25,94 @@
             ChatMessage.State == ChatMessageCreationState.InProgress)
         {
             _timer?.Dispose();
-
-            _timer = new Timer(5000); // 5 seconds
-            _timer.Elapsed += HideProgressCircular;
+            _timer = new Timer(10000); // 10 seconds
+            _timer.Elapsed += HideTypingIndicator;
             _timer.AutoReset = false;
             _timer.Start();
         }
+        else
+        {
+            _showTypingIndicator = false;
+        }
     }
 
-    private void HideProgressCircular(object? sender, ElapsedEventArgs e)
+    private void HideTypingIndicator(object? sender, ElapsedEventArgs e)
     {
-        _showProgressCircular = false;
+        _showTypingIndicator = false;
         InvokeAsync(StateHasChanged);
         _timer?.Dispose();
+    }
+
+    private bool IsCurrentUser =>
+        ChatMessage.Source == ChatMessageSource.User &&
+        ChatMessage.UserId == CurrentUser?.ProviderSubjectId;
+
+    private string GetMessageClass()
+        => IsCurrentUser
+            ? "message-wrapper message-wrapper-user"
+            : "message-wrapper message-wrapper-other";
+
+    private string GetBubbleClass()
+    {
+        if (IsCurrentUser)
+            return "message-bubble message-bubble-user";
+        if (ChatMessage.Source == ChatMessageSource.Assistant)
+            return "message-bubble message-bubble-assistant";
+        if (ChatMessage.Source == ChatMessageSource.System)
+            return "message-bubble message-bubble-system";
+        return "message-bubble message-bubble-other";
+    }
+
+    private string GetAvatarClass()
+    {
+        if (IsCurrentUser)
+            return "avatar avatar-user";
+        if (ChatMessage.Source == ChatMessageSource.Assistant)
+            return "avatar avatar-assistant";
+        if (ChatMessage.Source == ChatMessageSource.System)
+            return "avatar avatar-system";
+        return "avatar avatar-other";
+    }
+
+    private string GetMetaClass()
+        => IsCurrentUser
+            ? "message-meta message-meta-user"
+            : "message-meta";
+
+    private string GetInitials()
+    {
+        if (string.IsNullOrEmpty(ChatMessage.UserFullName))
+            return "?";
+
+        if (ChatMessage.Source == ChatMessageSource.Assistant)
+            return "AI";
+
+        if (ChatMessage.Source == ChatMessageSource.System)
+            return "SYS";
+
+        var parts = ChatMessage.UserFullName.Split(' ');
+        if (parts.Length == 1)
+            return parts[0].Substring(0, 1).ToUpper();
+
+        return $"{parts[0].Substring(0, 1)}{parts[^1].Substring(0, 1)}".ToUpper();
+    }
+
+    private string GetMessageContent()
+    {
+        var content = !string.IsNullOrEmpty(ChatMessage.ContentText)
+            ? ChatMessage.ContentText
+            : ChatMessage.Message ?? string.Empty;
+
+        return content;
+    }
+
+    private string FormatDateTime(DateTime dateTime)
+    {
+        if (dateTime.Date == DateTime.Today)
+            return $"Today at {dateTime:HH:mm}";
+        if (dateTime.Date == DateTime.Today.AddDays(-1))
+            return $"Yesterday at {dateTime:HH:mm}";
+        return $"{dateTime:MMM d, yyyy HH:mm}";
     }
 
     public void Dispose()
@@ -50,61 +121,74 @@
     }
 }
 
-
 @{
-    // Align the chat message based on the source of the message
-    // If the message is from the current user, align it to the right
-    // Otherwise, align it to the left
-
-    var align = ChatMessage.Source == ChatMessageSource.User
-        ? (ChatMessage.UserId == CurrentUser?.ProviderSubjectId ? Align.Right : Align.Left)
-        : Align.Left;
-
-    // Apply a style based on alignment
-    var cardAlignmentStyle = align == Align.Right ?
-        "margin-left: auto; width: fit-content; max-width:75%;" :
-        "margin-right: auto; width: fit-content; max-width:75%;";
-
-    if (ChatMessage.Source == ChatMessageSource.Assistant)
-    {
-        ChatMessage.UserFullName = "Permitting Copilot";
-    }
+    var wrapperClass = GetMessageClass() + (IsDarkMode ? " dark-mode" : "");
 }
-<style>
-    .message-content a:visited {
-        color: mediumpurple !important;
-    }
 
-    .message-content a {
-        color: cornflowerblue !important;
-    }
-</style>
-
-<MudCard Elevation="2" Style="@cardAlignmentStyle">
-    <MudCardHeader>
-        <CardHeaderAvatar>
-            <MudAvatar Size="Size.Small" Color="@Color.Info">
-                @ChatMessage.UserFullName[..1]
-            </MudAvatar>
-        </CardHeaderAvatar>
-        <CardHeaderContent>
-            <MudText Typo="Typo.body2" Class="my-0" Align="@align" Color="@Color.Info">
-                @ChatMessage.UserFullName
-            </MudText>
-            <MudText Typo="Typo.body2" Class="my-0" Align="@align" Color="@Color.Info">
-                @ChatMessage.CreatedUtc.ToString("MM/dd/yyyy HH:mm:ss")
-            </MudText>
-        </CardHeaderContent>
-    </MudCardHeader>
-    <MudCardContent Class="message-content">
-        <MudText Typo="Typo.body1" Class="my-0 mb-n1" Align="@align">
-            <RenderMultilineText Value="@ChatMessage.Message" />
-        </MudText>
-    </MudCardContent>
-    @if (ChatMessage is { Source: ChatMessageSource.Assistant, State: ChatMessageCreationState.InProgress } && _showProgressCircular)
+<div class="@wrapperClass">
+    @if (!IsCurrentUser)
     {
-        <MudCardActions>
-            <MudProgressCircular Indeterminate="true" Size="Size.Small" />
-        </MudCardActions>
+        <div class="avatar-space-right">
+            <div class="@GetAvatarClass()" title="@ChatMessage.UserFullName">
+                @GetInitials()
+            </div>
+        </div>
     }
-</MudCard>
+    else
+    {
+        <div class="avatar-placeholder"></div>
+    }
+
+    <div class="flex-grow-1">
+        <div class="@GetBubbleClass()">
+            <div class="message-content">
+                <RenderMultilineText Value="@GetMessageContent()" />
+            </div>
+        </div>
+
+        <div class="@GetMetaClass()">
+            @if (ChatMessage is { Source: ChatMessageSource.Assistant, State: ChatMessageCreationState.InProgress } && _showTypingIndicator)
+            {
+                <div class="typing-indicator">
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                </div>
+            }
+            else
+            {
+                <MudText Typo="Typo.caption">
+                    @FormatDateTime(ChatMessage.CreatedUtc)
+                    @if (ChatMessage.State != ChatMessageCreationState.Complete)
+                    {
+                        <span class="state-indicator">
+                            @if (ChatMessage.State == ChatMessageCreationState.InProgress)
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.HourglassEmpty" Size="Size.Small" />
+                                <span>In progress</span>
+                            }
+                            else if (ChatMessage.State == ChatMessageCreationState.Failed)
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.Error" Size="Size.Small" />
+                                <span>Failed</span>
+                            }
+                        </span>
+                    }
+                </MudText>
+            }
+        </div>
+    </div>
+
+    @if (IsCurrentUser)
+    {
+        <div class="avatar-space-left">
+            <div class="@GetAvatarClass()" title="@ChatMessage.UserFullName">
+                @GetInitials()
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="avatar-placeholder"></div>
+    }
+</div>

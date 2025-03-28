@@ -11,9 +11,11 @@ using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Mappings;
 using Microsoft.Greenlight.Shared.Models.DocumentProcess;
 using Microsoft.Greenlight.Shared.Models.Plugins;
+using Microsoft.Greenlight.Shared.Repositories;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.Shared.Testing.SQLite;
 using Moq;
+using StackExchange.Redis;
 using System.Text.Json;
 
 namespace Microsoft.Greenlight.API.Main.Tests.Controllers
@@ -33,12 +35,13 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
     }
 
     [Collection("Tests that call AdminHelper.Initialize")]
-    public sealed class DocumentProcessControllerTests : IDisposable, IClassFixture<DocumentProcessControllerFixture>
+    public sealed class DocumentProcessControllerTests : IClassFixture<DocumentProcessControllerFixture>
     {
         private readonly Mock<IPluginService> _pluginServiceMock = new();
         private readonly Mock<IPublishEndpoint> _publishEndpointMock = new();
         private readonly Mock<IDocumentProcessInfoService> _documentProcessInfoServiceMock = new();
         private readonly Mock<IDocumentLibraryInfoService> _documentLibraryInfoServiceMock = new();
+        private readonly Mock<IConnectionMultiplexer> _connectionMultiplexerMock = new();
 
         private readonly DocGenerationDbContext _docGenerationDbContext;
         private readonly IMapper _mapper;
@@ -61,23 +64,28 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
             var fakeConfiguration = new Mock<IConfiguration>().Object;
             AdminHelper.Initialize(fakeConfiguration);
             _docGenerationDbContext = fixture.DocGenerationDbContext;
+
             var mapperConfig = new MapperConfiguration(cfg =>
             {
                 cfg.AddProfile<DocumentProcessInfoProfile>();
                 cfg.CreateMap<DocumentProcessMetadataFieldInfo, DynamicDocumentProcessMetaDataField>();
             });
             _mapper = mapperConfig.CreateMapper();
+
+            Mock<DynamicDocumentProcessDefinitionRepository> documentProcessRepositoryMock = new(
+                _docGenerationDbContext,
+                _connectionMultiplexerMock.Object
+            );
+
             _controller = new DocumentProcessController(
                 _docGenerationDbContext,
                 _documentProcessInfoServiceMock.Object,
                 _pluginServiceMock.Object,
                 _documentLibraryInfoServiceMock.Object,
                 _mapper,
-                _publishEndpointMock.Object);
-        }
-        public void Dispose()
-        {
-            AdminHelper.Initialize(null);
+                _publishEndpointMock.Object,
+                documentProcessRepositoryMock.Object
+            );
         }
 
         [Fact]
@@ -85,7 +93,7 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
         {
             // Arrange
             _documentProcessInfoServiceMock.Setup(service => service.GetCombinedDocumentProcessInfoListAsync())
-                .ReturnsAsync([]);
+                .ReturnsAsync(new List<DocumentProcessInfo>());
 
             // Act
             var result = await _controller.GetAllDocumentProcesses();
@@ -102,13 +110,6 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
 
             _documentProcessInfoServiceMock.Setup(service => service.GetDocumentProcessInfoByIdAsync(processId))
                 .ReturnsAsync((DocumentProcessInfo?)null);
-            var _controller = new DocumentProcessController(
-                _docGenerationDbContext,
-                _documentProcessInfoServiceMock.Object,
-                _pluginServiceMock.Object,
-                _documentLibraryInfoServiceMock.Object,
-                _mapper,
-                _publishEndpointMock.Object);
 
             // Act
             var result = await _controller.GetDocumentProcessById(processId);
@@ -124,14 +125,7 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
             var libraryId = Guid.NewGuid();
 
             _documentProcessInfoServiceMock.Setup(service => service.GetDocumentProcessesByLibraryIdAsync(libraryId))
-                .ReturnsAsync([]);
-            var _controller = new DocumentProcessController(
-                _docGenerationDbContext,
-                _documentProcessInfoServiceMock.Object,
-                _pluginServiceMock.Object,
-                _documentLibraryInfoServiceMock.Object,
-                _mapper,
-                _publishEndpointMock.Object);
+                .ReturnsAsync(new List<DocumentProcessInfo>());
 
             // Act
             var result = await _controller.GetDocumentProcessesByLibraryId(libraryId);
@@ -150,13 +144,6 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
                 Id = processId,
                 ShortName = updatedTestProcess
             };
-            var _controller = new DocumentProcessController(
-                _docGenerationDbContext,
-                _documentProcessInfoServiceMock.Object,
-                _pluginServiceMock.Object,
-                _documentLibraryInfoServiceMock.Object,
-                _mapper,
-                _publishEndpointMock.Object);
 
             // Act
             var result = await _controller.UpdateDocumentProcess(processId, documentProcess);
@@ -174,21 +161,13 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
             var documentLibraries = new List<DocumentLibraryInfo> { new() { Id = libraryId } };
 
             _pluginServiceMock.Setup(service => service.GetPluginsByDocumentProcessIdAsync(processId))
-                .ReturnsAsync([]);
+                .ReturnsAsync(new List<DynamicPlugin>());
             _documentLibraryInfoServiceMock.Setup(service => service.GetDocumentLibrariesByProcessIdAsync(processId))
                 .ReturnsAsync(documentLibraries);
             _documentLibraryInfoServiceMock.Setup(service => service.DisassociateDocumentProcessAsync(libraryId, processId))
                 .Returns(Task.CompletedTask);
             _documentProcessInfoServiceMock.Setup(service => service.DeleteDocumentProcessInfoAsync(processId))
                 .ReturnsAsync(true);
-
-            var _controller = new DocumentProcessController(
-                _docGenerationDbContext,
-                _documentProcessInfoServiceMock.Object,
-                _pluginServiceMock.Object,
-                _documentLibraryInfoServiceMock.Object,
-                _mapper,
-                _publishEndpointMock.Object);
 
             // Act
             await _controller.DeleteDocumentProcess(processId);
@@ -208,17 +187,9 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
             _pluginServiceMock.Setup(service => service.GetPluginsByDocumentProcessIdAsync(processId))
                 .ReturnsAsync(plugins);
             _documentLibraryInfoServiceMock.Setup(service => service.GetDocumentLibrariesByProcessIdAsync(processId))
-                .ReturnsAsync([]);
+                .ReturnsAsync(new List<DocumentLibraryInfo>());
             _documentProcessInfoServiceMock.Setup(service => service.DeleteDocumentProcessInfoAsync(processId))
                 .ReturnsAsync(true);
-
-            var _controller = new DocumentProcessController(
-                _docGenerationDbContext,
-                _documentProcessInfoServiceMock.Object,
-                _pluginServiceMock.Object,
-                _documentLibraryInfoServiceMock.Object,
-                _mapper,
-                _publishEndpointMock.Object);
 
             // Act
             await _controller.DeleteDocumentProcess(processId);
@@ -244,18 +215,11 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
             _docGenerationDbContext.SaveChanges();
 
             _pluginServiceMock.Setup(service => service.GetPluginsByDocumentProcessIdAsync(processId))
-                .ReturnsAsync([]);
+                .ReturnsAsync(new List<DynamicPlugin>());
             _documentLibraryInfoServiceMock.Setup(service => service.GetDocumentLibrariesByProcessIdAsync(processId))
-                .ReturnsAsync([]);
+                .ReturnsAsync(new List<DocumentLibraryInfo>());
             _documentProcessInfoServiceMock.Setup(service => service.DeleteDocumentProcessInfoAsync(processId))
                 .ReturnsAsync(true);
-            var _controller = new DocumentProcessController(
-                _docGenerationDbContext,
-                _documentProcessInfoServiceMock.Object,
-                _pluginServiceMock.Object,
-                _documentLibraryInfoServiceMock.Object,
-                _mapper,
-                _publishEndpointMock.Object);
 
             // Act
             await _controller.DeleteDocumentProcess(processId);
@@ -297,15 +261,7 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
             };
 
             _docGenerationDbContext.DynamicDocumentProcessDefinitions.Add(documentProcessModel);
-            _docGenerationDbContext.SaveChanges(); 
-
-            var _controller = new DocumentProcessController(
-                _docGenerationDbContext,
-                _documentProcessInfoServiceMock.Object,
-                _pluginServiceMock.Object,
-                _documentLibraryInfoServiceMock.Object,
-                _mapper,
-                _publishEndpointMock.Object);
+            _docGenerationDbContext.SaveChanges();
 
             // Act
             var result = await _controller.ExportDocumentProcess(processId);
@@ -328,13 +284,6 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
         {
             // Arrange
             var processId = Guid.NewGuid();
-            var _controller = new DocumentProcessController(
-                _docGenerationDbContext,
-                _documentProcessInfoServiceMock.Object,
-                _pluginServiceMock.Object,
-                _documentLibraryInfoServiceMock.Object,
-                _mapper,
-                _publishEndpointMock.Object);
 
             // Act
             var result = await _controller.ExportDocumentProcess(processId);
@@ -353,14 +302,6 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
                 (_docGenerationDbContext.DynamicDocumentProcessMetaDataFields);
             _docGenerationDbContext.SaveChanges();
 
-            var _controller = new DocumentProcessController(
-                _docGenerationDbContext,
-                _documentProcessInfoServiceMock.Object,
-                _pluginServiceMock.Object,
-                _documentLibraryInfoServiceMock.Object,
-                _mapper,
-                _publishEndpointMock.Object);
-
             // Act
             var result = await _controller.GetDocumentProcessMetadataFields(processId);
 
@@ -374,13 +315,6 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
             // Arrange
             var processId = Guid.NewGuid();
             var metadataFields = new List<DocumentProcessMetadataFieldInfo>();
-            var _controller = new DocumentProcessController(
-                _docGenerationDbContext,
-                _documentProcessInfoServiceMock.Object,
-                _pluginServiceMock.Object,
-                _documentLibraryInfoServiceMock.Object,
-                _mapper,
-                _publishEndpointMock.Object);
 
             // Act
             var result = await _controller.CreateOrUpdateDocumentProcessMetadataFields(processId, metadataFields);
@@ -406,13 +340,6 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
                     Order = 1
                 }
             };
-            var _controller = new DocumentProcessController(
-                _docGenerationDbContext,
-                _documentProcessInfoServiceMock.Object,
-                _pluginServiceMock.Object,
-                _documentLibraryInfoServiceMock.Object,
-                _mapper,
-                _publishEndpointMock.Object);
 
             // Act
             var result = await _controller.CreateOrUpdateDocumentProcessMetadataFields(processId, metadataFields);
@@ -422,7 +349,6 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
         }
 
         [Fact]
- 
         public async Task CreateOrUpdateDocumentProcessMetadataFields_WhenMetadataFieldsExist_UpdatesToDatabaseCorrectly()
         {
             // Arrange
@@ -464,14 +390,6 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
                 }
             };
 
-            var _controller = new DocumentProcessController(
-                _docGenerationDbContext,
-                _documentProcessInfoServiceMock.Object,
-                _pluginServiceMock.Object,
-                _documentLibraryInfoServiceMock.Object,
-                _mapper,
-                _publishEndpointMock.Object);
-
             // Act
             var result = await _controller.CreateOrUpdateDocumentProcessMetadataFields(processId, updatedMetadataFields);
 
@@ -485,6 +403,5 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
             _docGenerationDbContext.DynamicDocumentProcessMetaDataFields.Remove(existingMetadataField);
             _docGenerationDbContext.SaveChanges();
         }
-
     }
 }

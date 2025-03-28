@@ -1,4 +1,3 @@
-@inject IConfiguration Configuration
 @inject IChatApiClient ChatApiClient
 @inject IAuthorizationApiClient AuthorizationApiClient
 @inject IConfigurationApiClient ConfigurationApiClient
@@ -10,105 +9,107 @@
 @using Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Commands
 @using Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Events
 @using Microsoft.Greenlight.Web.Shared.Auth
+
 @implements IAsyncDisposable
 
-<style>
-    .chat-container {
-        display: flex;
-        flex-direction: column;
-        height: calc(90vh - 120px); /* Adjust 20px based on your specific padding/margins */
-        margin: 10px; /* Adjust based on your specific layout needs */
-    }
+@if (ConversationId.HasValue)
+{
+    var containerClass = IsDarkMode ? "chat-container dark-mode" : "chat-container";
 
-    .messages-container {
-        flex: 1 1 auto;
-        border: 3px solid #ddd;
-        padding: 10px;
-        overflow-y: auto;
-    }
+        <MudPaper Class="@containerClass" Elevation="0">
+            <div class="chat-header">
+                <MudIcon Icon="@Icons.Material.Filled.Chat" Class="mr-2" />
+                <h2 class="chat-header-title">
+                    @(string.IsNullOrEmpty(DocumentProcessName) ? "Conversation" : $"Conversation with {DocumentProcessName}")
+                </h2>
+                @if (ChatMessages.Any())
+                {
+                        <MudTooltip Text="Scroll to bottom">
+                            <MudIconButton Icon="@Icons.Material.Filled.ArrowDownward"
+                                           Color="Color.Inherit"
+                                           OnClick="ScrollMessagesToBottom"
+                                           Size="Size.Small" />
+                        </MudTooltip>
+                }
+            </div>
 
-    .input-container {
-        flex: 0 0 auto;
-        display: flex;
-        align-items: center;
-        padding-top: 10px;
-    }
-</style>
+            <div @ref="_messagesContainer" class="messages-container">
+                @if (!ChatMessages.Any())
+                {
+                        <div class="empty-state">
+                            <MudIcon Icon="@Icons.Material.Outlined.ChatBubbleOutline" Size="Size.Large" Class="mb-4" />
+                            <MudText Typo="Typo.body1">No messages yet. Start the conversation!</MudText>
+                        </div>
+                }
+                else
+                {
+                        <div>
+                            @foreach (var chatMessage in ChatMessages.OrderBy(x => x.CreatedUtc))
+                            {
+                                    <ChatMessageDisplay ChatMessage="@chatMessage" CurrentUser="CurrentUser" />
+                            }
+                        </div>
+                }
+            </div>
+
+            <div class="input-container">
+                @if (CurrentUser == null)
+                {
+                        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="56px" Animation="Animation.Pulse" />
+                }
+                else
+                {
+                        <div class="chat-input-row">
+                            <MudTextField @ref="_mudChatTextField" T="string"
+                                          OnKeyDown="OnChatTextKeyDown"
+                                          ValueChanged="OnChatTextFieldUpdated"
+                                          Immediate="false"
+                                          DebounceInterval="100"
+                                          Lines="2"
+                                          MaxLines="6"
+                                          AutoGrow="true"
+                                          AutoFocus="true"
+                                          FullWidth="true"
+                                          Placeholder="Type a message..."
+                                          Variant="Variant.Outlined"
+                                          AdornmentColor="Color.Primary"
+                                          AdornmentIcon="@Icons.Material.Filled.Send" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Send"
+                                           Color="Color.Primary"
+                                           OnClick="@(() => SendMessage())"
+                                           Size="Size.Medium"
+                                           Class="mb-1" />
+                        </div>
+                }
+            </div>
+        </MudPaper>
+}
+else
+{
+        <MudAlert Severity="Severity.Info" Variant="Variant.Filled" Class="my-4">
+            <MudText>No conversation loaded</MudText>
+        </MudAlert>
+}
 
 @code {
     [CascadingParameter] public AuthenticationState? AuthenticationState { get; set; }
     [CascadingParameter] public HubConnection? HubConnection { get; set; }
+    [CascadingParameter] public bool IsDarkMode { get; set; }
 
     [Parameter] public Guid? ConversationId { get; set; }
     [Parameter] public string? DocumentProcessName { get; set; }
-
-    /// <summary>
-    /// This sets the ExternalReferenceId for the conversation. This is used to link the conversation to an external reference.
-    /// Used in combination with the ExternalReferenceType parameter. null by default.
-    /// </summary>
     [Parameter] public Guid? ExternalReferenceId { get; set; }
-
-    /// <summary>
-    /// If this is set to true, a new ConversationId will be created by the component if not set.
-    /// It is false by default.
-    /// </summary>
     [Parameter] public bool InternalConversationIdCreate { get; set; } = false;
 
-    private MudTextField<string> _mudChatTextField;
-    private string _chatTextInput = string.Empty;
+    private MudTextField<string>? _mudChatTextField;
     private bool _chatTextLastKeyWasEnter = false;
     private ElementReference _messagesContainer;
-    private MudList _mudMessageList;
+    private string _currentMessage = string.Empty;
 
     private List<ChatMessageDTO> ChatMessages { get; set; } = new List<ChatMessageDTO>();
     private UserInfoDTO? CurrentUser { get; set; }
+    private bool _isLoading = true;
 
-}
-
-@if (ConversationId.HasValue)
-{
-    <div class="chat-container">
-        <div @ref="_messagesContainer" class="messages-container">
-            <MudList @ref="_mudMessageList" Dense="true" DisablePadding="true">
-                @foreach (var chatMessage in ChatMessages.OrderBy(x => x.CreatedUtc))
-                {
-                    <MudListItem>
-                        <ChatMessageDisplay ChatMessage="@chatMessage" CurrentUser="CurrentUser" />
-                    </MudListItem>
-                }
-            </MudList>
-        </div>
-
-        @if (CurrentUser == null)
-        {
-            <MudText>Waiting for user information to load...</MudText>
-        }
-        else
-        {
-            <div class="input-container">
-                <MudTextField @ref="_mudChatTextField" T="string"
-                              OnKeyDown="OnChatTextKeyDown"
-                              ValueChanged="OnChatTextFieldUpdated"
-                              Immediate="false"
-                              DebounceInterval="100"
-                              Lines="2"
-                              MaxLines="6"
-                              AutoGrow="true"
-                              AutoFocus="true" FullWidth="true" Placeholder="Type a message..."
-                              AdornmentIcon="@Icons.Material.Filled.Send"
-                              AdornmentColor="Color.Primary"
-                              Adornment="Adornment.End" />
-            </div>
-        }
-    </div>
-}
-else
-{
-    <MudText Typo="Typo.h6">No conversation loaded</MudText>
-}
-
-@code
-{
     protected override async Task OnInitializedAsync()
     {
         if (!ConversationId.HasValue && InternalConversationIdCreate)
@@ -118,11 +119,22 @@ else
 
         if (ConversationId.HasValue && !string.IsNullOrEmpty(DocumentProcessName))
         {
-            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-            var userInfo = UserInfo.FromClaimsPrincipal(authState.User);
-            CurrentUser = await AuthorizationApiClient.GetUserInfoAsync(userInfo.UserId);
-            ChatMessages = await ChatApiClient.GetChatMessagesAsync(ConversationId.Value, DocumentProcessName);
-            await StartHubConnections();
+            try
+            {
+                _isLoading = true;
+                var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+                var userInfo = UserInfo.FromClaimsPrincipal(authState.User);
+                CurrentUser = await AuthorizationApiClient.GetUserInfoAsync(userInfo.UserId);
+
+                // This also creates the conversation if it doesn't exist
+                ChatMessages = await ChatApiClient.GetChatMessagesAsync(ConversationId.Value, DocumentProcessName);
+
+                await StartHubConnections();
+            }
+            finally
+            {
+                _isLoading = false;
+            }
         }
     }
 
@@ -149,7 +161,7 @@ else
                 .Build();
         }
 
-        HubConnection.On<ChatMessageResponseReceived>( // CorrelationId
+        HubConnection.On<ChatMessageResponseReceived>(
             "ReceiveChatMessageResponseReceivedNotification",
             HubReceiveChatMessageResponseReceivedNotificationHandler);
 
@@ -162,11 +174,9 @@ else
             await HubConnection.StartAsync();
         }
 
-        // Add this Hub Connection to a group matching the ConversationId
         await HubConnection.SendAsync("AddToGroup", ConversationId);
     }
 
-    // Called on component disposal
     private async Task StopHubConnections()
     {
         if (HubConnection == null) return;
@@ -175,12 +185,10 @@ else
         HubConnection.Remove("ReceiveProcessChatMessageReceivedNotification");
 
         await HubConnection.SendAsync("RemoveFromGroup", ConversationId);
-
     }
 
     private async Task HubReceiveProcessChatMessageReceivedNotificationHandler(ProcessChatMessage obj)
     {
-        // The message may originate from us. If so, we don't need to process it. Check if the message ID already exists in the conversation.
         if (ChatMessages.Any(x => x.Id == obj.ChatMessageDto.Id))
         {
             return;
@@ -191,12 +199,10 @@ else
 
     private async Task HubReceiveChatMessageResponseReceivedNotificationHandler(ChatMessageResponseReceived obj)
     {
-        // If a message already exists in our ChatMessages list with the same Id, update it
         var existingMessage = ChatMessages.FirstOrDefault(x => x.Id == obj.ChatMessageDto.Id);
         if (existingMessage != null)
         {
             existingMessage.State = obj.ChatMessageDto.State;
-            // In case we received messages out of order, only update the message if this message has longer content
             if (existingMessage.Message.Length < obj.ChatMessageDto.Message.Length)
             {
                 existingMessage.Message = obj.ChatMessageDto.Message;
@@ -204,13 +210,10 @@ else
         }
         else
         {
-            // Insert the ChatMessage directly after the ChatMessage it is replying to
             var replyToMessage = ChatMessages.FirstOrDefault(x => x.Id == obj.ChatMessageDto.ReplyToId);
             if (replyToMessage != null)
             {
                 var index = ChatMessages.IndexOf(replyToMessage);
-
-                // If the replyToMessage is the last message in the list, just add the new message to the end
                 if (index == ChatMessages.Count - 1)
                 {
                     ChatMessages.Add(obj.ChatMessageDto);
@@ -228,17 +231,17 @@ else
 
         await InvokeAsync(StateHasChanged);
         await ScrollMessagesToBottom();
-
     }
 
     private void OnChatTextKeyDown(KeyboardEventArgs e)
     {
         _chatTextLastKeyWasEnter = e is { Key: "Enter", ShiftKey: false };
-
     }
 
     private async Task OnChatTextFieldUpdated(string chatText)
     {
+        _currentMessage = chatText;
+
         if (string.IsNullOrWhiteSpace(chatText))
         {
             return;
@@ -246,25 +249,33 @@ else
 
         if (_chatTextLastKeyWasEnter)
         {
-            var chatMessage = new ChatMessageDTO
-                {
-                    ConversationId = ConversationId!.Value,
-                    Id = Guid.NewGuid(),
-                    Message = chatText,
-                    CreatedUtc = DateTime.UtcNow,
-                    Source = ChatMessageSource.User,
-                    UserId = CurrentUser!.ProviderSubjectId,
-                    UserFullName = CurrentUser!.FullName
-                };
+            await SendMessage();
+        }
+    }
 
-            await ProcessMessage(chatMessage);
-        }   
+    private async Task SendMessage()
+    {
+        if (string.IsNullOrWhiteSpace(_currentMessage))
+        {
+            return;
+        }
 
+        var chatMessage = new ChatMessageDTO
+        {
+            ConversationId = ConversationId!.Value,
+            Id = Guid.NewGuid(),
+            Message = _currentMessage,
+            CreatedUtc = DateTime.UtcNow,
+            Source = ChatMessageSource.User,
+            UserId = CurrentUser!.ProviderSubjectId,
+            UserFullName = CurrentUser!.FullName
+        };
+
+        await ProcessMessage(chatMessage);
     }
 
     private async Task ProcessOtherUserMessage(ChatMessageDTO chatMessageDto)
     {
-        // Append the message according to its CreatedAt date - directly following the message with a CreatedAt date lower than this message
         var index = ChatMessages.FindLastIndex(x => x.CreatedUtc < chatMessageDto.CreatedUtc);
         if (index == -1)
         {
@@ -272,7 +283,6 @@ else
         }
         else
         {
-            // If the message is the last message in the list, just add the new message to the end
             if (index == ChatMessages.Count - 1)
             {
                 ChatMessages.Add(chatMessageDto);
@@ -285,7 +295,6 @@ else
 
         await InvokeAsync(StateHasChanged);
         await ScrollMessagesToBottom();
-
     }
 
     private async Task ProcessMessage(ChatMessageDTO chatMessageDto)
@@ -294,6 +303,7 @@ else
         if (chatMessageDto.Source == ChatMessageSource.User)
         {
             ChatMessages.Add(chatMessageDto);
+            _currentMessage = string.Empty;
             await _mudChatTextField.Clear();
             await _mudChatTextField.SetText("");
             await InvokeAsync(StateHasChanged);
@@ -301,9 +311,7 @@ else
 
             await ChatApiClient.SendChatMessageAsync(chatMessageDto);
             await _mudChatTextField.FocusAsync();
-
         }
-
     }
 
     private async Task ScrollMessagesToBottom()

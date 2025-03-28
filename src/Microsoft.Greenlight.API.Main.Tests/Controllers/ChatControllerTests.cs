@@ -37,19 +37,21 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
         private readonly Mock<IServiceScopeFactory> _serviceScopeFactoryMock = new();
         private readonly Mock<IServiceProvider> _scopedServiceProviderMock = new();
         private readonly Mock<IDocumentProcessInfoService> _documentProcessInfoServiceMock = new();
+        private readonly Mock<IPromptInfoService> _promptInfoService = new();
 
         public ChatControllerTests(ChatControllerFixture fixture)
         {
             _mapper = new MapperConfiguration(cfg => cfg.AddProfile<ChatMessageProfile>()).CreateMapper();
             _publishEndpointMock = new Mock<IPublishEndpoint>();
             _docGenerationDbContext = fixture.DocGenerationDbContext;
+            _promptInfoService = new Mock<IPromptInfoService>();
 
             _serviceScopeFactoryMock.Setup(x => x.CreateScope()).Returns(_servicesScopeMock.Object);
             _servicesScopeMock.Setup(x => x.ServiceProvider).Returns(_scopedServiceProviderMock.Object);
-            _serviceProviderMock.Setup(x => x.GetService(typeof(IServiceScopeFactory))).
-                Returns(_serviceScopeFactoryMock.Object);
-            _scopedServiceProviderMock.Setup(x => x.GetService(typeof(IDocumentProcessInfoService))).
-                Returns(_documentProcessInfoServiceMock.Object);
+            _serviceProviderMock.Setup(x => x.GetService(typeof(IServiceScopeFactory)))
+                .Returns(_serviceScopeFactoryMock.Object);
+            _scopedServiceProviderMock.Setup(x => x.GetService(typeof(IDocumentProcessInfoService)))
+                .Returns(_documentProcessInfoServiceMock.Object);
         }
 
         [Fact]
@@ -58,16 +60,17 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
             // Arrange
             var documentProcessName = "TestProcess";
             var conversationId = Guid.Empty;
-            var _controller = new ChatController
+            var controller = new ChatController
             (
-                _docGenerationDbContext, 
-                _mapper, 
+                _docGenerationDbContext,
+                _mapper,
                 _publishEndpointMock.Object,
-                _serviceProviderMock.Object
+                _serviceProviderMock.Object,
+                _promptInfoService.Object
             );
 
             // Act
-            var result = await _controller.GetChatMessages(documentProcessName, conversationId);
+            var result = await controller.GetChatMessages(documentProcessName, conversationId);
 
             // Assert
             Assert.IsType<BadRequestObjectResult>(result.Result);
@@ -79,16 +82,17 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
             // Arrange
             var documentProcessName = string.Empty;
             var conversationId = Guid.NewGuid();
-            var _controller = new ChatController
+            var controller = new ChatController
             (
                 _docGenerationDbContext,
                 _mapper,
                 _publishEndpointMock.Object,
-                _serviceProviderMock.Object
+                _serviceProviderMock.Object,
+                _promptInfoService.Object
             );
 
             // Act
-            var result = await _controller.GetChatMessages(documentProcessName, conversationId);
+            var result = await controller.GetChatMessages(documentProcessName, conversationId);
 
             // Assert
             Assert.IsType<BadRequestObjectResult>(result.Result);
@@ -141,17 +145,18 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
                 }
             };
             _docGenerationDbContext.ChatMessages.AddRange(chatMessages);
-            _docGenerationDbContext.SaveChanges();
-            var _controller = new ChatController
+            await _docGenerationDbContext.SaveChangesAsync();
+            var controller = new ChatController
             (
                 _docGenerationDbContext,
                 _mapper,
                 _publishEndpointMock.Object,
-                _serviceProviderMock.Object
+                _serviceProviderMock.Object,
+                _promptInfoService.Object
             );
 
             // Act
-            var result = await _controller.GetChatMessages
+            var result = await controller.GetChatMessages
             (
                 documentProcessName,
                 conversationId

@@ -25,10 +25,9 @@ namespace Microsoft.Greenlight.Worker.Chat.Consumers;
 /// </remarks>
 public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
 {
-    private Kernel? _kernel;
+    private Kernel? _sk;
     private readonly DocGenerationDbContext _dbContext;
     private readonly IMapper _mapper;
-    private readonly IServiceProvider _sp;
     private readonly IPromptInfoService _promptInfoService;
     private readonly ILogger<ProcessChatMessageConsumer> _logger;
     private readonly IDocumentProcessInfoService _documentProcessInfoService;
@@ -66,12 +65,11 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
         IServiceProvider sp,
         IPromptInfoService promptInfoService,
         ILogger<ProcessChatMessageConsumer> logger,
-        IDocumentProcessInfoService documentProcessInfoService, 
+        IDocumentProcessInfoService documentProcessInfoService,
         IKernelFactory kernelFactory)
     {
         _dbContext = dbContext;
         _mapper = mapper;
-        _sp = sp;
         _promptInfoService = promptInfoService;
         _logger = logger;
         _documentProcessInfoService = documentProcessInfoService;
@@ -106,9 +104,9 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
 
     private async Task StoreChatMessage(ChatMessageDTO chatMessageDto)
     {
-        var chatMessage = _mapper.Map(chatMessageDto, new ChatMessage());
+        var chatMessageEntity = _mapper.Map<ChatMessage>(chatMessageDto);
 
-        if (chatMessage.Source == ChatMessageSource.User)
+        if (chatMessageEntity.Source == ChatMessageSource.User)
         {
             var userInformation =
                 await _dbContext.UserInformations.FirstOrDefaultAsync(x =>
@@ -116,11 +114,12 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
 
             if (userInformation != null)
             {
-                chatMessage.AuthorUserInformationId = userInformation.Id;
+                chatMessageEntity.AuthorUserInformationId = userInformation.Id;
             }
         }
 
-        _dbContext.ChatMessages.Add(chatMessage);
+        _dbContext.ChatMessages.Add(chatMessageEntity);
+
         try
         {
             await _dbContext.SaveChangesAsync();
@@ -135,7 +134,6 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
 
             }
         }
-        await _dbContext.SaveChangesAsync();
     }
 
     private async Task ProcessUserMessage(ChatMessageDTO userMessageDto, ConsumeContext<ProcessChatMessage> context)
@@ -164,15 +162,16 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
             throw new InvalidOperationException($"Document process with short name {conversation.DocumentProcessName} not found");
         }
 
-        _kernel = await _kernelFactory.GetKernelForDocumentProcessAsync(conversation.DocumentProcessName);
+        _sk = await _kernelFactory.GetKernelForDocumentProcessAsync(conversation.DocumentProcessName);
 
         var openAiSettings = await _kernelFactory.GetPromptExecutionSettingsForDocumentProcessAsync(
             documentProcessInfo, AiTaskType.ChatReplies);
 
-        var systemPrompt =
-            await _promptInfoService.GetPromptTextByShortCodeAndProcessNameAsync(
-                PromptNames.ChatSystemPrompt, conversation.DocumentProcessName);
-        
+        string? systemPrompt = string.IsNullOrEmpty(conversation.SystemPrompt)
+            ? await _promptInfoService.GetPromptTextByShortCodeAndProcessNameAsync(
+                PromptNames.ChatSystemPrompt, conversation.DocumentProcessName)
+            : conversation.SystemPrompt;
+
         openAiSettings.ChatDeveloperPrompt = systemPrompt;
 
         var chatHistoryString = await CreateChatHistoryString(context, userMessageDto, 10);
@@ -189,7 +188,7 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
         var updateBlock = "";
         var responseDateSet = false;
 
-        await foreach (var response in _kernel.InvokePromptStreamingAsync(userPrompt, kernelArguments))
+        await foreach (var response in _sk.InvokePromptStreamingAsync(userPrompt, kernelArguments))
         {
             // Publish event with full response so far every 20 characters
             updateBlock += response;

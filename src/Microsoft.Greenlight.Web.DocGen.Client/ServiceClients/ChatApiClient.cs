@@ -25,7 +25,8 @@ public class ChatApiClient : WebAssemblyBaseServiceClient<ChatApiClient>, IChatA
         var conversationIdString = conversationId.ToString();
         var response = await SendGetRequestMessage($"/api/chat/{documentProcessShortName}/{conversationIdString}");
 
-        // If we get a 404, it means that the conversation does not exist - return an empty list
+        // If we get a 404, it means that the conversation does not yet have any messages in it (but has been created)
+        // and we return an empty list
         if (response?.StatusCode == HttpStatusCode.NotFound)
         {
             return new List<ChatMessageDTO>();

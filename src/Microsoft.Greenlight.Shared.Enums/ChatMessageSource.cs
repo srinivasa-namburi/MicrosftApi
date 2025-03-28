@@ -6,7 +6,8 @@ namespace Microsoft.Greenlight.Shared.Enums;
 public enum ChatMessageSource
 {
     /// <summary>
-    /// The message is from a user.
+    /// The message is from a user (not necessarily the current user,
+    /// so can't be used to decide that)
     /// </summary>
     User,
 

@@ -7,7 +7,6 @@ using Microsoft.Greenlight.Shared.Core;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Management;
-using Microsoft.Greenlight.Shared.Contracts.Messages;
 
 var builder = new GreenlightDynamicApplicationBuilder(args);
 

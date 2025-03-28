@@ -5,9 +5,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Greenlight.Shared.Contracts.Chat;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Commands;
 using Microsoft.Greenlight.Shared.Data.Sql;
-using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Models;
-using Microsoft.Greenlight.Shared.Prompts;
+using Microsoft.Greenlight.Shared.Services;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
@@ -20,6 +19,7 @@ public class ChatController : BaseController
     private readonly IMapper _mapper;
     private readonly IPublishEndpoint _publishEndpoint;
     private readonly IServiceProvider _sp;
+    private readonly IPromptInfoService _promptInfoService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ChatController"/> class.
@@ -28,17 +28,18 @@ public class ChatController : BaseController
     /// <param name="mapper">The AutoMapper instance.</param>
     /// <param name="publishEndpoint">The publish endpoint for messaging.</param>
     /// <param name="sp">The service provider.</param>
+    /// <param name="promptInfoService">Prompt Info Service to retrieve prompts</param>
     public ChatController(
         DocGenerationDbContext dbContext,
         IMapper mapper,
         IPublishEndpoint publishEndpoint,
-        IServiceProvider sp
-    )
+        IServiceProvider sp, IPromptInfoService promptInfoService)
     {
         _dbContext = dbContext;
         _mapper = mapper;
         _publishEndpoint = publishEndpoint;
         _sp = sp;
+        _promptInfoService = promptInfoService;
     }
 
     /// <summary>
@@ -59,13 +60,14 @@ public class ChatController : BaseController
     }
 
     /// <summary>
-    /// Gets chat messages for a specific conversation.
+    /// Gets chat messages for a specific conversation. Creates
+    /// a new conversation if one does not exist.
     /// </summary>
     /// <param name="documentProcessName">The name of the document process.</param>
     /// <param name="conversationId">The ID of the conversation.</param>
     /// <returns>An <see cref="ActionResult"/> containing the chat messages.
     /// Produces Status Codes:
-    ///     200 OK: When completed sucessfully
+    ///     200 OK: When completed successfully
     ///     400 Bad Request: When a required parameter is not provided. 
     ///     404 Not found: When no chat messages are found for the provided Conversation Id
     /// </returns>
@@ -84,20 +86,20 @@ public class ChatController : BaseController
 
         var chatMessages = new List<ChatMessageDTO>();
 
-        var chatMessageModels = await _dbContext.ChatMessages
+        var chatMessageEntities = await _dbContext.ChatMessages
             .Where(x => x.ConversationId == conversationId)
             .OrderBy(x => x.CreatedUtc)
-            .Include(x=>x.AuthorUserInformation)
+            .Include(x => x.AuthorUserInformation)
             .ToListAsync();
 
-        if (chatMessageModels.Count == 0)
+        if (chatMessageEntities.Count == 0)
         {
             // if there is no existing conversation, create a new one, and then return a 404
             await CreateChatConversationAsync(documentProcessName, conversationId);
             return NotFound();
         }
 
-        foreach (var chatMessageModel in chatMessageModels)
+        foreach (var chatMessageModel in chatMessageEntities)
         {
             var chatMessageDto = _mapper.Map<ChatMessageDTO>(chatMessageModel);
             if (chatMessageModel.AuthorUserInformation != null)
@@ -123,12 +125,13 @@ public class ChatController : BaseController
         {
             Id = conversationId,
             CreatedUtc = DateTime.UtcNow,
+            ModifiedUtc = DateTime.UtcNow,
             DocumentProcessName = documentProcessName
         };
 
-        var promptCatalogTypes = _sp.GetRequiredServiceForDocumentProcess<IPromptCatalogTypes>(documentProcessName);
 
-        conversation.SystemPrompt = promptCatalogTypes.ChatSystemPrompt;
+        var systemPromptInfo = await _promptInfoService.GetPromptByShortCodeAndProcessNameAsync("ChatSystemPrompt", documentProcessName);
+        conversation.SystemPrompt = systemPromptInfo != null ? systemPromptInfo.Text : "";
 
         _dbContext.ChatConversations.Add(conversation);
         await _dbContext.SaveChangesAsync();
