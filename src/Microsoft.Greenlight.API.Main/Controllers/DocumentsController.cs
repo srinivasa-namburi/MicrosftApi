@@ -11,6 +11,7 @@ using Microsoft.Greenlight.Shared.Models;
 using System.Text.RegularExpressions;
 using AutoMapper;
 using Microsoft.Greenlight.Shared.Contracts.DTO.Document;
+using Microsoft.Greenlight.Shared.Models.Validation;
 using Microsoft.Greenlight.Shared.Services;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
@@ -43,7 +44,7 @@ public partial class DocumentsController : BaseController
         [FromKeyedServices("IDocumentExporter-Word")]
         IDocumentExporter wordDocumentExporter,
         IContentNodeService contentNodeService,
-        AzureFileHelper fileHelper, 
+        AzureFileHelper fileHelper,
         IMapper mapper
     )
     {
@@ -155,7 +156,7 @@ public partial class DocumentsController : BaseController
             return null;
         }
 
-        document.ContentNodes= contentNodes;
+        document.ContentNodes = contentNodes;
 
 
         return document;
@@ -315,6 +316,7 @@ public partial class DocumentsController : BaseController
         {
             return NotFound();
         }
+
         var contentNodes = await _dbContext.ContentNodes
             .Where(c => c.GeneratedDocumentId == documentGuid)
             .ToListAsync();
@@ -322,10 +324,19 @@ public partial class DocumentsController : BaseController
         foreach (var contentNode in contentNodes)
         {
             // Recursively delete children
-            await DeleteChildContentNodesRecursively(contentNode);
+            await DeleteChildContentNodesRecursivelyAsync(contentNode);
 
             // Delete the top-level ContentNode after its children are removed
             _dbContext.ContentNodes.Remove(contentNode);
+        }
+
+        var validationPipelineExecutions = await _dbContext.ValidationPipelineExecutions
+            .Where(v => v.GeneratedDocumentId == documentGuid)
+            .ToListAsync();
+
+        foreach (var validationPipelineExecution in validationPipelineExecutions)
+        {
+            await DeleteValidationPipelineExecutionAsync(validationPipelineExecution);
         }
 
         var documentMetaData = await _dbContext.DocumentMetadata
@@ -345,7 +356,7 @@ public partial class DocumentsController : BaseController
     /// Recursively deletes child content nodes for the given parent node.
     /// </summary>
     /// <param name="parentNode">The parent node to delete children for.</param>
-    private async Task DeleteChildContentNodesRecursively(ContentNode parentNode)
+    private async Task DeleteChildContentNodesRecursivelyAsync(ContentNode parentNode)
     {
         // Load children of the current node
         var children = await _dbContext.ContentNodes
@@ -357,7 +368,7 @@ public partial class DocumentsController : BaseController
         foreach (var child in children)
         {
             // Recursively delete grandchildren
-            await DeleteChildContentNodesRecursively(child);
+            await DeleteChildContentNodesRecursivelyAsync(child);
 
             if (child.ContentNodeSystemItem != null)
             {
@@ -371,6 +382,60 @@ public partial class DocumentsController : BaseController
             // Delete the child node after its children have been deleted
             _dbContext.ContentNodes.Remove(child);
         }
+    }
+
+    /// <summary>
+    /// Deletes a validation pipeline execution and its related entities.
+    /// </summary>
+    /// <param name="validationPipelineExecution">The validation pipeline execution to delete.</param>
+    private async Task DeleteValidationPipelineExecutionAsync(ValidationPipelineExecution validationPipelineExecution)
+    {
+        var executionSteps = await _dbContext.ValidationPipelineExecutionSteps
+            .Where(step => step.ValidationPipelineExecutionId == validationPipelineExecution.Id)
+            .ToListAsync();
+
+        foreach (var step in executionSteps)
+        {
+            var stepResults = await _dbContext.ValidationPipelineExecutionStepResults
+                .Where(result => result.ValidationPipelineExecutionStepId == step.Id)
+                .ToListAsync();
+
+            foreach (var result in stepResults)
+            {
+                var contentNodeResults = await _dbContext.ValidationExecutionStepContentNodeResults
+                    .Where(cnr => cnr.ValidationPipelineExecutionStepResultId == result.Id)
+                    .ToListAsync();
+
+                foreach (var contentNodeResult in contentNodeResults)
+                {
+                    // If the validation step resulted in a change (and thus a new content node), delete the new content node
+                    // as this is an orphaned node (validate with AssociatedGeneratedDocumentId or GeneratedDocumentId)
+                    if (contentNodeResult.ResultantContentNodeId != contentNodeResult.OriginalContentNodeId)
+                    {
+                        var newContentNode = await _dbContext.ContentNodes
+                            .FirstOrDefaultAsync(cn => cn.Id == contentNodeResult.ResultantContentNodeId);
+
+                        if (newContentNode == null)
+                        {
+                            continue;
+                        }
+
+                        contentNodeResult.ResultantContentNodeId = contentNodeResult.OriginalContentNodeId;
+                        
+                        _dbContext.Update(contentNodeResult);
+                        _dbContext.ContentNodes.Remove(newContentNode);
+                    }
+
+                    _dbContext.ValidationExecutionStepContentNodeResults.Remove(contentNodeResult);
+                }
+
+                _dbContext.ValidationPipelineExecutionStepResults.Remove(result);
+            }
+
+            _dbContext.ValidationPipelineExecutionSteps.Remove(step);
+        }
+
+        _dbContext.ValidationPipelineExecutions.Remove(validationPipelineExecution);
     }
 
     /// <summary>
