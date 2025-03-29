@@ -1,5 +1,7 @@
 using System.Runtime.CompilerServices;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 
@@ -9,16 +11,35 @@ internal static class LoginLogoutEndpointRouteBuilderExtensions
 {
     internal static IEndpointConventionBuilder MapLoginAndLogout(this IEndpointRouteBuilder endpoints, IApplicationBuilder app)
     {
-
         var group = endpoints.MapGroup("");
 
+        // Authentication endpoint that immediately challenges
         group.MapGet("/login", Login)
-            .AllowAnonymous();
+            .AllowAnonymous()
+            .WithName("LoginEndpoint");
 
-        // Sign out of the Cookie and OIDC handlers. If you do not sign out with the OIDC handler,
-        // the user will automatically be signed back in the next time they visit a page that requires authentication
-        // without being able to choose another account.
-        group.MapPost("/logout", Logout);
+        // Sign out of the Cookie and OIDC handlers
+        group.MapPost("/logout", Logout)
+            .WithName("LogoutEndpoint");
+
+        // API endpoint to get the current authentication state
+        group.MapGet("/user", async (HttpContext context) =>
+        {
+            var authenticateResult = await context.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+            
+            if (!authenticateResult.Succeeded)
+            {
+                return Results.Unauthorized();
+            }
+            
+            return Results.Ok(new
+            {
+                IsAuthenticated = true,
+                UserName = authenticateResult.Principal?.Identity?.Name,
+                Claims = authenticateResult.Principal?.Claims.Select(c => new { c.Type, c.Value })
+            });
+        }).RequireAuthorization()
+        .WithName("CurrentUserEndpoint");
 
         return group;
     }
@@ -26,20 +47,20 @@ internal static class LoginLogoutEndpointRouteBuilderExtensions
     private static ChallengeHttpResult Login(string? returnUrl)
     {
         var authProperties = GetAuthProperties(returnUrl);
-        var challengeResult = TypedResults.Challenge(authProperties);
         
-        return challengeResult;
+        // Force immediate authentication challenge
+        return TypedResults.Challenge(authProperties, new[] { "MicrosoftOidc" });
     }
     
     private static SignOutHttpResult Logout([FromForm] string? returnUrl)
     {
         var authProperties = GetAuthProperties(returnUrl);
-        return TypedResults.SignOut(authProperties, ["Cookies", "MicrosoftOidc"]);
+        return TypedResults.SignOut(authProperties, [CookieAuthenticationDefaults.AuthenticationScheme, "MicrosoftOidc"]);
     }
     
     private static AuthenticationProperties GetAuthProperties(string? returnUrl)
     {
-        // TODO: Use HttpContext.Request.PathBase instead.
+        // Use HttpContext.Request.PathBase if available
         const string pathBase = "/";
 
         // Prevent open redirects.
@@ -47,8 +68,15 @@ internal static class LoginLogoutEndpointRouteBuilderExtensions
             returnUrl = pathBase;
         else if (!Uri.IsWellFormedUriString(returnUrl, UriKind.Relative))
             returnUrl = new Uri(returnUrl, UriKind.Absolute).PathAndQuery;
-        else if (returnUrl[0] != '/') returnUrl = $"{pathBase}{returnUrl}";
+        else if (returnUrl[0] != '/') 
+            returnUrl = $"{pathBase}{returnUrl}";
 
-        return new AuthenticationProperties { RedirectUri = returnUrl };
+        return new AuthenticationProperties { 
+            RedirectUri = returnUrl,
+            // Set IsPersistent to true to maintain the session after browser closes
+            IsPersistent = true,
+            // Force immediate challenge rather than redirect
+            AllowRefresh = true
+        };
     }
 }

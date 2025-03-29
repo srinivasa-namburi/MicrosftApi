@@ -1,7 +1,8 @@
-@using Microsoft.Greenlight.Web.DocGen.Client
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.Components.WebAssembly.Services
+
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -12,28 +13,27 @@
     <link rel="stylesheet" href="/app.css" />
 
     <link rel="icon" type="image/png" href="favicon.ico" />
-    <HeadOutlet @rendermode="@InteractiveWebAssembly" />
+    <HeadOutlet />
 
     <link rel="stylesheet" href="https://atlas.microsoft.com/sdk/javascript/mapcontrol/3/atlas.min.css" type="text/css">
     <script src="https://atlas.microsoft.com/sdk/javascript/mapcontrol/3/atlas.min.js"></script>
 
-    <!-- Blazor Monaco (vscode) editor javascript interop -->
     <script src="_content/BlazorMonaco/jsInterop.js"></script>
 </head>
-
 <body>
-    <Routes @rendermode="@InteractiveWebAssembly" />
-    
-    <script src="_content/BlazorMonaco/jsInterop.js"></script>
-    <script src="_content/BlazorMonaco/lib/monaco-editor/min/vs/loader.js"></script>
-    <script src="_content/BlazorMonaco/lib/monaco-editor/min/vs/editor/editor.main.js"></script>
+<!-- Add a container with id "app" -->
+<div id="app">
+    <component type="typeof(Microsoft.Greenlight.Web.DocGen.Client.App)" render-mode="WebAssemblyPrerendered" />
+</div>
 
-    <script src="_framework/blazor.web.js"></script>
-    <script src="_content/MudBlazor/MudBlazor.min.js"></script>
-    <script src="js/azure-maps.js"></script>
-    <script src="js/helpers.js"></script>
-    <script src="js/scrollToBottom.js"></script>
+<script src="_content/BlazorMonaco/jsInterop.js"></script>
+<script src="_content/BlazorMonaco/lib/monaco-editor/min/vs/loader.js"></script>
+<script src="_content/BlazorMonaco/lib/monaco-editor/min/vs/editor/editor.main.js"></script>
 
+<script src="_framework/blazor.webassembly.js"></script>
+<script src="_content/MudBlazor/MudBlazor.min.js"></script>
+<script src="js/azure-maps.js"></script>
+<script src="js/helpers.js"></script>
+<script src="js/scrollToBottom.js"></script>
 </body>
-
 </html>

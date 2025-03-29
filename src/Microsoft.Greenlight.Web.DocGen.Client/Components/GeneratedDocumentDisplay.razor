@@ -9,7 +9,6 @@
 @inject IContentNodeApiClient ContentNodeApiClient
 @inject IAuthorizationApiClient AuthorizationApiClient
 @inject IConfigurationApiClient ConfigurationApiClient
-@inject IConfiguration Configuration
 @inject NavigationManager Navigation
 
 @code {
@@ -17,6 +16,7 @@
     [Parameter] public bool LiveUpdated { get; set; } = true;
     [Parameter] public GeneratedDocumentInfo? Document { get; set; }
     [Parameter] public bool EnableReferenceFrontend { get; set; }
+    [Parameter] public bool FromGeneration { get; set; }
 
     [CascadingParameter] public HubConnection? HubConnection { get; set; }
 
@@ -24,6 +24,7 @@
     private bool areNodesGenerated = false;
     private bool isDocumentExportable = false;
     private Timer? stateCheckTimer;
+    private bool isFromGenerationPage = false;
 
     private List<string> messages = new List<string>();
 }
@@ -63,14 +64,35 @@ else
     </MudPaper>
 }
 
-
 @code {
     protected override async Task OnInitializedAsync()
     {
+        // Check if we're coming directly from document generation using URL parsing
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        var segments = uri.AbsolutePath.Split('/');
+
+        // Check if the last segment is "true" or parameter FromGeneration is true
+        isFromGenerationPage = segments.Length > 2 && segments[^1] == "true" || FromGeneration;
+
         var token = await DocumentGenerationApiClient.GetAccessTokenAsync();
-        Document = await GetDocumentAsync(DocumentId);
-        ContentNodeInfoSorter.SortContentNodes(Document.ContentNodes);
-        areNodesGenerated = AllNodesGenerated(Document.ContentNodes);
+
+        // If we're not coming directly from generation, try to load the document right away
+        if (!isFromGenerationPage)
+        {
+            try
+            {
+                Document = await GetDocumentAsync(DocumentId);
+                if (Document != null && Document.ContentNodes != null)
+                {
+                    ContentNodeInfoSorter.SortContentNodes(Document.ContentNodes);
+                    areNodesGenerated = AllNodesGenerated(Document.ContentNodes);
+                }
+            }
+            catch
+            {
+                // Document might not exist yet, we'll wait for SignalR notification
+            }
+        }
 
         await StartHubConnections();
         StartStateCheckTimer();
@@ -85,19 +107,36 @@ else
 
     private async Task CheckDocumentState()
     {
-        if (Document != null)
+        try
         {
-            areNodesGenerated = AllNodesGenerated(Document.ContentNodes);
-            isDocumentExportable = await IsDocumentExportable();
-
-            if (isDocumentExportable)
+            // If document is null, try to get it (it might be available now)
+            if (Document == null)
             {
-                // Stop the timer if all nodes are generated so we don't keep checking
-                stateCheckTimer?.Stop();
-                stateCheckTimer?.Dispose();
+                Document = await GetDocumentAsync(DocumentId);
+                if (Document != null && Document.ContentNodes != null)
+                {
+                    ContentNodeInfoSorter.SortContentNodes(Document.ContentNodes);
+                }
             }
 
-            await InvokeAsync(StateHasChanged);
+            if (Document != null)
+            {
+                areNodesGenerated = AllNodesGenerated(Document.ContentNodes);
+                isDocumentExportable = await IsDocumentExportable();
+
+                if (isDocumentExportable)
+                {
+                    // Stop the timer if all nodes are generated so we don't keep checking
+                    stateCheckTimer?.Stop();
+                    stateCheckTimer?.Dispose();
+                }
+
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch
+        {
+            // Document might not be ready yet, continue polling
         }
     }
 
@@ -121,7 +160,6 @@ else
                 })
                 .WithAutomaticReconnect()
                 .Build();
-
         }
 
         HubConnection.On<string>( // CorrelationId
@@ -141,6 +179,11 @@ else
             await HubConnection.StartAsync();
         }
 
+        // Add this connection to a group matching the document ID
+        if (DocumentId != Guid.Empty)
+        {
+            await HubConnection.SendAsync("AddToGroup", DocumentId.ToString());
+        }
     }
 
     // Called on component disposal
@@ -148,9 +191,16 @@ else
     {
         if (HubConnection == null) return;
 
+        // Remove handlers
         HubConnection.Remove("ReceiveDocumentOutlineNotification");
         HubConnection.Remove("ReceiveContentNodeNotification");
         HubConnection.Remove("ReceiveContentNodeGenerationStateChangedNotification");
+
+        // Remove from group when leaving the page
+        if (DocumentId != Guid.Empty)
+        {
+            await HubConnection.SendAsync("RemoveFromGroup", DocumentId.ToString());
+        }
     }
 
     private async Task HubReceiveContentNodeGenerationStateChangedNotificationHandler(ContentNodeGenerationStateChanged message)
@@ -197,7 +247,6 @@ else
             {
                 if (nodes[i].Id == updatedNode.Id)
                 {
-
                     // Replace the node.
                     nodes[i] = updatedNode;
                     return nodes; // Return immediately since the node has been replaced.
@@ -212,8 +261,6 @@ else
 
             return nodes; // Return the potentially modified list of nodes.
         }
-
-
     }
 
     private async Task HubReceiveDocumentOutlineNotificationHandler(string correlationId)
@@ -231,7 +278,8 @@ else
                 {
                     Document = document;
                     // Sort the ContentNodes by their Text property in ascending order
-                    ContentNodeInfoSorter.SortContentNodes(document.ContentNodes);
+                    if (document.ContentNodes != null)
+                        ContentNodeInfoSorter.SortContentNodes(document.ContentNodes);
                 }
             }
             catch
@@ -279,10 +327,10 @@ else
                         {
                             this.Document?.ContentNodes.Insert(0, contentNode);
                         }
-
                     }
 
-                    if (Document?.ContentNodes != null) ContentNodeInfoSorter.SortContentNodes(Document!.ContentNodes);
+                    if (Document?.ContentNodes != null)
+                        ContentNodeInfoSorter.SortContentNodes(Document!.ContentNodes);
                 }
                 else
                 {
@@ -297,17 +345,23 @@ else
         }
         else return;
 
-        messages.Add(encodedMsg);
-
         await CheckDocumentState();
         await InvokeAsync(StateHasChanged);
-
     }
 
     private async Task<GeneratedDocumentInfo?> GetDocumentAsync(Guid? documentId)
     {
         if (documentId == null) return null;
-        return await DocumentGenerationApiClient.GetDocumentAsync(documentId.ToString());
+
+        try
+        {
+            return await DocumentGenerationApiClient.GetDocumentAsync(documentId.ToString());
+        }
+        catch
+        {
+            // Document might not exist yet
+            return null;
+        }
     }
 
     private bool AllNodesGenerated(List<ContentNodeInfo> contentNodes)
@@ -343,5 +397,4 @@ else
         stateCheckTimer?.Stop();
         stateCheckTimer?.Dispose();
     }
-
 }

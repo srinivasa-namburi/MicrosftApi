@@ -81,5 +81,11 @@ public class GenerateDocumentOutlineConsumer : IConsumer<GenerateDocumentOutline
             GeneratedDocumentJson = jsonOutputGeneratedDocument,
             AuthorOid = message.AuthorOid
         });
+
+        // Send separate notification for SignalR event as DocumentOutlineGenerated is consumed by the Saga.
+        await context.Publish(new DocumentOutlineGeneratedNotification(message.CorrelationId)
+        {
+            AuthorOid = message.AuthorOid
+        });
     }
 }

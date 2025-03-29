@@ -16,7 +16,7 @@ public interface INotificationHubClient
     /// </summary>
     /// <param name="correlationId">The correlation ID of the Document Outline.</param>
     /// <returns>A task that represents the asynchronous operation.</returns>
-    Task ReceiveDocumentOutlineNotification(Guid correlationId);
+    Task ReceiveDocumentOutlineNotification(string correlationId);
 
     /// <summary>
     /// Receives a content node generation state changed notification.

@@ -12,6 +12,9 @@ using Microsoft.Greenlight.Shared.Core;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Management;
+using Microsoft.OpenApi.Any;
+using Microsoft.OpenApi.Interfaces;
+using Scalar.AspNetCore;
 
 //var builder = WebApplication.CreateBuilder(args);
 var builder = new GreenlightDynamicWebApplicationBuilder(args);
@@ -63,9 +66,9 @@ var entraInstance = builder.Configuration["AzureAd:Instance"];
 
 // If any of the required settings are missing, throw an exception and shut down
 
-if (string.IsNullOrEmpty(entraTenantId) || 
-    string.IsNullOrEmpty(entraScopes) || 
-    string.IsNullOrEmpty(entraClientId) || 
+if (string.IsNullOrEmpty(entraTenantId) ||
+    string.IsNullOrEmpty(entraScopes) ||
+    string.IsNullOrEmpty(entraClientId) ||
     string.IsNullOrEmpty(entraInstance))
 {
     throw new InvalidOperationException("Azure AD settings are missing. Please check the configuration.");
@@ -87,9 +90,16 @@ builder.Services.AddSwaggerGen(c =>
                 AuthorizationUrl = new Uri($"{entraInstance.TrimEnd('/')}/{entraTenantId}/oauth2/v2.0/authorize"),
                 TokenUrl = new Uri($"{entraInstance.TrimEnd('/')}/{entraTenantId}/oauth2/v2.0/token"),
                 Scopes = new Dictionary<string, string>
-                {
+                { 
                     { entraScopes!, "Access the API" },
+                },
+                // To allow Scalar to select PKCE by Default
+                // valid options are 'SHA-256' | 'plain' | 'no'
+                Extensions = new Dictionary<string, IOpenApiExtension>()
+                {
+                    ["x-usePkce"] = new OpenApiString("SHA-256")
                 }
+
             }
         }
     });
@@ -195,12 +205,17 @@ app.MapDefaultEndpoints();
 
 // Configure the HTTP request pipeline.
 app.UseSwagger();
-app.UseSwaggerUI(c =>
+app.MapScalarApiReference(options =>
 {
-    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Project Vico API");
-    c.OAuthClientId(entraClientId);
-    c.OAuthUsePkce();
-    c.OAuthScopeSeparator(" ");
+    options.OpenApiRoutePattern = "/swagger/v1/swagger.json";
+    options.Title = "Microsoft Greenlight API";
+    options.WithPreferredScheme("ms-entra");
+    options.WithOAuth2Authentication(oauth =>
+    {
+        oauth.ClientId = entraClientId;
+        oauth.Scopes = [entraScopes];
+    });
+
 });
 app.MapControllers();
 

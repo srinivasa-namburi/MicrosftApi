@@ -43,6 +43,15 @@ internal sealed class PersistingAuthenticationStateProvider : AuthenticationStat
         var principal = authenticationState.User;
 
         if (principal.Identity?.IsAuthenticated == true)
+        {
+            // Also persist the access token to be available in WebAssembly
+            var accessToken = principal.FindFirst("access_token")?.Value;
+            if (!string.IsNullOrEmpty(accessToken))
+            {
+                persistentComponentState.PersistAsJson("AccessToken", accessToken);
+            }
+        
             persistentComponentState.PersistAsJson(nameof(UserInfo), UserInfo.FromClaimsPrincipal(principal));
+        }
     }
 }

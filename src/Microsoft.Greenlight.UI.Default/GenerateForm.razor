@@ -240,7 +240,7 @@ else
         builder.CloseComponent();
     };
 
-
+    // In GenerateForm.razor
     private async Task HandleSubmit()
     {
         _isSubmitting = true;
@@ -275,18 +275,20 @@ else
         documentGenerationRequest.DocumentTitle ??= $"{DocumentProcessName} {DateTime.UtcNow:yyyy-MM-dd}";
 
         var generateDocumentDto = new GenerateDocumentDTO
-            {
-                DocumentProcessName = documentGenerationRequest.DocumentProcessName,
-                DocumentTitle = documentGenerationRequest.DocumentTitle,
-                AuthorOid = documentGenerationRequest.AuthorOid,
-                Id = documentGenerationRequest.Id,
-                RequestAsJson = JsonSerializer.Serialize(documentGenerationRequest)
-            };
+        {
+            DocumentProcessName = documentGenerationRequest.DocumentProcessName,
+            DocumentTitle = documentGenerationRequest.DocumentTitle,
+            AuthorOid = documentGenerationRequest.AuthorOid,
+            Id = documentGenerationRequest.Id,
+            RequestAsJson = JsonSerializer.Serialize(documentGenerationRequest)
+        };
 
         await DocumentGenerationApiClient.GenerateDocumentAsync(generateDocumentDto);
 
-        Navigation.NavigateTo($"/docs/{documentGenerationRequest.Id}");
+        Navigation.NavigateTo($"/docs/{documentGenerationRequest.Id}/true");
     }
+
+
 
     private void OnFieldChanged((string FieldName, object? Value) change)
     {

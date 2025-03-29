@@ -22,7 +22,7 @@ public class NotificationHub : Hub<INotificationHubClient>
     /// <param name="correlationId">The correlation ID of the document outline.</param>
     public async Task SendDocumentOutlineNotification(string userId, Guid correlationId)
     {
-        await Clients.User(userId).ReceiveDocumentOutlineNotification(correlationId);
+        await Clients.User(userId).ReceiveDocumentOutlineNotification(correlationId.ToString());
     }
 
     /// <summary>

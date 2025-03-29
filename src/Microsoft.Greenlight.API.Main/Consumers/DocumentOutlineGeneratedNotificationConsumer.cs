@@ -9,7 +9,7 @@ namespace Microsoft.Greenlight.API.Main.Consumers;
 /// <summary>
 /// Consumer class for handling DocumentOutlineGenerated events.
 /// </summary>
-public class DocumentOutlineGeneratedNotificationConsumer : IConsumer<DocumentOutlineGenerated>
+public class DocumentOutlineGeneratedNotificationConsumer : IConsumer<DocumentOutlineGeneratedNotification>
 {
     private readonly IHubContext<NotificationHub, INotificationHubClient> _hubContext;
 
@@ -29,15 +29,18 @@ public class DocumentOutlineGeneratedNotificationConsumer : IConsumer<DocumentOu
     /// </summary>
     /// <param name="context">The context containing the DocumentOutlineGenerated message.</param>
     /// <returns>A task that represents the asynchronous operation.</returns>
-    public async Task Consume(ConsumeContext<DocumentOutlineGenerated> context)
+    public async Task Consume(ConsumeContext<DocumentOutlineGeneratedNotification> context)
     {
-        // Use SignalR to send a notification to the client so the client
-        // can retrieve the generated document outline from the database through the API
-        // DON'T send the entire document outline in the message, just the correlation ID
-
         var documentOutlineGenerated = context.Message;
         var correlationId = documentOutlineGenerated.CorrelationId;
+        var correlationIdString = correlationId.ToString();
 
-        await _hubContext.Clients.All.ReceiveDocumentOutlineNotification(correlationId);
+        // Send to the specific group with this correlation ID
+        await _hubContext.Clients.Group(correlationIdString)
+            .ReceiveDocumentOutlineNotification(correlationIdString);
+        
+        // Also send to all clients as a fallback
+        await _hubContext.Clients.All
+            .ReceiveDocumentOutlineNotification(correlationIdString);
     }
 }

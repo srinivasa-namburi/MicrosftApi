@@ -24,6 +24,7 @@
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.3" />
     <PackageReference Include="Microsoft.Extensions.ServiceDiscovery.Yarp" Version="9.1.0" />
     <PackageReference Include="Microsoft.Identity.Web" Version="2.21.1" />
+    <PackageReference Include="Scalar.AspNetCore" Version="2.1.2" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.7.3" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Protocols.Json" Version="9.0.3" />
     <PackageReference Include="System.Formats.Asn1" Version="9.0.3" />
