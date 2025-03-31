@@ -58,21 +58,6 @@ namespace Microsoft.Greenlight.Shared.Services
         }
 
         /// <inheritdoc />
-        public async Task<Kernel> GetKernelForDocumentProcessAsync(DocumentProcessInfo documentProcess)
-        {
-            // Check if we already have a kernel for this document process
-            if (_standardKernels.TryGetValue(documentProcess.ShortName, out var existingKernel))
-            {
-                return existingKernel;
-            }
-
-            // Create a new kernel for this document process
-            var kernel = await CreateKernelForDocumentProcessAsync(documentProcess);
-            _standardKernels[documentProcess.ShortName] = kernel;
-            return kernel;
-        }
-
-        /// <inheritdoc />
         public async Task<Kernel> GetKernelForDocumentProcessAsync(string documentProcessName)
         {
             // Get document process info and create a new kernel
@@ -86,18 +71,23 @@ namespace Microsoft.Greenlight.Shared.Services
         }
 
         /// <inheritdoc />
-        public async Task<Kernel> GetValidationKernelForDocumentProcessAsync(DocumentProcessInfo documentProcess)
+        public async Task<Kernel> GetKernelForDocumentProcessAsync(DocumentProcessInfo documentProcess)
         {
-            // Check if we already have a validation kernel for this document process
-            if (_validationKernels.TryGetValue(documentProcess.ShortName, out var existingKernel))
+            // Check if we already have a kernel for this document process
+            if (_standardKernels.TryGetValue(documentProcess.ShortName, out var existingKernel))
             {
-                await EnrichKernelWithPluginsAsync(documentProcess, existingKernel);
-                return existingKernel;
+                // Return a new instance of the existing kernel to avoid sharing state, but keeping configuration
+                var newInstanceOfExistingKernel = existingKernel.Clone();
+                newInstanceOfExistingKernel.Data.Clear();
+
+                // We always reset the plugin collection for the kernel through EnrichKernelWithPluginsAsync
+                await EnrichKernelWithPluginsAsync(documentProcess, newInstanceOfExistingKernel);
+                return newInstanceOfExistingKernel;
             }
 
-            // Create a new validation kernel for this document process
-            var kernel = await CreateValidationKernelForDocumentProcessAsync(documentProcess);
-            _validationKernels[documentProcess.ShortName] = kernel;
+            // Create a new kernel for this document process
+            var kernel = await CreateKernelForDocumentProcessAsync(documentProcess);
+            _standardKernels[documentProcess.ShortName] = kernel;
             return kernel;
         }
 
@@ -115,18 +105,48 @@ namespace Microsoft.Greenlight.Shared.Services
         }
 
         /// <inheritdoc />
+        public async Task<Kernel> GetValidationKernelForDocumentProcessAsync(DocumentProcessInfo documentProcess)
+        {
+            // Check if we already have a validation kernel for this document process
+            if (_validationKernels.TryGetValue(documentProcess.ShortName, out var existingKernel))
+            {
+                // Return a new instance of the existing kernel to avoid sharing state, but keeping configuration
+                var newInstanceOfExistingKernel = existingKernel.Clone();
+                newInstanceOfExistingKernel.Data.Clear();
+
+                // We always reset the plugin collection for the kernel through EnrichKernelWithPluginsAsync
+                await EnrichKernelWithPluginsAsync(documentProcess, newInstanceOfExistingKernel);
+                return newInstanceOfExistingKernel;
+            }
+
+            // Create a new validation kernel for this document process
+            var kernel = await CreateValidationKernelForDocumentProcessAsync(documentProcess);
+            _validationKernels[documentProcess.ShortName] = kernel;
+            return kernel;
+        }
+
+        /// <inheritdoc />
         public async Task<Kernel> GetGenericKernelAsync(string modelIdentifier)
         {
             // Check if we already have a generic kernel for this model
             if (_genericKernels.TryGetValue(modelIdentifier, out var existingKernel))
             {
-                return existingKernel;
+                // Return a new instance of the existing kernel to avoid sharing state, but keeping configuration
+                var newInstanceOfExistingKernel = existingKernel.Clone();
+                newInstanceOfExistingKernel.Data.Clear();
+                return newInstanceOfExistingKernel;
             }
 
             // Create a new generic kernel with the specified model
             var kernel = CreateGenericKernel(modelIdentifier);
             _genericKernels[modelIdentifier] = kernel;
             return kernel;
+        }
+
+        /// <inheritdoc />
+        public async Task<Kernel> GetDefaultGenericKernelAsync()
+        {
+            return await GetGenericKernelAsync("gpt-4o");
         }
 
         /// <inheritdoc />

@@ -59,5 +59,11 @@ namespace Microsoft.Greenlight.Shared.Services
         /// <param name="aiTaskType"></param>
         Task<AzureOpenAIPromptExecutionSettings> GetPromptExecutionSettingsForDocumentProcessAsync(
             string documentProcessName, AiTaskType aiTaskType);
+
+        /// <summary>
+        /// Gets a default generic kernel instance with the gpt-4o deployment for the solution
+        /// </summary>
+        /// <returns></returns>
+        Task<Kernel> GetDefaultGenericKernelAsync();
     }
 }
