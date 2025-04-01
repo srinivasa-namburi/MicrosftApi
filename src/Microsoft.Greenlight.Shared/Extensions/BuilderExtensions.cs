@@ -195,18 +195,16 @@ public static class BuilderExtensions
 
             builder.AddRedisClient(redisConnectionStringName,
                 configureOptions: options => { options.Defaults = configurationOptions.Defaults; });
+
+            builder.AddRedisDistributedCache(redisConnectionStringName,
+                configureOptions: options => { options.Defaults = configurationOptions.Defaults; });
         }
         else
         {
             builder.AddRedisClient(redisConnectionStringName);
+            builder.AddRedisDistributedCache(redisConnectionStringName);
         }
         
-        // Add IDistributedCache using StackExchange.Redis
-        builder.Services.AddStackExchangeRedisCache(options =>
-        {
-            options.Configuration = builder.Configuration.GetConnectionString("redis");
-        });
-
         return builder;
     }
 

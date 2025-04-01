@@ -17,7 +17,7 @@
 }
 
 /**************************************/
-/* Light-mode “border & shadow” tweaks*/
+/* Light-mode "border & shadow" tweaks*/
 /**************************************/
 .light-mode .mud-paper,
 .light-mode .mud-list,
@@ -98,7 +98,7 @@ table:not(.mud-table-root) {
     }
 
 /**************************************/
-/* “Section content” (Generated Docs) */
+/* "Section content" (Generated Docs) */
 /**************************************/
 .section-content {
     margin: 1rem 0; /* overall spacing around the section */
@@ -204,81 +204,96 @@ table:not(.mud-table-root) {
 }
 
 /**************************************/
-/* Chat message bubble styling        */
+/* Chat message wrapper and layout    */
 /**************************************/
-.flex-grow-1 {
-    flex-grow: 1;
-}
-
 .message-wrapper {
-    display: flex;
-    margin-bottom: 0.25rem;
-    position: relative;
+    display: flex !important;
+    margin-bottom: 1rem;
+    align-items: flex-start;
     width: 100%;
 }
 
 .message-wrapper-user {
-    justify-content: flex-end;
+    flex-direction: row-reverse !important;
 }
 
 .message-wrapper-other {
-    justify-content: flex-start;
+    flex-direction: row !important;
 }
 
+/* Message content container */
+.message-wrapper .flex-grow-1 {
+    flex: 1 1 auto !important;
+    max-width: calc(100% - 48px) !important;
+}
+
+/**************************************/
+/* Chat message bubble styling        */
+/**************************************/
 .message-bubble {
-    padding: 0.2rem 0.75rem 0.1rem 0.75rem;
+    padding: 0.2rem 0.75rem 0.6rem 0.75rem;
     border-radius: 18px;
     min-width: 120px;
     max-width: 70%;
     width: fit-content;
     position: relative;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    border: 1px solid #d0d0d0;
 }
 
 .message-bubble-user {
-    background-color: var(--mud-palette-primary);
-    color: var(--mud-palette-primary-text);
-    border-bottom-right-radius: 4px;
-    margin-left: auto;
+    background-color: #e0e0e0;
+    color: #333333;
+    border-bottom-right-radius: 2px;
+    margin-left: auto !important;
+    margin-right: 0 !important;
 }
 
 .dark-mode .message-bubble-user {
-    background-color: var(--mud-palette-primary-darken);
+    background-color: #555555;
+    color: #e2e2e2;
 }
 
 .message-bubble-assistant {
-    background-color: var(--mud-palette-info);
-    color: var(--mud-palette-info-text);
-    border-bottom-left-radius: 4px;
-    margin-right: auto;
+    background-color: #e0e0e0;
+    color: #333333;
+    border-bottom-left-radius: 2px;
+    margin-left: 0 !important;
+    margin-right: auto !important;
 }
 
 .dark-mode .message-bubble-assistant {
-    background-color: var(--mud-palette-info-darken);
+    background-color: #3a3a3a;
+    color: #e2e2e2;
 }
 
 .message-bubble-other {
-    background-color: var(--mud-palette-surface);
-    border: 1px solid var(--mud-palette-lines-default);
+    background-color: #e0e0e0;
+    color: #333333;
+    border: 1px solid #b0b0b0;
     border-bottom-left-radius: 4px;
-    margin-right: auto;
+    margin-left: 0 !important;
+    margin-right: auto !important;
 }
 
 .dark-mode .message-bubble-other {
-    background-color: var(--mud-palette-surface-dark);
-    border-color: var(--mud-palette-lines-dark);
+    background-color: #3a3a3a;
+    color: #e2e2e2;
+    border: 1px solid #555555;
 }
 
 .message-bubble-system {
-    background-color: var(--mud-palette-tertiary);
-    color: var(--mud-palette-tertiary-text);
+    background-color: #e0e0e0;
+    color: #333333;
     border-bottom-left-radius: 4px;
     font-style: italic;
-    margin-right: auto;
+    margin-left: 0 !important;
+    margin-right: auto !important;
 }
 
 .dark-mode .message-bubble-system {
-    background-color: var(--mud-palette-tertiary-darken);
+    background-color: #3a3a3a;
+    color: #e2e2e2;
 }
 
 .message-content {
@@ -286,24 +301,24 @@ table:not(.mud-table-root) {
     white-space: pre-wrap;
     line-height: 1.5;
     margin: 0;
-    padding-top:20px;
-    padding-left:10px;
-    padding-right:10px;
+    padding-top: 8px;
+    padding-left: 10px;
+    padding-right: 10px;
 }
 
     .message-content a {
-        color: var(--mud-palette-primary-text) !important;
+        color: #333333 !important;
         text-decoration: underline;
     }
 
         .message-content a:visited {
-            color: var(--mud-palette-primary-text) !important;
+            color: #333333 !important;
             opacity: 0.8;
         }
 
 .dark-mode .message-content a,
 .dark-mode .message-content a:visited {
-    color: var(--mud-palette-primary-lighten) !important;
+    color: #e2e2e2 !important;
 }
 
 .message-meta {
@@ -362,12 +377,12 @@ table:not(.mud-table-root) {
 /* Avatar styling                     */
 /**************************************/
 .avatar {
-    width: 32px;
-    height: 32px;
+    width: 36px;
+    height: 36px;
     border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
     color: white;
     font-weight: 500;
     flex-shrink: 0;
@@ -405,19 +420,27 @@ table:not(.mud-table-root) {
     background-color: var(--mud-palette-tertiary-darken);
 }
 
+.avatar-space-right,
+.avatar-space-left {
+    display: flex !important;
+    min-width: 40px !important;
+    max-width: 40px !important;
+    flex: 0 0 40px !important;
+    justify-content: center !important;
+    align-items: center !important;
+}
+
 .avatar-space-right {
-    margin-right: 8px;
-    flex-shrink: 0;
+    margin-right: 8px !important;
 }
 
 .avatar-space-left {
-    margin-left: 8px;
-    flex-shrink: 0;
+    margin-left: 8px !important;
 }
 
+/* Hide any avatar placeholder */
 .avatar-placeholder {
-    width: 40px;
-    flex-shrink: 0;
+    display: none !important;
 }
 
 /**************************************/
@@ -454,26 +477,31 @@ table:not(.mud-table-root) {
 
 .message-bubble .message-content ul,
 .message-bubble .message-content ol {
-    /* Reduce the top/bottom margin for lists in chat */
-    margin: 0.0em 0 !important;
+    margin: 0 !important;
     padding-left: 1.5rem !important;
     list-style-position: outside !important;
-    padding-inline-start:0 !important;
-    margin-block-start:0 !important;
-    margin-block-end:0 !important;
 }
 
 .message-bubble .message-content li {
-    /* Reduce space between list items */
-    margin: 0.1rem 0 !important;
+    margin: 0 !important; /* Change from 0.1rem to 0 */
     padding: 0 !important;
+    line-height: 1.2 !important; /* Reduce line height specifically for list items */
 }
 
-.message-bubble .message-content h1, h2, h3, h4, h5, h6{
-    margin-top:0px !important;
-    padding-top:0px !important;
-    margin-bottom:0px !important;
-    padding-bottom:0px !important;
+.message-bubble .message-content h1,
+.message-bubble .message-content h2,
+.message-bubble .message-content h3,
+.message-bubble .message-content h4,
+.message-bubble .message-content h5,
+.message-bubble .message-content h6 {
+    margin-top: 0px !important;
+    padding-top: 0px !important;
+    margin-bottom: 0px !important;
+    padding-bottom: 0px !important;
+}
+
+.message-bubble .message-content hr {
+    margin: 0.5rem 0 !important;
 }
 
 /**************************************/
@@ -537,9 +565,11 @@ table:not(.mud-table-root) {
     background-color: rgba(255, 255, 255, 0.04);
 }
 
-/* Chat message attachment styles */
+/**************************************/
+/* Chat message attachment styles     */
+/**************************************/
 .chat-message-attachments {
-    border-top: 1px solid rgba(0,0,0,0.1);
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
     padding-top: 0.5rem;
     display: flex;
     flex-wrap: wrap;
@@ -548,20 +578,22 @@ table:not(.mud-table-root) {
 }
 
 .dark-mode .chat-message-attachments {
-    border-top: 1px solid rgba(255,255,255,0.1);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .chat-message-attachment-item {
     display: inline-flex;
     align-items: center;
-    background-color: rgba(0,0,0,0.05);
+    background-color: #e0e0e0; /* Slightly darker background for attachments in light mode */
+    color: #333333; /* Dark grey text for attachments in light mode */
     border-radius: 4px;
     padding: 2px 6px;
     font-size: 0.8rem;
 }
 
 .dark-mode .chat-message-attachment-item {
-    background-color: rgba(255,255,255,0.1);
+    background-color: #3a3a3a; /* Slightly darker background for attachments in dark mode */
+    color: #e2e2e2; /* Less intense white text for attachments in dark mode */
 }
 
 .chat-message-attachment-number {
@@ -576,6 +608,3 @@ table:not(.mud-table-root) {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-
-
-

@@ -191,52 +191,37 @@
     var wrapperClass = GetMessageClass() + (IsDarkMode ? " dark-mode" : "");
 }
 
-<div class="@wrapperClass">
-    @if (!IsCurrentUser)
-    {
-        <div class="avatar-space-right">
+@if (IsCurrentUser)
+{
+    <!-- User Message (Right-aligned) -->
+    <div class="@wrapperClass">
+        <div class="avatar-space-left">
             <div class="@GetAvatarClass()" title="@ChatMessage.UserFullName">
                 @GetInitials()
             </div>
         </div>
-    }
-    else
-    {
-        <div class="avatar-placeholder"></div>
-    }
+        <div class="flex-grow-1">
+            <div class="@GetBubbleClass()">
+                <div class="message-content">
+                    <RenderMultilineText Value="@GetFormattedMessageContent()"/>
 
-    <div class="flex-grow-1">
-        <div class="@GetBubbleClass()">
-            <div class="message-content">
-                <RenderMultilineText Value="@GetFormattedMessageContent()" />
-
-                @if (_messageReferences.Any())
-                {
-                    <div class="chat-message-attachments">
-                        @foreach (var reference in _messageReferences)
-                        {
-                            <div class="chat-message-attachment-item">
-                                <span class="chat-message-attachment-number">[@reference.Number]</span>
-                                <MudIcon Icon="@GetReferenceIcon(reference.ReferenceType)" Size="Size.Small" Class="mx-1" />
-                                <span class="chat-message-attachment-name text-truncate">@reference.DisplayName</span>
-                            </div>
-                        }
-                    </div>
-                }
-            </div>
-        </div>
-
-        <div class="@GetMetaClass()">
-            @if (ChatMessage is { Source: ChatMessageSource.Assistant, State: ChatMessageCreationState.InProgress } && _showTypingIndicator)
-            {
-                <div class="typing-indicator">
-                    <div class="typing-dot"></div>
-                    <div class="typing-dot"></div>
-                    <div class="typing-dot"></div>
+                    @if (_messageReferences.Any())
+                    {
+                        <div class="chat-message-attachments">
+                            @foreach (var reference in _messageReferences)
+                            {
+                                <div class="chat-message-attachment-item">
+                                    <span class="chat-message-attachment-number">[@reference.Number]</span>
+                                    <MudIcon Icon="@GetReferenceIcon(reference.ReferenceType)" Size="Size.Small" Class="mx-1"/>
+                                    <span class="chat-message-attachment-name text-truncate">@reference.DisplayName</span>
+                                </div>
+                            }
+                        </div>
+                    }
                 </div>
-            }
-            else
-            {
+            </div>
+
+            <div class="@GetMetaClass()">
                 <MudText Typo="Typo.caption">
                     @FormatDateTime(ChatMessage.CreatedUtc)
                     @if (ChatMessage.State != ChatMessageCreationState.Complete)
@@ -244,31 +229,84 @@
                         <span class="state-indicator">
                             @if (ChatMessage.State == ChatMessageCreationState.InProgress)
                             {
-                                <MudIcon Icon="@Icons.Material.Filled.HourglassEmpty" Size="Size.Small" />
+                                <MudIcon Icon="@Icons.Material.Filled.HourglassEmpty" Size="Size.Small"/>
                                 <span>In progress</span>
                             }
                             else if (ChatMessage.State == ChatMessageCreationState.Failed)
                             {
-                                <MudIcon Icon="@Icons.Material.Filled.Error" Size="Size.Small" />
+                                <MudIcon Icon="@Icons.Material.Filled.Error" Size="Size.Small"/>
                                 <span>Failed</span>
                             }
                         </span>
                     }
                 </MudText>
-            }
+            </div>
         </div>
-    </div>
 
-    @if (IsCurrentUser)
-    {
-        <div class="avatar-space-left">
+    </div>
+}
+else
+{
+    <!-- Assistant/Other Message (Left-aligned) -->
+    <div class="@wrapperClass">
+        <div class="avatar-space-right">
             <div class="@GetAvatarClass()" title="@ChatMessage.UserFullName">
                 @GetInitials()
             </div>
         </div>
-    }
-    else
-    {
-        <div class="avatar-placeholder"></div>
-    }
-</div>
+        <div class="flex-grow-1">
+            <div class="@GetBubbleClass()">
+                <div class="message-content">
+                    <RenderMultilineText Value="@GetFormattedMessageContent()" />
+
+                    @if (_messageReferences.Any())
+                    {
+                        <div class="chat-message-attachments">
+                            @foreach (var reference in _messageReferences)
+                            {
+                                <div class="chat-message-attachment-item">
+                                    <span class="chat-message-attachment-number">[@reference.Number]</span>
+                                    <MudIcon Icon="@GetReferenceIcon(reference.ReferenceType)" Size="Size.Small" Class="mx-1" />
+                                    <span class="chat-message-attachment-name text-truncate">@reference.DisplayName</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="@GetMetaClass()">
+                @if (ChatMessage is { Source: ChatMessageSource.Assistant, State: ChatMessageCreationState.InProgress } && _showTypingIndicator)
+                {
+                    <div class="typing-indicator">
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                    </div>
+                }
+                else
+                {
+                    <MudText Typo="Typo.caption">
+                        @FormatDateTime(ChatMessage.CreatedUtc)
+                        @if (ChatMessage.State != ChatMessageCreationState.Complete)
+                        {
+                            <span class="state-indicator">
+                                @if (ChatMessage.State == ChatMessageCreationState.InProgress)
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.HourglassEmpty" Size="Size.Small" />
+                                    <span>In progress</span>
+                                }
+                                else if (ChatMessage.State == ChatMessageCreationState.Failed)
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.Error" Size="Size.Small" />
+                                    <span>Failed</span>
+                                }
+                            </span>
+                        }
+                    </MudText>
+                }
+            </div>
+        </div>
+    </div>
+
+}
