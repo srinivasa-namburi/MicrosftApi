@@ -1,28 +1,24 @@
-using System.Text;
 using AutoMapper;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.SemanticKernel;
 using Microsoft.Greenlight.Shared.Contracts.Chat;
+using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Commands;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Events;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Models;
-using Microsoft.Data.SqlClient;
 using Microsoft.Greenlight.Shared.Prompts;
 using Microsoft.Greenlight.Shared.Services;
+using Microsoft.Greenlight.Shared.Services.ContentReference;
+using Microsoft.SemanticKernel;
 using Scriban;
+using System.Text;
+using System.Text.RegularExpressions;
 
 #pragma warning disable SKEXP0010
 namespace Microsoft.Greenlight.Worker.Chat.Consumers;
 
-/// <summary>
-/// Consumer class for messages of <see cref="ProcessChatMessage"/>.
-/// </summary>
-/// <remarks>
-/// Initializes a new instance of the <see cref="ProcessChatMessageConsumer"/> class.
-/// </remarks>
 public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
 {
     private Kernel? _sk;
@@ -31,42 +27,19 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
     private readonly IPromptInfoService _promptInfoService;
     private readonly ILogger<ProcessChatMessageConsumer> _logger;
     private readonly IDocumentProcessInfoService _documentProcessInfoService;
+    private readonly IContentReferenceService _contentReferenceService;
+    private readonly IRagContextBuilder _ragContextBuilder;
     private readonly IKernelFactory _kernelFactory;
 
-    /// <summary>
-    /// Consumer class for messages of <see cref="ProcessChatMessage"/>.
-    /// </summary>
-    /// <remarks>
-    /// Initializes a new instance of the <see cref="ProcessChatMessageConsumer"/> class.
-    /// </remarks>
-    /// <param name="dbContext">
-    /// The <see cref="DocGenerationDbContext"/>.
-    /// </param>
-    /// <param name="mapper">
-    /// An instance of AutoMapper - <see cref="IMapper"/>.
-    /// </param>
-    /// <param name="sp">
-    /// The <see cref="IServiceProvider"/>.
-    /// </param>
-    /// <param name="promptInfoService">
-    /// The <see cref="IPromptInfoService"/>.
-    /// </param>
-    /// <param name="logger">
-    /// The <see cref="ILogger"/>.
-    /// </param>
-    /// <param name="documentProcessInfoService">
-    /// The <see cref="IDocumentProcessInfoService"/>.
-    /// </param>
-    /// <param name="kernelFactory">
-    /// The <see cref="IKernelFactory"/>.
-    /// </param>
     public ProcessChatMessageConsumer(DocGenerationDbContext dbContext,
         IMapper mapper,
         IServiceProvider sp,
         IPromptInfoService promptInfoService,
         ILogger<ProcessChatMessageConsumer> logger,
         IDocumentProcessInfoService documentProcessInfoService,
-        IKernelFactory kernelFactory)
+        IKernelFactory kernelFactory,
+        IContentReferenceService contentReferenceService, 
+        IRagContextBuilder ragContextBuilder)
     {
         _dbContext = dbContext;
         _mapper = mapper;
@@ -74,74 +47,89 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
         _logger = logger;
         _documentProcessInfoService = documentProcessInfoService;
         _kernelFactory = kernelFactory;
+        _contentReferenceService = contentReferenceService;
+        _ragContextBuilder = ragContextBuilder;
     }
 
-    /// <summary>
-    /// Consumes the <see cref="ProcessChatMessage"/> command and proccesses chat messages from the user.
-    /// </summary>
-    /// <param name="context">
-    /// The <see cref="ConsumeContext"/> containing the <see cref="ProcessChatMessage"/> command.
-    /// </param>
-    /// <returns>
-    /// A <see cref="Task"/> that represents the asynchronous consume operation.
-    /// </returns>
     public async Task Consume(ConsumeContext<ProcessChatMessage> context)
     {
         var userMessageDto = context.Message.ChatMessageDto;
 
         try
         {
-            await StoreChatMessage(userMessageDto);
+            await StoreChatMessageAndReferenceItems(userMessageDto);
         }
         catch (OperationCanceledException e)
         {
-            // If the message is a duplicate, log the error and exit (as a successful run)
             _logger.LogWarning(e, "Duplicate message detected");
             return;
         }
         await ProcessUserMessage(userMessageDto, context);
     }
 
-    private async Task StoreChatMessage(ChatMessageDTO chatMessageDto)
+    private async Task StoreChatMessageAndReferenceItems(ChatMessageDTO chatMessageDto)
     {
+        // Store the chat message
         var chatMessageEntity = _mapper.Map<ChatMessage>(chatMessageDto);
 
         if (chatMessageEntity.Source == ChatMessageSource.User)
         {
-            var userInformation =
-                await _dbContext.UserInformations.FirstOrDefaultAsync(x =>
-                    x.ProviderSubjectId == chatMessageDto.UserId);
-
+            var userInformation = await _dbContext.UserInformations.FirstOrDefaultAsync(x => x.ProviderSubjectId == chatMessageDto.UserId);
             if (userInformation != null)
             {
                 chatMessageEntity.AuthorUserInformationId = userInformation.Id;
             }
         }
 
-        _dbContext.ChatMessages.Add(chatMessageEntity);
-
-        try
+        var existingMessage = await _dbContext.ChatMessages.FirstOrDefaultAsync(x => x.Id == chatMessageEntity.Id);
+        if (existingMessage != null)
         {
-            await _dbContext.SaveChangesAsync();
+            _dbContext.Entry(existingMessage).CurrentValues.SetValues(chatMessageEntity);
         }
-        catch (DbUpdateException e)
+        else
         {
-            // If it's a foreign key constraint violation, log the error and exit (as a successful run)
-            // This is likely a duplicate message being processed
-            if (e.InnerException is SqlException sqlException && (sqlException.Number == 547 || sqlException.Number == 2627))
-            {
-                throw new OperationCanceledException("Duplicate message detected", e);
+            await _dbContext.ChatMessages.AddAsync(chatMessageEntity);
+        }
 
+        await _dbContext.SaveChangesAsync();
+
+        // Extract references from message and add to conversation - only for user messages
+        if (chatMessageDto.Source != ChatMessageSource.User)
+        {
+            return;
+        }
+
+        var extractedReferences = await ExtractReferencesFromChatMessageAsync(chatMessageDto);
+
+        if (extractedReferences.Any())
+        {
+            var conversation = await _dbContext.ChatConversations
+                .FirstOrDefaultAsync(x => x.Id == chatMessageDto.ConversationId);
+
+            if (conversation != null)
+            {
+                bool conversationModified = false;
+                foreach (var reference in extractedReferences)
+                {
+                    if (!conversation.ReferenceItemIds.Contains(reference.Id))
+                    {
+                        conversation.ReferenceItemIds.Add(reference.Id);
+                        conversationModified = true;
+                    }
+                }
+
+                if (conversationModified)
+                {
+                    _dbContext.ChatConversations.Update(conversation);
+                    await _dbContext.SaveChangesAsync();
+                }
             }
         }
     }
 
+
     private async Task ProcessUserMessage(ChatMessageDTO userMessageDto, ConsumeContext<ProcessChatMessage> context)
     {
-        // Using Semantic Kernel, process the user message in a streaming fashion. For each update from the stream, publish an event with the 
-        // full response generated so far, as well as a message with just the latest update. The API will consume these events and update the
-        // chat interface with the full response and the latest update.
-
         var assistantMessageDto = new ChatMessageDTO()
         {
             ConversationId = userMessageDto.ConversationId,
@@ -162,70 +150,136 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
             throw new InvalidOperationException($"Document process with short name {conversation.DocumentProcessName} not found");
         }
 
-        _sk = await _kernelFactory.GetKernelForDocumentProcessAsync(conversation.DocumentProcessName);
+        // Get all references for context
+        var referenceItems = await _contentReferenceService.GetContentReferenceItemsFromIdsAsync(conversation.ReferenceItemIds);
 
-        var openAiSettings = await _kernelFactory.GetPromptExecutionSettingsForDocumentProcessAsync(
-            documentProcessInfo, AiTaskType.ChatReplies);
-
-        string? systemPrompt = string.IsNullOrEmpty(conversation.SystemPrompt)
-            ? await _promptInfoService.GetPromptTextByShortCodeAndProcessNameAsync(
-                PromptNames.ChatSystemPrompt, conversation.DocumentProcessName)
-            : conversation.SystemPrompt;
-
-        openAiSettings.ChatDeveloperPrompt = systemPrompt;
-
-        var chatHistoryString = await CreateChatHistoryString(context, userMessageDto, 10);
-        var previousSummariesForConversationString = await GetSummariesConversationString(userMessageDto);
-
-        var userPrompt = await BuildUserPromptAsync(
-            chatHistoryString,
-            previousSummariesForConversationString,
-            userMessageDto.Message!,
-            conversation.DocumentProcessName);
-
-        var kernelArguments = new KernelArguments(openAiSettings);
-
-        var updateBlock = "";
-        var responseDateSet = false;
-
-        await foreach (var response in _sk.InvokePromptStreamingAsync(userPrompt, kernelArguments))
+        // Send notification with current set of references, if any
+        if (referenceItems.Any())
         {
-            // Publish event with full response so far every 20 characters
-            updateBlock += response;
-            if (updateBlock.Length > 20)
-            {
-                if (!responseDateSet)
-                {
-                    assistantMessageDto.CreatedUtc = DateTime.UtcNow;
-                    assistantMessageDto.State = ChatMessageCreationState.InProgress;
-                    responseDateSet = true;
-                }
+            var referenceItemDtOs = _mapper.Map<List<ContentReferenceItemInfo>>(referenceItems);
 
+            await context.Publish(new ConversationReferencesUpdatedNotification(conversation.Id, referenceItemDtOs));
+        }
+
+        if (userMessageDto.Message != null)
+        {
+            var contextString = await BuildContextWithSelectedReferencesAsync(userMessageDto.Message, referenceItems, 5);
+
+            _sk = await _kernelFactory.GetKernelForDocumentProcessAsync(conversation.DocumentProcessName);
+
+            var openAiSettings = await _kernelFactory.GetPromptExecutionSettingsForDocumentProcessAsync(
+                documentProcessInfo, AiTaskType.ChatReplies);
+
+            string? systemPrompt = string.IsNullOrEmpty(conversation.SystemPrompt)
+                ? await _promptInfoService.GetPromptTextByShortCodeAndProcessNameAsync(
+                    PromptNames.ChatSystemPrompt, conversation.DocumentProcessName)
+                : conversation.SystemPrompt;
+
+            openAiSettings.ChatDeveloperPrompt = systemPrompt;
+
+            var chatHistoryString = await CreateChatHistoryString(context, userMessageDto, 10);
+            var previousSummariesForConversationString = await GetSummariesConversationString(userMessageDto);
+
+            var userPrompt = await BuildUserPromptAsync(
+                chatHistoryString,
+                previousSummariesForConversationString,
+                userMessageDto.Message!,
+                conversation.DocumentProcessName,
+                contextString);
+
+            var kernelArguments = new KernelArguments(openAiSettings);
+
+            var updateBlock = "";
+            var responseDateSet = false;
+
+            await foreach (var response in _sk.InvokePromptStreamingAsync(userPrompt, kernelArguments))
+            {
+                updateBlock += response;
+                if (updateBlock.Length > 20)
+                {
+                    if (!responseDateSet)
+                    {
+                        assistantMessageDto.CreatedUtc = DateTime.UtcNow;
+                        assistantMessageDto.State = ChatMessageCreationState.InProgress;
+                        responseDateSet = true;
+                    }
+
+                    assistantMessageDto.Message += updateBlock;
+                    await context.Publish<ChatMessageResponseReceived>(
+                        new ChatMessageResponseReceived(userMessageDto.ConversationId, assistantMessageDto, updateBlock));
+                    updateBlock = "";
+                }
+            }
+
+            if (updateBlock.Length > 0)
+            {
                 assistantMessageDto.Message += updateBlock;
-                await context.Publish<ChatMessageResponseReceived>(
-                    new ChatMessageResponseReceived(userMessageDto.ConversationId, assistantMessageDto, updateBlock));
-                updateBlock = "";
+            }
+
+            assistantMessageDto.State = ChatMessageCreationState.Complete;
+
+            await context.Publish<ChatMessageResponseReceived>(new ChatMessageResponseReceived(userMessageDto.ConversationId, assistantMessageDto, updateBlock));
+        }
+
+        await StoreChatMessageAndReferenceItems(assistantMessageDto);
+    }
+
+    private async Task<List<ContentReferenceItem>> ExtractReferencesFromChatMessageAsync(ChatMessageDTO messageDto)
+    {
+        var contentReferences = new List<ContentReferenceItem>();
+
+        if (string.IsNullOrEmpty(messageDto.Message))
+        {
+            return contentReferences;
+        }
+
+        // Extract reference patterns from message
+        var matches = Regex.Matches(messageDto.Message, @"#\(Reference:(\w+):([0-9a-fA-F-]+)\)");
+        foreach (Match match in matches)
+        {
+            if (Enum.TryParse(match.Groups[1].Value, out ContentReferenceType referenceType))
+            {
+                var referenceId = Guid.Parse(match.Groups[2].Value);
+
+                try
+                {
+                    // Use the enhanced service to get or create the reference with RAG text 
+                    var reference = await _contentReferenceService.GetOrCreateContentReferenceItemAsync(referenceId, referenceType);
+                    if (reference != null)
+                    {
+                        contentReferences.Add(reference);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error processing reference {Id} of type {Type}", referenceId, referenceType);
+                }
             }
         }
 
-        // Publish event with full response so far with any remaining unprocessed characters after stream has ended
-        if (updateBlock.Length > 0)
-        {
-            assistantMessageDto.Message += updateBlock;
-        }
+        // Clean up the message by removing reference tags
+        messageDto.Message = Regex.Replace(messageDto.Message, @"#\(Reference:(\w+):([0-9a-fA-F-]+)\)", "");
 
-        // Set the message state to complete
-        assistantMessageDto.State = ChatMessageCreationState.Complete;
-
-        await context.Publish<ChatMessageResponseReceived>(new ChatMessageResponseReceived(userMessageDto.ConversationId, assistantMessageDto, updateBlock));
-
-
-
-        // Save Response Message to database
-        await StoreChatMessage(assistantMessageDto);
+        return contentReferences;
     }
 
-    private async Task<string> BuildUserPromptAsync(string chatHistoryString, string previousSummariesForConversationString, string userMessage, string documentProcessName)
+    /// <summary>
+    /// Builds a context string with selected references for the user query.
+    /// This performs basically "internal rag" using embeddings and chunking.
+    /// </summary>
+    /// <param name="userQuery"></param>
+    /// <param name="allReferences"></param>
+    /// <param name="topN"></param>
+    /// <returns></returns>
+    private async Task<string> BuildContextWithSelectedReferencesAsync(string userQuery, List<ContentReferenceItem> allReferences, int topN)
+    {
+        // Delegate to the specialized service
+        var context = await _ragContextBuilder.BuildContextWithSelectedReferencesAsync(userQuery, allReferences, topN);
+        return context;
+    }
+
+
+    private async Task<string> BuildUserPromptAsync(string chatHistoryString, string previousSummariesForConversationString, string userMessage, string documentProcessName, string contextString)
     {
         var initialUserPrompt = await _promptInfoService.GetPromptTextByShortCodeAndProcessNameAsync(PromptNames.ChatSinglePassUserPrompt, documentProcessName);
         var template = Template.Parse(initialUserPrompt);
@@ -235,7 +289,8 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
             chatHistoryString,
             previousSummariesForConversationString,
             userMessage,
-            documentProcessName
+            documentProcessName,
+            contextString
 
         }, member => member.Name);
 
@@ -244,13 +299,11 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
 
     private async Task<string> GetSummariesConversationString(ChatMessageDTO userMessageDto)
     {
-        // Get all summaries for the conversation
         var summaries = await _dbContext.ConversationSummaries
             .Where(x => x.ConversationId == userMessageDto.ConversationId)
             .OrderBy(x => x.CreatedAt)
             .ToListAsync();
 
-        // Create a string with all summaries - separate each with a newline
         var summariesString = "";
         foreach (var summary in summaries)
         {
@@ -260,14 +313,6 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
         return summariesString;
     }
 
-
-    /// <summary>
-    /// Returns chat history, excluding the user message that triggered the assistant response
-    /// </summary>
-    /// <param name="context"></param>
-    /// <param name="userMessageDto"></param>
-    /// <param name="numberOfMessagesToInclude"></param>
-    /// <returns>A formatted string with chat history</returns>
     private async Task<string> CreateChatHistoryString(ConsumeContext<ProcessChatMessage> context,
         ChatMessageDTO userMessageDto, int numberOfMessagesToInclude = Int32.MaxValue)
     {
@@ -290,7 +335,6 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
                 .ToListAsync();
         }
 
-
         if (chatHistory.Count == 0)
         {
             return "";
@@ -300,14 +344,7 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
 
         var chatHistoryString = CreateChatHistoryStringFromChatHistory(chatHistory);
 
-        // If the total chat history count (number of chat history items) for the conversation
-        // is greater than the number of messages to include, publish a message to the bus to
-        // potentially generate a summary of the chat history.
-        // We want to summarize any messages prior to the 5 latest messages in the returned chatHistory list
-
-        // We need to refresh the chat history list to get the 5 earliest messages
         var fiveEarliestMessages = chatHistory.OrderBy(x => x.CreatedUtc).Take(5).ToList();
-        // Get the date from the latest message in the list
         var earliestMessage = fiveEarliestMessages.Last();
 
         if (fullChatHistoryCount > numberOfMessagesToInclude)
@@ -318,13 +355,10 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
         return chatHistoryString;
     }
 
-
     private static string CreateChatHistoryStringFromChatHistory(List<ChatMessage> chatHistory)
     {
-        // Create a stringbuilder to store the chat history
         var chatHistoryBuilder = new StringBuilder();
 
-        // For each chat message, create a string with timestamp, user/assistant, and message. Separate by | character and end with a newline
         foreach (var chatMessage in chatHistory)
         {
             chatHistoryBuilder
@@ -332,7 +366,6 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
                 .AppendLine("content:" + chatMessage.Message);
         }
 
-        // Output the chat history to a string variable
         var chatHistoryString = chatHistoryBuilder.ToString();
         return chatHistoryString;
     }

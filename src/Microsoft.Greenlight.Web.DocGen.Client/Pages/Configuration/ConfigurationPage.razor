@@ -30,7 +30,10 @@
                 <MudSwitch @bind-Value="_featureFlags.EnableReviews" Color="Color.Primary" Label="Enable Reviews" />
             </MudItem>
             <MudItem xs="12">
-                <MudSwitch @bind-Value="_featureFlags.EnableReferenceFrontend" Color="Color.Primary" Label="Enable Reference Frontend" />
+                <MudSwitch @bind-Value="_featureFlags.EnableReferenceFrontend" Color="Color.Primary" Label="Enable Source Reference Frontend for generation" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudSwitch @bind-Value="_featureFlags.EnableContentReferences" Color="Color.Primary" Label="Enable Content Reference System (internal links)" />
             </MudItem>
         </MudCardContent>
     </MudCard>

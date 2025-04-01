@@ -1,12 +1,13 @@
-using System.ClientModel;
 using Aspire.Azure.Messaging.ServiceBus;
 using Aspire.Azure.Search.Documents;
 using Aspire.Azure.Storage.Blobs;
 using Azure.AI.OpenAI;
+using DocumentFormat.OpenXml.Office2016.Drawing.ChartDrawing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Data.Sql;
@@ -16,6 +17,7 @@ using Microsoft.Greenlight.Shared.Management.Configuration;
 using Microsoft.Greenlight.Shared.Mappings;
 using Microsoft.Greenlight.Shared.Plugins;
 using Microsoft.Greenlight.Shared.Services;
+using Microsoft.Greenlight.Shared.Services.ContentReference;
 using Microsoft.Greenlight.Shared.Services.Search;
 using Microsoft.Greenlight.Shared.Services.Validation;
 using Microsoft.SemanticKernel;
@@ -24,8 +26,8 @@ using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
 using Microsoft.SemanticKernel.Embeddings;
 using StackExchange.Redis;
 using StackExchange.Redis.Configuration;
+using System.ClientModel;
 using System.Reflection;
-using Microsoft.Extensions.Options;
 
 namespace Microsoft.Greenlight.Shared.Extensions;
 #pragma warning disable SKEXP0011
@@ -159,6 +161,8 @@ public static class BuilderExtensions
                 nameof(SequentialFullDocumentValidationStepExecutionLogic));
 
         builder.Services.AddScoped<IContentNodeService, ContentNodeService>();
+
+        builder.Services.AddScoped<IContentReferenceService, ContentReferenceService>();
         
         return builder;
     }
@@ -196,6 +200,12 @@ public static class BuilderExtensions
         {
             builder.AddRedisClient(redisConnectionStringName);
         }
+        
+        // Add IDistributedCache using StackExchange.Redis
+        builder.Services.AddStackExchangeRedisCache(options =>
+        {
+            options.Configuration = builder.Configuration.GetConnectionString("redis");
+        });
 
         return builder;
     }

@@ -59,4 +59,12 @@ public interface INotificationHubClient
     /// <param name="message">The backend processing message generated.</param>
     /// <returns>A task that represents the asynchronous operation.</returns>
     Task ReceiveBackendProcessingMessageGeneratedNotification(BackendProcessingMessageGenerated message);
+
+    /// <summary>
+    /// Receives a conversation references updated notification.
+    /// </summary>
+    /// <param name="message">The conversation references updated message.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
+    Task ReceiveConversationReferencesUpdatedNotification(ConversationReferencesUpdatedNotification message);
+
 }

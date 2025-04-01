@@ -24,7 +24,13 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
         
         The 5 last chat messages are between the [ChatHistory] and [/ChatHistory] tags.
         A summary of full conversation history is between the [ChatHistorySummary] and [/ChatHistorySummary] tags.
-        The user's question is between the [User] and [/User] tags.
+        The user's message is between the [User] and [/User] tags.
+        
+        Context for the chat message can be found between the [Context] and [/Context] tags if it
+        is present. Treat this context as relevant, additional information. The question is
+        likely about what's contained in the context. Information between these tags has
+        been included as a reference by the user through inclusion of a file, document or similar,
+        and it has been processed to extract the raw text.
 
         Consider this chat history when responding to the user, specifically 
         looking for any context that may be relevant to the user's question.
@@ -61,6 +67,9 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
         [User]
         {{ userMessage }}
         [/User]
+        [Context]
+        {{ contextString }}
+        [/Context]
         """;
 
     public string SectionGenerationSystemPrompt =>

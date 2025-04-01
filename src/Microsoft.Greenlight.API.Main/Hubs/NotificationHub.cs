@@ -90,6 +90,17 @@ public class NotificationHub : Hub<INotificationHubClient>
     }
 
     /// <summary>
+    /// Sends a notification that the conversation references have been updated to a specific group (conversation).
+    /// </summary>
+    /// <param name="groupId"></param>
+    /// <param name="message"></param>
+    public async Task ReceiveConversationReferencesUpdatedNotification(string groupId,
+        ConversationReferencesUpdatedNotification message)
+    {
+        await Clients.Group(groupId).ReceiveConversationReferencesUpdatedNotification(message);
+    }
+
+    /// <summary>
     /// Adds the current connection to a specific group.
     /// </summary>
     /// <param name="groupName">The name of the group to add the connection to.</param>

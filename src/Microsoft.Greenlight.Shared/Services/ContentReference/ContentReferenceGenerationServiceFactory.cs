@@ -1,0 +1,52 @@
+﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Greenlight.Shared.Enums;
+using Microsoft.Greenlight.Shared.Models;
+
+
+namespace Microsoft.Greenlight.Shared.Services.ContentReference
+{
+    /// <summary>
+    /// Default implementation of IContentReferenceGenerationServiceFactory
+    /// </summary>
+    public class ContentReferenceGenerationServiceFactory : IContentReferenceGenerationServiceFactory
+    {
+        private readonly IServiceProvider _serviceProvider;
+        
+        /// <summary>
+        /// Creates a new instance of ContentReferenceGenerationServiceFactory
+        /// </summary>
+        /// <param name="serviceProvider">The service provider to resolve services</param>
+        public ContentReferenceGenerationServiceFactory(IServiceProvider serviceProvider)
+        {
+            _serviceProvider = serviceProvider;
+        }
+        
+        /// <inheritdoc />
+        public object? GetGenerationService(ContentReferenceType referenceType)
+        {
+            return referenceType switch
+            {
+                ContentReferenceType.GeneratedDocument => _serviceProvider.GetService<IContentReferenceGenerationService<GeneratedDocument>>(),
+                ContentReferenceType.GeneratedSection => _serviceProvider.GetService<IContentReferenceGenerationService<ContentNode>>(),
+                // Add other content types as they are implemented
+                _ => null
+            };
+        }
+        
+        /// <inheritdoc />
+        public IContentReferenceGenerationService<T>? GetGenerationService<T>(ContentReferenceType referenceType) where T : EntityBase
+        {
+            if (typeof(T) == typeof(GeneratedDocument) && referenceType == ContentReferenceType.GeneratedDocument)
+            {
+                return (IContentReferenceGenerationService<T>)_serviceProvider.GetService<IContentReferenceGenerationService<GeneratedDocument>>()!;
+            }
+            else if (typeof(T) == typeof(ContentNode) && referenceType == ContentReferenceType.GeneratedSection)
+            {
+                return (IContentReferenceGenerationService<T>)_serviceProvider.GetService<IContentReferenceGenerationService<ContentNode>>()!;
+            }
+            
+            // Add other content types as they are implemented
+            return null;
+        }
+    }
+}

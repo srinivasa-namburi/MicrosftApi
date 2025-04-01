@@ -27,4 +27,9 @@ public class ChatConversation : EntityBase
     /// List of chat messages in the conversation.
     /// </summary>
     public List<ChatMessage> ChatMessages { get; set; } = [];
+
+    /// <summary>
+    /// List of reference item IDs in the conversation.
+    /// </summary>
+    public List<Guid> ReferenceItemIds { get; set; } = new List<Guid>();
 }

@@ -47,13 +47,13 @@ public static class DbContextExtensions
 
         builder.AddRepositories();
 
-        if (!AdminHelper.IsRunningInProduction())
-        {
-            builder.Logging.AddConsole()
-                .AddFilter((category, level) =>
-                    category == DbLoggerCategory.Database.Command.Name
-                    && level == LogLevel.Information);
-        }
+        //if (!AdminHelper.IsRunningInProduction())
+        //{
+        //    builder.Logging.AddConsole()
+        //        .AddFilter((category, level) =>
+        //            category == DbLoggerCategory.Database.Command.Name
+        //            && level == LogLevel.Information);
+        //}
 
         return builder;
     }

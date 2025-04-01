@@ -15,6 +15,7 @@ using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
+using Microsoft.SemanticKernel.Embeddings;
 using OpenAI.Chat;
 using System.Collections.Concurrent;
 using System.Globalization;
@@ -377,6 +378,15 @@ namespace Microsoft.Greenlight.Shared.Services
                     $"openai-chatcompletion-{documentProcess.ShortName}");
             });
 
+            kernelBuilder.Services.AddSingleton<ITextEmbeddingGenerationService>(sp =>
+            {
+                var embeddingGenerationService = new AzureOpenAITextEmbeddingGenerationService(
+                    _serviceConfigurationOptions.OpenAi.EmbeddingModelDeploymentName,
+                    _openAIClient, $"openai-embeddinggeneration-{documentProcess.ShortName}");
+                return embeddingGenerationService;
+
+            });
+
             var kernel = kernelBuilder.Build();
 
             // Add required plugins to the kernel
@@ -431,6 +441,15 @@ namespace Microsoft.Greenlight.Shared.Services
                     $"openai-chatvalidation-{documentProcess.ShortName}");
             });
 
+            kernelBuilder.Services.AddSingleton<ITextEmbeddingGenerationService>(sp =>
+            {
+                var embeddingGenerationService = new AzureOpenAITextEmbeddingGenerationService(
+                    _serviceConfigurationOptions.OpenAi.EmbeddingModelDeploymentName,
+                    _openAIClient, $"openai-embeddinggeneration-validation-{documentProcess.ShortName}");
+                return embeddingGenerationService;
+
+            });
+
             var kernel = kernelBuilder.Build();
 
             // Add required plugins to the kernel
@@ -468,6 +487,14 @@ namespace Microsoft.Greenlight.Shared.Services
                     modelIdentifier,
                     _openAIClient,
                     $"openai-generic-{modelIdentifier}");
+            });
+
+            kernelBuilder.Services.AddSingleton<ITextEmbeddingGenerationService>(sp =>
+            {
+                var embeddingGenerationService = new AzureOpenAITextEmbeddingGenerationService(
+                    _serviceConfigurationOptions.OpenAi.EmbeddingModelDeploymentName,
+                    _openAIClient, $"openai-generic-embeddings-{modelIdentifier}");
+                return embeddingGenerationService;
             });
 
             // Build and return the kernel (without plugins)

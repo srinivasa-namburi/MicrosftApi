@@ -1,8 +1,10 @@
 @inject IChatApiClient ChatApiClient
 @inject IAuthorizationApiClient AuthorizationApiClient
 @inject IConfigurationApiClient ConfigurationApiClient
+@inject IContentReferenceApiClient ContentReferenceApiClient
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IJSRuntime JSRuntime
+@inject ISnackbar Snackbar    
 
 @using Microsoft.AspNetCore.SignalR.Client
 @using Microsoft.Greenlight.Shared.Contracts.Chat
@@ -16,79 +18,100 @@
 {
     var containerClass = IsDarkMode ? "chat-container dark-mode" : "chat-container";
 
-        <MudPaper Class="@containerClass" Elevation="0">
-            <div class="chat-header">
-                <MudIcon Icon="@Icons.Material.Filled.Chat" Class="mr-2" />
-                <h2 class="chat-header-title">
-                    @(string.IsNullOrEmpty(DocumentProcessName) ? "Conversation" : $"Conversation with {DocumentProcessName}")
-                </h2>
-                @if (ChatMessages.Any())
-                {
-                        <MudTooltip Text="Scroll to bottom">
-                            <MudIconButton Icon="@Icons.Material.Filled.ArrowDownward"
-                                           Color="Color.Inherit"
-                                           OnClick="ScrollMessagesToBottom"
-                                           Size="Size.Small" />
-                        </MudTooltip>
-                }
-            </div>
+    <MudPaper Class="@containerClass" Elevation="0">
+        <div class="chat-header">
+            <MudIcon Icon="@Icons.Material.Filled.Chat" Class="mr-2" />
+            <h2 class="chat-header-title">
+                @(string.IsNullOrEmpty(DocumentProcessName) ? "Conversation" : $"Conversation with {DocumentProcessName}")
+            </h2>
+            @if (ChatMessages.Any())
+            {
+                <MudTooltip Text="Scroll to bottom">
+                    <MudIconButton Icon="@Icons.Material.Filled.ArrowDownward"
+                                   Color="Color.Inherit"
+                                   OnClick="ScrollMessagesToBottom"
+                                   Size="Size.Small" />
+                </MudTooltip>
+            }
+        </div>
 
-            <div @ref="_messagesContainer" class="messages-container">
-                @if (!ChatMessages.Any())
-                {
-                        <div class="empty-state">
-                            <MudIcon Icon="@Icons.Material.Outlined.ChatBubbleOutline" Size="Size.Large" Class="mb-4" />
-                            <MudText Typo="Typo.body1">No messages yet. Start the conversation!</MudText>
-                        </div>
-                }
-                else
-                {
-                        <div>
-                            @foreach (var chatMessage in ChatMessages.OrderBy(x => x.CreatedUtc))
-                            {
-                                    <ChatMessageDisplay ChatMessage="@chatMessage" CurrentUser="CurrentUser" />
-                            }
-                        </div>
-                }
+        @* Conversation References *@
+        @if (ConversationReferences.Any())
+        {
+            <div class="conversation-references mb-2">
+                <MudPaper Class="pa-2">
+                    <MudText Typo="Typo.subtitle2">Conversation References:</MudText>
+                    <MudList Dense="true">
+                        @foreach (var reference in ConversationReferences)
+                        {
+                            <MudListItem>
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                    @switch (reference.ReferenceType)
+                                    {
+                                        case ContentReferenceType.GeneratedDocument:
+                                            <MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Small" />
+                                            break;
+                                        case ContentReferenceType.ExternalFile:
+                                            <MudIcon Icon="@Icons.Material.Filled.AttachFile" Size="Size.Small" />
+                                            break;
+                                        default:
+                                            <MudIcon Icon="@Icons.Material.Filled.Link" Size="Size.Small" />
+                                            break;
+                                    }
+                                    <MudText Typo="Typo.body2">@reference.DisplayName</MudText>
+                                    <MudIconButton Icon="@Icons.Material.Filled.Close"
+                                                   Color="Color.Error"
+                                                   Size="Size.Small"
+                                                   OnClick="() => RemoveReference(reference.Id)" />
+                                </MudStack>
+                            </MudListItem>
+                        }
+                    </MudList>
+                </MudPaper>
             </div>
+        }
 
-            <div class="input-container">
-                @if (CurrentUser == null)
-                {
-                        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="56px" Animation="Animation.Pulse" />
-                }
-                else
-                {
-                        <div class="chat-input-row">
-                            <MudTextField @ref="_mudChatTextField" T="string"
-                                          OnKeyDown="OnChatTextKeyDown"
-                                          ValueChanged="OnChatTextFieldUpdated"
-                                          Immediate="false"
-                                          DebounceInterval="100"
-                                          Lines="2"
-                                          MaxLines="6"
-                                          AutoGrow="true"
-                                          AutoFocus="true"
-                                          FullWidth="true"
-                                          Placeholder="Type a message..."
-                                          Variant="Variant.Outlined"
-                                          AdornmentColor="Color.Primary"
-                                          AdornmentIcon="@Icons.Material.Filled.Send" />
-                            <MudIconButton Icon="@Icons.Material.Filled.Send"
-                                           Color="Color.Primary"
-                                           OnClick="@(() => SendMessage())"
-                                           Size="Size.Medium"
-                                           Class="mb-1" />
-                        </div>
-                }
-            </div>
-        </MudPaper>
+        <div @ref="_messagesContainer" class="messages-container">
+            @if (!ChatMessages.Any())
+            {
+                <div class="empty-state">
+                    <MudIcon Icon="@Icons.Material.Outlined.ChatBubbleOutline" Size="Size.Large" Class="mb-4" />
+                    <MudText Typo="Typo.body1">No messages yet. Start the conversation!</MudText>
+                </div>
+            }
+            else
+            {
+                <div>
+                    @foreach (var chatMessage in ChatMessages.OrderBy(x => x.CreatedUtc))
+                    {
+                        <ChatMessageDisplay ChatMessage="@chatMessage" 
+                                            CurrentUser="CurrentUser"
+                                            ConversationReferences="AllAvailableReferences" />
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="input-container">
+            @if (CurrentUser == null)
+            {
+                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="56px" Animation="Animation.Pulse" />
+            }
+            else
+            {
+                <CoPilotInputComponent 
+                    AllReferences="AllAvailableReferences"
+                    OnMessageSubmit="HandleMessageSubmit"
+                    @ref="_inputComponent" />
+            }
+        </div>
+    </MudPaper>
 }
 else
 {
-        <MudAlert Severity="Severity.Info" Variant="Variant.Filled" Class="my-4">
-            <MudText>No conversation loaded</MudText>
-        </MudAlert>
+    <MudAlert Severity="Severity.Info" Variant="Variant.Filled" Class="my-4">
+        <MudText>No conversation loaded</MudText>
+    </MudAlert>
 }
 
 @code {
@@ -101,12 +124,12 @@ else
     [Parameter] public Guid? ExternalReferenceId { get; set; }
     [Parameter] public bool InternalConversationIdCreate { get; set; } = false;
 
-    private MudTextField<string>? _mudChatTextField;
-    private bool _chatTextLastKeyWasEnter = false;
     private ElementReference _messagesContainer;
-    private string _currentMessage = string.Empty;
+    private CoPilotInputComponent? _inputComponent;
 
     private List<ChatMessageDTO> ChatMessages { get; set; } = new List<ChatMessageDTO>();
+    private List<ContentReferenceItemInfo> ConversationReferences { get; set; } = [];
+    private List<ContentReferenceItemInfo> AllAvailableReferences { get; set; } = [];
     private UserInfoDTO? CurrentUser { get; set; }
     private bool _isLoading = true;
 
@@ -128,6 +151,8 @@ else
 
                 // This also creates the conversation if it doesn't exist
                 ChatMessages = await ChatApiClient.GetChatMessagesAsync(ConversationId.Value, DocumentProcessName);
+
+                AllAvailableReferences = await ContentReferenceApiClient.GetAllReferencesAsync();
 
                 await StartHubConnections();
             }
@@ -169,6 +194,10 @@ else
             "ReceiveProcessChatMessageReceivedNotification",
             HubReceiveProcessChatMessageReceivedNotificationHandler);
 
+        HubConnection.On<ConversationReferencesUpdatedNotification>(
+            "ReceiveConversationReferencesUpdatedNotification",
+            HubReceiveConversationReferencesUpdatedNotificationHandler);
+
         if (HubConnection.State == HubConnectionState.Disconnected)
         {
             await HubConnection.StartAsync();
@@ -183,8 +212,18 @@ else
 
         HubConnection.Remove("ReceiveChatMessageResponseReceivedNotification");
         HubConnection.Remove("ReceiveProcessChatMessageReceivedNotification");
+        HubConnection.Remove("ReceiveConversationReferencesUpdatedNotification");
 
         await HubConnection.SendAsync("RemoveFromGroup", ConversationId);
+    }
+
+    private async Task HubReceiveConversationReferencesUpdatedNotificationHandler(ConversationReferencesUpdatedNotification obj)
+    {
+        if (obj.ConversationId != ConversationId)
+            return;
+
+        ConversationReferences = obj.ReferenceItems;
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task HubReceiveProcessChatMessageReceivedNotificationHandler(ProcessChatMessage obj)
@@ -195,6 +234,32 @@ else
         }
 
         await ProcessOtherUserMessage(obj.ChatMessageDto);
+    }
+
+    private async Task RemoveReference(Guid referenceId)
+    {
+        if (ConversationId == null)
+            return;
+        try
+        {
+            bool removed = await ContentReferenceApiClient.RemoveReferenceAsync(referenceId, ConversationId.Value);
+            if (!removed)
+            {
+                Snackbar.Add("Reference or conversation not found.", Severity.Error);
+                return;
+            }
+            // Remove from local list so UI updates immediately.
+            var referenceToRemove = ConversationReferences.FirstOrDefault(r => r.Id == referenceId);
+            if (referenceToRemove != null)
+            {
+                ConversationReferences.Remove(referenceToRemove);
+            }
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error removing reference from conversation", Severity.Error);
+        }
     }
 
     private async Task HubReceiveChatMessageResponseReceivedNotificationHandler(ChatMessageResponseReceived obj)
@@ -233,29 +298,9 @@ else
         await ScrollMessagesToBottom();
     }
 
-    private void OnChatTextKeyDown(KeyboardEventArgs e)
+    private async Task HandleMessageSubmit(string message)
     {
-        _chatTextLastKeyWasEnter = e is { Key: "Enter", ShiftKey: false };
-    }
-
-    private async Task OnChatTextFieldUpdated(string chatText)
-    {
-        _currentMessage = chatText;
-
-        if (string.IsNullOrWhiteSpace(chatText))
-        {
-            return;
-        }
-
-        if (_chatTextLastKeyWasEnter)
-        {
-            await SendMessage();
-        }
-    }
-
-    private async Task SendMessage()
-    {
-        if (string.IsNullOrWhiteSpace(_currentMessage))
+        if (string.IsNullOrWhiteSpace(message))
         {
             return;
         }
@@ -264,7 +309,7 @@ else
         {
             ConversationId = ConversationId!.Value,
             Id = Guid.NewGuid(),
-            Message = _currentMessage,
+            Message = message,
             CreatedUtc = DateTime.UtcNow,
             Source = ChatMessageSource.User,
             UserId = CurrentUser!.ProviderSubjectId,
@@ -299,18 +344,15 @@ else
 
     private async Task ProcessMessage(ChatMessageDTO chatMessageDto)
     {
-        _chatTextLastKeyWasEnter = false;
         if (chatMessageDto.Source == ChatMessageSource.User)
         {
             ChatMessages.Add(chatMessageDto);
-            _currentMessage = string.Empty;
-            await _mudChatTextField.Clear();
-            await _mudChatTextField.SetText("");
+            await _inputComponent?.Clear();
             await InvokeAsync(StateHasChanged);
             await ScrollMessagesToBottom();
 
             await ChatApiClient.SendChatMessageAsync(chatMessageDto);
-            await _mudChatTextField.FocusAsync();
+            await _inputComponent?.Focus();
         }
     }
 

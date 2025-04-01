@@ -40,6 +40,7 @@ public class ConfigurationController : BaseController
     [
         "ServiceConfiguration:GreenlightServices:FrontEnd:*",
         "ServiceConfiguration:GreenlightServices:FeatureFlags:*",
+        "ServiceConfiguration:GreenlightServices:ReferenceIndexing:*",
         "ServiceConfiguration:OpenAI:*"
     ];
 

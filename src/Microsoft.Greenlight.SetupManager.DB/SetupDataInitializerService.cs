@@ -79,7 +79,6 @@ public class SetupDataInitializerService(
 
         await Seed2024_04_07_IngestedDocumentDocumentProcess(dbContext, cancellationToken);
         await Seed2024_05_24_OrphanedChatMessagesCleanup(dbContext, cancellationToken);
-        await Seed2024_05_24_ChatConversationsWithNoMessagesCleanup(dbContext, cancellationToken);
         await Seed2025_02_27_CreateDefaultSequentialValidationPipeline(dbContext, cancellationToken);
         await Seed2025_03_18_DefaultConfiguration(dbContext, cancellationToken);
         await Seed2025_04_24_AiModelSettings(dbContext, cancellationToken);
@@ -316,49 +315,6 @@ public class SetupDataInitializerService(
             Guid.Empty);
 
         await dbContext.SaveChangesAsync(cancellationToken);
-    }
-
-    private async Task Seed2024_05_24_ChatConversationsWithNoMessagesCleanup(DocGenerationDbContext dbContext,
-        CancellationToken cancellationToken)
-    {
-        // Remove any ChatConversations that have no associated ChatMessages
-        // First, get a count of the number of ChatConversations that have no associated ChatMessages. If it's 0, we
-        // don't need to do anything.
-
-        // The ChatConversations currently have a list of ChatMessages in the model,
-        // so we can use LINQ to find ChatConversations with no associated ChatMessages
-
-        var expirePoint = DateTime.UtcNow - (7.Days());
-
-        var count = await dbContext.ChatConversations
-            .Where(x => x.ChatMessages.Count == 0)
-            .Where(x => x.CreatedUtc < expirePoint)
-            .CountAsync(cancellationToken);
-
-        if (count == 0)
-        {
-            _logger.LogInformation(
-                "No (old) ChatConversations found with no associated ChatMessages. Skipping cleanup logic.");
-            return;
-        }
-
-        _logger.LogInformation(
-            "Cleaning up : Removing {Count} ChatConversations with no associated ChatMessages that are older than 7 days",
-            count);
-
-        var chatConversations = await dbContext.ChatConversations
-            .Where(x => x.ChatMessages.Count == 0)
-            .Where(x => x.CreatedUtc < expirePoint)
-            .ToListAsync(cancellationToken);
-
-        // This marks the ChatConversations for deletion through their IsActive property
-        dbContext.ChatConversations.RemoveRange(chatConversations);
-        await dbContext.SaveChangesAsync(cancellationToken);
-
-        // This actually deletes the ChatConversations from the database
-        await dbContext.Database.ExecuteSqlRawAsync(
-            "DELETE FROM ChatConversations WHERE IsActive = 0", cancellationToken: cancellationToken);
-
     }
 
     private async Task Seed2025_03_18_DefaultConfiguration(DocGenerationDbContext dbContext,

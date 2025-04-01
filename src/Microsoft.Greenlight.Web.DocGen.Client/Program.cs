@@ -106,4 +106,9 @@ builder.Services.AddHttpClient<IDomainGroupsApiClient, DomainGroupsApiClient>(cl
     client.BaseAddress = serverBaseAddress;
 });
 
+builder.Services.AddHttpClient<IContentReferenceApiClient, ContentReferenceApiClient>(client =>
+{
+    client.BaseAddress = serverBaseAddress;
+});
+
 await builder.Build().RunAsync();

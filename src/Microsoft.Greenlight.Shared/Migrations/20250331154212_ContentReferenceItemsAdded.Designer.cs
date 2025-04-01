@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Microsoft.Greenlight.Shared.Data.Sql;
 
@@ -11,9 +12,11 @@ using Microsoft.Greenlight.Shared.Data.Sql;
 namespace Microsoft.Greenlight.Shared.Migrations
 {
     [DbContext(typeof(DocGenerationDbContext))]
-    partial class DocGenerationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250331154212_ContentReferenceItemsAdded")]
+    partial class ContentReferenceItemsAdded
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -131,10 +134,6 @@ namespace Microsoft.Greenlight.Shared.Migrations
 
                     b.Property<DateTime>("ModifiedUtc")
                         .HasColumnType("datetime2");
-
-                    b.Property<string>("ReferenceItemIds")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -306,48 +305,6 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Configurations");
-                });
-
-            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.ContentEmbedding", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("ChunkText")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid>("ContentReferenceItemId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<byte[]>("EmbeddingVector")
-                        .IsRequired()
-                        .HasColumnType("varbinary(max)");
-
-                    b.Property<DateTime>("GeneratedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("ModifiedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<byte[]>("RowVersion")
-                        .IsConcurrencyToken()
-                        .IsRequired()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("rowversion");
-
-                    b.Property<int>("SequenceNumber")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ContentReferenceItemId");
-
-                    b.ToTable("ContentEmbeddings", (string)null);
                 });
 
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.ContentNode", b =>
@@ -2118,16 +2075,6 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Navigation("AiModel");
                 });
 
-            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.ContentEmbedding", b =>
-                {
-                    b.HasOne("Microsoft.Greenlight.Shared.Models.ContentReferenceItem", "ContentReferenceItem")
-                        .WithMany("Embeddings")
-                        .HasForeignKey("ContentReferenceItemId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.Navigation("ContentReferenceItem");
-                });
-
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.ContentNode", b =>
                 {
                     b.HasOne("Microsoft.Greenlight.Shared.Models.GeneratedDocument", "AssociatedGeneratedDocument")
@@ -2519,11 +2466,6 @@ namespace Microsoft.Greenlight.Shared.Migrations
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.ContentNodeSystemItem", b =>
                 {
                     b.Navigation("SourceReferences");
-                });
-
-            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.ContentReferenceItem", b =>
-                {
-                    b.Navigation("Embeddings");
                 });
 
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.ConversationSummary", b =>

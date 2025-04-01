@@ -1,10 +1,3 @@
-function scrollToBottom(el) {
-    setTimeout(() => {
-        el.scrollTop = el.scrollHeight;
-    }, 100);
-
-}
-
 function preventEnterKey(id) {
     const textarea = document.getElementById(id);
     if (textarea == null) {

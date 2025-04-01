@@ -1,22 +1,76 @@
 @using Microsoft.Greenlight.Shared.Contracts.Chat
 @using System.Timers
+@using System.Text.RegularExpressions
 
 @code {
     [Parameter] public ChatMessageDTO ChatMessage { get; set; }
     [Parameter] public UserInfoDTO CurrentUser { get; set; }
+    [Parameter] public List<ContentReferenceItemInfo> ConversationReferences { get; set; } = new();
     [CascadingParameter] public bool IsDarkMode { get; set; }
 
     private Timer? _timer;
     private bool _showTypingIndicator = true;
+    private readonly Regex _referenceRegex = new Regex(@"#\(Reference:([^:]+):([^)]+)\)", RegexOptions.Compiled);
+    private List<MessageReference> _messageReferences = new();
 
     protected override void OnInitialized()
     {
         InitializeOrRestartTimer();
+        ExtractReferences();
     }
 
     protected override void OnParametersSet()
     {
         InitializeOrRestartTimer();
+        ExtractReferences();
+    }
+
+    private void ExtractReferences()
+    {
+        _messageReferences.Clear();
+        var content = GetOriginalMessageContent();
+
+        int referenceNumber = 1;
+        foreach (Match match in _referenceRegex.Matches(content))
+        {
+            if (match.Success && Enum.TryParse<ContentReferenceType>(match.Groups[1].Value, out var referenceType)
+                && Guid.TryParse(match.Groups[2].Value, out var referenceId))
+            {
+                // Try to find the reference in the conversation references
+                var referenceInfo = ConversationReferences.FirstOrDefault(r => r.Id == referenceId);
+
+                var reference = new MessageReference
+                {
+                    Number = referenceNumber++,
+                    ReferenceType = referenceType,
+                    ReferenceId = referenceId,
+                    FullMatch = match.Value,
+                    DisplayName = referenceInfo?.DisplayName ?? $"Reference {referenceId.ToString().Substring(0, 8)}"
+                };
+
+                _messageReferences.Add(reference);
+            }
+        }
+    }
+
+    private string GetFormattedMessageContent()
+    {
+        var content = GetOriginalMessageContent();
+
+        // Replace references with numbered references
+        foreach (var reference in _messageReferences)
+        {
+            content = content.Replace(reference.FullMatch, $"[{reference.Number}]");
+        }
+
+        return content;
+    }
+
+    private string GetOriginalMessageContent()
+    {
+        return !string.IsNullOrEmpty(ChatMessage.ContentText)
+            ? ChatMessage.ContentText
+            : ChatMessage.Message ?? string.Empty;
     }
 
     private void InitializeOrRestartTimer()
@@ -97,15 +151,6 @@
         return $"{parts[0].Substring(0, 1)}{parts[^1].Substring(0, 1)}".ToUpper();
     }
 
-    private string GetMessageContent()
-    {
-        var content = !string.IsNullOrEmpty(ChatMessage.ContentText)
-            ? ChatMessage.ContentText
-            : ChatMessage.Message ?? string.Empty;
-
-        return content;
-    }
-
     private string FormatDateTime(DateTime dateTime)
     {
         if (dateTime.Date == DateTime.Today)
@@ -115,9 +160,30 @@
         return $"{dateTime:MMM d, yyyy HH:mm}";
     }
 
+    private string GetReferenceIcon(ContentReferenceType referenceType)
+    {
+        return referenceType switch
+        {
+            ContentReferenceType.GeneratedDocument => Icons.Material.Filled.Description,
+            ContentReferenceType.GeneratedSection => Icons.Material.Filled.Subject,
+            ContentReferenceType.ExternalFile => Icons.Material.Filled.AttachFile,
+            ContentReferenceType.ReviewItem => Icons.Material.Filled.RateReview,
+            _ => Icons.Material.Filled.Link,
+        };
+    }
+
     public void Dispose()
     {
         _timer?.Dispose();
+    }
+
+    private class MessageReference
+    {
+        public int Number { get; set; }
+        public ContentReferenceType ReferenceType { get; set; }
+        public Guid ReferenceId { get; set; }
+        public string? FullMatch { get; set; }
+        public string? DisplayName { get; set; }
     }
 }
 
@@ -142,7 +208,21 @@
     <div class="flex-grow-1">
         <div class="@GetBubbleClass()">
             <div class="message-content">
-                <RenderMultilineText Value="@GetMessageContent()" />
+                <RenderMultilineText Value="@GetFormattedMessageContent()" />
+
+                @if (_messageReferences.Any())
+                {
+                    <div class="chat-message-attachments">
+                        @foreach (var reference in _messageReferences)
+                        {
+                            <div class="chat-message-attachment-item">
+                                <span class="chat-message-attachment-number">[@reference.Number]</span>
+                                <MudIcon Icon="@GetReferenceIcon(reference.ReferenceType)" Size="Size.Small" Class="mx-1" />
+                                <span class="chat-message-attachment-name text-truncate">@reference.DisplayName</span>
+                            </div>
+                        }
+                    </div>
+                }
             </div>
         </div>
 

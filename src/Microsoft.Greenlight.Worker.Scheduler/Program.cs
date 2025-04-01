@@ -1,4 +1,8 @@
 using MassTransit;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.DocumentProcess.Shared;
 using Microsoft.Greenlight.ServiceDefaults;
 using Microsoft.Greenlight.Shared;
@@ -8,7 +12,8 @@ using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Management;
 using Microsoft.Greenlight.Worker.Scheduler;
-
+using Microsoft.Greenlight.Worker.Scheduler.Jobs;
+using Quartz;
 
 var builder = new GreenlightDynamicApplicationBuilder(args);
 
@@ -19,7 +24,7 @@ var credentialHelper = new AzureCredentialHelper(builder.Configuration);
 // Initialize AdminHelper with configuration
 AdminHelper.Initialize(builder.Configuration);
 
-// First add the DbContext and configuration provider
+// Add the DbContext and configuration provider
 builder.AddGreenlightDbContextAndConfiguration();
 
 // Bind the ServiceConfigurationOptions to configuration
@@ -28,13 +33,13 @@ builder.Services.AddOptions<ServiceConfigurationOptions>()
     .ValidateDataAnnotations()
     .ValidateOnStart();
 
-// This enables reloading:
+// Enable reloading
 builder.Services.Configure<ServiceConfigurationOptions>(
     builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
 
-var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
-
-
+var serviceConfigurationOptions = builder.Configuration
+    .GetSection(ServiceConfigurationOptions.PropertyName)
+    .Get<ServiceConfigurationOptions>()!;
 
 await builder.DelayStartup(serviceConfigurationOptions.GreenlightServices.DocumentGeneration.DurableDevelopmentServices);
 
@@ -45,13 +50,53 @@ builder.AddRepositories();
 builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
 builder.AddSemanticKernelServices(serviceConfigurationOptions);
 
-builder.Services.AddHostedService<ScheduledBlobAutoImportWorker>();
-builder.Services.AddHostedService<DynamicDocumentProcessMaintenanceWorker>();
-builder.Services.AddHostedService<ScheduledExportedDocumentCleanupWorker>();
+// Configure Quartz
+builder.Services.AddQuartz(q =>
+{
 
-// Add Service Bus Connection string. Replace https:// with sb:// and replace :443/ with / at the end of the connection string
+    // Configure Quartz to use a thread pool with only one thread.
+    q.UseDefaultThreadPool(options =>
+    {
+        options.MaxConcurrency = 1;
+    });
+
+    // Schedule CreateOrUpdatePromptDefinitionsFromDefaultCatalogJob to run every hour, forever.
+    q.ScheduleJob<CreateOrUpdatePromptDefinitionsFromDefaultCatalogJob>(trigger => trigger
+        .WithIdentity("CreateOrUpdatePromptDefinitionsFromDefaultCatalogJobTrigger")
+        .StartNow()
+        .WithSimpleSchedule(x => x
+            .WithIntervalInHours(1)
+            .RepeatForever())
+    );
+    
+    // Schedule the ContentReferenceIndexingJob using its configured refresh interval
+    q.ScheduleJob<ContentReferenceIndexingJob>(trigger => trigger
+        .WithIdentity("ContentReferenceIndexingJobTrigger")
+        .StartNow()
+        .WithSimpleSchedule(x => x
+            .WithIntervalInMinutes(serviceConfigurationOptions.GreenlightServices.ReferenceIndexing.RefreshIntervalMinutes)
+            .RepeatForever())
+    );
+
+    // Schedule the ScheduledBlobAutoImportJob every x minutes (adjust interval as needed)
+    q.ScheduleJob<ScheduledBlobAutoImportJob>(trigger => trigger
+        .WithIdentity("ScheduledBlobAutoImportJobTrigger")
+        .StartNow()
+        .WithSimpleSchedule(x => x
+            .WithIntervalInSeconds(30)
+            .RepeatForever())
+    );
+
+
+});
+
+builder.Services.AddQuartzHostedService(q => q.WaitForJobsToComplete = true);
+
+// Add MassTransit configuration (if needed)
 var serviceBusConnectionString = builder.Configuration.GetConnectionString("sbus");
-serviceBusConnectionString = serviceBusConnectionString?.Replace("https://", "sb://").Replace(":443/", "/");
+serviceBusConnectionString = serviceBusConnectionString?
+    .Replace("https://", "sb://")
+    .Replace(":443/", "/");
 
 builder.Services.AddMassTransit(x =>
 {

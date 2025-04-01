@@ -10,8 +10,10 @@ using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Interfaces;
+using Microsoft.Greenlight.Shared.Models;
 using Microsoft.Greenlight.Shared.Prompts;
 using Microsoft.Greenlight.Shared.Services;
+using Microsoft.Greenlight.Shared.Services.ContentReference;
 using Microsoft.Greenlight.Shared.Services.Search;
 using TableHelper = Microsoft.Greenlight.Shared.Helpers.TableHelper;
 
@@ -97,8 +99,39 @@ public static class DocumentProcessExtensions
 
         // Add the Semantic Kernel Factory
         builder.Services.AddSingleton<IKernelFactory, SemanticKernelFactory>();
-        
+
+        // Add the Embeddings Generation Service
+        builder.Services.AddScoped<IAiEmbeddingService, AiEmbeddingService>();
+
+        // Add Content Reference Services
+        builder.Services.AddContentReferenceServices();
+
         return builder;
+    }
+
+    /// <summary>
+    /// Adds content reference services to the service collection
+    /// </summary>
+    /// <param name="services">The service collection</param>
+    /// <returns>The service collection for chaining</returns>
+    private static IServiceCollection AddContentReferenceServices(this IServiceCollection services)
+    {
+        // Register the factory
+        services.AddScoped<IContentReferenceGenerationServiceFactory, ContentReferenceGenerationServiceFactory>();
+            
+        // Register primary content reference service
+        services.AddScoped<IContentReferenceService, ContentReferenceService>();
+            
+        // Register content type specific generation services
+        services.AddScoped<IContentReferenceGenerationService<GeneratedDocument>, GeneratedDocumentReferenceGenerationService>();
+
+        // Add more content type specific generation services here when implemented
+        // services.AddScoped<IContentReferenceGenerationService<ContentNode>, ContentNodeReferenceGenerationService>();
+
+        // Context Builder that uses embeddings generation to build rag contexts from content references for user queries
+        services.AddScoped<IRagContextBuilder, RagContextBuilder>();
+            
+        return services;
     }
 
     /// <summary>

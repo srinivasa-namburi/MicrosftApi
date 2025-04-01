@@ -475,3 +475,107 @@ table:not(.mud-table-root) {
     margin-bottom:0px !important;
     padding-bottom:0px !important;
 }
+
+/**************************************/
+/* Chat-Specific Reference Popover    */
+/**************************************/
+/* Styled span for rendered references */
+.reference-tag {
+    background-color: #f0f0f0;
+    border-radius: 4px;
+    padding: 2px 6px;
+    margin: 0 2px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.95em;
+}
+
+/* Popover styling */
+.reference-popover {
+    background: white;
+    border: 1px solid #ccc;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    border-radius: 4px;
+    max-height: 300px;
+    overflow-y: auto;
+    width: 300px; /* adjust width as needed */
+    z-index: 1000;
+    padding: 8px;
+}
+
+/* Dark mode if needed */
+.dark-mode .reference-popover {
+    background: #333;
+    border-color: #555;
+}
+
+/**************************************/
+/* Chat-Specific Reference Display    */
+/**************************************/
+
+.conversation-references {
+    border-radius: 4px;
+    margin-top: 8px;
+    margin-bottom: 8px;
+}
+
+    .conversation-references .mud-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .conversation-references .mud-list-item {
+        max-width: 300px;
+        padding: 4px 8px;
+        border-radius: 4px;
+        background-color: rgba(0, 0, 0, 0.04);
+    }
+
+.dark-mode .conversation-references .mud-list-item {
+    background-color: rgba(255, 255, 255, 0.04);
+}
+
+/* Chat message attachment styles */
+.chat-message-attachments {
+    border-top: 1px solid rgba(0,0,0,0.1);
+    padding-top: 0.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.dark-mode .chat-message-attachments {
+    border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+.chat-message-attachment-item {
+    display: inline-flex;
+    align-items: center;
+    background-color: rgba(0,0,0,0.05);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 0.8rem;
+}
+
+.dark-mode .chat-message-attachment-item {
+    background-color: rgba(255,255,255,0.1);
+}
+
+.chat-message-attachment-number {
+    font-weight: bold;
+    margin-right: 2px;
+}
+
+.chat-message-attachment-name {
+    opacity: 0.7;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+
+

@@ -62,6 +62,11 @@ builder.AddAzureBlobClient("blob-docing", settings =>
     settings.Credential = credentialHelper.GetAzureCredential();
 });
 builder.AddGreenLightRedisClient("redis", credentialHelper, serviceConfigurationOptions);
+// Add IDistributedCache using StackExchange.Redis
+builder.Services.AddStackExchangeRedisCache(options =>
+{
+    options.Configuration = builder.Configuration.GetConnectionString("redis");
+});
 builder.Services.AddScoped<AzureFileHelper>();
 
 var apiUri = new Uri("https+http://api-main");

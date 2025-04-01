@@ -38,9 +38,9 @@ if (builder.ExecutionContext.IsRunMode) // For local development
     if (durableDevelopment)
     {
         redisResource = builder.AddRedis("redis", 16379)
-            .WithDataVolume("pvico-redis-vol")
-            .WithLifetime(ContainerLifetime.Persistent);
-
+            //.WithDataVolume("pvico-redis-vol")
+            //.WithLifetime(ContainerLifetime.Persistent);
+            ;
         // Use Azure SQL Server for local development.
         // Especially useful for ARM/AMD based machines that can't run SQL Server in a container
         var useAzureSqlServer = Convert.ToBoolean(
@@ -105,10 +105,10 @@ if (builder.ExecutionContext.IsRunMode) // For local development
 else // For production/Azure deployment
 {
     docGenSql = builder.AddAzureSqlServer("sqldocgen").AddDatabase(sqlDatabaseName!);
-    redisResource = builder.AddAzureRedis("redis");    
+    redisResource = builder.AddAzureRedis("redis");
     sbus = builder.AddAzureServiceBus("sbus");
-    azureAiSearch = builder.AddAzureSearch("aiSearch");    
-    signalr = builder.AddAzureSignalR("signalr");    
+    azureAiSearch = builder.AddAzureSearch("aiSearch");
+    signalr = builder.AddAzureSignalR("signalr");
     blobStorage = builder.AddAzureStorage("docing").AddBlobs("blob-docing");
     insights = builder.AddAzureApplicationInsights("insights");
 }
@@ -121,7 +121,8 @@ var dbSetupManager = builder
     .WithConfigSection(envAzureConfigurationSection)
     .WithConfigSection(envAzureAdConfigurationSection)
     .WithReference(docGenSql)
-    .WaitFor(docGenSql);
+    .WaitFor(docGenSql)
+    .WaitFor(redisResource);
 
 var apiMain = builder
     .AddProject<Projects.Microsoft_Greenlight_API_Main>("api-main")
@@ -248,7 +249,7 @@ var workerValidation = builder.AddProject<Projects.Microsoft_Greenlight_Worker_V
     .WithReference(apiMain)
     .WaitForCompletion(dbSetupManager);
 
-if(insights is not null)
+if (insights is not null)
 {
     apiMain.WithReference(insights);
     workerScheduler.WithReference(insights);

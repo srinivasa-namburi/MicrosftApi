@@ -80,6 +80,22 @@ public class ServiceConfigurationOptions
         /// </summary>
         public List<DocumentProcessOptions?> DocumentProcesses { get; set; } = new List<DocumentProcessOptions?>();
 
+        /// <summary>
+        /// Reference indexing options.
+        /// </summary>
+        public ReferenceIndexingOptions ReferenceIndexing { get; set; } = new ReferenceIndexingOptions();
+
+        /// <summary>
+        /// Options for reference indexing.
+        /// </summary>
+        public class ReferenceIndexingOptions
+        {
+            /// <summary>
+            /// Number of minutes between each scheduled refresh of the reference cache.
+            /// </summary>
+            public int RefreshIntervalMinutes { get; set; }
+        }
+
 
         /// <summary>
         /// Options for frontend - these are typically used for display manipulation
@@ -111,6 +127,11 @@ public class ServiceConfigurationOptions
             /// Enable reference frontend.
             /// </summary>
             public bool EnableReferenceFrontend { get; set; }
+
+            /// <summary>
+            /// Enable content reference system.
+            /// </summary>
+            public bool EnableContentReferences { get; set; }
         }
 
         /// <summary>

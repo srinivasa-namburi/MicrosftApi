@@ -117,6 +117,26 @@ public class DocGenerationDbContext : DbContext
             c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
             c => c.ToList());
 
+        // ValueConverter for List<Guid> to semi-colon separated string for storage in a single column
+        var guidListToStringConverter = new ValueConverter<List<Guid>, string>(
+            v => string.Join(";", v),
+            v => v.Split(';', StringSplitOptions.RemoveEmptyEntries).Select(Guid.Parse).ToList());
+
+        var guidListComparer = new ValueComparer<List<Guid>>(
+            (c1, c2) => c1!.SequenceEqual(c2!),
+            c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
+            c => c.ToList());
+
+        modelBuilder.Entity<ContentEmbedding>()
+            .ToTable("ContentEmbeddings");
+
+        modelBuilder.Entity<ContentEmbedding>()
+            .HasOne(x => x.ContentReferenceItem)
+            .WithMany(x => x.Embeddings)
+            .HasForeignKey(x => x.ContentReferenceItemId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Restrict);
+
         modelBuilder.Entity<AiModel>(entity =>
         {
             entity.ToTable("AiModels");
@@ -769,6 +789,11 @@ public class DocGenerationDbContext : DbContext
             .IsRequired(false)
             .OnDelete(DeleteBehavior.Restrict);
 
+        modelBuilder.Entity<ChatConversation>()
+            .Property(e => e.ReferenceItemIds)
+            .HasConversion(guidListToStringConverter)
+            .Metadata.SetValueComparer(guidListComparer);
+
         modelBuilder.Entity<ChatMessage>()
             .HasOne(x => x.Conversation)
             .WithMany(x => x.ChatMessages)
@@ -1253,4 +1278,14 @@ public class DocGenerationDbContext : DbContext
     /// Gets or sets the AI Model Deployments
     /// </summary>
     public DbSet<AiModelDeployment> AiModelDeployments { get; set; }
+
+    /// <summary>
+    /// Reference items included for various purposes - normally in chat messages
+    /// </summary>
+    public DbSet<ContentReferenceItem> ContentReferenceItems { get; set; }
+
+    /// <summary>
+    /// Embeddings generated from content reference item
+    /// </summary>
+    public DbSet<ContentEmbedding> ContentEmbeddings { get; set; }
 }

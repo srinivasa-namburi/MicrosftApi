@@ -1,0 +1,473 @@
+﻿@inject IJSRuntime JSRuntime
+@inject IContentReferenceApiClient ContentReferenceApiClient
+
+<div class="chat-input-row" style="position: relative;">
+    <MudTextField @ref="_mudChatTextField" T="string"
+                  OnKeyDown="OnChatTextKeyDown"
+                  ValueChanged="OnChatTextFieldUpdated"
+                  Value="@_displayMessage"
+                  Immediate="false"
+                  DebounceInterval="100"
+                  Lines="2"
+                  MaxLines="6"
+                  AutoGrow="true"
+                  AutoFocus="true"
+                  FullWidth="true"
+                  Placeholder="Type a message... Hit the # key to insert document references"
+                  Variant="Variant.Outlined"
+                  AdornmentColor="Color.Primary"
+                  AdornmentIcon="@Icons.Material.Filled.Send" />
+    <MudIconButton Icon="@Icons.Material.Filled.Send"
+                   Color="Color.Primary"
+                   OnClick="@SendMessage"
+                   Size="Size.Medium"
+                   Class="mb-1" />
+
+    <div id="caretAnchor" @ref="_caretPositionAnchor" class="caret-position-anchor" style="position:absolute;width:1px;height:1px;display:none;"></div>
+
+    <CoPilotReferenceSelector @ref="_referenceSelector"
+                              IsOpen="@_showReferenceSelector"
+                              References="@AllReferences"
+                              SearchTerm="@_currentSearchTerm"
+                              AnchorElement="@_caretPositionAnchor"
+                              OnReferenceSelected="HandleReferenceSelected"
+                              OnClose="HandleReferenceSelectorClosed" />
+</div>
+
+@* Reference list display *@
+@if (_referenceMap.Any())
+{
+    <div class="mt-2">
+        <MudPaper Class="pa-2">
+            <MudText Typo="Typo.subtitle2">References:</MudText>
+            <MudList Dense="true">
+                @foreach (var entry in _referenceMap.OrderBy(e => e.Key))
+                {
+                    var reference = entry.Value;
+                    var index = entry.Key;
+                    <MudListItem>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudText Typo="Typo.body2" Class="mr-2">@index.</MudText>
+                            @switch (reference.ReferenceType)
+                            {
+                                case ContentReferenceType.GeneratedDocument:
+                                    <MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Small" />
+                                    break;
+                                case ContentReferenceType.ExternalFile:
+                                    <MudIcon Icon="@Icons.Material.Filled.AttachFile" Size="Size.Small" />
+                                    break;
+                                default:
+                                    <MudIcon Icon="@Icons.Material.Filled.Link" Size="Size.Small" />
+                                    break;
+                            }
+                            <MudText Typo="Typo.body2">@reference.DisplayName</MudText>
+                        </MudStack>
+                    </MudListItem>
+                }
+            </MudList>
+        </MudPaper>
+    </div>
+}
+
+@code {
+    [Parameter] public EventCallback<string> OnMessageSubmit { get; set; }
+    [Parameter] public EventCallback<bool> OnInputFocusChanged { get; set; }
+    [Parameter] public List<ContentReferenceItemInfo>? AllReferences { get; set; }
+
+    private MudTextField<string>? _mudChatTextField;
+    private CoPilotReferenceSelector? _referenceSelector;
+    private ElementReference _caretPositionAnchor;
+
+    // Input state
+    private string _rawMessage = string.Empty;
+    private string _displayMessage = string.Empty;
+    private string _previousDisplayMessage = string.Empty;
+    private bool _chatTextLastKeyWasEnter = false;
+    private DotNetObjectReference<CoPilotInputComponent>? _componentReference;
+    private InputState _currentState = InputState.Ready;
+
+    // Reference selection state
+    private bool _showReferenceSelector = false;
+    
+    private Dictionary<int, ContentReferenceItemInfo> _referenceMap = new Dictionary<int, ContentReferenceItemInfo>();
+    private Dictionary<string, int> _referenceIdToNumberMap = new Dictionary<string, int>();
+    private int _nextReferenceNumber = 1;
+    private string _currentSearchTerm = string.Empty;
+    private int _hashTagPosition = -1;
+
+    // Reference pattern for detection
+    private readonly Regex _referencePattern = new Regex(@"#Reference:\((\d+)\)", RegexOptions.Compiled);
+
+    // Enum to track component state
+    private enum InputState
+    {
+        Ready,
+        ProcessingInput,
+        SelectingReference,
+        Sending
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+
+        // Create component reference for JS interop
+        _componentReference = DotNetObjectReference.Create(this);
+
+        // Load references
+        await LoadReferencesAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Register JS interop
+            await JSRuntime.InvokeVoidAsync("import", "/js/contentReferenceUtils.js");
+            await JSRuntime.InvokeVoidAsync("registerInputComponent", _componentReference);
+        }
+
+        // Update caret position anchor when reference selector is shown
+        if (_showReferenceSelector)
+        {
+            await UpdateCaretPositionAnchor();
+        }
+    }
+
+    private async Task UpdateCaretPositionAnchor()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("positionCaretAnchor", _mudChatTextField?.InputReference);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error positioning caret anchor: {ex.Message}");
+        }
+    }
+
+    public void Dispose()
+    {
+        _componentReference?.Dispose();
+    }
+
+    private async Task LoadReferencesAsync()
+    {
+        if (ContentReferenceApiClient == null)
+            return;
+
+        if (AllReferences == null)
+        {
+            try
+            {
+                AllReferences = await ContentReferenceApiClient.GetAllReferencesAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error loading references: {ex.Message}");
+                AllReferences = new List<ContentReferenceItemInfo>();
+            }
+            StateHasChanged();
+        }
+        
+        StateHasChanged();
+    }
+
+    private async Task SendMessage()
+    {
+        if (string.IsNullOrWhiteSpace(_displayMessage) || _currentState == InputState.Sending)
+            return;
+
+        try
+        {
+            _currentState = InputState.Sending;
+
+            // Convert display message to raw message format right before sending
+            string messageToSend = ConvertDisplayToRawMessage(_displayMessage);
+            await OnMessageSubmit.InvokeAsync(messageToSend);
+
+            // Clear state
+            _rawMessage = string.Empty;
+            _displayMessage = string.Empty;
+            _previousDisplayMessage = string.Empty;
+            _referenceMap.Clear();
+            _referenceIdToNumberMap.Clear();
+            _nextReferenceNumber = 1;
+
+            if (_mudChatTextField != null)
+            {
+                await _mudChatTextField.Clear();
+                await _mudChatTextField.FocusAsync();
+            }
+        }
+        finally
+        {
+            _currentState = InputState.Ready;
+            StateHasChanged();
+        }
+    }
+
+    private string ConvertDisplayToRawMessage(string displayMessage)
+    {
+        // Convert each #Reference:(n) to its raw format #(Reference:Type:Guid)
+        return _referencePattern.Replace(displayMessage, match =>
+        {
+            if (int.TryParse(match.Groups[1].Value, out int refNumber) &&
+                _referenceMap.TryGetValue(refNumber, out var reference))
+            {
+                return $"#(Reference:{reference.ReferenceType}:{reference.Id})";
+            }
+            return match.Value; // Keep as is if not found
+        });
+    }
+
+    private async Task OnChatTextKeyDown(KeyboardEventArgs e)
+    {
+        if (_currentState == InputState.Sending)
+            return;
+
+        // Handle reference selector keyboard navigation
+        if (_showReferenceSelector && _referenceSelector != null)
+        {
+            if (e.Key is "ArrowDown" or "ArrowUp" or "Enter" or "Escape" or " ")
+            {
+                _referenceSelector.ProcessKeyPress(e.Key);
+                return;
+            }
+        }
+
+        // When '#' is pressed, enable reference suggestions
+        if (e.Key == "#" && _currentState == InputState.Ready)
+        {
+            _hashTagPosition = _displayMessage.Length;
+            _currentSearchTerm = "";
+            _showReferenceSelector = true;
+            _currentState = InputState.SelectingReference;
+
+            // Force render to show popover, then update position
+            StateHasChanged();
+            await Task.Delay(10); // Short delay to ensure DOM is updated
+            await UpdateCaretPositionAnchor();
+        }
+
+        // Track Enter (without Shift) to potentially send message
+        _chatTextLastKeyWasEnter = e is { Key: "Enter", ShiftKey: false };
+    }
+
+    private async Task OnChatTextFieldUpdated(string newText)
+    {
+        if (_currentState == InputState.ProcessingInput || _currentState == InputState.Sending)
+            return;
+
+        _currentState = InputState.ProcessingInput;
+        try
+        {
+            // Store previous message for reference tracking
+            string oldText = _previousDisplayMessage;
+            _previousDisplayMessage = newText;
+            _displayMessage = newText;
+
+            // Update reference selection if active
+            if (_showReferenceSelector && _hashTagPosition >= 0)
+            {
+                UpdateSearchTerm(newText);
+                await UpdateCaretPositionAnchor();
+            }
+
+            // Check if we need to send the message
+            if (!string.IsNullOrWhiteSpace(newText) && _chatTextLastKeyWasEnter && !_showReferenceSelector)
+            {
+                await SendMessage();
+                return;
+            }
+
+            // Check for reference removals by comparing old and new text
+            if (oldText != newText)
+            {
+                await DetectReferenceChanges(oldText, newText);
+            }
+        }
+        finally
+        {
+            _currentState = _showReferenceSelector ? InputState.SelectingReference : InputState.Ready;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DetectReferenceChanges(string oldText, string newText)
+    {
+        // Find all references in old text
+        var oldReferences = new HashSet<int>();
+        foreach (Match match in _referencePattern.Matches(oldText))
+        {
+            if (int.TryParse(match.Groups[1].Value, out int refNumber))
+            {
+                oldReferences.Add(refNumber);
+            }
+        }
+
+        // Find all references in new text
+        var newReferences = new HashSet<int>();
+        foreach (Match match in _referencePattern.Matches(newText))
+        {
+            if (int.TryParse(match.Groups[1].Value, out int refNumber))
+            {
+                newReferences.Add(refNumber);
+            }
+        }
+
+        // Remove references that are no longer in the text
+        var removedReferences = oldReferences.Except(newReferences).ToList();
+        foreach (var refNumber in removedReferences)
+        {
+            if (_referenceMap.TryGetValue(refNumber, out var reference))
+            {
+                var referenceId = $"{reference.ReferenceType}:{reference.Id}";
+                _referenceIdToNumberMap.Remove(referenceId);
+                _referenceMap.Remove(refNumber);
+            }
+        }
+
+        // If references were removed, update the UI
+        if (removedReferences.Any())
+        {
+            StateHasChanged();
+        }
+    }
+
+    private void UpdateSearchTerm(string text)
+    {
+        if (_hashTagPosition < 0 || _hashTagPosition >= text.Length || text[_hashTagPosition] != '#')
+        {
+            CloseReferenceSelector();
+            return;
+        }
+
+        int startPos = _hashTagPosition + 1;
+        if (startPos >= text.Length)
+        {
+            _currentSearchTerm = "";
+            return;
+        }
+
+        int endPos = text.IndexOf(' ', startPos);
+        if (endPos == -1) endPos = text.Length;
+
+        string searchTerm = text.Substring(startPos, endPos - startPos);
+        if (_currentSearchTerm != searchTerm)
+        {
+            _currentSearchTerm = searchTerm;
+        }
+    }
+
+    private void HandleReferenceSelected(ContentReferenceItemInfo reference)
+    {
+        Task.Run(async () => await InsertReference(reference));
+    }
+
+    private void HandleReferenceSelectorClosed()
+    {
+        CloseReferenceSelector();
+    }
+
+    private async Task InsertReference(ContentReferenceItemInfo reference)
+    {
+        if (_hashTagPosition < 0 || _currentState != InputState.SelectingReference)
+            return;
+
+        await InvokeAsync(async () =>
+        {
+            _currentState = InputState.ProcessingInput;
+            try
+            {
+                // Get or assign a reference number
+                string referenceId = $"{reference.ReferenceType}:{reference.Id}";
+                int referenceNumber;
+
+                if (!_referenceIdToNumberMap.TryGetValue(referenceId, out referenceNumber))
+                {
+                    referenceNumber = _nextReferenceNumber++;
+                    _referenceIdToNumberMap[referenceId] = referenceNumber;
+                    _referenceMap[referenceNumber] = reference;
+                }
+
+                // Create display format token
+                string displayReferenceToken = $"#Reference:({referenceNumber})";
+
+                // Update display message
+                string currentDisplayText = _displayMessage;
+                int displayStartPos = _hashTagPosition;
+                int displayEndPos = currentDisplayText.IndexOf(' ', displayStartPos);
+                if (displayEndPos == -1) displayEndPos = currentDisplayText.Length;
+
+                string newDisplayText = currentDisplayText.Substring(0, displayStartPos) + displayReferenceToken;
+                if (displayEndPos < currentDisplayText.Length)
+                    newDisplayText += currentDisplayText.Substring(displayEndPos);
+
+                // Close reference selector first
+                CloseReferenceSelector();
+
+                // Update the display text
+                _displayMessage = newDisplayText;
+                _previousDisplayMessage = newDisplayText;
+
+                // Update the text field
+                if (_mudChatTextField != null)
+                {
+                    await _mudChatTextField.SetText(newDisplayText);
+                }
+
+                StateHasChanged();
+
+                // Move cursor to end of inserted reference
+                await Task.Delay(50);
+                await JSRuntime.InvokeVoidAsync("setCaretPosition", displayStartPos + displayReferenceToken.Length);
+            }
+            finally
+            {
+                _currentState = InputState.Ready;
+                StateHasChanged();
+            }
+        });
+    }
+
+    private void CloseReferenceSelector()
+    {
+        _showReferenceSelector = false;
+        _hashTagPosition = -1;
+        _currentSearchTerm = string.Empty;
+        _currentState = InputState.Ready;
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task OnFocusChanged(bool hasFocus)
+    {
+        await OnInputFocusChanged.InvokeAsync(hasFocus);
+    }
+
+    public async Task Clear()
+    {
+        _rawMessage = string.Empty;
+        _displayMessage = string.Empty;
+        _previousDisplayMessage = string.Empty;
+        _referenceMap.Clear();
+        _referenceIdToNumberMap.Clear();
+        _nextReferenceNumber = 1;
+
+        if (_mudChatTextField != null)
+        {
+            await _mudChatTextField.Clear();
+        }
+
+        StateHasChanged();
+    }
+
+    public async Task Focus()
+    {
+        if (_mudChatTextField != null)
+        {
+            await _mudChatTextField.FocusAsync();
+        }
+    }
+}
