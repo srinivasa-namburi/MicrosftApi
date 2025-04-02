@@ -140,21 +140,6 @@ var apiMain = builder
     .WithReference(azureAiSearch)
     .WaitForCompletion(dbSetupManager);
 
-var servicesSetupManager = builder
-    .AddProject<Projects.Microsoft_Greenlight_SetupManager_Services>("services-setupmanager")
-    .WithReplicas(1) // There can only be one Setup Manager
-    .WithConfigSection(envServiceConfigurationConfigurationSection)
-    .WithConfigSection(envConnectionStringsConfigurationSection)
-    .WithConfigSection(envAzureConfigurationSection)
-    .WithConfigSection(envAzureAdConfigurationSection)
-    .WithReference(azureAiSearch)
-    .WithReference(blobStorage)
-    .WithReference(sbus)
-    .WithReference(docGenSql)
-    .WithReference(redisResource)
-    .WithReference(apiMain)
-    .WaitForCompletion(dbSetupManager);
-
 var docGenFrontend = builder
     .AddProject<Projects.Microsoft_Greenlight_Web_DocGen>("web-docgen")
     .WithExternalHttpEndpoints()

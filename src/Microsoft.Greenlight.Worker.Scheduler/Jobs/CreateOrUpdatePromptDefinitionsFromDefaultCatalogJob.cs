@@ -11,21 +11,30 @@ namespace Microsoft.Greenlight.Worker.Scheduler.Jobs
     /// </summary>
     public class CreateOrUpdatePromptDefinitionsFromDefaultCatalogJob : IJob
     {
-        private readonly PromptDefinitionRepository _promptDefinitionRepository;
         private readonly ILogger<CreateOrUpdatePromptDefinitionsFromDefaultCatalogJob> _logger;
+        private readonly IServiceProvider _sp;
         private readonly DefaultPromptCatalogTypes _defaultPromptCatalogTypes;
 
+        /// <summary>
+        /// Construct a new instance of the <see cref="CreateOrUpdatePromptDefinitionsFromDefaultCatalogJob"/> class.
+        /// </summary>
+        /// <param name="logger"></param>
+        /// <param name="sp"></param>
         public CreateOrUpdatePromptDefinitionsFromDefaultCatalogJob(
-            PromptDefinitionRepository promptDefinitionRepository,
-            ILogger<CreateOrUpdatePromptDefinitionsFromDefaultCatalogJob> logger)
+            ILogger<CreateOrUpdatePromptDefinitionsFromDefaultCatalogJob> logger,
+            IServiceProvider sp)
         {
-            _promptDefinitionRepository = promptDefinitionRepository;
+            
             _logger = logger;
+            _sp = sp;
             _defaultPromptCatalogTypes = new DefaultPromptCatalogTypes();
         }
 
+        /// <inheritdoc />
         public async Task Execute(IJobExecutionContext context)
         {
+            var promptDefinitionRepository = _sp.GetRequiredService<PromptDefinitionRepository>();
+
             _logger.LogInformation("CreateOrUpdatePromptDefinitionsFromDefaultCatalogJob started at {time}", DateTimeOffset.Now);
 
             try
@@ -33,7 +42,7 @@ namespace Microsoft.Greenlight.Worker.Scheduler.Jobs
                 var promptCatalogProperties = _defaultPromptCatalogTypes.GetType().GetProperties();
                 var stringProperties = promptCatalogProperties.Where(p => p.PropertyType == typeof(string));
 
-                var promptDefinitions = await _promptDefinitionRepository.GetAllPromptDefinitionsAsync(true);
+                var promptDefinitions = await promptDefinitionRepository.GetAllPromptDefinitionsAsync(true);
 
                 int numberOfNewDefinitions = 0;
                 foreach (var stringProperty in stringProperties)
@@ -67,14 +76,14 @@ namespace Microsoft.Greenlight.Worker.Scheduler.Jobs
                             }
                         }
 
-                        await _promptDefinitionRepository.AddAsync(promptDefinition, false);
+                        await promptDefinitionRepository.AddAsync(promptDefinition, false);
                         numberOfNewDefinitions++;
                     }
                 }
 
                 if (numberOfNewDefinitions > 0)
                 {
-                    await _promptDefinitionRepository.SaveChangesAsync();
+                    await promptDefinitionRepository.SaveChangesAsync();
                     _logger.LogInformation("CreateOrUpdatePromptDefinitionsFromDefaultCatalogJob: Created {Count} new prompt definitions.", numberOfNewDefinitions);
                 }
                 else

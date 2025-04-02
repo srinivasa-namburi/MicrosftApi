@@ -1,8 +1,4 @@
 using MassTransit;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.DocumentProcess.Shared;
 using Microsoft.Greenlight.ServiceDefaults;
 using Microsoft.Greenlight.Shared;
@@ -11,9 +7,10 @@ using Microsoft.Greenlight.Shared.Core;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Management;
-using Microsoft.Greenlight.Worker.Scheduler;
 using Microsoft.Greenlight.Worker.Scheduler.Jobs;
 using Quartz;
+
+#pragma warning disable CS0618
 
 var builder = new GreenlightDynamicApplicationBuilder(args);
 
@@ -51,44 +48,71 @@ builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
 builder.AddSemanticKernelServices(serviceConfigurationOptions);
 
 // Configure Quartz
+// Configure Quartz
 builder.Services.AddQuartz(q =>
 {
-
-    // Configure Quartz to use a thread pool with only one thread.
-    q.UseDefaultThreadPool(options =>
+    // Configure DI for Quartz jobs - this creates a new scope for each job execution
+    q.UseMicrosoftDependencyInjectionJobFactory(options =>
     {
-        options.MaxConcurrency = 1;
+        // Create a new scope for each job
+        options.CreateScope = true;
     });
+    
+    // Register job classes
+    q.AddJob<RepositoryIndexMaintenanceJob>(opts => opts
+        .WithIdentity(nameof(RepositoryIndexMaintenanceJob))
+        .StoreDurably());
+        
+    q.AddJob<CreateOrUpdatePromptDefinitionsFromDefaultCatalogJob>(opts => opts
+        .WithIdentity(nameof(CreateOrUpdatePromptDefinitionsFromDefaultCatalogJob))
+        .StoreDurably());
+        
+    q.AddJob<ContentReferenceIndexingJob>(opts => opts
+        .WithIdentity(nameof(ContentReferenceIndexingJob))
+        .StoreDurably());
+        
+    q.AddJob<ScheduledBlobAutoImportJob>(opts => opts
+        .WithIdentity(nameof(ScheduledBlobAutoImportJob))
+        .StoreDurably());
 
-    // Schedule CreateOrUpdatePromptDefinitionsFromDefaultCatalogJob to run every hour, forever.
-    q.ScheduleJob<CreateOrUpdatePromptDefinitionsFromDefaultCatalogJob>(trigger => trigger
-        .WithIdentity("CreateOrUpdatePromptDefinitionsFromDefaultCatalogJobTrigger")
+    // Schedule triggers for each job
+    q.AddTrigger(trigger => trigger
+        .WithIdentity(nameof(RepositoryIndexMaintenanceJob) + "Trigger")
+        .ForJob(nameof(RepositoryIndexMaintenanceJob))
+        .StartNow()
+        .WithSimpleSchedule(x => x
+            .WithIntervalInMinutes(1)
+            .RepeatForever())
+    );
+
+    q.AddTrigger(trigger => trigger
+        .WithIdentity(nameof(CreateOrUpdatePromptDefinitionsFromDefaultCatalogJob) + "Trigger")
+        .ForJob(nameof(CreateOrUpdatePromptDefinitionsFromDefaultCatalogJob))
         .StartNow()
         .WithSimpleSchedule(x => x
             .WithIntervalInHours(1)
             .RepeatForever())
     );
     
-    // Schedule the ContentReferenceIndexingJob using its configured refresh interval
-    q.ScheduleJob<ContentReferenceIndexingJob>(trigger => trigger
-        .WithIdentity("ContentReferenceIndexingJobTrigger")
+    q.AddTrigger(trigger => trigger
+        .WithIdentity(nameof(ContentReferenceIndexingJob) + "Trigger")
+        .ForJob(nameof(ContentReferenceIndexingJob))
         .StartNow()
         .WithSimpleSchedule(x => x
             .WithIntervalInMinutes(serviceConfigurationOptions.GreenlightServices.ReferenceIndexing.RefreshIntervalMinutes)
             .RepeatForever())
     );
 
-    // Schedule the ScheduledBlobAutoImportJob every x minutes (adjust interval as needed)
-    q.ScheduleJob<ScheduledBlobAutoImportJob>(trigger => trigger
-        .WithIdentity("ScheduledBlobAutoImportJobTrigger")
+    q.AddTrigger(trigger => trigger
+        .WithIdentity(nameof(ScheduledBlobAutoImportJob) + "Trigger")
+        .ForJob(nameof(ScheduledBlobAutoImportJob))
         .StartNow()
         .WithSimpleSchedule(x => x
             .WithIntervalInSeconds(30)
             .RepeatForever())
     );
-
-
 });
+
 
 builder.Services.AddQuartzHostedService(q => q.WaitForJobsToComplete = true);
 
@@ -114,7 +138,7 @@ builder.Services.AddMassTransit(x =>
 
         cfg.ConfigureEndpoints(context);
         cfg.AddFanOutSubscriptionEndpointsForWorkerNode(context);
-        
+
         cfg.ConcurrentMessageLimit = 1;
         cfg.PrefetchCount = 3;
     });

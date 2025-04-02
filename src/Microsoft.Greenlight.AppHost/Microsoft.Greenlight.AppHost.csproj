@@ -35,7 +35,6 @@
 	<ItemGroup>
 		<ProjectReference Include="..\Microsoft.Greenlight.API.Main\Microsoft.Greenlight.API.Main.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.SetupManager.DB\Microsoft.Greenlight.SetupManager.DB.csproj" />
-		<ProjectReference Include="..\Microsoft.Greenlight.SetupManager.Services\Microsoft.Greenlight.SetupManager.Services.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.Web.DocGen\Microsoft.Greenlight.Web.DocGen.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.Worker.Chat\Microsoft.Greenlight.Worker.Chat.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.Worker.DocumentGeneration\Microsoft.Greenlight.Worker.DocumentGeneration.csproj" />

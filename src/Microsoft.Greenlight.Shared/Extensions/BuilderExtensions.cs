@@ -108,9 +108,6 @@ public static class BuilderExtensions
             settings.Credential = credentialHelper.GetAzureCredential();
         });
 
-        // These services use key-based authentication and don't need to use the AzureCredentialHelper.
-        // builder.AddKeyedAzureOpenAIClient("openai-planner");
-
         builder.Services.AddKeyedSingleton<AzureOpenAIClient>("openai-planner", (sp, obj) =>
         {
             // Here's the connection string format. Parse this for endpoint and key
@@ -120,8 +117,11 @@ public static class BuilderExtensions
             var endpoint = connectionString!.Split(';')[0].Split('=')[1];
             var key = connectionString!.Split(';')[1].Split('=')[1];
 
-            var openAIClient = new AzureOpenAIClient(new Uri(endpoint), new ApiKeyCredential(key));
-            return openAIClient;
+            // If the connection string doesn't contain a Key, use credentialHelper.GetAzureCredential() method.
+            // Otherwise, use the key with an ApiKeyCredential.
+            return string.IsNullOrEmpty(key) ? 
+                new AzureOpenAIClient(new Uri(endpoint), credentialHelper.GetAzureCredential()) : 
+                new AzureOpenAIClient(new Uri(endpoint), new ApiKeyCredential(key));
         });
 
         builder.Services.AddScoped<IChatCompletionService>(service =>

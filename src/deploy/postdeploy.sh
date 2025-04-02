@@ -43,7 +43,6 @@ declare -A containerApps=(
     ["web-docgen"]=1
     ["api-main"]=1
     ["worker-scheduler"]=1
-    ["services-setupmanager"]=1
     ["worker-validation"]=2
 )
 

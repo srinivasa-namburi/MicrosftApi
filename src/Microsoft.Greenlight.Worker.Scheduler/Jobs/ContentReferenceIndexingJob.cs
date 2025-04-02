@@ -11,8 +11,7 @@ namespace Microsoft.Greenlight.Worker.Scheduler.Jobs
     public class ContentReferenceIndexingJob : IJob
     {
         private readonly ILogger<ContentReferenceIndexingJob> _logger;
-        private readonly IContentReferenceService _referenceService;
-        private readonly IOptionsSnapshot<ServiceConfigurationOptions> _options;
+        private readonly IServiceProvider _sp;
 
         /// <summary>
         /// Constructs a new instance of the <see cref="ContentReferenceIndexingJob"/> class.
@@ -22,22 +21,23 @@ namespace Microsoft.Greenlight.Worker.Scheduler.Jobs
         /// <param name="options"></param>
         public ContentReferenceIndexingJob(
             ILogger<ContentReferenceIndexingJob> logger,
-            IContentReferenceService referenceService,
-            IOptionsSnapshot<ServiceConfigurationOptions> options)
+            IServiceProvider sp)
         {
             _logger = logger;
-            _referenceService = referenceService;
-            _options = options;
+            _sp = sp;
         }
 
         /// <inheritdoc />
         public async Task Execute(IJobExecutionContext context)
         {
+            // Necessary to be use scoped services
+            var referenceService = _sp.GetRequiredService<IContentReferenceService>();
+
             _logger.LogInformation("Content reference indexing job started at {time}", DateTimeOffset.Now);
 
             try
             {
-                await _referenceService.ScanAndUpdateReferencesAsync(context.CancellationToken);
+                await referenceService.ScanAndUpdateReferencesAsync(context.CancellationToken);
                 _logger.LogInformation("Content reference indexing completed successfully");
             }
             catch (Exception ex)

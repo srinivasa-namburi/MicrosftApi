@@ -17,40 +17,38 @@ namespace Microsoft.Greenlight.Worker.Scheduler.Jobs
         private readonly ILogger<ScheduledBlobAutoImportJob> _logger;
         private readonly BlobServiceClient _blobServiceClient;
         private readonly IServiceProvider _sp;
-        private readonly IDocumentProcessInfoService _documentProcessInfoService;
-        private readonly IDocumentLibraryInfoService _documentLibraryInfoService;
-        private readonly IOptionsMonitor<ServiceConfigurationOptions> _optionsMonitor;
+        private readonly IOptionsSnapshot<ServiceConfigurationOptions> _optionsSnapshot;
 
         /// <summary>
         /// Constructs a new instance of the <see cref="ScheduledBlobAutoImportJob"/> class.
         /// </summary>
         /// <param name="logger"></param>
-        /// <param name="optionsMonitor"></param>
+        /// <param name="optionsSnapshot"></param>
         /// <param name="blobServiceClient"></param>
         /// <param name="sp"></param>
-        /// <param name="documentProcessInfoService"></param>
         /// <param name="documentLibraryInfoService"></param>
         public ScheduledBlobAutoImportJob(
             ILogger<ScheduledBlobAutoImportJob> logger,
-            IOptionsMonitor<ServiceConfigurationOptions> optionsMonitor,
+            IOptionsSnapshot<ServiceConfigurationOptions> optionsSnapshot,
             BlobServiceClient blobServiceClient,
             IServiceProvider sp,
-            IDocumentProcessInfoService documentProcessInfoService,
             IDocumentLibraryInfoService documentLibraryInfoService)
         {
             _logger = logger;
-            _optionsMonitor = optionsMonitor;
+            _optionsSnapshot = optionsSnapshot;
             _blobServiceClient = blobServiceClient;
             _sp = sp;
-            _documentProcessInfoService = documentProcessInfoService;
-            _documentLibraryInfoService = documentLibraryInfoService;
+
         }
 
         /// <inheritdoc />
         public async Task Execute(IJobExecutionContext context)
         {
+            var documentProcessInfoService = _sp.GetRequiredService<IDocumentProcessInfoService>();
+            var documentLibraryInfoService = _sp.GetRequiredService<IDocumentLibraryInfoService>();
+
             // Check whether scheduled ingestion is enabled.
-            if (_optionsMonitor.CurrentValue.GreenlightServices.DocumentIngestion.ScheduledIngestion == false)
+            if (_optionsSnapshot.Value.GreenlightServices.DocumentIngestion.ScheduledIngestion == false)
             {
                 _logger.LogWarning("ScheduledBlobAutoImportJob: Scheduled ingestion is disabled in configuration. Skipping execution.");
                 return;
@@ -63,8 +61,8 @@ namespace Microsoft.Greenlight.Worker.Scheduler.Jobs
 
             // Process document processes and libraries. Each method returns a delay (in milliseconds) that may
             // be modified based on their processing.
-            int delayProcess = await ProcessBlobsForDocumentProcesses(publishEndpoint, context.CancellationToken);
-            int delayLibrary = await ProcessBlobsForDocumentLibraries(publishEndpoint, context.CancellationToken);
+            int delayProcess = await ProcessBlobsForDocumentProcesses(publishEndpoint, documentProcessInfoService, context.CancellationToken);
+            int delayLibrary = await ProcessBlobsForDocumentLibraries(publishEndpoint, documentLibraryInfoService, context.CancellationToken);
 
             // Calculate the desired delay for the next execution—here we choose the maximum of both.
             int newDelayMilliseconds = Math.Max(delayProcess, delayLibrary);
@@ -79,13 +77,16 @@ namespace Microsoft.Greenlight.Worker.Scheduler.Jobs
             await context.Scheduler.RescheduleJob(context.Trigger.Key, newTrigger);
         }
 
-        private async Task<int> ProcessBlobsForDocumentProcesses(IPublishEndpoint publishEndpoint, CancellationToken stoppingToken)
+        private async Task<int> ProcessBlobsForDocumentProcesses(
+            IPublishEndpoint publishEndpoint, 
+            IDocumentProcessInfoService documentProcessInfoService, 
+            CancellationToken stoppingToken)
         {
             int defaultDelayMs = Convert.ToInt32(TimeSpan.FromSeconds(30).TotalMilliseconds);
             int delayAfterImportMs = Convert.ToInt32(TimeSpan.FromMinutes(2).TotalMilliseconds);
             int delayAfterNoneFoundMs = Convert.ToInt32(TimeSpan.FromMinutes(5).TotalMilliseconds);
 
-            var documentProcesses = await _documentProcessInfoService.GetCombinedDocumentProcessInfoListAsync();
+            var documentProcesses = await documentProcessInfoService.GetCombinedDocumentProcessInfoListAsync();
             if (documentProcesses.Count == 0)
             {
                 _logger.LogWarning("ScheduledBlobAutoImportJob: No Document Processes exist.");
@@ -126,13 +127,14 @@ namespace Microsoft.Greenlight.Worker.Scheduler.Jobs
             return computedDelay;
         }
 
-        private async Task<int> ProcessBlobsForDocumentLibraries(IPublishEndpoint publishEndpoint, CancellationToken stoppingToken)
+        private async Task<int> ProcessBlobsForDocumentLibraries(IPublishEndpoint publishEndpoint,
+            IDocumentLibraryInfoService documentLibraryInfoService, CancellationToken stoppingToken)
         {
             int defaultDelayMs = Convert.ToInt32(TimeSpan.FromSeconds(30).TotalMilliseconds);
             int delayAfterImportMs = Convert.ToInt32(TimeSpan.FromMinutes(2).TotalMilliseconds);
             int delayAfterNoneFoundMs = Convert.ToInt32(TimeSpan.FromMinutes(5).TotalMilliseconds);
 
-            var documentLibraries = await _documentLibraryInfoService.GetAllDocumentLibrariesAsync();
+            var documentLibraries = await documentLibraryInfoService.GetAllDocumentLibrariesAsync();
             if (documentLibraries.Count == 0)
             {
                 _logger.LogWarning("ScheduledBlobAutoImportJob: No Document Libraries exist.");

@@ -31,10 +31,7 @@ namespace Microsoft.Greenlight.Shared.Tests.Services.Search
             _mockServiceConfigurationOptions.Setup(x => x.Value).Returns(_serviceConfigurationOptions);
             _mockBaseSearchIndexClient.Setup(x => x.Endpoint).Returns(new System.Uri("https://example.com"));
 
-            _factory = new SearchClientFactory(
-                _mockConfiguration.Object,
-                _mockBaseSearchIndexClient.Object,
-                _mockServiceConfigurationOptions.Object,
+            _factory = new SearchClientFactory(_mockBaseSearchIndexClient.Object,
                 _mockAzureCredentialHelper.Object
             );
         }
