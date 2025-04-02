@@ -34,7 +34,7 @@
         foreach (Match match in _referenceRegex.Matches(content))
         {
             if (match.Success && Enum.TryParse<ContentReferenceType>(match.Groups[1].Value, out var referenceType)
-                && Guid.TryParse(match.Groups[2].Value, out var referenceId))
+                              && Guid.TryParse(match.Groups[2].Value, out var referenceId))
             {
                 // Try to find the reference in the conversation references
                 var referenceInfo = ConversationReferences.FirstOrDefault(r => r.Id == referenceId);
@@ -49,6 +49,16 @@
                 };
 
                 _messageReferences.Add(reference);
+            }
+        }
+
+        // Handle file reference display names
+        foreach (var reference in _messageReferences.Where(r => r.ReferenceType == ContentReferenceType.ExternalFile))
+        {
+            var fileReference = ConversationReferences.FirstOrDefault(r => r.Id == reference.ReferenceId);
+            if (fileReference != null)
+            {
+                reference.DisplayName = fileReference.DisplayName;
             }
         }
     }

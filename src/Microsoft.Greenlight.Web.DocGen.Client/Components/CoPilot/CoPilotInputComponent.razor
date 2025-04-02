@@ -205,6 +205,9 @@
             await _mudChatTextField.SetText(_displayMessage);
         }
 
+        // Add the file reference to the global reference list
+        AllReferences?.Add(uploadedReference);
+
         StateHasChanged();
     }
 

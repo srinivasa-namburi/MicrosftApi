@@ -257,8 +257,8 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
             }
         }
 
-        // Clean up the message by removing reference tags
-        messageDto.Message = Regex.Replace(messageDto.Message, @"#\(Reference:(\w+):([0-9a-fA-F-]+)\)", "");
+        // This is used to clean the message of reference tags. To test some new functionality, we're keeping these in place.
+        // messageDto.Message = Regex.Replace(messageDto.Message, @"#\(Reference:(\w+):([0-9a-fA-F-]+)\)", "");
 
         return contentReferences;
     }
