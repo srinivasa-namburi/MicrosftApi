@@ -5,6 +5,7 @@ using Microsoft.Greenlight.Extensions.Plugins;
 using Microsoft.Greenlight.Shared.Contracts.DTO.DocumentLibrary;
 using Microsoft.Greenlight.Shared.Models.SourceReferences;
 using Microsoft.Greenlight.Shared.Services;
+using Microsoft.Greenlight.Shared.Services.Search;
 using Microsoft.SemanticKernel;
 
 namespace Microsoft.Greenlight.Plugins.Default.DocumentLibrary;

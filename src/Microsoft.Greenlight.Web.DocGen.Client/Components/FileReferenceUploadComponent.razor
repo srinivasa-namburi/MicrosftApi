@@ -1,0 +1,71 @@
+﻿@inject IFileApiClient FileApiClient
+@inject ISnackbar Snackbar
+
+<MudPaper Elevation="0" Class="d-flex align-center gap-2">
+    <MudFileUpload T="IBrowserFile" FilesChanged="UploadSingleFile" Accept=".pdf,.doc,.docx,.txt,.rtf">
+        <ButtonTemplate>
+            @if (string.IsNullOrEmpty(ButtonText))
+            {
+                <MudIconButton HtmlTag="label"
+                               Color="Color.Primary"
+                               Icon="@Icons.Material.Filled.AttachFile"
+                               for="@context"
+                               Size="Size.Small">
+                </MudIconButton>
+            }
+            else
+            {
+                <MudButton HtmlTag="label"
+                           Color="Color.Primary"
+                           Variant="Variant.Filled"
+                           StartIcon="@Icons.Material.Filled.CloudUpload"
+                           for="@context">
+                    @ButtonText
+                </MudButton>
+            }
+        </ButtonTemplate>
+    </MudFileUpload>
+    @if (IsUploading)
+    {
+        <MudProgressCircular Indeterminate Size="Size.Small" />
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public string? ButtonText { get; set; }
+    [Parameter] public EventCallback<ContentReferenceItemInfo> OnFileUploaded { get; set; }
+
+    private bool IsUploading { get; set; }
+
+    private async Task UploadSingleFile(IBrowserFile? file)
+    {
+        if (file == null)
+        {
+            Snackbar.Add("No file selected", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            IsUploading = true;
+            StateHasChanged();
+
+            // Upload the file as a temporary reference
+            var uploadedReference = await FileApiClient.UploadTemporaryReferenceFileAsync(file.Name, file);
+            
+            Snackbar.Add($"File '{file.Name}' uploaded successfully", Severity.Success);
+            
+            // Notify the parent component
+            await OnFileUploaded.InvokeAsync(uploadedReference);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error uploading file: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsUploading = false;
+            StateHasChanged();
+        }
+    }
+}

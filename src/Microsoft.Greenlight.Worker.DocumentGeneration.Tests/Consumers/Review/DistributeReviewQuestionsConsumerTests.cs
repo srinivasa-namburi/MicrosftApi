@@ -8,6 +8,7 @@ using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Mappings;
 using Microsoft.Greenlight.Shared.Models;
 using Microsoft.Greenlight.Shared.Models.Review;
+using Microsoft.Greenlight.Shared.Services.Search;
 using Microsoft.Greenlight.Shared.Testing.SQLite;
 using Moq;
 using Xunit;

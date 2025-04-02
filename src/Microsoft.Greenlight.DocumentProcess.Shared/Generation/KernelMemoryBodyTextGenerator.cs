@@ -1,6 +1,4 @@
 using Microsoft.Extensions.Logging;
-using Microsoft.Greenlight.DocumentProcess.Shared.Search;
-using Microsoft.Greenlight.Shared.Contracts;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Models;

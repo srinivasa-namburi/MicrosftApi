@@ -1,13 +1,12 @@
-using System.Net;
 using Microsoft.Extensions.Logging;
-using Microsoft.Greenlight.Shared.Enums;
-using Microsoft.KernelMemory;
-using Microsoft.Greenlight.Shared.Extensions;
-using Microsoft.Greenlight.Shared.Services;
-using Microsoft.Greenlight.Shared.Models.SourceReferences;
 using Microsoft.Greenlight.Shared.Contracts;
+using Microsoft.Greenlight.Shared.Enums;
+using Microsoft.Greenlight.Shared.Extensions;
+using Microsoft.Greenlight.Shared.Models.SourceReferences;
+using Microsoft.KernelMemory;
+using System.Net;
 
-namespace Microsoft.Greenlight.DocumentProcess.Shared.Search;
+namespace Microsoft.Greenlight.Shared.Services.Search;
 
 public class KernelMemoryRepository : IKernelMemoryRepository
 {

@@ -15,6 +15,7 @@ using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
 using Azure.Storage.Blobs.Models;
+using Microsoft.Greenlight.Shared.Services.Search;
 
 namespace Microsoft.Greenlight.Worker.DocumentIngestion.Consumers.KernelMemoryDocumentIngestionSaga.Tests
 {

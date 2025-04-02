@@ -8,6 +8,7 @@ using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Models.Review;
+using Microsoft.Greenlight.Shared.Services.Search;
 
 namespace Microsoft.Greenlight.Worker.DocumentGeneration.Consumers.Review;
 

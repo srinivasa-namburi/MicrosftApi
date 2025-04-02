@@ -1,7 +1,7 @@
 using Microsoft.Greenlight.Shared.Models.SourceReferences;
 using Microsoft.KernelMemory;
 
-namespace Microsoft.Greenlight.DocumentProcess.Shared.Search;
+namespace Microsoft.Greenlight.Shared.Services.Search;
 
 public interface IAdditionalDocumentLibraryKernelMemoryRepository
 {

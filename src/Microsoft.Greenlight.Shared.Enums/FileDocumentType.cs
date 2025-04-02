@@ -19,5 +19,10 @@ public enum FileDocumentType
     /// <summary>
     /// A document that is under review.
     /// </summary>
-    Review
+    Review,
+
+    /// <summary>
+    /// Represents a temporary file used for reference purposes. It is typically utilized to process chat and ad-hoc attachments
+    /// </summary>
+    TemporaryReferenceFile
 }

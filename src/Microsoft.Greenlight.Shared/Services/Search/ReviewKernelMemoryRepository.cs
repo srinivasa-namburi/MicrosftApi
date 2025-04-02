@@ -2,16 +2,15 @@ using AutoMapper;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.KernelMemory;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Models.Review;
 using Microsoft.Greenlight.Shared.Models.SourceReferences;
-using Microsoft.Greenlight.Shared.Services.Search;
+using Microsoft.KernelMemory;
 
-namespace Microsoft.Greenlight.DocumentProcess.Shared.Search;
+namespace Microsoft.Greenlight.Shared.Services.Search;
 
 public class ReviewKernelMemoryRepository : IReviewKernelMemoryRepository
 {

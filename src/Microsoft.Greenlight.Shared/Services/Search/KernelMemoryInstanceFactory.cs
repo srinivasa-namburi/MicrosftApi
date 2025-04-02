@@ -1,13 +1,11 @@
-﻿using System.Collections.Concurrent;
-using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Options;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO.DocumentLibrary;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Extensions;
-using Microsoft.Greenlight.Shared.Services;
 using Microsoft.KernelMemory;
 
-namespace Microsoft.Greenlight.DocumentProcess.Shared.Search;
+namespace Microsoft.Greenlight.Shared.Services.Search;
 
 public class KernelMemoryInstanceFactory : IKernelMemoryInstanceFactory
 {
@@ -21,7 +19,7 @@ public class KernelMemoryInstanceFactory : IKernelMemoryInstanceFactory
         DocGenerationDbContext dbContext,
         IDocumentLibraryInfoService documentLibraryInfoService,
         IServiceProvider sp,
-        IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
+        IOptionsSnapshot<ServiceConfigurationOptions> serviceConfigurationOptions,
         KernelMemoryInstanceContainer instanceContainer)
     {
         _dbContext = dbContext;
@@ -29,6 +27,11 @@ public class KernelMemoryInstanceFactory : IKernelMemoryInstanceFactory
         _sp = sp;
         _instanceContainer = instanceContainer;
         _serviceConfigurationOptions = serviceConfigurationOptions.Value;
+    }
+
+    public IKernelMemory GetKernelMemoryForAdhocUploads()
+    {
+        return _instanceContainer.KernelMemoryInstances.TryGetValue("AdhocUploads", out var memory) ? memory : _sp.GetKernelMemoryForAdHocUploads(_serviceConfigurationOptions);
     }
 
     public async Task<IKernelMemory> GetKernelMemoryInstanceForDocumentLibrary(string documentLibraryShortName)

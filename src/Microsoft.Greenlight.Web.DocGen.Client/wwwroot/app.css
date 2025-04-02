@@ -479,10 +479,14 @@ table:not(.mud-table-root) {
 .message-bubble .message-content ol {
     margin: 0 !important;
     padding-left: 1.5rem !important;
+    padding-top:0px !important;
+    padding-bottom:0px !important;
+    
     list-style-position: outside !important;
 }
 
-.message-bubble .message-content li {
+.message-bubble .message-content li
+{
     margin: 0 !important; /* Change from 0.1rem to 0 */
     padding: 0 !important;
     line-height: 1.2 !important; /* Reduce line height specifically for list items */

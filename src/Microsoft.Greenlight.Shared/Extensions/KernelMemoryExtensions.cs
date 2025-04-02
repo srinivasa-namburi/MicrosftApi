@@ -127,6 +127,29 @@ public static class KernelMemoryExtensions
         return kernelMemory;
     }
 
+    /// <summary>
+    /// Creates a Kernel Memory instance for ad-hoc uploads.
+    /// </summary>
+    /// <param name="serviceProvider">The service provider</param>
+    /// <param name="serviceConfigurationOptions">The service configuration options</param>
+    /// <returns></returns>
+    public static IKernelMemory GetKernelMemoryForAdHocUploads(
+        this IServiceProvider serviceProvider,
+        ServiceConfigurationOptions serviceConfigurationOptions)
+    {
+        const string blobContainerName = "adhoc-km-blobs";
+        const string indexName = "index-adhoc-km";
+
+        var kernelMemory = CreateKernelMemoryInstance(
+            serviceProvider,
+            serviceConfigurationOptions,
+            blobContainerName,
+            indexName
+            );
+
+        return kernelMemory;
+    }
+
     private static IKernelMemory CreateKernelMemoryInstance(
         IServiceProvider serviceProvider,
         ServiceConfigurationOptions serviceConfigurationOptions,

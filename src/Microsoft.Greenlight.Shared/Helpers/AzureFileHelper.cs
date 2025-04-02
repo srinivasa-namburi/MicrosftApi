@@ -62,7 +62,7 @@ public class AzureFileHelper
             "document-export" => FileDocumentType.ExportedDocument,
             "document-assets" => FileDocumentType.DocumentAsset,
             "reviews" => FileDocumentType.Review,
-
+            "temporary-references" => FileDocumentType.TemporaryReferenceFile, 
             _ => FileDocumentType.ExportedDocument
         };
 

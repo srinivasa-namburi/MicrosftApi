@@ -23,7 +23,7 @@
                    Size="Size.Medium"
                    Class="mb-1" />
 
-    <div id="caretAnchor" @ref="_caretPositionAnchor" class="caret-position-anchor" style="position:absolute;width:1px;height:1px;display:none;"></div>
+    <div id="caretAnchor" @ref="_caretPositionAnchor" class="caret-position-anchor" style="position:absolute;width:1px;height:1px;display:none;z-index:1499;"></div>
 
     <CoPilotReferenceSelector @ref="_referenceSelector"
                               IsOpen="@_showReferenceSelector"
@@ -32,6 +32,12 @@
                               AnchorElement="@_caretPositionAnchor"
                               OnReferenceSelected="HandleReferenceSelected"
                               OnClose="HandleReferenceSelectorClosed" />
+</div>
+
+<div class="mt-2">
+
+    <FileReferenceUploadComponent OnFileUploaded="HandleFileUploaded" />
+
 </div>
 
 @* Reference list display *@
@@ -88,7 +94,7 @@
 
     // Reference selection state
     private bool _showReferenceSelector = false;
-    
+
     private Dictionary<int, ContentReferenceItemInfo> _referenceMap = new Dictionary<int, ContentReferenceItemInfo>();
     private Dictionary<string, int> _referenceIdToNumberMap = new Dictionary<string, int>();
     private int _nextReferenceNumber = 1;
@@ -125,6 +131,14 @@
             // Register JS interop
             await JSRuntime.InvokeVoidAsync("import", "/js/contentReferenceUtils.js");
             await JSRuntime.InvokeVoidAsync("registerInputComponent", _componentReference);
+
+            // Setup keyboard event interception
+            if (_mudChatTextField != null)
+            {
+                string elementId = await JSRuntime.InvokeAsync<string>("eval",
+                    $"document.querySelector('.chat-input-row .mud-input').id");
+                await JSRuntime.InvokeVoidAsync("setupKeyboardInterceptor", elementId, _componentReference);
+            }
         }
 
         // Update caret position anchor when reference selector is shown
@@ -134,11 +148,82 @@
         }
     }
 
+    // JS Interop Methods
+    [JSInvokable]
+    public bool ShouldInterceptKeyEvent(string key)
+    {
+        return _showReferenceSelector && _referenceSelector != null;
+    }
+
+    [JSInvokable]
+    public bool IsReferenceSelectorVisible()
+    {
+        return _showReferenceSelector;
+    }
+
+    [JSInvokable]
+    public void ProcessKeyboardEvent(string key)
+    {
+        if (_referenceSelector != null)
+        {
+            _referenceSelector.ProcessKeyPress(key);
+        }
+    }
+
+    [JSInvokable]
+    public async Task SendMessageFromJS()
+    {
+        if (_currentState != InputState.Sending && !string.IsNullOrWhiteSpace(_displayMessage))
+        {
+            await SendMessage();
+        }
+    }
+
+    private async Task HandleFileUploaded(ContentReferenceItemInfo uploadedReference)
+    {
+        // Get or assign a reference number for the newly uploaded file
+        string referenceId = $"{uploadedReference.ReferenceType}:{uploadedReference.Id}";
+        int referenceNumber;
+
+        if (!_referenceIdToNumberMap.TryGetValue(referenceId, out referenceNumber))
+        {
+            referenceNumber = _nextReferenceNumber++;
+            _referenceIdToNumberMap[referenceId] = referenceNumber;
+            _referenceMap[referenceNumber] = uploadedReference;
+        }
+
+        // Create display format token
+        string displayReferenceToken = $"#Reference:({referenceNumber})";
+
+        // Update display message with the file reference
+        _displayMessage += (_displayMessage.EndsWith(" ") ? "" : " ") + displayReferenceToken;
+        _previousDisplayMessage = _displayMessage;
+
+        // Update the text field
+        if (_mudChatTextField != null)
+        {
+            await _mudChatTextField.SetText(_displayMessage);
+        }
+
+        StateHasChanged();
+    }
+
     private async Task UpdateCaretPositionAnchor()
     {
         try
         {
-            await JSRuntime.InvokeVoidAsync("positionCaretAnchor", _mudChatTextField?.InputReference);
+            if (_mudChatTextField != null)
+            {
+                // Get the input element ID safely
+                var inputId = await JSRuntime.InvokeAsync<string>("eval", 
+                    "document.querySelector('.mud-input-slot')?.id || ''");
+                
+                if (!string.IsNullOrEmpty(inputId))
+                {
+                    // Position the caret anchor using the element ID instead of passing the reference
+                    await JSRuntime.InvokeVoidAsync("positionCaretAnchorById", inputId, "caretAnchor");
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -169,7 +254,7 @@
             }
             StateHasChanged();
         }
-        
+
         StateHasChanged();
     }
 
@@ -226,16 +311,6 @@
         if (_currentState == InputState.Sending)
             return;
 
-        // Handle reference selector keyboard navigation
-        if (_showReferenceSelector && _referenceSelector != null)
-        {
-            if (e.Key is "ArrowDown" or "ArrowUp" or "Enter" or "Escape" or " ")
-            {
-                _referenceSelector.ProcessKeyPress(e.Key);
-                return;
-            }
-        }
-
         // When '#' is pressed, enable reference suggestions
         if (e.Key == "#" && _currentState == InputState.Ready)
         {
@@ -251,6 +326,7 @@
         }
 
         // Track Enter (without Shift) to potentially send message
+        // The actual sending logic will be handled by our JS interceptor
         _chatTextLastKeyWasEnter = e is { Key: "Enter", ShiftKey: false };
     }
 
@@ -437,6 +513,7 @@
         _hashTagPosition = -1;
         _currentSearchTerm = string.Empty;
         _currentState = InputState.Ready;
+        _chatTextLastKeyWasEnter = false; // Reset this to avoid premature sending
         StateHasChanged();
     }
 

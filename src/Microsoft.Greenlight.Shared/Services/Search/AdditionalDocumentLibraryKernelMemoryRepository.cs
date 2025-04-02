@@ -1,11 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Greenlight.Shared.Contracts;
 using Microsoft.Greenlight.Shared.Models.SourceReferences;
-using Microsoft.Greenlight.Shared.Services;
-using Microsoft.Greenlight.Shared.Services.Search;
 using Microsoft.KernelMemory;
 
-namespace Microsoft.Greenlight.DocumentProcess.Shared.Search;
+namespace Microsoft.Greenlight.Shared.Services.Search;
 
 public class AdditionalDocumentLibraryKernelMemoryRepository : IAdditionalDocumentLibraryKernelMemoryRepository
 {

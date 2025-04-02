@@ -6,6 +6,7 @@ using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Services;
+using Microsoft.Greenlight.Shared.Services.Search;
 
 namespace Microsoft.Greenlight.Worker.DocumentIngestion.Consumers.KernelMemoryDocumentIngestionSaga;
 

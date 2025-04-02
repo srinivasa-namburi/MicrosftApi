@@ -14,6 +14,7 @@ using Xunit;
 using Azure.Storage.Blobs.Models;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Review.Events;
 using Microsoft.Greenlight.Shared.Contracts.Messages;
+using Microsoft.Greenlight.Shared.Services.Search;
 
 namespace Microsoft.Greenlight.Worker.DocumentGeneration.Consumers.Review.Tests
 {

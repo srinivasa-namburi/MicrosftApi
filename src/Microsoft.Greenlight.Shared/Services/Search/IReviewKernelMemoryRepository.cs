@@ -1,9 +1,9 @@
-using Microsoft.KernelMemory;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Models.Review;
 using Microsoft.Greenlight.Shared.Models.SourceReferences;
+using Microsoft.KernelMemory;
 
-namespace Microsoft.Greenlight.DocumentProcess.Shared.Search;
+namespace Microsoft.Greenlight.Shared.Services.Search;
 
 public interface IReviewKernelMemoryRepository
 {

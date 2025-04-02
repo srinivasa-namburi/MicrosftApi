@@ -57,7 +57,10 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
             {
                 try
                 {
-                    return JsonSerializer.Deserialize<List<ContentReferenceItemInfo>>(cachedData);
+                    var allReferences = JsonSerializer.Deserialize<List<ContentReferenceItemInfo>>(cachedData);
+
+                    // We filter out External File references here.
+                    return allReferences?.Where(r => r.ReferenceType != ContentReferenceType.ExternalFile).ToList();
                 }
                 catch (Exception ex)
                 {
@@ -73,7 +76,7 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
             };
 
             await _cache.SetStringAsync(CacheKey, JsonSerializer.Serialize(references), cacheOptions);
-            return references;
+            return references.Where(r => r.ReferenceType != ContentReferenceType.ExternalFile).ToList();
         }
 
         /// <inheritdoc />
@@ -192,9 +195,16 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                         ragText = await sectionService?.GenerateContentTextForRagAsync(reference.ContentReferenceSourceId.Value);
                         break;
 
+                    case ContentReferenceType.ExternalFile:
+                        var fileService = _generationServiceFactory.GetGenerationService<ExportedDocumentLink>(reference.ReferenceType);
+                        ragText = await fileService?.GenerateContentTextForRagAsync(reference.ContentReferenceSourceId.Value);
+                        break;
+
                     default:
                         _logger.LogWarning("No content reference generation service found for type {Type}", reference.ReferenceType);
                         return null;
+
+
                 }
 
                 if (!string.IsNullOrEmpty(ragText))
@@ -258,7 +268,7 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
 
                 reference = _mapper.Map<ContentReferenceItem>(cacheReference);
                 reference.ReferenceType = type;
-                
+
                 _dbContext.ContentReferenceItems.Add(reference);
             }
             else
@@ -300,12 +310,30 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
             return reference;
         }
 
-
         /// <inheritdoc />
         /// <inheritdoc />
         public async Task ScanAndUpdateReferencesAsync(CancellationToken ct = default)
         {
-            // Handle GeneratedDocument references
+            // Process each reference type
+            var validDocumentIds = await ProcessGeneratedDocumentReferencesAsync(ct);
+           
+            await _dbContext.SaveChangesAsync(ct);
+
+            // Remove stale references for all processed types
+            await RemoveStaleReferencesAsync(validDocumentIds, ct);
+
+            // Refresh the cache since the set of references has changed.
+            await RefreshReferencesCacheAsync();
+        }
+
+        /// <summary>
+        /// Processes references for generated documents
+        /// </summary>
+        /// <param name="ct">Cancellation token</param>
+        /// <returns>HashSet of valid document IDs</returns>
+        private async Task<HashSet<Guid>> ProcessGeneratedDocumentReferencesAsync(CancellationToken ct = default)
+        {
+            // Get all documents
             var documents = await _dbContext.GeneratedDocuments.ToListAsync(ct);
             var validDocumentIds = documents.Select(doc => doc.Id).ToHashSet();
 
@@ -329,60 +357,116 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                 }
 
                 // Insert or update each new reference (by checking ContentReferenceSourceId)
-                foreach (var newRef in newReferenceInfos)
+                await UpsertReferencesAsync(newReferenceInfos, ct);
+            }
+
+            return validDocumentIds;
+        }
+
+        /// <summary>
+        /// Processes references for externally uploaded files
+        /// </summary>
+        /// <param name="ct">Cancellation token</param>
+        /// <returns>HashSet of valid file IDs</returns>
+        private async Task<HashSet<Guid>> ProcessExternalFileReferencesAsync(CancellationToken ct = default)
+        {
+            // Get all temporary reference files
+            var uploadedDocuments = await _dbContext.ExportedDocumentLinks
+                .Where(link => link.Type == FileDocumentType.TemporaryReferenceFile)
+                .ToListAsync(ct);
+            var validFileIds = uploadedDocuments.Select(doc => doc.Id).ToHashSet();
+
+            var fileService = _generationServiceFactory.GetGenerationService<ExportedDocumentLink>(ContentReferenceType.ExternalFile);
+            if (fileService != null)
+            {
+                // Generate new reference items for each uploaded document
+                var newFileReferenceInfos = new List<ContentReferenceItemInfo>();
+                foreach (var doc in uploadedDocuments)
                 {
-                    if (newRef.ContentReferenceSourceId.HasValue)
+                    try
                     {
-                        var existingReference = await _dbContext.ContentReferenceItems
-                            .FirstOrDefaultAsync(r => r.ContentReferenceSourceId == newRef.ContentReferenceSourceId
-                                                       && r.ReferenceType == newRef.ReferenceType, ct);
-                        if (existingReference == null)
+                        var refs = await fileService.GenerateReferencesAsync(doc);
+                        newFileReferenceInfos.AddRange(refs);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error generating references for uploaded file {FileId}", doc.Id);
+                    }
+                }
+
+                // Insert or update each new reference
+                await UpsertReferencesAsync(newFileReferenceInfos, ct);
+            }
+
+            return validFileIds;
+        }
+
+        /// <summary>
+        /// Inserts or updates references based on ContentReferenceSourceId
+        /// </summary>
+        /// <param name="referenceInfos">References to upsert</param>
+        /// <param name="ct">Cancellation token</param>
+        private async Task UpsertReferencesAsync(List<ContentReferenceItemInfo> referenceInfos, CancellationToken ct = default)
+        {
+            foreach (var newRef in referenceInfos)
+            {
+                if (newRef.ContentReferenceSourceId.HasValue)
+                {
+                    var existingReference = await _dbContext.ContentReferenceItems
+                        .FirstOrDefaultAsync(r => r.ContentReferenceSourceId == newRef.ContentReferenceSourceId
+                                                 && r.ReferenceType == newRef.ReferenceType, ct);
+                    if (existingReference == null)
+                    {
+                        // Create new reference
+                        var reference = new ContentReferenceItem
                         {
-                            // Create new reference
-                            var reference = new ContentReferenceItem
-                            {
-                                Id = newRef.Id,
-                                ReferenceType = newRef.ReferenceType,
-                                ContentReferenceSourceId = newRef.ContentReferenceSourceId,
-                                DisplayName = newRef.DisplayName,
-                                Description = newRef.Description
-                            };
-                            _dbContext.ContentReferenceItems.Add(reference);
-                            await EnsureContentReferenceItemWithRagTextAsync(reference, saveChanges: false);
-                        }
-                        else
-                        {
-                            // Update existing reference
-                            existingReference.DisplayName = newRef.DisplayName;
-                            existingReference.Description = newRef.Description;
-                            _dbContext.ContentReferenceItems.Update(existingReference);
-                            await EnsureContentReferenceItemWithRagTextAsync(existingReference, saveChanges: false);
-                        }
+                            Id = newRef.Id,
+                            ReferenceType = newRef.ReferenceType,
+                            ContentReferenceSourceId = newRef.ContentReferenceSourceId,
+                            DisplayName = newRef.DisplayName,
+                            Description = newRef.Description
+                        };
+                        _dbContext.ContentReferenceItems.Add(reference);
+                        await EnsureContentReferenceItemWithRagTextAsync(reference, saveChanges: false);
+                    }
+                    else
+                    {
+                        // Update existing reference
+                        existingReference.DisplayName = newRef.DisplayName;
+                        existingReference.Description = newRef.Description;
+                        _dbContext.ContentReferenceItems.Update(existingReference);
+                        await EnsureContentReferenceItemWithRagTextAsync(existingReference, saveChanges: false);
                     }
                 }
             }
+        }
 
-            await _dbContext.SaveChangesAsync(ct);
-
-            // Remove stale references: find references of type GeneratedDocument whose ContentReferenceSourceId no longer exists.
-            var staleReferences = await _dbContext.ContentReferenceItems
+        /// <summary>
+        /// Removes stale references that no longer have a corresponding source entity
+        /// </summary>
+        /// <param name="validDocumentIds">Valid document IDs</param>
+        /// <param name="validFileIds">Valid file IDs</param>
+        /// <param name="ct">Cancellation token</param>
+        private async Task RemoveStaleReferencesAsync(HashSet<Guid> validDocumentIds, CancellationToken ct = default)
+        {
+            // For document references
+            var staleDocumentReferences = await _dbContext.ContentReferenceItems
                 .Where(r => r.ReferenceType == ContentReferenceType.GeneratedDocument &&
                             r.ContentReferenceSourceId.HasValue &&
                             !validDocumentIds.Contains(r.ContentReferenceSourceId.Value))
                 .ToListAsync(ct);
 
-            if (staleReferences.Any())
+            // We don't process external file references - they are handled differently.
+
+            var allStaleReferences = staleDocumentReferences.ToList();
+
+            if (allStaleReferences.Any())
             {
-                _dbContext.ContentReferenceItems.RemoveRange(staleReferences);
+                _dbContext.ContentReferenceItems.RemoveRange(allStaleReferences);
                 await _dbContext.SaveChangesAsync(ct);
             }
-
-            // Refresh the cache since the set of references has changed.
-            await RefreshReferencesCacheAsync();
         }
-
-
-        /// <inheritdoc />
+        
         /// <inheritdoc />
         public async Task<List<ContentReferenceItem>> GetContentReferenceItemsFromIdsAsync(List<Guid> ids)
         {
@@ -416,7 +500,7 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
             var result = new List<ContentReferenceItem>();
             foreach (var item in existingItems)
             {
-                var ensuredItem = await EnsureContentReferenceItemWithRagTextAsync(item);
+                var ensuredItem = await EnsureContentReferenceItemWithRagTextAsync(item, saveChanges:true);
                 result.Add(ensuredItem);
             }
 
@@ -492,6 +576,11 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                     case ContentReferenceType.GeneratedSection:
                         var sectionService = _generationServiceFactory.GetGenerationService<ContentNode>(reference.ReferenceType);
                         return await sectionService?.GenerateEmbeddingsAsync(reference.ContentReferenceSourceId.Value);
+
+                    case ContentReferenceType.ExternalFile:
+                        var fileService = _generationServiceFactory.GetGenerationService<ExportedDocumentLink>(reference.ReferenceType);
+                        return await fileService?.GenerateEmbeddingsAsync(reference.ContentReferenceSourceId.Value);
+
 
                     default:
                         _logger.LogWarning("No content reference generation service found for type {Type}", reference.ReferenceType);
@@ -734,8 +823,7 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                 // Currently only support GeneratedDocument references.
                 await AddGeneratedDocumentReferencesAsync(references);
                 // Additional types can be added in future.
-            }
-            catch (Exception ex)
+            }catch (Exception ex)
             {
                 _logger.LogError(ex, "Error compiling content references");
             }

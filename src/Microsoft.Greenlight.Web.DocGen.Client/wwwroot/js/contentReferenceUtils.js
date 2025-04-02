@@ -47,6 +47,33 @@ function findInputElement(inputRef) {
     return null;
 }
 
+window.setupKeyboardInterceptor = function(elementId, dotNetRef) {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+    
+    element.addEventListener("keydown", function(event) {
+        // Only intercept events when the selector is shown
+        if (dotNetRef.invokeMethod("ShouldInterceptKeyEvent", event.key)) {
+            if (event.key === "ArrowDown" || event.key === "ArrowUp" || 
+                event.key === "Enter" || event.key === "Escape") {
+                event.preventDefault();
+                dotNetRef.invokeMethod("ProcessKeyboardEvent", event.key);
+                return false;
+            }
+        }
+        
+        // Handle Enter key for message sending
+        if (event.key === "Enter" && !event.shiftKey) {
+            const selectorVisible = dotNetRef.invokeMethod("IsReferenceSelectorVisible");
+            if (!selectorVisible) {
+                event.preventDefault();
+                dotNetRef.invokeMethod("SendMessageFromJS");
+                return false;
+            }
+        }
+    });
+};
+
 // Set up the TextCaretUtils with improved error handling
 window.TextCaretUtils = {
     // Returns the caret coordinates using a shadow element technique
@@ -111,53 +138,64 @@ window.TextCaretUtils = {
     }
 };
 
-// Position the caret anchor element at the current caret position
-window.positionCaretAnchor = function(inputRef) {
-    const input = findInputElement(inputRef);
-    const anchor = document.querySelector('.caret-position-anchor');
+// Position the caret anchor element by element IDs
+window.positionCaretAnchorById = function(inputId, anchorId) {
+    const input = document.getElementById(inputId);
+    const anchor = document.getElementById(anchorId);
     
     if (!input || !anchor) {
-        console.warn('Could not find input or anchor element');
+        console.warn('Could not find input or anchor element by ID');
         return;
     }
     
     try {
-        // Calculate caret position
-        const caretInfo = TextCaretUtils.getCaretCoordinates(input);
-        if (!caretInfo) {
-            console.warn('Could not get caret coordinates');
-            return;
-        }
+        // Get the input coordinates
+        const inputRect = input.getBoundingClientRect();
+        const caretPosition = input.selectionStart || 0;
         
-        // Get absolute position of caret
-        const inputRect = caretInfo.inputRect;
+        // Create a temporary element to measure text width
+        const measureDiv = document.createElement('div');
+        measureDiv.style.position = 'absolute';
+        measureDiv.style.visibility = 'hidden';
+        measureDiv.style.whiteSpace = 'pre';
+        measureDiv.style.font = window.getComputedStyle(input).font;
+        
+        // Get text up to caret position
+        const text = input.value.substring(0, caretPosition);
+        measureDiv.textContent = text || '';
+        document.body.appendChild(measureDiv);
+        
+        // Calculate caret position
+        const textWidth = measureDiv.getBoundingClientRect().width;
+        document.body.removeChild(measureDiv);
+        
+        // Calculate the line number based on input width and text width
+        const inputWidth = inputRect.width - 
+            (parseFloat(window.getComputedStyle(input).paddingLeft) + 
+             parseFloat(window.getComputedStyle(input).paddingRight));
+        
+        const linesBeforeCaret = Math.floor(textWidth / inputWidth);
+        const lineHeight = parseFloat(window.getComputedStyle(input).lineHeight) || 20;
         
         // Position anchor element
         anchor.style.display = 'block';
-        
-        // Get the offsetParent for the anchor
-        let parent = anchor.parentElement;
-        let offsetX = 0;
-        let offsetY = 0;
-        
-        while (parent && parent !== document.body) {
-            offsetX += parent.offsetLeft - parent.scrollLeft;
-            offsetY += parent.offsetTop - parent.scrollTop;
-            parent = parent.offsetParent;
-        }
-        
-        // Set absolute position relative to the page
-        const absoluteTop = inputRect.top + caretInfo.top + caretInfo.height + window.scrollY;
-        const absoluteLeft = inputRect.left + caretInfo.left + window.scrollX;
-        
-        // Apply position accounting for offsets
         anchor.style.position = 'absolute';
-        anchor.style.top = (absoluteTop - offsetY) + 'px';
-        anchor.style.left = (absoluteLeft - offsetX) + 'px';
+        
+        // Set position based on input position and caret position
+        const caretLeft = textWidth % inputWidth;
+        const caretTop = linesBeforeCaret * lineHeight;
+        
+        // Calculate absolute position
+        const absoluteTop = inputRect.top + caretTop + window.scrollY + lineHeight;
+        const absoluteLeft = inputRect.left + caretLeft + window.scrollX;
+        
+        // Apply position
+        anchor.style.top = absoluteTop + 'px';
+        anchor.style.left = absoluteLeft + 'px';
         
         console.log('Positioned anchor at:', {
-            caretInfo,
-            inputRect,
+            input: inputId,
+            anchor: anchorId,
             position: {
                 top: anchor.style.top,
                 left: anchor.style.left
@@ -167,6 +205,7 @@ window.positionCaretAnchor = function(inputRef) {
         console.error('Error positioning caret anchor:', error);
     }
 };
+
 
 // Position reference popover with debounce
 window.positionReferencePopover = debounce(function() {

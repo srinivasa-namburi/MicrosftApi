@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Greenlight.DocumentProcess.Shared.Search;
 using Microsoft.KernelMemory;
 using Microsoft.SemanticKernel;
 using Microsoft.Greenlight.Extensions.Plugins;
@@ -8,6 +7,7 @@ using Microsoft.Greenlight.Shared.Contracts;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Models.SourceReferences;
+using Microsoft.Greenlight.Shared.Services.Search;
 
 namespace Microsoft.Greenlight.DocumentProcess.Shared.Plugins.KmDocs;
 

@@ -5,6 +5,7 @@ using Microsoft.Greenlight.DocumentProcess.Shared.Search;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Review.Commands;
 using Microsoft.Greenlight.Shared.Data.Sql;
+using Microsoft.Greenlight.Shared.Services.Search;
 
 namespace Microsoft.Greenlight.Worker.DocumentGeneration.Consumers.Review;
 

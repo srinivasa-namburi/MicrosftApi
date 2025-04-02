@@ -1,11 +1,13 @@
 using AutoMapper;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.KernelMemory.Pipeline;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Data.Sql;
+using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Helpers;
+using Microsoft.Greenlight.Shared.Models;
 using Microsoft.Greenlight.Shared.Services;
+using Microsoft.KernelMemory.Pipeline;
 using Swashbuckle.AspNetCore.Annotations;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
@@ -226,6 +228,73 @@ public class FileController : BaseController
     }
 
     /// <summary>
+    /// Uploads a file as a temporary reference that can be used in content references.
+    /// </summary>
+    /// <param name="fileName">The name of the file.</param>
+    /// <param name="file">The file to upload.</param>
+    /// <returns>A ContentReferenceItemInfo representing the uploaded file.
+    /// Produces Status Codes:
+    ///     200 OK: When completed successfully
+    ///     400 Bad Request: When there is no file provided to upload or the file name is missing
+    /// </returns>
+    [HttpPost("upload/reference/{fileName}")]
+    [DisableRequestSizeLimit]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [Produces("application/json")]
+    [Produces<ContentReferenceItemInfo>]
+    [SwaggerIgnore]
+    public async Task<ActionResult<ContentReferenceItemInfo>> UploadTemporaryReferenceFile(string fileName, [FromForm] IFormFile? file = null)
+    {
+        // URL Decode the file name
+        fileName = Uri.UnescapeDataString(fileName);
+        const string containerName = "temporary-references";
+
+        // Check if the file is provided
+        if (file == null || file.Length == 0)
+        {
+            return BadRequest("No file uploaded.");
+        }
+
+        // Validate file name
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return BadRequest("Invalid file name.");
+        }
+
+        // Read the file stream
+        await using var stream = file.OpenReadStream();
+
+        // Generate a random file name for the backend in blob storage
+        var blobFileName = Guid.NewGuid() + Path.GetExtension(fileName);
+
+        // Upload the file to blob storage
+        var blobUrl = await _fileHelper.UploadFileToBlobAsync(stream, blobFileName, containerName, true);
+
+        // Save the file information in the database
+        var exportedDocumentLink = await _fileHelper.SaveFileInfoAsync(blobUrl, containerName, fileName);
+
+        // Create a content reference item
+        var contentReferenceItem = new ContentReferenceItem
+        {
+            Id = Guid.NewGuid(),
+            ContentReferenceSourceId = exportedDocumentLink.Id,
+            ReferenceType = ContentReferenceType.ExternalFile,
+            DisplayName = fileName,
+            Description = $"Uploaded document: {fileName}"
+        };
+
+        _dbContext.ContentReferenceItems.Add(contentReferenceItem);
+        await _dbContext.SaveChangesAsync();
+
+        // Return the content reference info
+        var contentReferenceItemInfo = _mapper.Map<ContentReferenceItemInfo>(contentReferenceItem);
+
+        return Ok(contentReferenceItemInfo);
+    }
+
+
+    /// <summary>
     /// Uploads a file to the specified container and returns file information.
     /// </summary>
     /// <param name="containerName">The name of the container.</param>
@@ -320,7 +389,11 @@ public class FileController : BaseController
     /// <returns>True if the container name is valid, otherwise false.</returns>
     private async Task<bool> IsValidContainerNameAsync(string containerName)
     {
-        if (containerName == "document-export" || containerName == "document-assets" || containerName == "reviews")
+        if (containerName is
+            "document-export" or
+            "document-assets" or
+            "reviews" or
+            "temporary-references")
         {
             return true;
         }

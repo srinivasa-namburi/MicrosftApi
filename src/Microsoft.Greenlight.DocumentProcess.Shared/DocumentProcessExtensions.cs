@@ -124,6 +124,7 @@ public static class DocumentProcessExtensions
             
         // Register content type specific generation services
         services.AddScoped<IContentReferenceGenerationService<GeneratedDocument>, GeneratedDocumentReferenceGenerationService>();
+        services.AddScoped<IContentReferenceGenerationService<ExportedDocumentLink>, UploadedDocumentReferenceGenerationService>();
 
         // Add more content type specific generation services here when implemented
         // services.AddScoped<IContentReferenceGenerationService<ContentNode>, ContentNodeReferenceGenerationService>();
