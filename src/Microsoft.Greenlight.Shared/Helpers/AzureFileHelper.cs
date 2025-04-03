@@ -194,4 +194,25 @@ public class AzureFileHelper
     {
         return GetProxiedAssetBlobUrl(assetIdGuid.ToString());
     }
+
+    /// <summary>
+    /// Deletes a blob from Azure Blob Storage.
+    /// </summary>
+    /// <param name="containerName">The name of the container.</param>
+    /// <param name="blobName">The name of the blob.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    public virtual async Task DeleteBlobAsync(string containerName, string blobName)
+    {
+        try
+        {
+            var containerClient = _blobServiceClient.GetBlobContainerClient(containerName);
+            var blobClient = containerClient.GetBlobClient(blobName);
+            await blobClient.DeleteIfExistsAsync();
+        }
+        catch (Exception ex)
+        {
+            // Log the error but don't throw - deleting the blob is not critical
+            Console.WriteLine($"Error deleting blob {blobName} from container {containerName}: {ex.Message}");
+        }
+    }
 }

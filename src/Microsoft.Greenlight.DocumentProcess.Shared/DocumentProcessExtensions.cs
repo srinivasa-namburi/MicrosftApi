@@ -65,8 +65,7 @@ public static class DocumentProcessExtensions
 
         // Ingestion specific custom dependencies
         builder.Services.AddScoped<TableHelper>();
-        builder.Services.AddScoped<AzureFileHelper>();
-
+        
         // Services included for backwards compatibility with older Document Processes ("Classic" Document Processes)
         builder.Services.AddSingleton<IContentTreeProcessor, ContentTreeProcessor>();
         builder.Services.AddSingleton<IIndexingProcessor, SearchIndexingProcessor>();

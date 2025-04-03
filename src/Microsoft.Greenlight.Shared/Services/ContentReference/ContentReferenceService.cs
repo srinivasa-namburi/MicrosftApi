@@ -245,47 +245,80 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
         /// <inheritdoc />
         public async Task<ContentReferenceItem> GetOrCreateContentReferenceItemAsync(Guid id, ContentReferenceType type)
         {
-            // Always check the database first
-            var reference = await _dbContext.ContentReferenceItems.FirstOrDefaultAsync(r => r.Id == id);
-            bool isNew = reference == null;
+            // Always check the database first with better query optimization - include FileHash for ExternalFile type
+            var query = _dbContext.ContentReferenceItems.AsQueryable();
+            if (type == ContentReferenceType.ExternalFile)
+            {
+                query = query.Include(r => r.Embeddings);
+            }
 
-            // Try to get additional info from the lightweight DTO cache
-            var cacheReference = await GetCachedReferenceByIdAsync(id, type);
+            var reference = await query.FirstOrDefaultAsync(r => r.Id == id);
+            bool isNew = reference == null;
 
             if (isNew)
             {
-                // Prevent duplicate references for the same content source:
-                if (cacheReference?.ContentReferenceSourceId != null)
+                // For ExternalFile type, first check if there's already a reference with the same ContentReferenceSourceId
+                // This handles the most common case where the same file is uploaded multiple times with different IDs
+                if (type == ContentReferenceType.ExternalFile)
                 {
-                    var existingReference = await _dbContext.ContentReferenceItems
-                        .FirstOrDefaultAsync(r => r.ContentReferenceSourceId == cacheReference.ContentReferenceSourceId && r.ReferenceType == type);
-                    if (existingReference != null)
+                    // Try to find the ExportedDocumentLink that this reference points to
+                    var exportedDocLink = await _dbContext.ExportedDocumentLinks.FindAsync(id);
+
+                    if (exportedDocLink != null && !string.IsNullOrEmpty(exportedDocLink.FileHash))
                     {
-                        _logger.LogInformation("Found existing reference for content source {SourceId}", cacheReference.ContentReferenceSourceId);
-                        return existingReference;
+                        // Look for existing references with matching file hash
+                        var existingReference = await _dbContext.ContentReferenceItems
+                            .Include(r => r.Embeddings)
+                            .Where(r =>
+                                r.ReferenceType == ContentReferenceType.ExternalFile &&
+                                r.FileHash == exportedDocLink.FileHash &&
+                                r.Id != id)
+                            .FirstOrDefaultAsync();
+
+                        if (existingReference != null)
+                        {
+                            _logger.LogInformation(
+                                "Found existing reference with matching file hash {FileHash}. Using existing reference {ExistingId} instead of creating new one {NewId}",
+                                exportedDocLink.FileHash, existingReference.Id, id);
+                            return existingReference;
+                        }
+
+                        // No duplicate found, create new reference with file hash
+                        reference = new ContentReferenceItem
+                        {
+                            Id = id,
+                            ReferenceType = type,
+                            ContentReferenceSourceId = exportedDocLink.Id,
+                            DisplayName = exportedDocLink.FileName,
+                            Description = $"Uploaded document: {exportedDocLink.FileName}",
+                            FileHash = exportedDocLink.FileHash // Ensure file hash is set
+                        };
+                    }
+                    else
+                    {
+                        // Create basic reference without file hash
+                        reference = new ContentReferenceItem
+                        {
+                            Id = id,
+                            ReferenceType = type
+                        };
                     }
                 }
-
-                reference = _mapper.Map<ContentReferenceItem>(cacheReference);
-                reference.ReferenceType = type;
+                else
+                {
+                    // For non-ExternalFile types, just create a basic reference
+                    reference = new ContentReferenceItem
+                    {
+                        Id = id,
+                        ReferenceType = type
+                    };
+                }
 
                 _dbContext.ContentReferenceItems.Add(reference);
             }
-            else
-            {
-                if (cacheReference != null)
-                {
-                    if (string.IsNullOrEmpty(reference.DisplayName) && !string.IsNullOrEmpty(cacheReference.DisplayName))
-                        reference.DisplayName = cacheReference.DisplayName;
-                    if (string.IsNullOrEmpty(reference.Description) && !string.IsNullOrEmpty(cacheReference.Description))
-                        reference.Description = cacheReference.Description;
-                    if (reference.ContentReferenceSourceId == null && cacheReference.ContentReferenceSourceId != null)
-                        reference.ContentReferenceSourceId = cacheReference.ContentReferenceSourceId;
-                }
-            }
 
-            // If needed, generate RAG text.
-            if (string.IsNullOrEmpty(reference.RagText) && (reference.ContentReferenceSourceId != null || cacheReference?.ContentReferenceSourceId != null))
+            // If needed, generate RAG text - but only if it doesn't already exist
+            if (string.IsNullOrEmpty(reference.RagText) && reference.ContentReferenceSourceId != null)
             {
                 try
                 {
@@ -299,11 +332,6 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                 {
                     _logger.LogError(ex, "Error generating RAG text for reference {Id}", id);
                 }
-            }
-
-            if (!isNew)
-            {
-                _dbContext.ContentReferenceItems.Update(reference);
             }
 
             await _dbContext.SaveChangesAsync();

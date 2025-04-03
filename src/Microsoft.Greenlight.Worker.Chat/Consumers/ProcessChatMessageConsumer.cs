@@ -230,122 +230,67 @@ public class ProcessChatMessageConsumer : IConsumer<ProcessChatMessage>
         await StoreChatMessageAndReferenceItems(assistantMessageDto);
     }
 
-    private async Task<List<ContentReferenceItem>> ExtractReferencesFromChatMessageAsync(ChatMessageDTO messageDto)
+private async Task<List<ContentReferenceItem>> ExtractReferencesFromChatMessageAsync(ChatMessageDTO messageDto)
+{
+    var contentReferences = new List<ContentReferenceItem>();
+    
+    if (string.IsNullOrEmpty(messageDto.Message))
     {
-        var contentReferences = new List<ContentReferenceItem>();
-        bool messageWasModified = false;
-
-        if (string.IsNullOrEmpty(messageDto.Message))
-        {
-            return contentReferences;
-        }
-
-        // Extract reference patterns from message
-        var matches = Regex.Matches(messageDto.Message, @"#\(Reference:(\w+):([0-9a-fA-F-]+)\)");
-        var processedReferences = new Dictionary<string, ContentReferenceItem>(); // Track by reference key
-
-        foreach (Match match in matches)
-        {
-            if (Enum.TryParse(match.Groups[1].Value, out ContentReferenceType referenceType))
-            {
-                var referenceId = Guid.Parse(match.Groups[2].Value);
-                string matchKey = match.Value;
-
-                try
-                {
-                    // Check for duplicate in this message first (exact same reference)
-                    if (processedReferences.ContainsKey(matchKey))
-                    {
-                        contentReferences.Add(processedReferences[matchKey]);
-                        continue;
-                    }
-
-                    // For external files, check if this is a new reference not yet in db
-                    if (referenceType == ContentReferenceType.ExternalFile)
-                    {
-                        // First get the Content Reference Item from the DB.
-                        var referenceItem = await _dbContext.ContentReferenceItems
-                            .FirstOrDefaultAsync(x => x.Id == referenceId && x.ReferenceType == referenceType);
-
-                        if (referenceItem is { ContentReferenceSourceId: not null })
-                        {
-                            // Then, get the ExportedDocumentLink for this reference
-                            var exportedDocLink =
-                                await _dbContext.ExportedDocumentLinks.FindAsync(referenceItem
-                                    .ContentReferenceSourceId);
-
-                            if (exportedDocLink != null && !string.IsNullOrEmpty(exportedDocLink.FileHash))
-                            {
-                                // Check if there's an existing reference with the same file hash
-                                var existingRefs = await _dbContext.ContentReferenceItems
-                                    .Where(r => r.ReferenceType == ContentReferenceType.ExternalFile)
-                                    .Join(_dbContext.ExportedDocumentLinks,
-                                        r => r.ContentReferenceSourceId,
-                                        e => e.Id,
-                                        (r, e) => new { Reference = r, ExportedDoc = e })
-                                    .Where(j => j.ExportedDoc.FileHash == exportedDocLink.FileHash
-                                                && j.Reference.Id != referenceId)
-                                    .Select(j => j.Reference)
-                                    .ToListAsync();
-
-                                if (existingRefs.Any())
-                                {
-                                    // Use the existing reference instead (deduplicate)
-                                    var existingRef = existingRefs.First();
-                                    _logger.LogInformation(
-                                        "Found duplicate file reference. New ID: {NewId}, using existing: {ExistingId} with same hash {FileHash}",
-                                        referenceId, existingRef.Id, exportedDocLink.FileHash);
-                                    await SendMessageProcessingNotificationAsync("Reference " +
-                                        existingRef.DisplayName + " already known - skipping further analysis");
-
-                                    // Replace the reference in the message
-                                    string oldRef = match.Value;
-                                    string newRef = $"#(Reference:{referenceType}:{existingRef.Id})";
-                                    messageDto.Message = messageDto.Message.Replace(oldRef, newRef);
-                                    messageWasModified = true;
-
-                                    // Use the existing reference
-                                    processedReferences[newRef] = existingRef;
-                                    contentReferences.Add(existingRef);
-                                    continue;
-                                }
-
-                                await SendMessageProcessingNotificationAsync("Performing analysis of file reference " +
-                                                                             referenceItem.DisplayName, persistent:true);
-                            }
-                        }
-                    }
-                    
-                    // Normal path - create or get reference
-                    var reference = await _contentReferenceService.GetOrCreateContentReferenceItemAsync(referenceId, referenceType);
-                    if (reference != null)
-                    {
-                        processedReferences[matchKey] = reference;
-                        contentReferences.Add(reference);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    await SendMessageProcessingNotificationAsync("Failed processing reference!", persistent: false);
-                    _logger.LogError(ex, "Error processing reference {Id} of type {Type}", referenceId, referenceType);
-                }
-            }
-        }
-
-        // If we've modified the message, update it in the database
-        if (messageWasModified)
-        {
-            var chatMessage = await _dbContext.ChatMessages.FirstOrDefaultAsync(x => x.Id == messageDto.Id);
-            if (chatMessage != null)
-            {
-                chatMessage.Message = messageDto.Message;
-                _dbContext.ChatMessages.Update(chatMessage);
-                await _dbContext.SaveChangesAsync();
-            }
-        }
-
         return contentReferences;
     }
+
+    // Extract reference patterns from message
+    var matches = Regex.Matches(messageDto.Message, @"#\(Reference:(\w+):([0-9a-fA-F-]+)\)");
+    var processedReferences = new Dictionary<string, ContentReferenceItem>(); // Track by reference key
+
+    foreach (Match match in matches)
+    {
+        if (Enum.TryParse(match.Groups[1].Value, out ContentReferenceType referenceType))
+        {
+            var referenceId = Guid.Parse(match.Groups[2].Value);
+            string matchKey = match.Value;
+
+            try
+            {
+                // Check for duplicate in this message first (exact same reference)
+                if (processedReferences.ContainsKey(matchKey))
+                {
+                    contentReferences.Add(processedReferences[matchKey]);
+                    continue;
+                }
+
+                // For external files, simply notify user that analysis might take some time
+                if (referenceType == ContentReferenceType.ExternalFile)
+                {
+                    // Get the reference item to access its display name for the notification
+                    var referenceItem = await _dbContext.ContentReferenceItems
+                        .FirstOrDefaultAsync(x => x.Id == referenceId && x.ReferenceType == referenceType);
+
+                    if (referenceItem != null)
+                    {
+                        await SendMessageProcessingNotificationAsync($"Processing file reference {referenceItem.DisplayName}", persistent: true);
+                    }
+                }
+                
+                // Get or create the reference
+                var reference = await _contentReferenceService.GetOrCreateContentReferenceItemAsync(referenceId, referenceType);
+                if (reference != null)
+                {
+                    processedReferences[matchKey] = reference;
+                    contentReferences.Add(reference);
+                }
+            }
+            catch (Exception ex)
+            {
+                await SendMessageProcessingNotificationAsync("Failed processing reference!", persistent: false);
+                _logger.LogError(ex, "Error processing reference {Id} of type {Type}", referenceId, referenceType);
+            }
+        }
+    }
+
+    return contentReferences;
+}
+
 
 
     /// <summary>
