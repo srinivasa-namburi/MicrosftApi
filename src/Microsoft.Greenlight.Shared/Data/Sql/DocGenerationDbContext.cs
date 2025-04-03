@@ -126,7 +126,35 @@ public class DocGenerationDbContext : DbContext
             c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
             c => c.ToList());
 
+        modelBuilder.Entity<ExportedDocumentLink>()
+            .ToTable("ExportedDocumentLinks");
 
+        modelBuilder.Entity<ExportedDocumentLink>()
+            .HasIndex(nameof(ExportedDocumentLink.Id))
+            .IsUnique();
+
+        modelBuilder.Entity<ExportedDocumentLink>()
+            .HasIndex(nameof(ExportedDocumentLink.GeneratedDocumentId))
+            .IsUnique(false);
+
+        modelBuilder.Entity<ExportedDocumentLink>()
+            .HasIndex(nameof(ExportedDocumentLink.FileHash))
+            .IsUnique(false);
+
+        modelBuilder.Entity<ContentReferenceItem>()
+            .ToTable("ContentReferenceItems");
+
+        modelBuilder.Entity<ContentReferenceItem>()
+            .HasIndex(nameof(ContentReferenceItem.Id))
+            .IsUnique();
+
+        modelBuilder.Entity<ContentReferenceItem>()
+            .HasIndex(nameof(ContentReferenceItem.Id), nameof(ContentReferenceItem.ReferenceType));
+
+        modelBuilder.Entity<ContentReferenceItem>()
+            .HasIndex(nameof(ContentReferenceItem.ContentReferenceSourceId))
+            .IsUnique(false);
+            
         modelBuilder.Entity<ContentNodeVersionTracker>()
             .ToTable("ContentNodeVersionTrackers");
 

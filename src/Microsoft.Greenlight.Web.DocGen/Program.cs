@@ -103,9 +103,7 @@ builder.Services.AddAuthentication("MicrosoftOidc")
         {
             OnRedirectToIdentityProvider = context =>
             {
-                var request = context.HttpContext.Request;
-                string selectedScheme = !context.ProtocolMessage.RedirectUri.Contains("localhost") ? "https" : request.Scheme;
-                var externalRedirectUri = $"{selectedScheme}://{request.Host.ToString().TrimEnd('/')}{request.PathBase.ToString().TrimEnd('/')}/signin-oidc";
+                string externalRedirectUri = ComputeRedirectUri(context, serviceConfigurationOptions);
                 context.ProtocolMessage.RedirectUri = externalRedirectUri;
                 return Task.CompletedTask;
             },
@@ -270,6 +268,24 @@ app.MapForwarder("/hubs/{**catch-all}", "https://api-main/", transformBuilder =>
 app.MapGet("/api-address", () =>
 {
     var apiAddress = builder.Configuration["services:api-main:https:0"];
+
+    if (string.IsNullOrEmpty(serviceConfigurationOptions.HostNameOverride.Api))
+    {
+        return string.IsNullOrEmpty(apiAddress)
+            ? Results.NotFound()
+            : Results.Ok(apiAddress.TrimEnd('/'));
+    }
+
+    // replace the host name with the one from the configuration
+    // keep the port from the original address
+
+    var uri = new Uri(apiAddress);
+    var port = uri.Port;
+    var hostName = serviceConfigurationOptions.HostNameOverride.Api;
+    var scheme = uri.Scheme;
+    var newUri = new Uri($"{scheme}://{hostName}:{port}");
+    apiAddress = newUri.ToString();
+    
     return string.IsNullOrEmpty(apiAddress)
         ? Results.NotFound()
         : Results.Ok(apiAddress.TrimEnd('/'));
@@ -290,3 +306,36 @@ app.MapGet("/configuration/token", async context =>
 app.MapGroup("/authentication").MapLoginAndLogout(app);
 
 app.Run();
+
+string ComputeRedirectUri(RedirectContext redirectContext, ServiceConfigurationOptions? serviceConfigurationOptions1)
+{
+    var request = redirectContext.HttpContext.Request;
+    string selectedScheme = !redirectContext.ProtocolMessage.RedirectUri.Contains("localhost") ? "https" : request.Scheme;
+                
+    var hostName = request.Host.ToString();
+    if (!string.IsNullOrEmpty(serviceConfigurationOptions1.HostNameOverride.Web))
+    {
+        hostName = serviceConfigurationOptions1.HostNameOverride.Web;
+        // We need to retain the port from the request in the redirect URI
+        // If the hostname doesn't already have a port
+        if (request.Host.Port.HasValue)
+        {
+            hostName = $"{hostName}:{request.Host.Port}";
+        }
+
+        // Remove duplicate ports if present (remove the last one)
+        if (hostName.Contains(':'))
+        {
+            var parts = hostName.Split(':');
+            if (parts.Length > 2)
+            {
+                hostName = $"{parts[0]}:{parts[1]}";
+            }
+        }
+    }
+    
+    hostName = hostName.TrimEnd('/');
+
+    var s = $"{selectedScheme}://{hostName}{request.PathBase.ToString().TrimEnd('/')}/signin-oidc";
+    return s;
+}

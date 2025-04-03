@@ -10,7 +10,7 @@
 
    - ![ForkGithubRepository](./docs/assets/ForkRepository.png)
 
-2. Create a Service Principal for GitHub Actions to utilize for deployment. Either (1) Cloud Application Administrator or (2) Application Developer permission on the tenant (Microsoft Entra) is required to perform this step. Application Developer is normally sufficient - and both Cloud Application Administrator and Application Developer supersede it. To do this, run this command (you must have the Azure CLI installed and be logged on to the tenant using "az login" first - you can download the Azure CLI here if you don't have it : https://learn.microsoft.com/en-us/cli/azure/install-azure-cli). The output of this script should be noted for storage in the AZURE_CREDENTIALS secret in a later step. Substitute <subscriptionId> with your actual subscription id:
+2. Create a Service Principal for GitHub Actions to utilize for deployment. Either (1) Cloud Application Administrator or (2) Application Developer permission on the tenant (Microsoft Entra) is required to perform this step. Application Developer is normally sufficient - and both Cloud Application Administrator and Application Developer supersede it. To do this, run this command (you must have the Azure CLI installed and be logged on to the tenant using "az login" first - you can download the Azure CLI here if you don't have it : <https://learn.microsoft.com/en-us/cli/azure/install-azure-cli>). The output of this script should be noted for storage in the AZURE_CREDENTIALS secret in a later step. Substitute <subscriptionId> with your actual subscription id:
 
 To create the service principal with owner permissions on the subscription(which allows the solution to create resource groups), run the following command:
 
@@ -73,6 +73,7 @@ If you wish to grant access to a an additional, different resource group for the
      - PVICO_ENTRA_CREDENTIALS : { This is the output of the .\sp-create.ps1 script run above }
      - PVICO_OPENAI_CONNECTIONSTRING : { Use the following format : Endpoint=\<endpoint of Azure Openai Instance\>;Key=\<key of Azure OpenAI instance\> }
    - Variables:
+
      - AZURE_CLOUD: {AzureUSGovernment | AzureCloud}
      - AZURE_RESOURCE_GROUP: {Whatever you’d like the Resource Group to be named.}
      - AZURE_LOCATION : {usgovvirginia | swedencentral}
@@ -81,6 +82,15 @@ If you wish to grant access to a an additional, different resource group for the
      - AZURE_SUBSCRIPTION_ID: {Your Subscription ID}
      - DEPLOYMENT_MODEL: {private | public}
      - PVICO_OPENAI_RESOURCEGROUP : {The name of the Resource Group where your Azure OpenAI instance has been deployed}
+     - HOSTNAMEOVERRIDE : (Only required if used with third party load balancers) Json object with the following format:
+
+       ```json
+       "HostNameOverride": {
+         "Web": "webtest.azure.ai",
+         "Api": "apitest.azure.ai"
+       }
+       ```
+
      - <img width="394" alt="SetGithubSecrets" src="./docs/assets/GithubSecrets.png">
 
 Note that if you previously had an AZURE_ENV variable, this has been replaced by the

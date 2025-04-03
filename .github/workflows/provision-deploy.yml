@@ -23,6 +23,7 @@ jobs:
       AZURE_CLOUD: ${{ vars.AZURE_CLOUD }}
       DEPLOYMENT_MODEL: ${{ vars.DEPLOYMENT_MODEL }}
       AZURE_CAE_WORKLOAD_TYPE: ${{ vars.AZURE_CAE_WORKLOAD_TYPE }}
+      HOSTNAMEOVERRIDE: ${{ vars.HOSTNAMEOVERRIDE }}
 
     steps:
       - name: Checkout
@@ -282,6 +283,23 @@ jobs:
           echo "*****************************************************************************************"
         env:
           PVICO_ENTRA_CREDENTIALS: ${{ secrets.PVICO_ENTRA_CREDENTIALS }}
+
+      - name: Add HostNameOverride configuration to appsettings.Production.json
+        if: ${{ env.HOSTNAMEOVERRIDE != '' }}
+        run: |
+          echo "Adding HostNameOverride configuration..."
+          # Read the current appsettings file
+          appsettings=$(cat Microsoft.Greenlight.AppHost/appsettings.Production.json)
+          # Use jq to merge the HostNameOverride JSON into the ServiceConfiguration section
+          merged=$(echo "${appsettings}" | jq --argjson hostNameOverride "${HOSTNAMEOVERRIDE}" '
+            .ServiceConfiguration = (.ServiceConfiguration // {}) + {HostNameOverride: $hostNameOverride}
+          ')
+          # Write the updated JSON back to the file
+          echo "${merged}" > Microsoft.Greenlight.AppHost/appsettings.Production.json
+          echo "Updated appsettings.Production.json:"
+          cat Microsoft.Greenlight.AppHost/appsettings.Production.json
+        env:
+          HOSTNAMEOVERRIDE: ${{ env.HOSTNAMEOVERRIDE }}
 
       - name: Deploy db setup manager first
         run: |

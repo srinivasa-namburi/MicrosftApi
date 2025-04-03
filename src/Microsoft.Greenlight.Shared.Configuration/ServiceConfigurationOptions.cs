@@ -10,6 +10,35 @@ public class ServiceConfigurationOptions
     /// </summary>
     public const string PropertyName = "ServiceConfiguration";
 
+    public HostNameOverrideOptions HostNameOverride { get; set; } = new HostNameOverrideOptions();
+
+    /// <summary>
+    /// If set, these options override the host names for the Web DocGen and Greenlight API sites.
+    /// Used among other things for third party layer 7 load balancers.
+    /// </summary>
+    public class HostNameOverrideOptions
+    {
+        /// <summary>
+        /// An overridden host name for the Web DocGen frontend site.
+        /// Use only the host name, no https or trailing slash
+        /// </summary>
+        public string Web { get; set; } = string.Empty;
+
+        /// <summary>
+        /// An overridden host name for the Greenlight API site.
+        /// Use only the host name, no https or trailing slash
+        /// </summary>
+        public string Api { get; set; } = string.Empty;
+
+        /// <summary>
+        /// An overriden host name for the Azure SignalR service
+        /// Use only the host name, no https or trailing slash
+        /// </summary>
+        public string SignalR { get; set; } = string.Empty;
+
+
+    }
+
     /// <summary>
     /// Options for Azure Maps service.
     /// </summary>
