@@ -1,28 +1,115 @@
 @using Microsoft.Greenlight.Shared.Contracts.Chat
 @using System.Timers
-@using System.Text.RegularExpressions
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Events
+
+@implements IAsyncDisposable
 
 @code {
     [Parameter] public ChatMessageDTO ChatMessage { get; set; }
     [Parameter] public UserInfoDTO CurrentUser { get; set; }
     [Parameter] public List<ContentReferenceItemInfo> ConversationReferences { get; set; } = new();
     [CascadingParameter] public bool IsDarkMode { get; set; }
+    [CascadingParameter] public HubConnection? HubConnection { get; set; }
 
     private Timer? _timer;
     private bool _showTypingIndicator = true;
     private readonly Regex _referenceRegex = new Regex(@"#\(Reference:([^:]+):([^)]+)\)", RegexOptions.Compiled);
     private List<MessageReference> _messageReferences = new();
 
+    // Status notification properties
+    private string? _statusMessage = null;
+    private bool _showStatusMessage = false;
+    private Timer? _statusTimer;
+    private bool _statusProcessingComplete = false;
+    private bool _statusPersistent = false;
+
     protected override void OnInitialized()
     {
         InitializeOrRestartTimer();
         ExtractReferences();
+        RegisterForStatusUpdates();
     }
 
     protected override void OnParametersSet()
     {
         InitializeOrRestartTimer();
         ExtractReferences();
+    }
+
+    private void RegisterForStatusUpdates()
+    {
+        if (HubConnection != null && ChatMessage != null)
+        {
+            // Register for message-specific status updates
+            HubConnection.On<ChatMessageStatusNotification>(
+                "ReceiveChatMessageStatusNotification",
+                HandleChatMessageStatusNotification);
+
+            // Join message-specific group for targeted updates
+            _ = HubConnection.SendAsync("AddToGroup", ChatMessage.Id.ToString());
+        }
+    }
+
+    /// <summary>
+    /// Handles Status Notification messages for this message - received via SignalR.
+    /// </summary>
+    /// <param name="notification"></param>
+    /// <returns></returns>
+    private async Task HandleChatMessageStatusNotification(ChatMessageStatusNotification notification)
+    {
+        if (notification.ChatMessageId == ChatMessage.Id)
+        {
+            _statusMessage = notification.StatusMessage;
+            _showStatusMessage = true;
+            _statusProcessingComplete = notification.ProcessingComplete;
+            _statusPersistent = notification.Persistent;
+            
+            // For processing complete notifications, always treat as non-persistent regardless of the Persistent property
+            if (notification.ProcessingComplete)
+            {
+                _statusPersistent = false;
+                
+                // Reset timer for completed notifications - they should disappear after the default time
+                _statusTimer?.Dispose();
+                _statusTimer = new Timer(5000); // 5 seconds
+                _statusTimer.Elapsed += HideStatusMessage;
+                _statusTimer.AutoReset = false;
+                _statusTimer.Start();
+            }
+            // For persistent notifications, don't set a timer unless it's a completed notification
+            else if (!notification.Persistent)
+            {
+                // Reset timer for non-persistent notifications
+                _statusTimer?.Dispose();
+                _statusTimer = new Timer(10000); // 10 seconds
+                _statusTimer.Elapsed += HideStatusMessage;
+                _statusTimer.AutoReset = false;
+                _statusTimer.Start();
+            }
+            else
+            {
+                // For persistent notifications, cancel any existing timer
+                _statusTimer?.Dispose();
+                _statusTimer = null;
+            }
+            
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void HideStatusMessage(object? sender, ElapsedEventArgs e)
+    {
+        // Don't hide persistent messages via timer
+        if (_statusPersistent)
+        {
+            return;
+        }
+
+        // Hide non-persistent messages when the timer expires
+        _showStatusMessage = false;
+        InvokeAsync(StateHasChanged);
+        _statusTimer?.Dispose();
     }
 
     private void ExtractReferences()
@@ -182,9 +269,19 @@
         };
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         _timer?.Dispose();
+        _statusTimer?.Dispose();
+
+        if (HubConnection != null && ChatMessage != null)
+        {
+            // Remove from message-specific group
+            await HubConnection.SendAsync("RemoveFromGroup", ChatMessage.Id.ToString());
+
+            // Unregister notifications
+            HubConnection.Remove("ReceiveChatMessageStatusNotification");
+        }
     }
 
     private class MessageReference
@@ -213,7 +310,7 @@
         <div class="flex-grow-1">
             <div class="@GetBubbleClass()">
                 <div class="message-content">
-                    <RenderMultilineText Value="@GetFormattedMessageContent()"/>
+                    <RenderMultilineText Value="@GetFormattedMessageContent()" />
 
                     @if (_messageReferences.Any())
                     {
@@ -222,10 +319,28 @@
                             {
                                 <div class="chat-message-attachment-item">
                                     <span class="chat-message-attachment-number">[@reference.Number]</span>
-                                    <MudIcon Icon="@GetReferenceIcon(reference.ReferenceType)" Size="Size.Small" Class="mx-1"/>
+                                    <MudIcon Icon="@GetReferenceIcon(reference.ReferenceType)" Size="Size.Small" Class="mx-1" />
                                     <span class="chat-message-attachment-name text-truncate">@reference.DisplayName</span>
                                 </div>
                             }
+                        </div>
+                    }
+
+                    @if (_showStatusMessage && !string.IsNullOrEmpty(_statusMessage))
+                    {
+                        <MudDivider />
+                        <div class="message-status-container d-flex align-end flex-column">
+                            <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                                <MudText Typo="Typo.caption">@_statusMessage</MudText>
+                                @if (!_statusProcessingComplete)
+                                {
+                                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1"/>
+                                }
+                                else
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" Class="mr-1"/>
+                                }
+                            </MudStack>
                         </div>
                     }
                 </div>
@@ -239,12 +354,12 @@
                         <span class="state-indicator">
                             @if (ChatMessage.State == ChatMessageCreationState.InProgress)
                             {
-                                <MudIcon Icon="@Icons.Material.Filled.HourglassEmpty" Size="Size.Small"/>
+                                <MudIcon Icon="@Icons.Material.Filled.HourglassEmpty" Size="Size.Small" />
                                 <span>In progress</span>
                             }
                             else if (ChatMessage.State == ChatMessageCreationState.Failed)
                             {
-                                <MudIcon Icon="@Icons.Material.Filled.Error" Size="Size.Small"/>
+                                <MudIcon Icon="@Icons.Material.Filled.Error" Size="Size.Small" />
                                 <span>Failed</span>
                             }
                         </span>
@@ -280,6 +395,24 @@ else
                                     <span class="chat-message-attachment-name text-truncate">@reference.DisplayName</span>
                                 </div>
                             }
+                        </div>
+                    }
+
+                    @if (_showStatusMessage && !string.IsNullOrEmpty(_statusMessage))
+                    {
+                        <MudDivider Class="mt-2 mb-1" />
+                        <div class="message-status-container d-flex align-end flex-column">
+                            <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                                @if (!_statusProcessingComplete)
+                                {
+                                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1" />
+                                }
+                                else
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" Class="mr-1" />
+                                }
+                                <MudText Typo="Typo.caption">@_statusMessage</MudText>
+                            </MudStack>
                         </div>
                     }
                 </div>
@@ -318,5 +451,4 @@ else
             </div>
         </div>
     </div>
-
 }

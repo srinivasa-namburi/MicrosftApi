@@ -1,4 +1,6 @@
-﻿using Microsoft.Greenlight.Shared.Models;
+﻿using Microsoft.Greenlight.Shared.Contracts.Components;
+using Microsoft.Greenlight.Shared.Enums;
+using Microsoft.Greenlight.Shared.Models;
 
 namespace Microsoft.Greenlight.Shared.Services
 {
@@ -28,5 +30,54 @@ namespace Microsoft.Greenlight.Shared.Services
         /// <param name="rootContentNodes"></param>
         /// <returns></returns>
         Task<string?> GetRenderedTextForContentNodeHierarchiesAsync(List<ContentNode> rootContentNodes);
+
+        /// <summary>
+        /// Creates a version of the current state of a content node.
+        /// Only works for BodyText type nodes.
+        /// </summary>
+        /// <param name="contentNodeId">The ID of the content node to version.</param>
+        /// <param name="reason">The reason for creating this version.</param>
+        /// <param name="comment">Optional comment about this version.</param>
+        /// <returns>The new version number, or null if versioning failed.</returns>
+        Task<int?> CreateContentNodeVersionAsync(
+            Guid contentNodeId,
+            ContentNodeVersioningReason reason = ContentNodeVersioningReason.System,
+            string? comment = null);
+
+        /// <summary>
+        /// Replaces a content node text with new content while preserving its ID and versioning the current state.
+        /// Only works for BodyText type nodes.
+        /// </summary>
+        /// <param name="existingContentNodeId">The ID of the existing content node.</param>
+        /// <param name="newText">The new text for the content node.</param>
+        /// <param name="reason">The reason for replacing the content node text.</param>
+        /// <param name="comment">Optional comment about this change.</param>
+        /// <returns>The updated content node, or null if replacement failed.</returns>
+        Task<ContentNode?> ReplaceContentNodeTextAsync(
+            Guid existingContentNodeId,
+            string newText,
+            ContentNodeVersioningReason reason = ContentNodeVersioningReason.ManualEdit,
+            string? comment = null);
+
+        /// <summary>
+        /// Retrieves all versions of a content node.
+        /// Only works for BodyText type nodes.
+        /// </summary>
+        /// <param name="contentNodeId">The ID of the content node.</param>
+        /// <returns>A list of content node versions, or empty list if node cannot be versioned.</returns>
+        Task<List<ContentNodeVersion>> GetContentNodeVersionsAsync(Guid contentNodeId);
+
+        /// <summary>
+        /// Promotes a previous version of a content node to be the current version.
+        /// Only works for BodyText type nodes.
+        /// </summary>
+        /// <param name="contentNodeId">The ID of the content node.</param>
+        /// <param name="versionId">The ID of the version to promote.</param>
+        /// <param name="comment">Optional comment about this promotion.</param>
+        /// <returns>The updated content node, or null if promotion failed.</returns>
+        Task<ContentNode?> PromotePreviousVersionAsync(
+            Guid contentNodeId,
+            Guid versionId,
+            string? comment = null);
     }
 }

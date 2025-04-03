@@ -98,6 +98,17 @@ public class ContentNode : EntityBase
     public virtual ContentNodeSystemItem? ContentNodeSystemItem { get; set; }
 
     /// <summary>
+    /// Unique ID for the version tracker associated with this content node.
+    /// </summary>
+    public Guid? ContentNodeVersionTrackerId { get; set; }
+
+    /// <summary>
+    /// Version tracker associated with the content node.
+    /// </summary>
+    [JsonIgnore]
+    public virtual ContentNodeVersionTracker? ContentNodeVersionTracker { get; set; }
+
+    /// <summary>
     /// Bounding regions of the content node.
     /// </summary>
     public List<BoundingRegion>? BoundingRegions { get; set; } = [];

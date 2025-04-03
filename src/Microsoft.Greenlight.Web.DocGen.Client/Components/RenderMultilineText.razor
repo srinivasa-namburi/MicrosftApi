@@ -37,6 +37,9 @@
         link.GetAttributes().AddPropertyIfNotExist("target", "_blank");
     }
 
+    // Turn single line breaks (\n) into <br>. Don't do this if there's another \n immediately following it
+
+
     string html = document.ToHtml(markdownPipeline);
     
     var markupValue = new MarkupString(html);

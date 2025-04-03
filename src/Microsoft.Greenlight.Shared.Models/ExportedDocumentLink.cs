@@ -48,4 +48,9 @@ public class ExportedDocumentLink : EntityBase
     /// Date and time when the document was created.
     /// </summary>
     public DateTimeOffset Created { get; set; }
+
+    /// <summary>
+    /// Hash of the file content for deduplication.
+    /// </summary>
+    public string? FileHash { get; set; }
 }

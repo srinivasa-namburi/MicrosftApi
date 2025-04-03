@@ -101,6 +101,18 @@ public class NotificationHub : Hub<INotificationHubClient>
     }
 
     /// <summary>
+    /// Sends a chat message status notification to a specific group.
+    /// </summary>
+    /// <param name="messageId">The ID of the message to send the notification to.</param>
+    /// <param name="notification">The chat message status notification.</param>
+    public async Task SendChatMessageStatusNotification(
+        string messageId,
+        ChatMessageStatusNotification notification)
+    {
+        await Clients.Group(messageId).ReceiveChatMessageStatusNotification(notification);
+    }
+
+    /// <summary>
     /// Adds the current connection to a specific group.
     /// </summary>
     /// <param name="groupName">The name of the group to add the connection to.</param>

@@ -38,6 +38,8 @@ namespace Microsoft.Greenlight.Shared.Testing.SQLite
                 .Options;
         }
 
+
+
         /// <summary>
         /// Disposes the SQLite connection.
         /// </summary>

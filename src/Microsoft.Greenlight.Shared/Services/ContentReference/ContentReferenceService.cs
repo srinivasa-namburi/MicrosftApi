@@ -316,7 +316,7 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
         {
             // Process each reference type
             var validDocumentIds = await ProcessGeneratedDocumentReferencesAsync(ct);
-           
+
             await _dbContext.SaveChangesAsync(ct);
 
             // Remove stale references for all processed types
@@ -327,7 +327,7 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
         }
 
         /// <summary>
-        /// Processes references for generated documents
+        /// Processes Content References for generated documents
         /// </summary>
         /// <param name="ct">Cancellation token</param>
         /// <returns>HashSet of valid document IDs</returns>
@@ -361,44 +361,6 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
             }
 
             return validDocumentIds;
-        }
-
-        /// <summary>
-        /// Processes references for externally uploaded files
-        /// </summary>
-        /// <param name="ct">Cancellation token</param>
-        /// <returns>HashSet of valid file IDs</returns>
-        private async Task<HashSet<Guid>> ProcessExternalFileReferencesAsync(CancellationToken ct = default)
-        {
-            // Get all temporary reference files
-            var uploadedDocuments = await _dbContext.ExportedDocumentLinks
-                .Where(link => link.Type == FileDocumentType.TemporaryReferenceFile)
-                .ToListAsync(ct);
-            var validFileIds = uploadedDocuments.Select(doc => doc.Id).ToHashSet();
-
-            var fileService = _generationServiceFactory.GetGenerationService<ExportedDocumentLink>(ContentReferenceType.ExternalFile);
-            if (fileService != null)
-            {
-                // Generate new reference items for each uploaded document
-                var newFileReferenceInfos = new List<ContentReferenceItemInfo>();
-                foreach (var doc in uploadedDocuments)
-                {
-                    try
-                    {
-                        var refs = await fileService.GenerateReferencesAsync(doc);
-                        newFileReferenceInfos.AddRange(refs);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Error generating references for uploaded file {FileId}", doc.Id);
-                    }
-                }
-
-                // Insert or update each new reference
-                await UpsertReferencesAsync(newFileReferenceInfos, ct);
-            }
-
-            return validFileIds;
         }
 
         /// <summary>
@@ -466,7 +428,7 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                 await _dbContext.SaveChangesAsync(ct);
             }
         }
-        
+
         /// <inheritdoc />
         public async Task<List<ContentReferenceItem>> GetContentReferenceItemsFromIdsAsync(List<Guid> ids)
         {
@@ -500,7 +462,7 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
             var result = new List<ContentReferenceItem>();
             foreach (var item in existingItems)
             {
-                var ensuredItem = await EnsureContentReferenceItemWithRagTextAsync(item, saveChanges:true);
+                var ensuredItem = await EnsureContentReferenceItemWithRagTextAsync(item, saveChanges: true);
                 result.Add(ensuredItem);
             }
 
@@ -723,6 +685,9 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
         /// <summary>
         /// Generates and stores embeddings for a content reference item.
         /// </summary>
+        /// <summary>
+        /// Generates and stores embeddings for a content reference item with adaptive parallelism to handle rate limits.
+        /// </summary>
         private async Task GenerateAndStoreEmbeddingsAsync(ContentReferenceItem reference, int maxChunkTokens)
         {
             if (string.IsNullOrEmpty(reference.RagText))
@@ -739,34 +704,137 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
             }
 
             var chunks = ChunkContent(reference.RagText, maxChunkTokens);
+            var pendingChunks = new List<(int Index, string Chunk)>();
 
             for (int i = 0; i < chunks.Count; i++)
             {
-                var chunk = chunks[i];
-                try
-                {
-                    var embeddingVector = await _aiEmbeddingService.GenerateEmbeddingsAsync(chunk);
-                    if (embeddingVector != null && embeddingVector.Length > 0)
-                    {
-                        var embedding = new ContentEmbedding
-                        {
-                            ContentReferenceItemId = reference.Id,
-                            ChunkText = chunk,
-                            EmbeddingVector = SerializeEmbeddingVector(embeddingVector),
-                            SequenceNumber = i,
-                            GeneratedUtc = DateTime.UtcNow
-                        };
-                        _dbContext.ContentEmbeddings.Add(embedding);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error generating embedding for chunk {ChunkIndex} of reference {ReferenceId}", i, reference.Id);
-                }
+                pendingChunks.Add((i, chunks[i]));
             }
 
-            await _dbContext.SaveChangesAsync();
+            // Initial parallel processing settings
+            int maxParallelism = 100;
+            int currentParallelism = 20;
+            int minParallelism = 1;
+            TimeSpan baseDelay = TimeSpan.FromMilliseconds(200);
+            int consecutiveSuccesses = 0;
+            int consecutiveFailures = 0;
+
+            // Process chunks until done
+            while (pendingChunks.Count > 0)
+            {
+                var batch = pendingChunks.Take(currentParallelism).ToList();
+                pendingChunks.RemoveRange(0, Math.Min(batch.Count, pendingChunks.Count));
+
+                var tasks = batch.Select(async item =>
+                {
+                    try
+                    {
+                        var embeddingVector = await _aiEmbeddingService.GenerateEmbeddingsAsync(item.Chunk);
+                        return (Index: item.Index, Chunk: item.Chunk, Vector: embeddingVector, Error: (Exception)null);
+                    }
+                    catch (Exception ex)
+                    {
+                        return (Index: item.Index, Chunk: item.Chunk, Vector: (float[])null, Error: ex);
+                    }
+                }).ToList();
+
+                var results = await Task.WhenAll(tasks);
+                bool hadRateLimitError = false;
+                var successfulEmbeddings = new List<(int Index, string Chunk, float[] Vector)>();
+                var failedChunks = new List<(int Index, string Chunk)>();
+
+                foreach (var result in results)
+                {
+                    if (result.Error != null)
+                    {
+                        // Check if this is a rate limit error
+                        if (IsRateLimitError(result.Error))
+                        {
+                            _logger.LogWarning("Rate limit exceeded when generating embedding for chunk {ChunkIndex}. Current parallelism: {Parallelism}",
+                                result.Index, currentParallelism);
+                            hadRateLimitError = true;
+                            failedChunks.Add((result.Index, result.Chunk));
+                        }
+                        else
+                        {
+                            _logger.LogError(result.Error, "Error generating embedding for chunk {ChunkIndex} of reference {ReferenceId}",
+                                result.Index, reference.Id);
+                            failedChunks.Add((result.Index, result.Chunk));
+                        }
+                    }
+                    else if (result.Vector != null && result.Vector.Length > 0)
+                    {
+                        successfulEmbeddings.Add((result.Index, result.Chunk, result.Vector));
+                    }
+                }
+
+                // Add successful embeddings to database
+                foreach (var success in successfulEmbeddings)
+                {
+                    var embedding = new ContentEmbedding
+                    {
+                        ContentReferenceItemId = reference.Id,
+                        ChunkText = success.Chunk,
+                        EmbeddingVector = SerializeEmbeddingVector(success.Vector),
+                        SequenceNumber = success.Index,
+                        GeneratedUtc = DateTime.UtcNow
+                    };
+                    _dbContext.ContentEmbeddings.Add(embedding);
+                }
+
+                // Save completed embeddings
+                if (successfulEmbeddings.Any())
+                {
+                    await _dbContext.SaveChangesAsync();
+                }
+
+                // Re-queue failed chunks
+                pendingChunks.AddRange(failedChunks);
+
+                // Adjust parallelism based on errors
+                if (hadRateLimitError)
+                {
+                    consecutiveFailures++;
+                    consecutiveSuccesses = 0;
+
+                    // Reduce parallelism more aggressively if we keep hitting rate limits
+                    int reductionFactor = Math.Max(2, consecutiveFailures);
+                    currentParallelism = Math.Max(minParallelism, currentParallelism / reductionFactor);
+
+                    _logger.LogInformation("Reduced parallelism to {Parallelism} tasks due to rate limits", currentParallelism);
+
+                    // Add exponential backoff delay
+                    var delay = TimeSpan.FromMilliseconds(baseDelay.TotalMilliseconds * Math.Pow(2, consecutiveFailures - 1));
+                    _logger.LogInformation("Backing off for {DelayMs}ms before retrying", delay.TotalMilliseconds);
+                    await Task.Delay(delay);
+                }
+                else if (successfulEmbeddings.Count == batch.Count) // All succeeded
+                {
+                    consecutiveSuccesses++;
+                    consecutiveFailures = 0;
+
+                    // Gradually increase parallelism on continued success
+                    if (consecutiveSuccesses >= 2 && currentParallelism < maxParallelism)
+                    {
+                        currentParallelism = Math.Min(maxParallelism, currentParallelism + 1);
+                        _logger.LogInformation("Increased parallelism to {Parallelism} tasks", currentParallelism);
+                    }
+                }
+            }
         }
+
+        /// <summary>
+        /// Determines if an exception is related to rate limiting.
+        /// </summary>
+        private bool IsRateLimitError(Exception ex)
+        {
+            string exceptionMessage = ex.ToString();
+            return exceptionMessage.Contains("429") ||
+                   exceptionMessage.Contains("Too Many Requests") ||
+                   exceptionMessage.Contains("quota exceeded") ||
+                   exceptionMessage.Contains("rate limit");
+        }
+
 
         /// <summary>
         /// Checks if stored chunks match what would be generated from the current text.
@@ -823,7 +891,8 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                 // Currently only support GeneratedDocument references.
                 await AddGeneratedDocumentReferencesAsync(references);
                 // Additional types can be added in future.
-            }catch (Exception ex)
+            }
+            catch (Exception ex)
             {
                 _logger.LogError(ex, "Error compiling content references");
             }

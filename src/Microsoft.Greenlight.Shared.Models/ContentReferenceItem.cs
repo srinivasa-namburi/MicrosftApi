@@ -33,6 +33,11 @@ namespace Microsoft.Greenlight.Shared.Models
         public string? RagText { get; set; }
 
         /// <summary>
+        /// Hash of the file content for ExternalFile type references
+        /// </summary>
+        public string? FileHash { get; set; }
+
+        /// <summary>
         /// Generated Embeddings, if any, for this content reference item
         /// </summary>
         public List<ContentEmbedding> Embeddings { get; set; } = [];

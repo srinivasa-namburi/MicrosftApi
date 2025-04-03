@@ -67,4 +67,11 @@ public interface INotificationHubClient
     /// <returns>A task that represents the asynchronous operation.</returns>
     Task ReceiveConversationReferencesUpdatedNotification(ConversationReferencesUpdatedNotification message);
 
+    /// <summary>
+    /// Sends a chat message status notification to a specific group.
+    /// </summary>
+    /// <param name="messageId">The ID of the message to send the notification to.</param>
+    /// <param name="notification">The chat message status notification.</param>
+    Task ReceiveChatMessageStatusNotification(ChatMessageStatusNotification notification);
+
 }

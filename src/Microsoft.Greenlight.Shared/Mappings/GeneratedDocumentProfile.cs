@@ -16,6 +16,7 @@ public class GeneratedDocumentProfile : Profile
     /// Initializes a new instance of the <see cref="GeneratedDocumentProfile"/> class.
     /// Defines the mapping between <see cref="ContentNode"/> and <see cref="ContentNodeInfo"/>, 
     /// between <see cref="ContentNodeSystemItem"/> and <see cref="ContentNodeSystemItemInfo"/>,
+    /// between <see cref="ContentNodeVersionTracker"/> and <see cref="ContentNodeVersionTrackerInfo"/>,
     /// between <see cref="SourceReferenceItem"/> and <see cref="SourceReferenceItemInfo"/>,
     /// between <see cref="PluginSourceReferenceItem"/> and <see cref="PluginSourceReferenceItemInfo"/>,
     /// between <see cref="KernelMemoryDocumentSourceReferenceItem"/> and <see cref="KernelMemoryDocumentSourceReferenceItemInfo"/>,
@@ -54,6 +55,15 @@ public class GeneratedDocumentProfile : Profile
         // Mapping for ContentNodeSystemItem
         CreateMap<ContentNodeSystemItem, ContentNodeSystemItemInfo>()
             .ReverseMap();
+
+        // Mapping for ContentNodeVersionTracker
+        CreateMap<ContentNodeVersionTracker, ContentNodeVersionTrackerInfo>()
+            .ForMember(dest => dest.ContentNodeVersions, opt => opt.MapFrom(src => src.ContentNodeVersions))
+            .ReverseMap()
+            .ForMember(dest => dest.ContentNode, opt => opt.Ignore());
+
+        // Direct mapping for ContentNodeVersion (component)
+        // No need for special mapping since it's directly used in both models
 
         // Polymorphic mapping for SourceReferenceItem
         CreateMap<SourceReferenceItem, SourceReferenceItemInfo>()

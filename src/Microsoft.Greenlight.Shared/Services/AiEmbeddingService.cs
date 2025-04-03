@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Greenlight.Shared.Configuration;
-using Microsoft.SemanticKernel.Embeddings;
 using OpenAI.Embeddings;
 
 namespace Microsoft.Greenlight.Shared.Services;
@@ -16,21 +15,19 @@ public class AiEmbeddingService : IAiEmbeddingService
 {
     private readonly AzureOpenAIClient _openAIClient;
     private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
-    private readonly IKernelFactory _kernelFactory;
     private readonly ILogger<AiEmbeddingService> _logger;
 
     /// <summary>
     /// Constructs a new instance of the AiEmbeddingService
     /// </summary>
     public AiEmbeddingService(
-        [FromKeyedServices("openai-planner")] AzureOpenAIClient openAIClient,
+        [FromKeyedServices("openai-planner")] 
+        AzureOpenAIClient openAIClient,
         IOptionsSnapshot<ServiceConfigurationOptions> serviceConfigurationOptions,
-        IKernelFactory kernelFactory,
         ILogger<AiEmbeddingService> logger)
     {
         _openAIClient = openAIClient;
         _serviceConfigurationOptions = serviceConfigurationOptions.Value;
-        _kernelFactory = kernelFactory;
         _logger = logger;
     }
 
@@ -50,37 +47,25 @@ public class AiEmbeddingService : IAiEmbeddingService
             text = text.Substring(0, 32768);
         }
 
+
+        // We use the OpenAi Client directly to generate embeddings
         try
         {
-            // Primary approach: Use Semantic Kernel
-            var kernel = await _kernelFactory.GetGenericKernelAsync("gpt-4o");
-            var embeddingService = kernel.GetRequiredService<ITextEmbeddingGenerationService>();
-            
-            var embeddingResult = await embeddingService.GenerateEmbeddingAsync(text);
-            return embeddingResult.ToArray();
+            var embeddingClient = _openAIClient.GetEmbeddingClient(
+                _serviceConfigurationOptions.OpenAi.EmbeddingModelDeploymentName);
+
+            var embeddingResult = await embeddingClient.GenerateEmbeddingAsync(
+                text,
+                new EmbeddingGenerationOptions { EndUserId = "system" });
+
+            return embeddingResult.Value.ToFloats().ToArray();
         }
-        catch (Exception ex)
+        catch (Exception fallbackEx)
         {
-            _logger.LogError(ex, "Error using Semantic Kernel for embeddings, falling back to direct OpenAI client");
-            
-            // Fallback: Use direct OpenAI client
-            try
-            {
-                var embeddingClient = _openAIClient.GetEmbeddingClient(
-                    _serviceConfigurationOptions.OpenAi.EmbeddingModelDeploymentName);
-                
-                var embeddingResult = await embeddingClient.GenerateEmbeddingAsync(
-                    text, 
-                    new EmbeddingGenerationOptions { EndUserId = "system" });
-                
-                return embeddingResult.Value.ToFloats().ToArray();
-            }
-            catch (Exception fallbackEx)
-            {
-                _logger.LogError(fallbackEx, "Error generating embeddings with fallback method");
-                throw;
-            }
+            _logger.LogError(fallbackEx, "Error generating embeddings with OpenAI Client method");
+            throw;
         }
+
     }
 
     /// <inheritdoc />

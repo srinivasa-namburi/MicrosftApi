@@ -66,6 +66,11 @@ public class ContentNodeInfo
     public ContentNodeSystemItemInfo? ContentNodeSystemItem { get; set; }
 
     /// <summary>
+    /// Unique ID for the version tracker associated with this content node.
+    /// </summary>
+    public Guid? ContentNodeVersionTrackerId { get; set; }
+    
+    /// <summary>
     /// List of child content nodes.
     /// </summary>
     public List<ContentNodeInfo> Children { get; set; } = [];

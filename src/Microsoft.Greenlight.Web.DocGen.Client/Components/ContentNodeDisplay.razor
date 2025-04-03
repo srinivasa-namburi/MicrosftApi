@@ -11,6 +11,9 @@
     private bool ShowSystemInfo = false;
     private bool IsPanelExpanded = false;
     private bool IsLoadingSystemInfo = false;
+    private bool HasVersions = false;
+    
+    private ContentNodeBodyTextComponent? bodyTextComponent;
 
     private async void ToggleSystemInfo(ContentNodeInfo node)
     {
@@ -48,6 +51,34 @@
             ContentNodeType.BodyText => "mt-2",
             _ => ""
         };
+    }
+    
+    protected override async Task OnInitializedAsync()
+    {
+        // Check if body text node has versions
+        if (Node?.Type == ContentNodeType.BodyText && Node.ContentNodeVersionTrackerId.HasValue)
+        {
+            try
+            {
+                HasVersions = await ContentNodeApiClient.HasPreviousVersionsAsync(Node.Id);
+            }
+            catch
+            {
+                HasVersions = false;
+            }
+        }
+    }
+    
+    private async Task HandleNodeUpdated(ContentNodeInfo updatedNode)
+    {
+        // Copy the updated properties to the current node
+        if (Node != null)
+        {
+            Node.Text = updatedNode.Text;
+            Node.ContentNodeVersionTrackerId = updatedNode.ContentNodeVersionTrackerId;
+            HasVersions = true;
+        }
+        await InvokeAsync(StateHasChanged);
     }
 }
 
@@ -125,8 +156,35 @@
     }
     else if (Node.Type == ContentNodeType.BodyText)
     {
-        <MudText Class="@($"{GetPanelClass(Node.Type)} body-text")">
-            <RenderMultilineText Value="@Node.Text" />
-        </MudText>
+        <MudCard Class="@($"{GetPanelClass(Node.Type)} body-text-card mb-3")">
+            <MudCardContent>
+                <div class="position-relative">
+                    @if (HasVersions || Node.Type == ContentNodeType.BodyText)
+                    {
+                        <div class="content-node-actions">
+                            @if (HasVersions)
+                            {
+                                <MudTooltip Text="View version history">
+                                    <MudIconButton Icon="@Icons.Material.Filled.History" 
+                                                Size="Size.Small" 
+                                                Color="Color.Info" 
+                                                OnClick="@(() => bodyTextComponent?.ShowVersionHistory())" />
+                                </MudTooltip>
+                            }
+                            @if (Node.Type == ContentNodeType.BodyText)
+                            {
+                                <MudTooltip Text="Edit content">
+                                    <MudIconButton Icon="@Icons.Material.Filled.Edit" 
+                                                Size="Size.Small" 
+                                                Color="Color.Primary" 
+                                                OnClick="@(() => bodyTextComponent?.StartEdit())" />
+                                </MudTooltip>
+                            }
+                        </div>
+                    }
+                    <ContentNodeBodyTextComponent @ref="bodyTextComponent" Node="@Node" OnNodeUpdated="@HandleNodeUpdated" />
+                </div>
+            </MudCardContent>
+        </MudCard>
     }
 }

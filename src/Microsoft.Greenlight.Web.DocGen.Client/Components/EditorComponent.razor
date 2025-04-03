@@ -69,22 +69,39 @@
                 Language = "plaintext",
                 Theme = EffectiveIsDarkMode ? "vs-dark" : "vs-light",
                 Value = Value,
+                LineNumbers = "on",
+                WordWrap = "on",
+                
+                //EOL affecting behavior
+                AcceptSuggestionOnEnter = "on",
+                AutoIndent = "brackets",
+                ReadOnly = false,
+                TrimAutoWhitespace = false
             };
     }
-
+    
     private async Task HandleContentChanged()
     {
-        var currentValue = await monacoEditor.GetValue();
+        var currentValue = await monacoEditor.GetValue(preserveBOM: true, lineEnding: "\n");
         if (Value != currentValue)
         {
             Value = currentValue;
             await ValueChanged.InvokeAsync(currentValue);
         }
 
-        // Optional: raise an event to notify the dialog to re-check variables
         if (OnContentChanged.HasDelegate)
             await OnContentChanged.InvokeAsync();
     }
+
+    // In EditorComponent.razor, add this method
+    public async Task<string> GetRawValue()
+    {
+        if (monacoEditor == null)
+            return Value;
+        
+        return await monacoEditor.GetValue();
+    }
+
 
     private async Task HandleEditorInit()
     {

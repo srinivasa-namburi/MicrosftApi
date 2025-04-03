@@ -3,9 +3,11 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Greenlight.API.Main.Controllers;
 using Microsoft.Greenlight.Shared.Contracts.DTO.Document;
 using Microsoft.Greenlight.Shared.Data.Sql;
-using Microsoft.Greenlight.Shared.Models;
-using Microsoft.Greenlight.Shared.Testing.SQLite;
 using Microsoft.Greenlight.Shared.Mappings;
+using Microsoft.Greenlight.Shared.Models;
+using Microsoft.Greenlight.Shared.Services;
+using Microsoft.Greenlight.Shared.Testing.SQLite;
+using Moq;
 
 namespace Microsoft.Greenlight.API.Main.Tests.Controllers
 {
@@ -13,10 +15,16 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
     {
         private readonly ConnectionFactory _connectionFactory = new();
         public DocGenerationDbContext DocGenerationDbContext { get; }
+        public IMapper Mapper { get; }
+        public Mock<IContentNodeService> MockContentNodeService { get; }
+
         public ContentNodeControllerFixture()
         {
             DocGenerationDbContext = _connectionFactory.CreateContext();
+            Mapper = new MapperConfiguration(cfg => cfg.AddProfile<GeneratedDocumentProfile>()).CreateMapper();
+            MockContentNodeService = new Mock<IContentNodeService>();
         }
+
         public void Dispose()
         {
             _connectionFactory.Dispose();
@@ -27,11 +35,15 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
     {
         private readonly DocGenerationDbContext _docGenerationDbContext;
         private readonly IMapper _mapper;
+        private readonly Mock<IContentNodeService> _mockContentNodeService;
+        private readonly ContentNodeController _controller;
 
         public ContentNodeControllerTests(ContentNodeControllerFixture fixture)
         {
             _docGenerationDbContext = fixture.DocGenerationDbContext;
-            _mapper = new MapperConfiguration(cfg => cfg.AddProfile<GeneratedDocumentProfile>()).CreateMapper();
+            _mapper = fixture.Mapper;
+            _mockContentNodeService = fixture.MockContentNodeService;
+            _controller = new ContentNodeController(_docGenerationDbContext, _mapper, _mockContentNodeService.Object);
         }
 
         [Fact]
@@ -59,8 +71,6 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
             _docGenerationDbContext.ContentNodes.Add(childNode);
             _docGenerationDbContext.SaveChanges();
 
-            var _controller = new ContentNodeController(_docGenerationDbContext, _mapper);
-
             // Act
             var result = await _controller.GetContentNode(parentNodeId.ToString());
 
@@ -77,7 +87,6 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
             Assert.Equal(childNode.Text, childNodeInfo.Text);
             Assert.Equal(childNode.ContentNodeSystemItemId, childNodeInfo.ContentNodeSystemItemId);
 
-
             // Cleanup
             _docGenerationDbContext.ContentNodes.Remove(parentNode);
             _docGenerationDbContext.ContentNodes.Remove(childNode);
@@ -89,7 +98,6 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
         {
             // Arrange
             var contentNodeId = Guid.NewGuid();
-            var _controller = new ContentNodeController(_docGenerationDbContext, _mapper);
 
             // Act
             var result = await _controller.GetContentNode(contentNodeId.ToString());
@@ -103,7 +111,6 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
         {
             // Arrange
             var contentNodeSystemItemId = Guid.NewGuid();
-            var _controller = new ContentNodeController(_docGenerationDbContext, _mapper);
 
             // Act
             var result = await _controller.GetContentNodeSystemItem(contentNodeSystemItemId);
@@ -111,6 +118,5 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
             // Assert
             Assert.IsType<NotFoundResult>(result.Result);
         }
-
     }
 }

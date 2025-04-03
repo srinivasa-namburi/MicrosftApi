@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Greenlight.Shared.Contracts.Components;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Models;
@@ -99,6 +100,165 @@ namespace Microsoft.Greenlight.Shared.Services
             SortContentNodes(topLevelNodes);
 
             return topLevelNodes;
+        }
+
+        /// <inheritdoc />
+        public async Task<int?> CreateContentNodeVersionAsync(
+            Guid contentNodeId, 
+            ContentNodeVersioningReason reason = ContentNodeVersioningReason.System,
+            string? comment = null)
+        {
+            var contentNode = await _dbContext.ContentNodes
+                .Include(cn => cn.ContentNodeVersionTracker)
+                .FirstOrDefaultAsync(cn => cn.Id == contentNodeId);
+                
+            if (contentNode == null)
+            {
+                throw new ArgumentException($"Content node with ID {contentNodeId} not found", nameof(contentNodeId));
+            }
+
+            // Only BodyText nodes can be versioned
+            if (contentNode.Type != ContentNodeType.BodyText)
+            {
+                return null;
+            }
+
+            // Initialize version tracker if it doesn't exist
+            if (contentNode.ContentNodeVersionTracker == null)
+            {
+                var newVersionTracker = new ContentNodeVersionTracker
+                {
+                    Id = Guid.NewGuid(),
+                    ContentNodeId = contentNode.Id,
+                    CurrentVersion = 1,
+                    ContentNodeType = ContentNodeType.BodyText
+                };
+        
+                contentNode.ContentNodeVersionTracker = newVersionTracker;
+                contentNode.ContentNodeVersionTrackerId = newVersionTracker.Id;
+        
+                _dbContext.ContentNodeVersionTrackers.Add(newVersionTracker);
+                await _dbContext.SaveChangesAsync();
+            }
+            
+            // Create a version of the current state
+            var versionTracker = contentNode.ContentNodeVersionTracker!;
+            var versions = versionTracker.ContentNodeVersions;
+            
+            var newVersion = new ContentNodeVersion
+            {
+                Version = versionTracker.CurrentVersion,
+                VersionTimeUtc = DateTime.UtcNow,
+                Comment = comment,
+                VersioningReason = reason,
+                Text = contentNode.Text
+            };
+            
+            versions.Add(newVersion);
+            versionTracker.ContentNodeVersions = versions;
+            versionTracker.CurrentVersion++;
+            
+            await _dbContext.SaveChangesAsync();
+            
+            return newVersion.Version;
+        }
+
+        /// <inheritdoc />
+        public async Task<ContentNode?> ReplaceContentNodeTextAsync(
+            Guid existingContentNodeId, 
+            string newText, 
+            ContentNodeVersioningReason reason = ContentNodeVersioningReason.ManualEdit,
+            string? comment = null)
+        {
+            // Get the existing content node
+            var existingNode = await _dbContext.ContentNodes
+                .Include(cn => cn.ContentNodeVersionTracker)
+                .FirstOrDefaultAsync(cn => cn.Id == existingContentNodeId);
+                
+            if (existingNode == null)
+            {
+                throw new ArgumentException($"Content node with ID {existingContentNodeId} not found", nameof(existingContentNodeId));
+            }
+            
+            // Only BodyText nodes can be versioned and replaced
+            if (existingNode.Type != ContentNodeType.BodyText)
+            {
+                return null;
+            }
+            
+            // Create a version of the current state
+            var versionCreated = await CreateContentNodeVersionAsync(existingContentNodeId, reason, comment);
+            
+            if (versionCreated == null)
+            {
+                return null;
+            }
+            
+            // Replace text with new content
+            existingNode.Text = newText;
+            
+            // Save changes
+            await _dbContext.SaveChangesAsync();
+            
+            return existingNode;
+        }
+
+        /// <inheritdoc />
+        public async Task<List<ContentNodeVersion>> GetContentNodeVersionsAsync(Guid contentNodeId)
+        {
+            var contentNode = await _dbContext.ContentNodes
+                .Include(cn => cn.ContentNodeVersionTracker)
+                .FirstOrDefaultAsync(cn => cn.Id == contentNodeId);
+                
+            if (contentNode == null || contentNode.Type != ContentNodeType.BodyText || contentNode.ContentNodeVersionTracker == null)
+            {
+                return [];
+            }
+            
+            return contentNode.ContentNodeVersionTracker.ContentNodeVersions;
+        }
+
+        /// <inheritdoc />
+        public async Task<ContentNode?> PromotePreviousVersionAsync(
+            Guid contentNodeId, 
+            Guid versionId, 
+            string? comment = null)
+        {
+            var contentNode = await _dbContext.ContentNodes
+                .Include(cn => cn.ContentNodeVersionTracker)
+                .FirstOrDefaultAsync(cn => cn.Id == contentNodeId);
+                
+            if (contentNode == null || contentNode.Type != ContentNodeType.BodyText || contentNode.ContentNodeVersionTracker == null)
+            {
+                return null;
+            }
+            
+            var versions = contentNode.ContentNodeVersionTracker.ContentNodeVersions;
+            var versionToPromote = versions.FirstOrDefault(v => v.Id == versionId);
+            
+            if (versionToPromote == null)
+            {
+                throw new ArgumentException($"Version with ID {versionId} not found for content node", nameof(versionId));
+            }
+            
+            // Create a version of the current state before promoting
+            await CreateContentNodeVersionAsync(
+                contentNodeId, 
+                ContentNodeVersioningReason.System, 
+                $"Auto-versioned before promoting version {versionToPromote.Version}"
+            );
+            
+            // Update the current content node with the historical data
+            contentNode.Text = versionToPromote.Text;
+            
+            // Add a comment about the promotion
+            var promotionComment = $"Promoted version {versionToPromote.Version}" + 
+                                  (string.IsNullOrEmpty(comment) ? "" : $": {comment}");
+                
+            // Save changes
+            await _dbContext.SaveChangesAsync();
+            
+            return contentNode;
         }
 
         /// <summary>

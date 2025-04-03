@@ -126,6 +126,119 @@ table:not(.mud-table-root) {
             color: mediumpurple !important;
         }
 
+    /**************************************/
+    /* Content Node Editor Styling        */
+    /**************************************/
+    .section-content .content-node-editor {
+        position: relative;
+        width: 100%;
+    }
+
+    .section-content .body-text-card {
+        position: relative;
+        transition: box-shadow 0.3s ease;
+        margin: 0.5rem 0;
+        border:none;
+    }
+
+        .section-content .body-text-card:hover {
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+    .section-content .content-node-actions {
+        position: absolute;
+        right: 8px;
+        top: 8px;
+        opacity: 0.3;
+        transition: opacity 0.2s ease;
+        z-index: 2;
+    }
+
+
+
+    .section-content .body-text-card:hover .content-node-actions {
+        opacity: 1;
+    }
+
+    .section-content .editor-container {
+       /* border: 1px solid var(--mud-palette-lines-default);
+        border-radius: 4px;*/
+        padding: 8px;
+        background-color: var(--mud-palette-background-grey);
+    }
+
+.dark-mode .section-content .editor-container {
+    background-color: var(--mud-palette-background-grey-darken);
+    border-color: var(--mud-palette-lines-dark);
+}
+
+.section-content .versions-container {
+    border: 1px solid var(--mud-palette-lines-default);
+    border-radius: 4px;
+    padding: 16px;
+    background-color: var(--mud-palette-background-grey);
+}
+
+.dark-mode .section-content .versions-container {
+    background-color: var(--mud-palette-background-grey-darken);
+    border-color: var(--mud-palette-lines-dark);
+}
+
+.section-content .version-preview {
+    padding: 8px;
+    border: 1px solid var(--mud-palette-lines-default);
+    border-radius: 4px;
+    background-color: var(--mud-palette-surface);
+    margin-top: 8px;
+}
+
+.dark-mode .section-content .version-preview {
+    background-color: var(--mud-palette-surface-dark);
+    border-color: var(--mud-palette-lines-dark);
+}
+
+.section-content .version-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    margin-right: 8px;
+}
+
+.section-content .version-badge-manual {
+    background-color: var(--mud-palette-primary-lighten);
+}
+
+.section-content .version-badge-validation {
+    background-color: var(--mud-palette-info-lighten);
+}
+
+.section-content .version-badge-ai {
+    background-color: var(--mud-palette-tertiary-lighten);
+}
+
+.section-content .version-badge-system {
+    background-color: var(--mud-palette-secondary-lighten);
+}
+
+.dark-mode .section-content .version-badge-manual {
+    background-color: var(--mud-palette-primary-darken);
+}
+
+.dark-mode .section-content .version-badge-validation {
+    background-color: var(--mud-palette-info-darken);
+}
+
+.dark-mode .section-content .version-badge-ai {
+    background-color: var(--mud-palette-tertiary-darken);
+}
+
+.dark-mode .section-content .version-badge-system {
+    background-color: var(--mud-palette-secondary-darken);
+}
+
+
 /**************************************/
 /* Chat-specific container classes    */
 /**************************************/
@@ -479,14 +592,12 @@ table:not(.mud-table-root) {
 .message-bubble .message-content ol {
     margin: 0 !important;
     padding-left: 1.5rem !important;
-    padding-top:0px !important;
-    padding-bottom:0px !important;
-    
+    padding-top: 0px !important;
+    padding-bottom: 0px !important;
     list-style-position: outside !important;
 }
 
-.message-bubble .message-content li
-{
+.message-bubble .message-content li {
     margin: 0 !important; /* Change from 0.1rem to 0 */
     padding: 0 !important;
     line-height: 1.2 !important; /* Reduce line height specifically for list items */

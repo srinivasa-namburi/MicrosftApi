@@ -4,7 +4,6 @@ using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Microsoft.Greenlight.Shared.Contracts.Components;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Validation;
-using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Models;
 using Microsoft.Greenlight.Shared.Models.Configuration;
 using Microsoft.Greenlight.Shared.Models.DocumentLibrary;
@@ -126,6 +125,25 @@ public class DocGenerationDbContext : DbContext
             (c1, c2) => c1!.SequenceEqual(c2!),
             c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
             c => c.ToList());
+
+
+        modelBuilder.Entity<ContentNodeVersionTracker>()
+            .ToTable("ContentNodeVersionTrackers");
+
+        modelBuilder.Entity<ContentNodeVersionTracker>()
+            .HasIndex(nameof(ContentNodeVersionTracker.ContentNodeId))
+            .IsUnique();
+
+        modelBuilder.Entity<ContentNodeVersionTracker>()
+            .HasOne(x => x.ContentNode)
+            .WithOne(x => x.ContentNodeVersionTracker)
+            .HasForeignKey<ContentNodeVersionTracker>(x => x.ContentNodeId)
+            .IsRequired(true)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ContentNodeVersionTracker>()
+            .Property(x => x.ContentNodeVersionsJson)
+            .HasColumnType("nvarchar(max)");
 
         modelBuilder.Entity<ContentEmbedding>()
             .ToTable("ContentEmbeddings");
@@ -885,6 +903,17 @@ public class DocGenerationDbContext : DbContext
             .IsRequired(false)
             .OnDelete(DeleteBehavior.Restrict);
 
+        modelBuilder.Entity<ContentNode>()
+            .HasOne(x => x.ContentNodeVersionTracker)
+            .WithOne(x => x.ContentNode)
+            .HasForeignKey<ContentNode>(x => x.ContentNodeVersionTrackerId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<ContentNode>()
+            .HasIndex(nameof(ContentNode.ContentNodeVersionTrackerId))
+            .IsUnique(false);
+
         // Generated Documents and their relationships
         modelBuilder.Entity<GeneratedDocument>()
             .HasMany(d => d.ContentNodes)
@@ -1105,6 +1134,11 @@ public class DocGenerationDbContext : DbContext
     /// Gets or sets the content nodes.
     /// </summary>
     public virtual DbSet<ContentNode> ContentNodes { get; set; }
+
+    /// <summary>
+    /// Gets or sets the content node version trackers.
+    /// </summary>
+    public virtual DbSet<ContentNodeVersionTracker> ContentNodeVersionTrackers { get; set; }
 
     /// <summary>
     /// Gets or sets the ingested documents.

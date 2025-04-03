@@ -1,9 +1,10 @@
-using System.Net;
 using Azure.Storage.Blobs;
-using Microsoft.KernelMemory.Pipeline;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
+using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Models;
+using Microsoft.KernelMemory.Pipeline;
+using System.Net;
 
 namespace Microsoft.Greenlight.Shared.Helpers;
 
@@ -46,9 +47,8 @@ public class AzureFileHelper
 
         return blobClient.Uri.ToString();
     }
-
     /// <summary>
-    /// Saves file information to the database.
+    /// Saves file information to the database with file hash for deduplication.
     /// </summary>
     /// <param name="absoluteUrl">The absolute URL of the file.</param>
     /// <param name="containerName">The name of the container.</param>
@@ -62,9 +62,28 @@ public class AzureFileHelper
             "document-export" => FileDocumentType.ExportedDocument,
             "document-assets" => FileDocumentType.DocumentAsset,
             "reviews" => FileDocumentType.Review,
-            "temporary-references" => FileDocumentType.TemporaryReferenceFile, 
+            "temporary-references" => FileDocumentType.TemporaryReferenceFile,
             _ => FileDocumentType.ExportedDocument
         };
+
+        // Calculate file hash by retrieving the file and computing its hash
+        string? fileHash = null;
+        try
+        {
+            // Get the file stream using the existing method
+            await using var fileStream = await GetFileAsStreamFromFullBlobUrlAsync(absoluteUrl);
+            if (fileStream != null)
+            {
+                // Use the StreamExtensions helper to generate the hash
+                fileHash = fileStream.GenerateHashFromStreamAndResetStream();
+            }
+        }
+        catch (Exception ex)
+        {
+            // Log but continue - the file hash is optional
+            // If we can't get the file hash, we'll just save without it
+            Console.WriteLine($"Error calculating file hash for {fileName}: {ex.Message}");
+        }
 
         var entityEntry = await _dbContext.ExportedDocumentLinks.AddAsync(new ExportedDocumentLink
         {
@@ -74,13 +93,15 @@ public class AzureFileHelper
             Created = DateTimeOffset.UtcNow,
             FileName = fileName,
             MimeType = new MimeTypesDetection().GetFileType(fileName),
-            Type = documentType
+            Type = documentType,
+            FileHash = fileHash // Set the calculated hash
         });
 
         await _dbContext.SaveChangesAsync();
 
         return entityEntry.Entity;
     }
+
 
     /// <summary>
     /// Retrieves a file as a stream from a full blob URL.
