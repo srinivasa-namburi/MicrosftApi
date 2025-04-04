@@ -143,7 +143,8 @@ builder.Services.AddCors(options =>
         .SetIsOriginAllowed((host) => true));
 });
 
-if (builder.Environment.IsDevelopment())
+if (builder.Environment.IsDevelopment() ||
+    builder.Configuration.GetConnectionString("signalr") != null)
 {
     builder.Services.AddSignalR();
 }

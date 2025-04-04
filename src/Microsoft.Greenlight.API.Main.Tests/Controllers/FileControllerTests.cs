@@ -2,6 +2,7 @@
 using Azure.Storage.Blobs;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.API.Main.Controllers;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Data.Sql;
@@ -18,10 +19,12 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
     {
         private readonly ConnectionFactory _connectionFactory = new();
         public DocGenerationDbContext DocGenerationDbContext { get; }
+        
         public FileControllerFixture()
         {
             DocGenerationDbContext = _connectionFactory.CreateContext();
         }
+        
         public void Dispose()
         {
             _connectionFactory.Dispose();
@@ -31,51 +34,48 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
     public class FileControllerTests : IClassFixture<FileControllerFixture>
     {
         private readonly DocGenerationDbContext _docGenerationDbContext;
-        private readonly AzureFileHelper _azureFileHelper;
+        private readonly Mock<AzureFileHelper> _azureFileHelperMock;
         private readonly IMapper _mapper;
         private readonly Mock<IDocumentProcessInfoService> _documentProcessInfoServiceMock;
         private readonly Mock<BlobServiceClient> _blobServiceClientMock;
+        private readonly Mock<ILogger<FileController>> _loggerMock;
+        private readonly FileController _controller;
 
-        private const string testContainerName = "test-container";
-        private const string invalidContainerName = "invalid-container";
-        private const string testFileName = "test-file.txt";
-        private const string invalidFileName = " ";
-        private const string testFileUrl = "https://fakeurl.com/blob/test-file.txt";
-        private const string mimeType = "application/octet-stream";
+        private const string TestContainerName = "test-container";
+        private const string InvalidContainerName = "invalid-container";
+        private const string TestFileName = "test-file.txt";
+        private const string InvalidFileName = " ";
+        private const string TestFileUrl = "https://fakeurl.com/blob/test-file.txt";
+        private const string MimeType = "application/octet-stream";
 
         public FileControllerTests(FileControllerFixture fixture)
         {
             _docGenerationDbContext = fixture.DocGenerationDbContext;
             _blobServiceClientMock = new Mock<BlobServiceClient>();
-            _azureFileHelper = new AzureFileHelper(_blobServiceClientMock.Object, _docGenerationDbContext);
+            _azureFileHelperMock = new Mock<AzureFileHelper>(_blobServiceClientMock.Object, _docGenerationDbContext);
             _documentProcessInfoServiceMock = new Mock<IDocumentProcessInfoService>();
+            _loggerMock = new Mock<ILogger<FileController>>();
             _mapper = new MapperConfiguration(cfg => cfg.AddProfile<ExportedDocumentLinkProfile>()).CreateMapper();
+            
+            _controller = new FileController(
+                _azureFileHelperMock.Object,
+                _docGenerationDbContext,
+                _mapper,
+                _documentProcessInfoServiceMock.Object,
+                _loggerMock.Object
+            );
         }
 
         [Fact]
         public async Task DownloadFile_WhenFileStreamIsNull_ReturnsNotFound()
         {
             // Arrange
-            var decodedFileUrl = Uri.UnescapeDataString(testFileUrl);
-
-            var azureFileHelperMock = new Mock<AzureFileHelper>
-            (
-                _blobServiceClientMock.Object,
-                _docGenerationDbContext
-            );
-            azureFileHelperMock.Setup(x => x.GetFileAsStreamFromFullBlobUrlAsync(decodedFileUrl))
+            var decodedFileUrl = Uri.UnescapeDataString(TestFileUrl);
+            _azureFileHelperMock.Setup(x => x.GetFileAsStreamFromFullBlobUrlAsync(decodedFileUrl))
                 .ReturnsAsync((Stream?)null);
 
-            var _controller = new FileController
-            (
-                azureFileHelperMock.Object,
-                _docGenerationDbContext,
-                _mapper,
-                _documentProcessInfoServiceMock.Object
-            );
-
             // Act
-            var result = await _controller.DownloadFile(testFileUrl);
+            var result = await _controller.DownloadFile(TestFileUrl);
 
             // Assert
             Assert.IsType<NotFoundResult>(result);
@@ -86,19 +86,6 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
         {
             // Arrange
             var linkId = Guid.NewGuid().ToString();
-            var azureFileHelperMock = new Mock<AzureFileHelper>
-            (
-                _blobServiceClientMock.Object,
-                _docGenerationDbContext
-            );
-
-            var _controller = new FileController
-            (
-                azureFileHelperMock.Object,
-                _docGenerationDbContext,
-                _mapper,
-                _documentProcessInfoServiceMock.Object
-            );
 
             // Act
             var result = await _controller.DownloadFileById(linkId);
@@ -114,31 +101,17 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
             var linkId = Guid.NewGuid().ToString();
             var exportedDocumentLink = new ExportedDocumentLink
             {
-                AbsoluteUrl = testFileUrl,
-                BlobContainer = testContainerName,
-                FileName = testFileName,
-                MimeType = mimeType
+                AbsoluteUrl = TestFileUrl,
+                BlobContainer = TestContainerName,
+                FileName = TestFileName,
+                MimeType = MimeType
             };
 
             _docGenerationDbContext.ExportedDocumentLinks.Add(exportedDocumentLink);
             _docGenerationDbContext.SaveChanges();
 
-            var azureFileHelperMock = new Mock<AzureFileHelper>
-            (
-                _blobServiceClientMock.Object,
-                _docGenerationDbContext
-            );
-            azureFileHelperMock.Setup(x => x.GetFileAsStreamFromFullBlobUrlAsync(exportedDocumentLink
-                .AbsoluteUrl))
+            _azureFileHelperMock.Setup(x => x.GetFileAsStreamFromFullBlobUrlAsync(exportedDocumentLink.AbsoluteUrl))
                 .ReturnsAsync((Stream?)null);
-
-            var _controller = new FileController
-            (
-                azureFileHelperMock.Object,
-                _docGenerationDbContext,
-                _mapper,
-                _documentProcessInfoServiceMock.Object
-            );
 
             // Act
             var result = await _controller.DownloadFileById(linkId);
@@ -156,16 +129,9 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
         {
             // Arrange
             IFormFile? file = null;
-            var _controller = new FileController
-            (
-                _azureFileHelper,
-                _docGenerationDbContext,
-                _mapper,
-                _documentProcessInfoServiceMock.Object
-            );
 
             // Act
-            var result = await _controller.UploadFile(testContainerName, testFileName, file);
+            var result = await _controller.UploadFile(TestContainerName, TestFileName, file);
 
             // Assert
             Assert.IsType<BadRequestObjectResult>(result);
@@ -177,16 +143,9 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
             // Arrange
             var fileMock = new Mock<IFormFile>();
             fileMock.Setup(_ => _.Length).Returns(0);
-            var _controller = new FileController
-            (
-                _azureFileHelper,
-                _docGenerationDbContext,
-                _mapper,
-                _documentProcessInfoServiceMock.Object
-            );
 
             // Act
-            var result = await _controller.UploadFile(testContainerName, testFileName, fileMock.Object);
+            var result = await _controller.UploadFile(TestContainerName, TestFileName, fileMock.Object);
 
             // Assert
             Assert.IsType<BadRequestObjectResult>(result);
@@ -201,16 +160,9 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
 
             _documentProcessInfoServiceMock.Setup(x => x.GetCombinedDocumentProcessInfoListAsync())
                 .ReturnsAsync(new List<DocumentProcessInfo>());
-            var _controller = new FileController
-            (
-                _azureFileHelper,
-                _docGenerationDbContext,
-                _mapper,
-                _documentProcessInfoServiceMock.Object
-            );
 
             // Act
-            var result = await _controller.UploadFile(invalidContainerName, testFileName, fileMock.Object);
+            var result = await _controller.UploadFile(InvalidContainerName, TestFileName, fileMock.Object);
 
             // Assert
             Assert.IsType<BadRequestObjectResult>(result);
@@ -224,16 +176,9 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
             fileMock.Setup(_ => _.Length).Returns(1024); // Mock a non-zero file length
             _documentProcessInfoServiceMock.Setup(x => x.GetCombinedDocumentProcessInfoListAsync())
                 .ReturnsAsync(new List<DocumentProcessInfo>());
-            var _controller = new FileController
-            (
-                _azureFileHelper,
-                _docGenerationDbContext,
-                _mapper,
-                _documentProcessInfoServiceMock.Object
-            );
 
             // Act
-            var result = await _controller.UploadFile(testContainerName, invalidFileName, fileMock.Object);
+            var result = await _controller.UploadFile(TestContainerName, InvalidFileName, fileMock.Object);
 
             // Assert
             Assert.IsType<BadRequestObjectResult>(result);
@@ -244,16 +189,9 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
         {
             // Arrange
             IFormFile? file = null;
-            var _controller = new FileController
-            (
-                _azureFileHelper,
-                _docGenerationDbContext,
-                _mapper,
-                _documentProcessInfoServiceMock.Object
-            );
 
             // Act
-            var result = await _controller.UploadFileDirect(testContainerName, testFileName, file);
+            var result = await _controller.UploadFileDirect(TestContainerName, TestFileName, file);
 
             // Assert
             Assert.IsType<BadRequestObjectResult>(result);
@@ -265,16 +203,9 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
             // Arrange
             var fileMock = new Mock<IFormFile>();
             fileMock.Setup(_ => _.Length).Returns(0);
-            var _controller = new FileController
-            (
-                _azureFileHelper,
-                _docGenerationDbContext,
-                _mapper,
-                _documentProcessInfoServiceMock.Object
-            );
 
             // Act
-            var result = await _controller.UploadFileDirect(testContainerName, testFileName, fileMock.Object);
+            var result = await _controller.UploadFileDirect(TestContainerName, TestFileName, fileMock.Object);
 
             // Assert
             Assert.IsType<BadRequestObjectResult>(result);
@@ -289,16 +220,9 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
 
             _documentProcessInfoServiceMock.Setup(x => x.GetCombinedDocumentProcessInfoListAsync())
                 .ReturnsAsync(new List<DocumentProcessInfo>());
-            var _controller = new FileController
-            (
-                _azureFileHelper,
-                _docGenerationDbContext,
-                _mapper,
-                _documentProcessInfoServiceMock.Object
-            );
 
             // Act
-            var result = await _controller.UploadFileDirect(invalidContainerName, testFileName, fileMock.Object);
+            var result = await _controller.UploadFileDirect(InvalidContainerName, TestFileName, fileMock.Object);
 
             // Assert
             Assert.IsType<BadRequestObjectResult>(result);
@@ -312,16 +236,9 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
             fileMock.Setup(_ => _.Length).Returns(1024); // Mock a non-zero file length
             _documentProcessInfoServiceMock.Setup(x => x.GetCombinedDocumentProcessInfoListAsync())
                 .ReturnsAsync(new List<DocumentProcessInfo>());
-            var _controller = new FileController
-            (
-                _azureFileHelper,
-                _docGenerationDbContext,
-                _mapper,
-                _documentProcessInfoServiceMock.Object
-            );
 
             // Act
-            var result = await _controller.UploadFileDirect(testContainerName, invalidFileName, fileMock.Object);
+            var result = await _controller.UploadFileDirect(TestContainerName, InvalidFileName, fileMock.Object);
 
             // Assert
             Assert.IsType<BadRequestObjectResult>(result);
@@ -332,16 +249,9 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
         {
             // Arrange
             IFormFile? file = null;
-            var _controller = new FileController
-            (
-                _azureFileHelper,
-                _docGenerationDbContext,
-                _mapper,
-                _documentProcessInfoServiceMock.Object
-            );
 
             // Act
-            var result = await _controller.UploadFileReturnFileInfo(testContainerName, testFileName, file!);
+            var result = await _controller.UploadFileReturnFileInfo(TestContainerName, TestFileName, file!);
 
             // Assert
             Assert.IsType<BadRequestObjectResult>(result);
@@ -353,15 +263,9 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
             // Arrange
             var fileMock = new Mock<IFormFile>();
             fileMock.Setup(_ => _.Length).Returns(0);
-            var _controller = new FileController
-            (
-                _azureFileHelper,
-                _docGenerationDbContext,
-                _mapper,
-                _documentProcessInfoServiceMock.Object
-            );
+            
             // Act
-            var result = await _controller.UploadFileReturnFileInfo(testContainerName, testFileName, fileMock.Object);
+            var result = await _controller.UploadFileReturnFileInfo(TestContainerName, TestFileName, fileMock.Object);
 
             // Assert
             Assert.IsType<BadRequestObjectResult>(result);
@@ -373,23 +277,11 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
             // Arrange
             var fileMock = new Mock<IFormFile>();
             fileMock.Setup(_ => _.Length).Returns(1024); // Mock a non-zero file length
-            var azureFileHelperMock = new Mock<AzureFileHelper>
-            (
-                _blobServiceClientMock.Object,
-                _docGenerationDbContext
-            );
             _documentProcessInfoServiceMock.Setup(x => x.GetCombinedDocumentProcessInfoListAsync())
                 .ReturnsAsync([]);
-            var _controller = new FileController
-            (
-                azureFileHelperMock.Object,
-                _docGenerationDbContext,
-                _mapper,
-                _documentProcessInfoServiceMock.Object
-            );
 
             // Act
-            var result = await _controller.UploadFileReturnFileInfo(invalidContainerName, testFileName, fileMock.Object);
+            var result = await _controller.UploadFileReturnFileInfo(InvalidContainerName, TestFileName, fileMock.Object);
 
             // Assert
             Assert.IsType<BadRequestObjectResult>(result);
@@ -403,16 +295,9 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
             fileMock.Setup(_ => _.Length).Returns(1024); // Mock a non-zero file length
             _documentProcessInfoServiceMock.Setup(x => x.GetCombinedDocumentProcessInfoListAsync())
                 .ReturnsAsync([]);
-            var _controller = new FileController
-            (
-                _azureFileHelper,
-                _docGenerationDbContext,
-                _mapper,
-                _documentProcessInfoServiceMock.Object
-            );
 
             // Act
-            var result = await _controller.UploadFileReturnFileInfo(testContainerName, invalidFileName, fileMock.Object);
+            var result = await _controller.UploadFileReturnFileInfo(TestContainerName, InvalidFileName, fileMock.Object);
 
             // Assert
             Assert.IsType<BadRequestObjectResult>(result);
@@ -424,19 +309,6 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
             // Arrange
             var assetId = Guid.NewGuid().ToString(); // Generate a valid GUID
             var fileAccessUrl = $"https://fakeurl.com/blob/{assetId}"; // Ensure the URL contains a valid GUID
-            var azureFileHelperMock = new Mock<AzureFileHelper>
-            (
-                _blobServiceClientMock.Object,
-                _docGenerationDbContext
-            );
-
-            var _controller = new FileController
-            (
-                azureFileHelperMock.Object,
-                _docGenerationDbContext,
-                _mapper,
-                _documentProcessInfoServiceMock.Object
-            );
 
             // Act
             var result = await _controller.GetFileInfo(fileAccessUrl);
@@ -455,19 +327,12 @@ namespace Microsoft.Greenlight.API.Main.Tests.Controllers
             {
                 Id = assetId,
                 AbsoluteUrl = fileAccessUrl,
-                BlobContainer = testContainerName,
-                FileName = testFileName,
-                MimeType = mimeType
+                BlobContainer = TestContainerName,
+                FileName = TestFileName,
+                MimeType = MimeType
             };
             _docGenerationDbContext.ExportedDocumentLinks.Add(exportedDocumentLink);
             await _docGenerationDbContext.SaveChangesAsync();
-            var _controller = new FileController
-            (
-                _azureFileHelper,
-                _docGenerationDbContext,
-                _mapper,
-                _documentProcessInfoServiceMock.Object
-            );
 
             // Act
             var result = await _controller.GetFileInfo(fileAccessUrl);

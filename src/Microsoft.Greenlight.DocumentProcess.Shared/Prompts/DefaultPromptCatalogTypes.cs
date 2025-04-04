@@ -82,93 +82,75 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
 
     public string SectionGenerationMainPrompt =>
         """
-        This is the initial query in a multi-pass conversation for the document process with shortname {{ documentProcessName }}. Do not reference
-        the document process name in the resulting output. You are not expected to return the full output in this pass.
-        However, please be as complete as possible in your response for this pass. For this task, including this initial query,
-        we will be performing {{ numberOfPasses }} passes to form a complete response. This is the first pass.
+        This is the first pass in a multi-step document generation process for the project identified by **{{ documentProcessName }}**. 
+        Do not include the document process name in your output.
         
-        There will be additional queries asking to to expand on a combined summary of the output you provide here and
-        further summaries from later responses.
-
-        You are writing the section {{ fullSectionName }}. The section examples may contain input from
-        additional sub-sections in addition to the specific section you are writing.
-
-        Below, there are several extracts/fragments from previous applications denoted by [EXAMPLE: Document Extract].
-
-        Using this information, write a similar section(sub-section) or chapter(section),
-        depending on which is most appropriate to the query. The fragments might contain information from different sections, 
-        not just the one you are writing ({{ fullSectionName }}). Filter out any irrelevant information and write a coherent section.
-
+        Your task is to produce the content for the section **{{ fullSectionName }}**. 
+        While you are not required to deliver the complete section in this pass, please provide as much detail as possible. 
+        This process will involve **{{ numberOfPasses }}** passes in total.
+        
+        Subsequent queries will ask you to expand upon and integrate summaries from each pass.
+        
+        You may see fragments labeled **[EXAMPLE: Document Extract]** from previous applications. 
+        Use these extracts as context to craft a coherent section. The fragments might include information from various parts of the document—not just **{{ fullSectionName }}**—so filter out any irrelevant details.
+        
         {{ sectionSpecificPromptInstructions }}
         
-        For customizing the output so that it pertains to this project, please use tool calling/functions as supplied to you
-        in the list of available functions. If you need additional data, please request it using the [DETAIL: <dataType>] tag.
-
-        Use the name of the area instead of referring to it by lat/long in the text. If you can't find a suitable name for the area, you can use the lat/long.
-        Whenever you're using the lat/long in the text, use the native_FacilitiesPlugin to generate an image of the map and attach the relative url path in a markdown manner as an image. Do not attempt to translate it.
+        To tailor the content for this project, use the available tool calls/functions as listed. 
+        If you require additional data, request it with the **[DETAIL: <dataType>]** tag.
         
-        In particular, pay attention to paragraphs that refer to the geographical area of the source documents, which is likely
-        to be different from the area of the project you are writing about. Make sure to adapt the content to the project area. Use the plugins
-        available to you as well as your general knowledge to replace information about roads, rivers, lakes, and other geographical features
-        with similar features and information about the project area. 
-
-        Use the native_FacilitiesPlugin (if available) to look for geographical markers.
-
-        Use the native_EarthQuakePlugin if you need to find seismic history for an area.
+        Keep these guidelines in mind:
+        - Use the area's actual name rather than its lat/long in your text. If no name is available, use the lat/long.
+        - When referencing lat/long values, generate a map image with the **native_FacilitiesPlugin** and 
+          insert it as a markdown image using the provided URL. Do not translate lat/long values.
+        - Adapt any geographical references from source documents (such as roads, rivers, or lakes) to reflect 
+          the features of the project area, using plugins or your general knowledge as needed.
+        - For NRC regulations, refer to the document library **NRC.Regulations** via the document library plugin.
         
-        Use the native_DocumentLibraryPlugin to determine if you have access to any relevant additional information. Prioritize 
-        using this plugin to find additional information over using general knowledge. You can also enhance this information with general knowledge. 
-        Use general knowledge alone without document library data if you have no available document libraries that match the type of information you need. 
-
-        If you do use plugins, please denote them as references at the end of the section you are writing.
-        For the native_FacilitiesPlugin, write the source as Azure Maps (API).
-        For the native_EarthQuakePlugin, write the source as US Geological Survey (API).
-
-        ONLY supply these plugin references if you use the plugins AND their resulting output. If you don't use the output directly or just
-        to supply a geographical area name, please don't include them as references.
-
-        Custom data for this project follows in JSON format between the [CUSTOMDATA] and [/CUSTOMDATA] tags. IGNORE the following fields:
-        DocumentProcessName, MetadataModelName, DocumentGenerationRequestFullTypeName, ID, AuthorOid.
-
+        Additional plugin instructions:
+        - Use **native_FacilitiesPlugin** (if available) to find geographical markers.
+        - Use **native_EarthQuakePlugin** for seismic history.
+        - Use **native_DocumentLibraryPlugin** to check for specific details, prioritizing plugin data over general knowledge. 
+          Make sure to use this plugin only to look up information that is tailored to a specific subject you're inquiring about. 
+          If there is no relevant document library plugin for a topic, don't use the plugin.
+        
+        If you use any plugins, list the references at the end of your section:
+        - For **native_FacilitiesPlugin**, cite as *Azure Maps (API)*.
+        - For **native_EarthQuakePlugin**, cite as *US Geological Survey (API)*.
+        - For **native_DocumentLibraryPlugin** cite as a short form description of the library in question
+        
+        Only include these references if the plugin outputs are directly used.
+        
+        Project-specific custom data is provided between the **[CUSTOMDATA]** and **[/CUSTOMDATA]** tags in JSON format. 
+        Ignore the following fields in the custom data: DocumentProcessName, MetadataModelName, DocumentGenerationRequestFullTypeName, ID, AuthorOid.
+        
         [CUSTOMDATA]
         {{ customDataString }}
         [/CUSTOMDATA]
-
-        In between the [TOC] and [/TOC] tags below, you will find a table of contents for the entire document.
-        Please make sure to use this table of contents to ensure that the section you are writing fits in with the rest of the document,
-        and to avoid duplicating content that is already present in the document. Pay particular attention to neighboring sections and the
-        parent title of the section you're writing. If you see references to sections in the section you're writing,
-        please use this TOC to validate chapter and section numbers and to ensure that the references are correct. Please don't
-        refer to tables or sections that are not in the TOC provided here.
-
+        
+        Between the [TOC] and [/TOC] tags is the table of contents for the entire document. 
+        Use this TOC to ensure your section fits seamlessly with the rest of the document. 
+        Check neighboring sections and validate any chapter or section references against the TOC. 
+        Do not refer to sections not listed in the TOC.
+        Do not write anything in this section that belongs to a child section of this section.
+        
         [TOC]
         {{ tableOfContentsString }}
         [/TOC]
-
-        Be as verbose as necessary to include all required information. Try to be very complete in your response, considering all source data. 
-        We are looking for full sections or chapters - not short summaries.
-
-        For headings, remove the numbering and any heading prefixes like "Section" or "Chapter" from the heading text.
-
-        Make sure your output complies with UTF-8 encoding. Paragraphs should be separated by two newlines (\n\n)
-        For lists, use only * and - characters as bullet points, and make sure to have a space after the bullet point character.
-
-        Format the text with Markdown syntax. For example, use #, ##, ### for headings, * and - for bullet points, etc.
-
-        For table outputs, look at the example content and look for tables that match the table description. Please render them inline or at the end
-        of the text as Markdown Tables. If they are too complex, you can use HTML tables instead that accomodate things like rowspan and colspan.
-        You should adopt the contents of these tables to fit any custom inputs you have received regarding location, size,
-        and so on. If you have no such inputs, consider the tables as they are in the examples as the default.
-
-        If you are missing details to write specific portions of the text, please indicate that with [DETAIL: <dataType>] -
-        and put the type of data needed in the dataType parameter. Make sure to look at all the source content before you decide you lack details!
-
-        Be concise in these DETAIL requests - no long sentences, only data types with a one or two word description of what's missing.
-
-        If you believe the output is complete (and this is the last needed pass to complete the whole section), please end your response with the following text on a
-        new line by itself:
+        
+        Your output should be a full section or chapter—not a summary. Follow these formatting guidelines:
+        - Remove numbering and any prefixes like "Section" or "Chapter" from headings.
+        - Use UTF-8 encoding.
+        - Separate paragraphs with two newlines (\n\n).
+        - For lists, use * or - with a space following the bullet.
+        - Format headings with Markdown syntax (e.g., #, ##, ###).
+        - Render tables as inline Markdown tables (or HTML tables for complex cases).
+        
+        If details are missing, indicate what’s needed with a concise **[DETAIL: <dataType>]** tag (one or two words).
+        
+        If you determine that your output is complete for the entire section (i.e., the final pass), end your response on a new line with:
         [*COMPLETE*]
-
+        
         {{ exampleString }}
         """;
 
@@ -182,32 +164,28 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
         """;
     public string SectionGenerationMultiPassContinuationPrompt =>
         """
-         This is a continuing conversation.
-         
-         You're now going to continue the previous conversation, expanding on the previous output.
-         A summary of the output up to now is here :
-         {{ summary }}
-         
-         As a reminder, this was the output of the last pass - DO NOT REPEAT THIS INFORMATION IN THIS PASS:
-         {{ lastPassResponseJoinedByDoubleLineFeeds }}
-         
-         For the next step, you should continue the conversation. Here's the prompt you should use - but
-         take care not to repeat the same information you've already provided (as detailed in the summary). Also ignore the initial 
-         heading and first two paragraphs of the prompt detailing how to respond to the first pass query. 
-         This is pass number {{ passNumber }} of {{ numberOfPasses }} - take that into account when you respond.
-         
-         Please start your response with content only - no ASSISTANT texts explaining your logic, tasks or reasoning.
-         The output from the passes should be possible to tie together with no further parsing necessary.
-         
-         If you believe the output for the whole section is complete (and this is the last needed pass),
-         please end your response with the following text on a
-         new line by itself:
-         [*COMPLETE*]
-         
-         Note - do NOT use that tag to delineate the end of a single response. It should only be used to indicate the end of the whole section
-         when no more passes are needed to finish the section output.
-         
-         ORIGINAL PROMPT with examples:
-         {{ originalPrompt }}
+        This is a continuation of the multi-pass document generation process.
+        
+        Now, expand on the previous output by building upon the content provided so far. 
+        Below is a summary of the output up to this point:
+        {{ summary }}
+        
+        Remember: the following content was generated in the previous pass and should not be repeated in this response:
+        {{ lastPassResponseJoinedByDoubleLineFeeds }}
+        
+        For this pass, continue the content development without duplicating information already covered in the summary. 
+        Also, ignore the initial heading and the first two paragraphs from the original prompt. 
+        This is pass number **{{ passNumber }}** of **{{ numberOfPasses }}**.
+        
+        Begin your response with the content only — do not include commentary about your process or internal reasoning. 
+        The output from each pass should seamlessly integrate without requiring further editing.
+        
+        If this pass completes the section, end your output with a new line containing:
+        [*COMPLETE*]
+        
+        *Note:* The [*COMPLETE*] tag should only be used when the entire section is finalized, not just to mark the end of a single pass.
+        
+        For reference, here is the original prompt and examples:
+        {{ originalPrompt }}
         """;
 }
