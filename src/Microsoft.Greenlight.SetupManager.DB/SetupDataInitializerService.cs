@@ -82,8 +82,9 @@ public class SetupDataInitializerService(
         _logger.LogInformation("Seeding Document Generation Database started");
         var sw = Stopwatch.StartNew();
 
+        var scope = _sp.CreateScope();
         // Ensure prompt definitions are up-to-date
-        var promptDefinitionService = _sp.GetRequiredService<IPromptDefinitionService>();
+        var promptDefinitionService = scope.ServiceProvider.GetRequiredService<IPromptDefinitionService>();
         await promptDefinitionService.EnsurePromptDefinitionsAsync(cancellationToken);
 
         await Seed2024_04_07_IngestedDocumentDocumentProcess(dbContext, cancellationToken);
@@ -92,7 +93,6 @@ public class SetupDataInitializerService(
         await Seed2025_03_18_DefaultConfiguration(dbContext, cancellationToken);
         await Seed2025_04_24_AiModelSettings(dbContext, cancellationToken);
         await Seed2025_04_24_DefaultAiModelDeploymentForDocumentProcesses(dbContext, cancellationToken);
-        
         await Seed2025_09_20_EnvironmentalReportDocumentProcess(dbContext, cancellationToken);
 
         sw.Stop();
@@ -416,7 +416,7 @@ public class SetupDataInitializerService(
             Id = Guid.NewGuid(),
             DynamicDocumentProcessDefinitionId = documentProcessId,
             Name = "ApplicantName",
-            DisplayName = "Name",
+            DisplayName = "Applicant Name",
             DescriptionToolTip = "Contact name for the licensee",
             FieldType = DynamicDocumentProcessMetaDataFieldType.Text,
             IsRequired = false,
