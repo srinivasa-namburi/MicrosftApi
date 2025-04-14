@@ -14,9 +14,9 @@ namespace Microsoft.Greenlight.Shared.Repositories;
 public class GenericRepository<T>: IGenericRepository<T> where T : EntityBase
 {
     /// <summary>
-    /// The database context.
+    /// Shared database context factory for the repository
     /// </summary>
-    protected readonly DocGenerationDbContext _dbContext;
+    protected readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
 
     /// <summary>
     /// The Redis cache database.
@@ -34,10 +34,11 @@ public class GenericRepository<T>: IGenericRepository<T> where T : EntityBase
     /// <param name="dbContext">The database context.</param>
     /// <param name="redisConnection">The Redis connection multiplexer.</param>
     public GenericRepository(
-        DocGenerationDbContext dbContext,
+        IDbContextFactory<DocGenerationDbContext> dbContextFactory,
         IConnectionMultiplexer redisConnection)
     {
-        _dbContext = dbContext;
+        _dbContextFactory = dbContextFactory;
+
         Cache = redisConnection.GetDatabase();
     }
 
@@ -56,12 +57,14 @@ public class GenericRepository<T>: IGenericRepository<T> where T : EntityBase
     /// <returns>An <see cref="IQueryable{T}"/> of all records.</returns>
     public virtual IQueryable<T> AllRecords()
     {
-        return _dbContext.Set<T>().AsNoTracking().AsQueryable();
+        var dbContext = _dbContextFactory.CreateDbContext();
+        return dbContext.Set<T>().AsNoTracking().AsQueryable();
     }
 
     /// <inheritdoc/>
     public async Task<List<T>> GetAllAsync(bool useCache = false)
     {
+        var dbContext = await _dbContextFactory.CreateDbContextAsync();
         if (useCache)
         {
             var cachedData = await Cache.StringGetAsync(typeof(T).Name);
@@ -74,19 +77,20 @@ public class GenericRepository<T>: IGenericRepository<T> where T : EntityBase
                 }
             }
 
-            var entities = await _dbContext.Set<T>().AsNoTracking().ToListAsync();
+            var entities = await dbContext.Set<T>().AsNoTracking().ToListAsync();
             await Cache.StringSetAsync(typeof(T).Name, JsonSerializer.Serialize(entities), CacheDuration);
             return entities;
         }
         else
         {
-            return await _dbContext.Set<T>().ToListAsync();
+            return await dbContext.Set<T>().ToListAsync();
         }
     }
 
     /// <inheritdoc/>
     public virtual async Task<T?> GetByIdAsync(Guid id, bool useCache = true)
     {
+        var dbContext = await _dbContextFactory.CreateDbContextAsync();
         if (useCache)
         {
             var cacheKey = $"{typeof(T).Name}_{id}";
@@ -101,7 +105,7 @@ public class GenericRepository<T>: IGenericRepository<T> where T : EntityBase
                 }
             }
 
-            var entity = await _dbContext.Set<T>().FindAsync(id);
+            var entity = await dbContext.Set<T>().FindAsync(id);
             if (entity != null)
             {
                 await Cache.StringSetAsync(cacheKey, JsonSerializer.Serialize(entity), CacheDuration);
@@ -110,14 +114,16 @@ public class GenericRepository<T>: IGenericRepository<T> where T : EntityBase
         }
         else
         {
-            return await _dbContext.Set<T>().FindAsync(id);
+            return await dbContext.Set<T>().FindAsync(id);
         }
     }
 
     /// <inheritdoc/>
     public virtual async Task AddAsync(T entity, bool saveChanges = true)
     {
-        await _dbContext.Set<T>().AddAsync(entity);
+        var dbContext = await _dbContextFactory.CreateDbContextAsync();
+
+        await dbContext.Set<T>().AddAsync(entity);
 
         if (saveChanges)
         {
@@ -135,7 +141,9 @@ public class GenericRepository<T>: IGenericRepository<T> where T : EntityBase
     /// <inheritdoc/>
     public async Task UpdateAsync(T entity, bool saveChanges = true)
     {
-        _dbContext.Set<T>().Update(entity);
+        var dbContext = await _dbContextFactory.CreateDbContextAsync();
+
+        dbContext.Set<T>().Update(entity);
         if (saveChanges)
         {
             await SaveChangesAsync();
@@ -152,9 +160,11 @@ public class GenericRepository<T>: IGenericRepository<T> where T : EntityBase
     /// <inheritdoc/>
     public async Task DeleteAsync(T entity, bool saveChanges = true)
     {
+        var dbContext = await _dbContextFactory.CreateDbContextAsync();
+
         var cacheKey = $"{typeof(T).Name}_{entity.Id}";
 
-        _dbContext.Set<T>().Remove(entity);
+        dbContext.Set<T>().Remove(entity);
 
         if (saveChanges)
         {
@@ -168,7 +178,8 @@ public class GenericRepository<T>: IGenericRepository<T> where T : EntityBase
     /// <inheritdoc/>
     public virtual async Task SaveChangesAsync()
     {
-        await _dbContext.SaveChangesAsync();
+        var dbContext = await _dbContextFactory.CreateDbContextAsync();
+        await dbContext.SaveChangesAsync();
     }
 }
 

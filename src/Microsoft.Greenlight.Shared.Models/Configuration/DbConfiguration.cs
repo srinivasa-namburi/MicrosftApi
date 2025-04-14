@@ -1,6 +1,7 @@
 // Microsoft.Greenlight.Shared.Models/Configuration/DbConfiguration.cs
-using System;
+
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Microsoft.Greenlight.Shared.Models.Configuration
 {
@@ -10,10 +11,15 @@ namespace Microsoft.Greenlight.Shared.Models.Configuration
     public class DbConfiguration
     {
         /// <summary>
+        /// Default ID - should be the only one used.
+        /// </summary>
+        [NotMapped]
+        public static Guid DefaultId => Guid.Parse("52d7cb18-1543-4156-b535-8a7defbf9066");
+        /// <summary>
         /// The primary key for the configuration record.
         /// </summary>
         [Key]
-        public int Id { get; set; }
+        public Guid Id { get; set; }
 
         /// <summary>
         /// The configuration values stored as a JSON string.

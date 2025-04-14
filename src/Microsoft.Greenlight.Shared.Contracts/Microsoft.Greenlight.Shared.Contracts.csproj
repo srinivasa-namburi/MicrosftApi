@@ -9,8 +9,9 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="MassTransit.Abstractions" Version="8.2.1" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.4" />
     <PackageReference Include="Microsoft.KernelMemory.Abstractions" Version="0.78.241005.1" />
+    <PackageReference Include="Microsoft.Orleans.Serialization.Abstractions" Version="9.1.2" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Microsoft.Greenlight.Shared.Enums\Microsoft.Greenlight.Shared.Enums.csproj" />

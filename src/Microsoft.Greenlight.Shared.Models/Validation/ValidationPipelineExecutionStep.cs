@@ -30,6 +30,12 @@ namespace Microsoft.Greenlight.Shared.Models.Validation
         public ValidationPipelineExecutionStepStatus PipelineExecutionStepStatus { get; set; } = ValidationPipelineExecutionStepStatus.NotStarted;
 
         /// <summary>
+        /// Application status of this execution step
+        /// </summary>
+        public ValidationPipelineExecutionApplicationStatus? ApplicationStatus { get; set; } =
+            ValidationPipelineExecutionApplicationStatus.Unapplied;
+
+        /// <summary>
         /// Gets or sets the order of the validation execution step.
         /// </summary>
         public int Order { get; set; } = 0;
@@ -54,6 +60,8 @@ namespace Microsoft.Greenlight.Shared.Models.Validation
         /// </summary>
         [JsonIgnore]
         public ValidationPipelineExecutionStepResult? ValidationPipelineExecutionStepResult { get; set; }
+
+
     }
 
 }

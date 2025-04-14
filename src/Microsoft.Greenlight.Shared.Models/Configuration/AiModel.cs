@@ -1,5 +1,4 @@
 ﻿using Microsoft.Greenlight.Shared.Contracts.Components;
-using Microsoft.Greenlight.Shared.Enums;
 
 namespace Microsoft.Greenlight.Shared.Models.Configuration
 {

@@ -1,5 +1,0 @@
-﻿{{!-- Step 1: Use the custom helper to generate a document outline for a nuclear environmental report --}}
-{{#with (native_NuclearDocumentRepositoryPlugin-GenerateDocumentOutline)}}
-  {{!-- Step 2: Output the generated document outline in JSON format --}}
-  {{json this}}
-{{/with}}

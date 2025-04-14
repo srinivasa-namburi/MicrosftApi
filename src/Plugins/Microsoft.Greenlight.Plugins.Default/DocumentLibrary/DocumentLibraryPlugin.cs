@@ -1,6 +1,5 @@
 ﻿using System.ComponentModel;
 using AutoMapper;
-using Microsoft.Greenlight.DocumentProcess.Shared.Search;
 using Microsoft.Greenlight.Extensions.Plugins;
 using Microsoft.Greenlight.Shared.Contracts.DTO.DocumentLibrary;
 using Microsoft.Greenlight.Shared.Models.SourceReferences;

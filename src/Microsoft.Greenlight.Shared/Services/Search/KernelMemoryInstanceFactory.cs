@@ -1,29 +1,29 @@
-﻿using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO.DocumentLibrary;
-using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Extensions;
+using Microsoft.Greenlight.Shared.Services;
+using Microsoft.Greenlight.Shared.Services.Search;
 using Microsoft.KernelMemory;
-
-namespace Microsoft.Greenlight.Shared.Services.Search;
 
 public class KernelMemoryInstanceFactory : IKernelMemoryInstanceFactory
 {
-    private readonly DocGenerationDbContext _dbContext;
     private readonly IDocumentLibraryInfoService _documentLibraryInfoService;
+    private readonly IDocumentProcessInfoService _documentProcessInfoService;
     private readonly IServiceProvider _sp;
     private readonly KernelMemoryInstanceContainer _instanceContainer;
     private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
 
     public KernelMemoryInstanceFactory(
-        DocGenerationDbContext dbContext,
-        IDocumentLibraryInfoService documentLibraryInfoService,
         IServiceProvider sp,
         IOptionsSnapshot<ServiceConfigurationOptions> serviceConfigurationOptions,
         KernelMemoryInstanceContainer instanceContainer)
     {
-        _dbContext = dbContext;
-        _documentLibraryInfoService = documentLibraryInfoService;
+        using var scope = sp.CreateScope();
+    
+        _documentLibraryInfoService = scope.ServiceProvider.GetRequiredService<IDocumentLibraryInfoService>();
+        _documentProcessInfoService = scope.ServiceProvider.GetRequiredService<IDocumentProcessInfoService>();
         _sp = sp;
         _instanceContainer = instanceContainer;
         _serviceConfigurationOptions = serviceConfigurationOptions.Value;
@@ -36,7 +36,6 @@ public class KernelMemoryInstanceFactory : IKernelMemoryInstanceFactory
 
     public async Task<IKernelMemory> GetKernelMemoryInstanceForDocumentLibrary(string documentLibraryShortName)
     {
-
         if (_instanceContainer.KernelMemoryInstances.TryGetValue(documentLibraryShortName, out var memory))
         {
             return memory;
@@ -62,7 +61,32 @@ public class KernelMemoryInstanceFactory : IKernelMemoryInstanceFactory
         return await GetKernelMemoryInstanceForDocumentLibrary(documentLibrary);
     }
 
-    private async Task<IKernelMemory> GetKernelMemoryInstanceForDocumentLibrary(DocumentLibraryInfo documentLibraryInfo)
+    public async Task<IKernelMemory> GetKernelMemoryInstanceForDocumentProcess(string documentProcessShortName)
+    {
+        if (_instanceContainer.KernelMemoryInstances.TryGetValue(documentProcessShortName, out var memory))
+        {
+            return memory;
+        }
+
+        var documentProcess = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentProcessShortName);
+        if (documentProcess == null)
+        {
+            throw new Exception($"Document Process with short name {documentProcessShortName} not found.");
+        }
+
+        var kernelMemory = _sp.GetKernelMemoryInstanceForDocumentLibrary(_serviceConfigurationOptions, new DocumentLibraryInfo
+        {
+            ShortName = documentProcess.ShortName,
+            IndexName = documentProcess.Repositories[0],
+            BlobStorageContainerName = documentProcess.BlobStorageContainerName
+        });
+
+        _instanceContainer.KernelMemoryInstances[documentProcessShortName] = kernelMemory;
+
+        return kernelMemory;
+    }
+
+    public async Task<IKernelMemory> GetKernelMemoryInstanceForDocumentLibrary(DocumentLibraryInfo documentLibraryInfo)
     {
         var documentLibraryShortName = documentLibraryInfo.ShortName;
         if (_instanceContainer.KernelMemoryInstances.TryGetValue(documentLibraryInfo.ShortName, out var library))

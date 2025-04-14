@@ -8,11 +8,13 @@ using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Contracts.DTO.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.Messages;
+using Microsoft.Greenlight.Shared.Contracts.Streams;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Management.Configuration;
 using Microsoft.Greenlight.Shared.Models.Configuration;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Orleans.Streams;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
@@ -30,6 +32,7 @@ public class ConfigurationController : BaseController
     private readonly ILogger<ConfigurationController> _logger;
     private readonly EfCoreConfigurationProvider _configProvider;
     private readonly IConfiguration _configuration;
+    private readonly IClusterClient _clusterClient;
 
     /// <summary>
     /// A list of accepted keys for configuration updates, including wildcards.
@@ -41,6 +44,7 @@ public class ConfigurationController : BaseController
         "ServiceConfiguration:GreenlightServices:FrontEnd:*",
         "ServiceConfiguration:GreenlightServices:FeatureFlags:*",
         "ServiceConfiguration:GreenlightServices:ReferenceIndexing:*",
+        "ServiceConfiguration:GreenlightServices:Scalability:*",
         "ServiceConfiguration:OpenAI:*"
     ];
 
@@ -54,6 +58,7 @@ public class ConfigurationController : BaseController
     /// <param name="logger">The logger.</param>
     /// <param name="configProvider">EF Core based configuration provider</param>
     /// <param name="configuration">Runtime IConfiguration</param>
+    /// <param name="clusterClient">Orleans cluster client</param>
     public ConfigurationController(
         IOptionsMonitor<ServiceConfigurationOptions> serviceConfigurationOptionsMonitor,
         IPublishEndpoint publishEndpoint,
@@ -61,7 +66,8 @@ public class ConfigurationController : BaseController
         IMapper mapper,
         ILogger<ConfigurationController> logger,
         EfCoreConfigurationProvider configProvider,
-        IConfiguration configuration)
+        IConfiguration configuration, 
+        IClusterClient clusterClient)
     {
         _publishEndpoint = publishEndpoint;
         _serviceConfigurationOptionsMonitor = serviceConfigurationOptionsMonitor;
@@ -70,6 +76,7 @@ public class ConfigurationController : BaseController
         _logger = logger;
         _configProvider = configProvider;
         _configuration = configuration;
+        _clusterClient = clusterClient;
     }
 
     /// <summary>
@@ -151,6 +158,19 @@ public class ConfigurationController : BaseController
     }
 
     /// <summary>
+    /// Gets the scalability options. 
+    /// </summary>
+    /// <returns>The scalability options.</returns>
+    [HttpGet("scalability-options")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [Produces("application/json")]
+    public ActionResult<ServiceConfigurationOptions.GreenlightServicesOptions.ScalabilityOptions> GetScalabilityOptions()
+    {
+        var configurationScalabilityOptions = _configuration.GetSection("ServiceConfiguration:GreenlightServices:Scalability").Get<ServiceConfigurationOptions.GreenlightServicesOptions.ScalabilityOptions>();
+        return Ok(configurationScalabilityOptions);
+    }
+
+    /// <summary>
     /// Restarts the workers.
     /// </summary>
     /// <returns>A confirmation message.</returns>
@@ -192,7 +212,9 @@ public class ConfigurationController : BaseController
         try
         {
             // Update the database
-            var config = await _dbContext.Configurations.FirstOrDefaultAsync(c => c.Id == 1);
+            var config = await _dbContext.Configurations.FirstOrDefaultAsync(
+                c => c.Id == DbConfiguration.DefaultId);
+
             if (config == null)
             {
                 config = new DbConfiguration { ConfigurationValues = "{}", LastUpdated = DateTime.UtcNow, LastUpdatedBy = "System" };
@@ -215,8 +237,15 @@ public class ConfigurationController : BaseController
             // Update the local configuration 
             _configProvider.UpdateOptions(request.ConfigurationItems);
 
-            // Publish ConfigurationUpdated message to notify other services
-            await _publishEndpoint.Publish(new ConfigurationUpdated(Guid.NewGuid()));
+            var configurationUpdatedMessage = new ConfigurationUpdated(Guid.NewGuid());
+
+            // Publish to Orleans Stream
+            var streamProvider = _clusterClient.GetStreamProvider("StreamProvider");
+            var stream = streamProvider.GetStream<ConfigurationUpdated>(
+                SystemStreamNameSpaces.ConfigurationUpdatedNamespace, 
+                Guid.Empty);
+
+            await stream.OnNextAsync(configurationUpdatedMessage);
 
             var configInfo = _mapper.Map<DbConfigurationInfo>(config);
             return Ok(configInfo);
@@ -241,7 +270,9 @@ public class ConfigurationController : BaseController
     {
         try
         {
-            var config = await _dbContext.Configurations.FirstOrDefaultAsync(c => c.Id == 1);
+            var config = await _dbContext.Configurations.FirstOrDefaultAsync(
+                c => c.Id == DbConfiguration.DefaultId);
+
             if (config == null)
             {
                 return NotFound("Configuration not found.");

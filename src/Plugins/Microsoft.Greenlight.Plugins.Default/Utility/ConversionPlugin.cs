@@ -2,7 +2,6 @@ using System.ComponentModel;
 using System.Globalization;
 using Microsoft.Greenlight.Extensions.Plugins;
 using Microsoft.SemanticKernel;
-using Microsoft.Greenlight.Shared.Interfaces;
 
 namespace Microsoft.Greenlight.Plugins.Default.Utility;
 

@@ -1,5 +1,4 @@
 ﻿using Microsoft.Greenlight.Shared.Contracts.DTO;
-using Microsoft.Greenlight.Shared.Contracts.DTO.DocumentLibrary;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.Shared.Services.Search;
 using Moq;

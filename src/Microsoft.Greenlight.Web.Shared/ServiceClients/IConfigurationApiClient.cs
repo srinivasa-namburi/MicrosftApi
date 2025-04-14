@@ -27,4 +27,5 @@ public interface IConfigurationApiClient : IServiceClient
     Task<AiModelDeploymentInfo> CreateAiModelDeploymentAsync(AiModelDeploymentInfo deployment);
     Task<AiModelDeploymentInfo> UpdateAiModelDeploymentAsync(AiModelDeploymentInfo deployment);
     Task DeleteAiModelDeploymentAsync(Guid id);
+    Task<ServiceConfigurationOptions.GreenlightServicesOptions.ScalabilityOptions> GetScalabilityOptionsAsync();
 }

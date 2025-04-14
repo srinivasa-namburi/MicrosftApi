@@ -1,6 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using Microsoft.Greenlight.Shared.Contracts.DTO;
+﻿using Microsoft.Greenlight.Shared.Contracts.DTO;
 
 namespace Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Events
 {

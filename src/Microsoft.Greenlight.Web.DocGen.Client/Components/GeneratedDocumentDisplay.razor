@@ -4,57 +4,109 @@
 @using Microsoft.Greenlight.Web.Shared.Helpers
 @using System.Timers;
 @using Microsoft.Greenlight.Shared.Contracts.DTO.Document
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Validation
+@using Microsoft.Greenlight.Shared.Contracts.Messages.Validation.Events
 
 @inject IDocumentGenerationApiClient DocumentGenerationApiClient
+@inject IDocumentValidationApiClient DocumentValidationApiClient
+@inject IDocumentProcessApiClient DocumentProcessApiClient
 @inject IContentNodeApiClient ContentNodeApiClient
 @inject IAuthorizationApiClient AuthorizationApiClient
 @inject IConfigurationApiClient ConfigurationApiClient
+@inject ISnackbar Snackbar
 @inject NavigationManager Navigation
+@inject ValidationEditorService ValidationEditorService
 
 @code {
     [Parameter] public Guid DocumentId { get; set; }
     [Parameter] public bool LiveUpdated { get; set; } = true;
     [Parameter] public GeneratedDocumentInfo? Document { get; set; }
+    private IEnumerable<ContentNodeInfo> FlattenedContentNodes
+    {
+        get
+        {
+            if (Document?.ContentNodes == null)
+            {
+                return Enumerable.Empty<ContentNodeInfo>();
+            }
+
+            return FlattenContentNodes(Document.ContentNodes);
+        }
+    }
+
     [Parameter] public bool EnableReferenceFrontend { get; set; }
     [Parameter] public bool FromGeneration { get; set; }
 
     [CascadingParameter] public HubConnection? HubConnection { get; set; }
 
-    private bool receivedMessagesVisible = false;
+    public ValidationResultsInfo? ValidationResults;
+    private bool isLoadingValidationResults = false;
+
     private bool areNodesGenerated = false;
     private bool isDocumentExportable = false;
     private Timer? stateCheckTimer;
     private bool isFromGenerationPage = false;
+    private bool hasValidationPipeline = false;
 
-    private List<string> messages = new List<string>();
+    private ValidationStatusInfo? _validationStatus;
+    private List<DocumentProcessValidationPipelineStepInfo>? _validationPipelineSteps;
+    private bool _runValidationAutomatically;
+    private bool _isLoadingValidationStatus = false;
+
+    private readonly List<string> messages = new List<string>();
+
+    private readonly Dictionary<Guid, string> _validationContentCache = new();
 }
 
 @if (Document != null)
 {
-    <MudPaper Class="pa-4">
-        <MudGrid>
-            <MudItem xs="12" sm="9">
-                <MudText Typo="Typo.h4" GutterBottom="true">@Document.Title</MudText>
-            </MudItem>
-            <MudItem xs="12" sm="3" Class="d-flex justify-end align-center">
-                @if (areNodesGenerated)
-                {
-                    <DocumentDownloadLink DocumentId=@DocumentId.ToString() />
-                }
-            </MudItem>
-        </MudGrid>
+    <CascadingValue Value="this">
+        <MudPaper Class="pa-4">
+            <MudGrid>
+                <MudItem xs="6" sm="7">
+                    <MudText Typo="Typo.h4" GutterBottom="true">@Document.Title</MudText>
+                </MudItem>
+                <MudItem xs="6" sm="5" Class="d-flex justify-end align-center">
+                    @if (areNodesGenerated)
+                    {
+                        <MudStack Row="true" Spacing="2">
+                            @if (hasValidationPipeline)
+                            {
+                                <MudButton Variant="Variant.Filled"
+                                           Color="Color.Primary"
+                                           OnClick="StartValidation"
+                                           Size="Size.Medium">
+                                    Validate
+                                </MudButton>
+                            }
+                            <DocumentDownloadLink DocumentId=@DocumentId.ToString() />
+                        </MudStack>
+                    }
+                </MudItem>
+            </MudGrid>
 
-        <MudText Typo="Typo.body1" GutterBottom="true">Document ID: @Document.Id</MudText>
-        <MudPaper Outlined="true" Class="border-dashed">
-            @if (Document.ContentNodes.Any())
+            @if (hasValidationPipeline)
             {
-                @foreach (var contentNode in Document.ContentNodes)
-                {
-                    <ContentNodeDisplay Node="@contentNode" Recursive="true" EnableReferenceFrontend="@EnableReferenceFrontend" />
-                }
+                <ValidationPipelineStatusDisplayComponent DocumentId="DocumentId"
+                                                          ValidationStatus="_validationStatus"
+                                                          ValidationResults="ValidationResults"
+                                                          PotentialValidationSteps="_validationPipelineSteps"
+                                                          RunValidationAutomatically="_runValidationAutomatically"
+                                                          IsLoading="_isLoadingValidationStatus"
+                                                          OnValidationStatusChanged="HandleValidationStatusChanged" />
             }
+
+            <MudPaper Outlined="true" Class="border-dashed">
+                @if (Document.ContentNodes.Any())
+                {
+                    @foreach (var contentNode in Document.ContentNodes)
+                    {
+                        <ContentNodeDisplay Node="@contentNode" Recursive="true" EnableReferenceFrontend="@EnableReferenceFrontend" />
+                    }
+                }
+            </MudPaper>
         </MudPaper>
-    </MudPaper>
+    </CascadingValue>
 }
 else
 {
@@ -62,9 +114,12 @@ else
         <MudText Typo="Typo.h4" GutterBottom="true">Loading document...</MudText>
         <MudSkeleton />
     </MudPaper>
+
 }
 
+
 @code {
+
     protected override async Task OnInitializedAsync()
     {
         // Check if we're coming directly from document generation using URL parsing
@@ -74,18 +129,17 @@ else
         // Check if the last segment is "true" or parameter FromGeneration is true
         isFromGenerationPage = segments.Length > 2 && segments[^1] == "true" || FromGeneration;
 
-        var token = await DocumentGenerationApiClient.GetAccessTokenAsync();
-
         // If we're not coming directly from generation, try to load the document right away
         if (!isFromGenerationPage)
         {
             try
             {
                 Document = await GetDocumentAsync(DocumentId);
-                if (Document != null && Document.ContentNodes != null)
+                if (Document != null)
                 {
                     ContentNodeInfoSorter.SortContentNodes(Document.ContentNodes);
                     areNodesGenerated = AllNodesGenerated(Document.ContentNodes);
+
                 }
             }
             catch
@@ -94,15 +148,115 @@ else
             }
         }
 
+        // Check if the document process has a validation pipeline
+        if (!string.IsNullOrEmpty(Document?.DocumentProcessName))
+        {
+            hasValidationPipeline = await DocumentProcessApiClient.HasValidationPipelineAsync(Document.DocumentProcessName);
+
+
+
+            // If there's a validation pipeline, load its configuration
+            if (hasValidationPipeline)
+            {
+                await LoadValidationPipelineConfiguration();
+                // Load validation results if all nodes are generated
+                if (areNodesGenerated)
+                {
+                    await LoadValidationStatusAsync();
+                    await LoadValidationResultsAsync();
+                }
+            }
+        }
+
         await StartHubConnections();
         StartStateCheckTimer();
     }
+
+    private async Task LoadValidationPipelineConfiguration()
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(Document?.DocumentProcessName))
+                return;
+            
+            // Get the validation pipeline configuration using the document process name
+            var pipelineConfig = await DocumentValidationApiClient.GetValidationPipelineConfigurationByProcessNameAsync(Document.DocumentProcessName);
+            if (pipelineConfig != null)
+            {
+                _validationPipelineSteps = pipelineConfig.ValidationPipelineSteps;
+                _runValidationAutomatically = pipelineConfig.RunValidationAutomatically;
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading validation pipeline configuration: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LoadValidationStatusAsync()
+    {
+        if (!hasValidationPipeline) return;
+
+        try
+        {
+            _isLoadingValidationStatus = true;
+            _validationStatus = await DocumentValidationApiClient.GetDocumentValidationStatusAsync(DocumentId.ToString());
+        }
+        catch
+        {
+            // Validation might not exist yet, that's okay
+            _validationStatus = null;
+        }
+        finally
+        {
+            _isLoadingValidationStatus = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task HandleValidationStatusChanged()
+    {
+        // Clear any existing validation data
+        ValidationResults = null;
+        _validationStatus = null;
+
+        // Clear the UI elements related to validation
+        foreach (var contentNode in FlattenedContentNodes)
+        {
+            contentNode.ValidationChangeRequested = false;
+            contentNode.ContentNodeIdContainingBodyTextChanges = null;
+        }
+
+        // Clear the validation editor data
+        ValidationEditorService.ClearAllValidationData();
+
+        // Reload the validation status
+        await LoadValidationStatusAsync();
+    }
+
+
 
     private void StartStateCheckTimer()
     {
         stateCheckTimer = new Timer(5000); // Check every 5 seconds
         stateCheckTimer.Elapsed += async (sender, e) => await CheckDocumentState();
         stateCheckTimer.Start();
+    }
+
+
+    private IEnumerable<ContentNodeInfo> FlattenContentNodes(IEnumerable<ContentNodeInfo> nodes)
+    {
+        foreach (var node in nodes)
+        {
+            yield return node;
+
+            if (!node.Children.Any()) continue;
+
+            foreach (var child in FlattenContentNodes(node.Children))
+            {
+                yield return child;
+            }
+        }
     }
 
     private async Task CheckDocumentState()
@@ -113,7 +267,7 @@ else
             if (Document == null)
             {
                 Document = await GetDocumentAsync(DocumentId);
-                if (Document != null && Document.ContentNodes != null)
+                if (Document is { ContentNodes.Count: > 0 })
                 {
                     ContentNodeInfoSorter.SortContentNodes(Document.ContentNodes);
                 }
@@ -121,8 +275,16 @@ else
 
             if (Document != null)
             {
+                var wasGeneratedBefore = areNodesGenerated;
                 areNodesGenerated = AllNodesGenerated(Document.ContentNodes);
                 isDocumentExportable = await IsDocumentExportable();
+
+                // If we've just completed generation, load validation results
+                if (!wasGeneratedBefore && areNodesGenerated)
+                {
+                    await LoadValidationResultsAsync();
+                    await LoadValidationStatusAsync();
+                }
 
                 if (isDocumentExportable)
                 {
@@ -139,6 +301,7 @@ else
             // Document might not be ready yet, continue polling
         }
     }
+
 
     private async Task<bool> IsDocumentExportable()
     {
@@ -174,6 +337,10 @@ else
             "ReceiveContentNodeGenerationStateChangedNotification",
             HubReceiveContentNodeGenerationStateChangedNotificationHandler);
 
+        HubConnection.On<ValidationExecutionForDocumentNotification>(
+            "ReceiveValidationExecutionForDocumentNotification",
+            HubReceiveValidationExecutionForDocumentNotificationHandler);
+
         if (HubConnection.State == HubConnectionState.Disconnected)
         {
             await HubConnection.StartAsync();
@@ -195,6 +362,7 @@ else
         HubConnection.Remove("ReceiveDocumentOutlineNotification");
         HubConnection.Remove("ReceiveContentNodeNotification");
         HubConnection.Remove("ReceiveContentNodeGenerationStateChangedNotification");
+        HubConnection.Remove("ReceiveValidationExecutionForDocumentNotification");
 
         // Remove from group when leaving the page
         if (DocumentId != Guid.Empty)
@@ -217,58 +385,201 @@ else
         }
     }
 
-    private async Task ExportDocument()
+    private async Task HubReceiveValidationExecutionForDocumentNotificationHandler(
+    ValidationExecutionForDocumentNotification message)
     {
-        var stream = await DocumentGenerationApiClient.ExportDocumentAsync(DocumentId.ToString());
-        using var memoryStream = new MemoryStream();
-        await stream.CopyToAsync(memoryStream);
-        var byteArray = memoryStream.ToArray();
-        var base64 = Convert.ToBase64String(byteArray);
-        var fileName = "exported_document.docx";
-        var fileType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-        var fileUrl = $"data:{fileType};base64,{base64}";
-        Navigation.NavigateTo(fileUrl, true);
-    }
-
-    private async Task UpdateContentNodeState(List<ContentNodeInfo>? documentContentNodes, ContentNodeInfo updatedNodeFromEvent)
-    {
-        if (documentContentNodes is null || !documentContentNodes.Any()) return;
-
-        // Apply the updates.
-        documentContentNodes = UpdateNodes(documentContentNodes, updatedNodeFromEvent);
-        ContentNodeInfoSorter.SortContentNodes(documentContentNodes);
-        await CheckDocumentState();
-        await InvokeAsync(StateHasChanged);
-
-        // Recursive method to search and update the node in the tree.
-        List<ContentNodeInfo> UpdateNodes(List<ContentNodeInfo> nodes, ContentNodeInfo updatedNode)
+        if (message.GeneratedDocumentId == DocumentId)
         {
-            for (int i = 0; i < nodes.Count; i++)
+            switch (message.NotificationType)
             {
-                if (nodes[i].Id == updatedNode.Id)
-                {
-                    // Replace the node.
-                    nodes[i] = updatedNode;
-                    return nodes; // Return immediately since the node has been replaced.
-                }
+                case ValidationExecutionStatusNotificationType.ValidationExecutionStarted:
+                    Snackbar.Add("Validation started on backend for document", Severity.Success);
+                    await LoadValidationStatusAsync(); // Reload validation status
+                    break;
 
-                // If the current node has children, attempt to update them.
-                if (nodes[i].Children != null && nodes[i].Children.Any())
-                {
-                    nodes[i].Children = UpdateNodes(nodes[i].Children, updatedNode);
-                }
+                case ValidationExecutionStatusNotificationType.ValidationExecutionCompleted:
+                    Snackbar.Add("Validation completed on backend for document", Severity.Success);
+                    await LoadValidationStatusAsync(); // Reload validation status
+                    await LoadValidationResultsAsync(); // Load validation results
+                    break;
+
+                case ValidationExecutionStatusNotificationType.ValidationStepStarted:
+                    Snackbar.Add("Validation step started on backend for document", Severity.Info);
+                    await LoadValidationStatusAsync(); // Reload validation status
+                    break;
+
+                case ValidationExecutionStatusNotificationType.ValidationStepCompleted:
+                    Snackbar.Add("Validation step completed on backend for document", Severity.Info);
+                    await LoadValidationStatusAsync(); // Reload validation status
+                    break;
+
+                // Keep the rest of the cases the same
+                case ValidationExecutionStatusNotificationType.PreviousUnappliedValidationsAbandoned:
+                    Snackbar.Add("Previous unapplied validations were abandoned", Severity.Info);
+                    break;
+
+                case ValidationExecutionStatusNotificationType.ValidationStepContentChangeRequested:
+                    if (message.HasRecommendedChanges)
+                    {
+                        await AddRecommendedValidationChanges(message);
+                    }
+                    break;
+
+                case ValidationExecutionStatusNotificationType.ValidationStepFailed:
+                    Snackbar.Add("Validation step failed on backend for document.", Severity.Error);
+                    await LoadValidationStatusAsync(); // Reload validation status
+                    break;
+
+                default:
+                    break;
             }
-
-            return nodes; // Return the potentially modified list of nodes.
         }
     }
+
+    private async Task LoadValidationResultsAsync()
+    {
+        try
+        {
+            isLoadingValidationResults = true;
+            ValidationResults = await DocumentValidationApiClient.GetLatestValidationResultsAsync(DocumentId.ToString());
+
+            if (ValidationResults == null)
+            {
+                return;
+            }
+
+            if (ValidationResults.ApplicationStatus == ValidationPipelineExecutionApplicationStatus.Unapplied)
+            {
+                int appliedChanges = 0;
+
+                // Process each recommended change from the validation
+                foreach (var change in ValidationResults.ContentChanges)
+                {
+                    // Find the relevant nodes
+                    var originalBodyTextContentNode = FlattenedContentNodes
+                        .FirstOrDefault(x => x.Id == change.OriginalContentNodeId);
+
+                    var originalSectionContentNode = FlattenedContentNodes
+                        .FirstOrDefault(x => x.Id == change.ParentContentNodeId);
+
+                    if (originalSectionContentNode == null || originalBodyTextContentNode == null)
+                        continue;
+
+                    // Apply the validation change
+                    ApplyValidationChange(change, originalBodyTextContentNode, originalSectionContentNode);
+                    appliedChanges++;
+                }
+
+                if (appliedChanges > 0)
+                {
+                    Snackbar.Add($"{appliedChanges} previous validation suggestions available", Severity.Info);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading validation results: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isLoadingValidationResults = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+
+
+    /// <summary>
+    /// Marks the original content node and its parent as having recommended changes.
+    /// This updates various parts of the UI and pre-loads the content needed for editing.
+    /// </summary>
+    /// <param name="message">The Notification message received</param>
+    private async Task AddRecommendedValidationChanges(ValidationExecutionForDocumentNotification message)
+    {
+        var contentChangeResult = message.ContentNodeChangeResult;
+
+        if (contentChangeResult == null)
+            return;
+
+        try
+        {
+            // Find the relevant nodes in our current document structure
+            var originalBodyTextContentNode = FlattenedContentNodes
+                .FirstOrDefault(x => x.Id == contentChangeResult.OriginalContentNodeId);
+
+            var originalSectionContentNode = FlattenedContentNodes
+                .FirstOrDefault(x => x.Id == originalBodyTextContentNode?.ParentId);
+
+            if (originalSectionContentNode == null || originalBodyTextContentNode == null)
+                return;
+
+            // We only need to get the new content node with suggested changes
+            var newContentNode = await ContentNodeApiClient.GetContentNodeAsync(contentChangeResult.ResultantContentNodeId.ToString());
+
+            if (newContentNode == null)
+                return;
+
+            // Create a validation content change similar to what we get from the API
+            var contentChange = new ValidationContentChangeInfo
+            {
+                OriginalContentNodeId = contentChangeResult.OriginalContentNodeId,
+                ResultantContentNodeId = contentChangeResult.ResultantContentNodeId,
+                OriginalText = originalBodyTextContentNode.Text,
+                SuggestedText = newContentNode.Text,
+                ParentContentNodeId = originalBodyTextContentNode.ParentId,
+                ApplicationStatus = contentChangeResult.ApplicationStatus,
+                OriginalValidationExecutionStepContentNodeResultId = contentChangeResult.Id
+            };
+
+            // Apply validation change using shared method
+            ApplyValidationChange(contentChange, originalBodyTextContentNode, originalSectionContentNode);
+
+            Snackbar.Add($"Changes recommended for section '{originalSectionContentNode.Text}'", Severity.Normal);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error retrieving recommended changes: {ex.Message}", Severity.Error);
+        }
+    }
+
+
+    /// <summary>
+    /// Applies a validation change to the content nodes in the document
+    /// </summary>
+    /// <param name="change">The validation change information</param>
+    /// <param name="bodyTextNode">The body text content node to apply changes to</param>
+    /// <param name="sectionNode">The section content node (parent) to mark as having changes</param>
+    private void ApplyValidationChange(
+    ValidationContentChangeInfo change,
+    ContentNodeInfo bodyTextNode,
+    ContentNodeInfo sectionNode)
+    {
+        // Mark the parent section as having changes
+        sectionNode.ValidationChangeRequested = true;
+
+        // Store the suggested text for later use
+        bodyTextNode.ValidationChangeRequested = true;
+        bodyTextNode.ContentNodeIdContainingBodyTextChanges = change.ResultantContentNodeId;
+
+        // Store the suggested text in the validation service
+        ValidationEditorService.SetEditorData(
+            bodyTextNode.Id, // We're associating with the original node ID, not the resultant one
+            new ValidationEditorData(
+                EditorMode: EditorComponentEditorMode.MultiValueDiffEditor,
+                OriginalText: change.OriginalText ?? bodyTextNode.Text,
+                SuggestedText: change.SuggestedText ?? "",
+                IsVisible: false,
+                ValidationChangeInfo: change
+            )
+        );
+    }
+
 
     private async Task HubReceiveDocumentOutlineNotificationHandler(string correlationId)
     {
         string encodedMsg;
         if (correlationId == DocumentId.ToString())
         {
-            receivedMessagesVisible = true;
             encodedMsg = $"Received ReceiveDocumentOutlineNotification for GeneratedDocument with ID : {correlationId}";
             // Get the document using /api/documents/documentId and render it
             try
@@ -300,7 +611,7 @@ else
         if (contentNodeGeneratedEvent.CorrelationId == DocumentId)
         {
             var correlationIdString = contentNodeGeneratedEvent.CorrelationId.ToString();
-            receivedMessagesVisible = true;
+
             encodedMsg = $"Received ReceiveContentNodeNotification for ContentNode with ID : {contentNodeGeneratedEvent.ContentNodeId}";
             try
             {
@@ -349,6 +660,76 @@ else
         await InvokeAsync(StateHasChanged);
     }
 
+    private async Task StartValidation()
+    {
+        try
+        {
+            // Clear any existing validation data before starting a new validation
+            if (ValidationResults != null)
+            {
+                foreach (var change in ValidationResults.ContentChanges)
+                {
+                    if (change.ParentContentNodeId.HasValue)
+                    {
+                        ValidationEditorService.ClearValidationDataForSection(change.ParentContentNodeId.Value);
+                    }
+                }
+            }
+
+            var result = await DocumentValidationApiClient.StartDocumentValidationAsync(DocumentId.ToString());
+
+            if (result)
+            {
+                Snackbar.Add("Document validation started successfully", Severity.Success);
+            
+                // Reload the validation status after starting
+                await LoadValidationStatusAsync();
+            }
+            else
+            {
+                Snackbar.Add("Failed to start document validation", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+
+    private async Task UpdateContentNodeState(List<ContentNodeInfo>? documentContentNodes, ContentNodeInfo updatedNodeFromEvent)
+    {
+        if (documentContentNodes is null || !documentContentNodes.Any()) return;
+
+        // Apply the updates.
+        documentContentNodes = UpdateNodes(documentContentNodes, updatedNodeFromEvent);
+        ContentNodeInfoSorter.SortContentNodes(documentContentNodes);
+        await CheckDocumentState();
+        await InvokeAsync(StateHasChanged);
+
+        // Recursive method to search and update the node in the tree.
+        List<ContentNodeInfo> UpdateNodes(List<ContentNodeInfo> nodes, ContentNodeInfo updatedNode)
+        {
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                if (nodes[i].Id == updatedNode.Id)
+                {
+                    // Replace the node.
+                    nodes[i] = updatedNode;
+                    return nodes; // Return immediately since the node has been replaced.
+                }
+
+                // If the current node has children, attempt to update them.
+                if (nodes[i].Children != null && nodes[i].Children.Any())
+                {
+                    nodes[i].Children = UpdateNodes(nodes[i].Children, updatedNode);
+                }
+            }
+
+            return nodes; // Return the potentially modified list of nodes.
+        }
+    }
+
     private async Task<GeneratedDocumentInfo?> GetDocumentAsync(Guid? documentId)
     {
         if (documentId == null) return null;
@@ -366,16 +747,18 @@ else
 
     private bool AllNodesGenerated(List<ContentNodeInfo> contentNodes)
     {
-        if (contentNodes is null || !contentNodes.Any()) return false;
+        if (!contentNodes.Any()) return false;
 
         foreach (var contentNode in contentNodes)
         {
-            if (contentNode.GenerationState != ContentNodeGenerationState.Completed && contentNode.GenerationState != ContentNodeGenerationState.Failed)
+            if (contentNode.GenerationState is ContentNodeGenerationState.InProgress)
             {
+                // Add logging or debugging information
+                Console.WriteLine($"Node {contentNode.Id} is not complete: {contentNode.GenerationState}");
                 return false;
             }
 
-            if (contentNode.Children != null && contentNode.Children.Any())
+            if (contentNode.Children.Any())
             {
                 if (!AllNodesGenerated(contentNode.Children))
                 {
@@ -386,6 +769,7 @@ else
 
         return true;
     }
+
 
     public async ValueTask DisposeAsync()
     {

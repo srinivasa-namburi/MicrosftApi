@@ -1,0 +1,133 @@
+﻿@using BlazorMonaco.Editor
+@inject IJSRuntime JS
+
+<StandaloneDiffEditor @ref="monacoDiffEditor"
+                      ConstructionOptions="DiffEditorConstructionOptions"
+                      OnDidChangeModelContentModified="HandleContentChanged"
+                      OnDidInit="HandleEditorInit"
+                      CssClass="standaloneEditorDefaultCss"
+                      />
+
+<style>
+    .standaloneEditorDefaultCss {
+        height: @HeightStyle;
+        width: @WidthStyle;
+    }
+</style>
+
+@code {
+    private StandaloneDiffEditor? monacoDiffEditor;
+    private bool _currentDarkMode;
+
+    /// <summary>
+    /// For use within normal component hierarchy.
+    /// </summary>
+    [CascadingParameter(Name = "IsDarkMode")]
+    public bool CascadingIsDarkMode { get; set; }
+
+    /// <summary>
+    /// For direct parameter passing.
+    /// </summary>
+    [Parameter] public bool? IsDarkMode { get; set; }
+
+    [Parameter] public string Value { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+
+    [Parameter] public string? SecondValue { get; set; }
+    [Parameter] public EventCallback<string> SecondValueChanged { get; set; }
+
+    /// <summary>
+    /// Triggered when the editor’s content changes (based on the modified editor).
+    /// </summary>
+    [Parameter] public EventCallback OnContentChanged { get; set; }
+
+    /// <summary>
+    /// Triggered when the editor is initialized.
+    /// </summary>
+    [Parameter] public EventCallback OnEditorInitialized { get; set; }
+
+    [Parameter] public string HeightStyle { get; set; } = "700px";
+    [Parameter] public string WidthStyle { get; set; } = "100%";
+
+    // Use either direct or cascading parameter.
+    private bool EffectiveIsDarkMode => IsDarkMode ?? CascadingIsDarkMode;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_currentDarkMode != EffectiveIsDarkMode && monacoDiffEditor != null)
+        {
+            _currentDarkMode = EffectiveIsDarkMode;
+            await monacoDiffEditor.OriginalEditor.UpdateOptions(new EditorUpdateOptions()
+            {
+                Theme = EffectiveIsDarkMode ? "vs-dark" : "vs-light"
+            });
+            await monacoDiffEditor.ModifiedEditor.UpdateOptions(new EditorUpdateOptions()
+            {
+                Theme = EffectiveIsDarkMode ? "vs-dark" : "vs-light"
+            });
+        }
+    }
+
+    private StandaloneDiffEditorConstructionOptions DiffEditorConstructionOptions(StandaloneDiffEditor editor)
+    {
+        return new StandaloneDiffEditorConstructionOptions()
+        {
+            Theme = EffectiveIsDarkMode ? "vs-dark" : "vs-light",
+            OriginalEditable = false,
+            RenderSideBySide = true,
+            RenderIndicators = true,
+            EnableSplitViewResizing = true,
+            IgnoreTrimWhitespace = true,
+            WordWrap = "on"
+        };
+    }
+
+    private async Task HandleContentChanged()
+    {
+        if (monacoDiffEditor == null)
+            return;
+
+        // Get the modified value.
+        string modifiedValue = await monacoDiffEditor.ModifiedEditor.GetValue(preserveBOM: true, lineEnding: "\n");
+        if (SecondValue != modifiedValue)
+        {
+            SecondValue = modifiedValue;
+            await SecondValueChanged.InvokeAsync(SecondValue);
+        }
+
+        //Trigger global content change event.
+        if (OnContentChanged.HasDelegate)
+            await OnContentChanged.InvokeAsync();
+    }
+
+    private async Task HandleEditorInit()
+    {
+        if (monacoDiffEditor == null)
+            return;
+
+        var original_model = await BlazorMonaco.Editor.Global.CreateModel(JS, Value, "plaintext");
+        var modified_model = await BlazorMonaco.Editor.Global.CreateModel(JS, SecondValue ?? Value, "plaintext");
+
+        // Set the models for the diff editor.
+        await monacoDiffEditor.SetModel(new DiffEditorModel()
+        {
+            Original = original_model,
+            Modified = modified_model
+        });
+
+        // Set initial values.
+        // await monacoDiffEditor.OriginalEditor.SetValue(Value);
+        // await monacoDiffEditor.ModifiedEditor.SetValue(SecondValue ?? Value);
+        await monacoDiffEditor.ModifiedEditor.Focus();
+        await monacoDiffEditor.ModifiedEditor.SetPosition(new BlazorMonaco.Position() { Column = 1, LineNumber = 1 }, "initial-focus");
+
+        // Force layout after a short delay so that the editors render side-by-side.
+        await Task.Delay(100);
+        await monacoDiffEditor.Layout();
+
+        if (OnEditorInitialized.HasDelegate)
+        {
+            await OnEditorInitialized.InvokeAsync();
+        }
+    }
+}

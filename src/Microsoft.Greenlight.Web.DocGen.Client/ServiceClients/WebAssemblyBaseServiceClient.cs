@@ -3,16 +3,14 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Forms;
-using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Web.Shared.ServiceClients;
-using System.Net.Http.Json;
 
 namespace Microsoft.Greenlight.Web.DocGen.Client.ServiceClients;
 
 public abstract class WebAssemblyBaseServiceClient<T> where T : IServiceClient
 {
-    private readonly ILogger<T> Logger;
-    private readonly HttpClient HttpClient;
+    protected readonly ILogger<T> Logger;
+    protected readonly HttpClient HttpClient;
 
     private readonly AuthenticationStateProvider _authStateProvider;
     public string AccessToken => GetAccessTokenAsync().GetAwaiter().GetResult();
@@ -105,7 +103,6 @@ public abstract class WebAssemblyBaseServiceClient<T> where T : IServiceClient
     {
         var response = await SendGetRequestMessage($"/configuration/token");
 
-        // If we get a 404, it means that the conversation does not exist - return an empty list
         if (response?.StatusCode == HttpStatusCode.Unauthorized)
         {
             throw new UnauthorizedAccessException("Unauthorized access");

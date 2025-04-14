@@ -30,6 +30,7 @@ namespace Microsoft.Greenlight.Worker.Scheduler.Jobs
         public ScheduledBlobAutoImportJob(
             ILogger<ScheduledBlobAutoImportJob> logger,
             IOptionsSnapshot<ServiceConfigurationOptions> optionsSnapshot,
+            [FromKeyedServices("blob-docing")]
             BlobServiceClient blobServiceClient,
             IServiceProvider sp,
             IDocumentLibraryInfoService documentLibraryInfoService)

@@ -1,4 +1,5 @@
 using MassTransit;
+using Orleans;
 
 namespace Microsoft.Greenlight.Shared.Contracts.Messages.Review.Events;
 
@@ -7,6 +8,7 @@ namespace Microsoft.Greenlight.Shared.Contracts.Messages.Review.Events;
 /// ready to notify the UI.
 /// </summary>
 /// <param name="CorrelationId">The correlation ID of the event.</param>
+[GenerateSerializer(GenerateFieldIds = GenerateFieldIds.PublicProperties)]
 public record ReviewQuestionAnsweredNotification(Guid CorrelationId) : CorrelatedBy<Guid>
 {
     /// <summary>

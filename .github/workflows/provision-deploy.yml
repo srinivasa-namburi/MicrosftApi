@@ -301,6 +301,33 @@ jobs:
         env:
           HOSTNAMEOVERRIDE: ${{ env.HOSTNAMEOVERRIDE }}
 
+      - name: Configure Azure SignalR usage
+        if: env.ENABLE_AZURE_SIGNALR != ''
+        run: |
+          echo "Configuring Azure SignalR usage based on ENABLE_AZURE_SIGNALR: ${ENABLE_AZURE_SIGNALR}"
+
+          # Read the current appsettings file
+          appsettings=$(cat Microsoft.Greenlight.AppHost/appsettings.Production.json)
+
+          # Use jq to update the UseAzureSignalR setting
+          # Converting the string "false" to a proper boolean false value
+          useAzureSignalR=$(echo "${ENABLE_AZURE_SIGNALR}" | tr '[:upper:]' '[:lower:]')
+
+          # Update the JSON file with the new setting
+          updated=$(echo "${appsettings}" | jq --argjson useAzureSignalR $([ "$useAzureSignalR" = "false" ] && echo "false" || echo "true") '
+            .ServiceConfiguration.GreenlightServices.Scalability.UseAzureSignalR = $useAzureSignalR
+          ')
+
+          # Write the updated JSON back to the file
+          echo "${updated}" > Microsoft.Greenlight.AppHost/appsettings.Production.json
+
+          echo "Updated UseAzureSignalR setting to: $([ "$useAzureSignalR" = "false" ] && echo "false" || echo "true")"
+          echo "*****************************************************************************************"
+          cat Microsoft.Greenlight.AppHost/appsettings.Production.json | grep -A 3 "UseAzureSignalR"
+          echo "*****************************************************************************************"
+        env:
+          ENABLE_AZURE_SIGNALR: ${{ vars.ENABLE_AZURE_SIGNALR }}
+
       - name: Deploy db setup manager first
         run: |
           export SKIP_POSTDEPLOY=true

@@ -1,8 +1,13 @@
-﻿using System.ComponentModel.DataAnnotations.Schema;
+﻿using Microsoft.Greenlight.Shared.Enums;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 
 namespace Microsoft.Greenlight.Shared.Models.Validation
 {
+    /// <summary>
+    /// Holds content node results for a validation pipeline execution step.
+    /// There is one of these for each BodyText content node in the processed document.
+    /// </summary>
     public class ValidationExecutionStepContentNodeResult : EntityBase
     {
         /// <summary>
@@ -51,12 +56,18 @@ namespace Microsoft.Greenlight.Shared.Models.Validation
         public ContentNode? ResultantContentNode { get; set; }
 
         /// <summary>
+        /// Status of application of this content node result
+        /// </summary>
+        public ValidationContentNodeApplicationStatus? ApplicationStatus { get; set; } = ValidationContentNodeApplicationStatus.NoChangesRecommended;
+        
+
+        /// <summary>
         /// If changes were requested for this content node in a validation step (computed)
         /// </summary>
-        [NotMapped] 
+        [NotMapped]
         public bool ChangesRequested => (!OriginalContentNodeId.Equals(ResultantContentNodeId) && ContentNodeResultIsValid);
 
-        [NotMapped] 
+        [NotMapped]
         private bool ContentNodeResultIsValid => OriginalContentNodeId != Guid.Empty && ResultantContentNodeId != Guid.Empty;
 
     }

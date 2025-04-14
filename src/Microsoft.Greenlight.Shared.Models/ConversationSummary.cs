@@ -1,8 +1,11 @@
+using Orleans;
+
 namespace Microsoft.Greenlight.Shared.Models;
 
 /// <summary>
 /// Represents a summary of a conversation, including summarized chat messages and summary text.
 /// </summary>
+[GenerateSerializer(GenerateFieldIds = GenerateFieldIds.PublicProperties)]
 public class ConversationSummary : EntityBase
 {
     /// <summary>

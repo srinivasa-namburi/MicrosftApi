@@ -38,18 +38,18 @@ namespace Microsoft.Greenlight.Shared.Services
         /// <inheritdoc />
         public async Task<string?> GetRenderedTextForContentNodeHierarchiesAsync(List<ContentNode> rootContentNodes)
         {
-           var fullText = GenerateTextFromContentNodes(rootContentNodes, applySort: true);
-           return fullText;
+            var fullText = GenerateTextFromContentNodes(rootContentNodes, applySort: true);
+            return fullText;
         }
 
         /// <inheritdoc />
         public async Task<List<ContentNode>?> GetContentNodesHierarchicalAsyncForDocumentId(Guid generatedDocumentId, bool enableTracking = false, bool addParentNodes = false)
         {
             // Create the query - tracking is controlled by the parameter
-            var documentsQuery = enableTracking 
-                ? _dbContext.GeneratedDocuments 
+            var documentsQuery = enableTracking
+                ? _dbContext.GeneratedDocuments
                 : _dbContext.GeneratedDocuments.AsNoTracking();
-            
+
             var document = await documentsQuery
                 .FirstOrDefaultAsync(d => d.Id == generatedDocumentId);
 
@@ -62,7 +62,7 @@ namespace Microsoft.Greenlight.Shared.Services
             var contentNodesQuery = enableTracking
                 ? _dbContext.ContentNodes
                 : _dbContext.ContentNodes.AsNoTracking();
-                
+
             var topLevelNodes = await contentNodesQuery
                 .Include(cn => cn.ContentNodeSystemItem)
                 .Where(cn => cn.GeneratedDocumentId == generatedDocumentId)
@@ -104,14 +104,14 @@ namespace Microsoft.Greenlight.Shared.Services
 
         /// <inheritdoc />
         public async Task<int?> CreateContentNodeVersionAsync(
-            Guid contentNodeId, 
+            Guid contentNodeId,
             ContentNodeVersioningReason reason = ContentNodeVersioningReason.System,
             string? comment = null)
         {
             var contentNode = await _dbContext.ContentNodes
                 .Include(cn => cn.ContentNodeVersionTracker)
                 .FirstOrDefaultAsync(cn => cn.Id == contentNodeId);
-                
+
             if (contentNode == null)
             {
                 throw new ArgumentException($"Content node with ID {contentNodeId} not found", nameof(contentNodeId));
@@ -133,18 +133,18 @@ namespace Microsoft.Greenlight.Shared.Services
                     CurrentVersion = 1,
                     ContentNodeType = ContentNodeType.BodyText
                 };
-        
+
                 contentNode.ContentNodeVersionTracker = newVersionTracker;
                 contentNode.ContentNodeVersionTrackerId = newVersionTracker.Id;
-        
+
                 _dbContext.ContentNodeVersionTrackers.Add(newVersionTracker);
                 await _dbContext.SaveChangesAsync();
             }
-            
+
             // Create a version of the current state
             var versionTracker = contentNode.ContentNodeVersionTracker!;
             var versions = versionTracker.ContentNodeVersions;
-            
+
             var newVersion = new ContentNodeVersion
             {
                 Version = versionTracker.CurrentVersion,
@@ -153,53 +153,57 @@ namespace Microsoft.Greenlight.Shared.Services
                 VersioningReason = reason,
                 Text = contentNode.Text
             };
-            
+
             versions.Add(newVersion);
             versionTracker.ContentNodeVersions = versions;
             versionTracker.CurrentVersion++;
-            
+
             await _dbContext.SaveChangesAsync();
-            
+
             return newVersion.Version;
         }
 
         /// <inheritdoc />
         public async Task<ContentNode?> ReplaceContentNodeTextAsync(
-            Guid existingContentNodeId, 
-            string newText, 
+            Guid existingContentNodeId,
+            string newText,
             ContentNodeVersioningReason reason = ContentNodeVersioningReason.ManualEdit,
-            string? comment = null)
+            string? comment = null, bool saveChanges = true)
         {
             // Get the existing content node
             var existingNode = await _dbContext.ContentNodes
                 .Include(cn => cn.ContentNodeVersionTracker)
                 .FirstOrDefaultAsync(cn => cn.Id == existingContentNodeId);
-                
+
             if (existingNode == null)
             {
                 throw new ArgumentException($"Content node with ID {existingContentNodeId} not found", nameof(existingContentNodeId));
             }
-            
+
             // Only BodyText nodes can be versioned and replaced
             if (existingNode.Type != ContentNodeType.BodyText)
             {
                 return null;
             }
-            
+
             // Create a version of the current state
             var versionCreated = await CreateContentNodeVersionAsync(existingContentNodeId, reason, comment);
-            
+
             if (versionCreated == null)
             {
                 return null;
             }
-            
+
             // Replace text with new content
             existingNode.Text = newText;
-            
-            // Save changes
-            await _dbContext.SaveChangesAsync();
-            
+            existingNode.GenerationState = ContentNodeGenerationState.Completed;
+
+            // Save changes if required
+            if (saveChanges)
+            {
+                await _dbContext.SaveChangesAsync();
+            }
+
             return existingNode;
         }
 
@@ -209,55 +213,51 @@ namespace Microsoft.Greenlight.Shared.Services
             var contentNode = await _dbContext.ContentNodes
                 .Include(cn => cn.ContentNodeVersionTracker)
                 .FirstOrDefaultAsync(cn => cn.Id == contentNodeId);
-                
+
             if (contentNode == null || contentNode.Type != ContentNodeType.BodyText || contentNode.ContentNodeVersionTracker == null)
             {
                 return [];
             }
-            
+
             return contentNode.ContentNodeVersionTracker.ContentNodeVersions;
         }
 
         /// <inheritdoc />
         public async Task<ContentNode?> PromotePreviousVersionAsync(
-            Guid contentNodeId, 
-            Guid versionId, 
+            Guid contentNodeId,
+            Guid versionId,
             string? comment = null)
         {
             var contentNode = await _dbContext.ContentNodes
                 .Include(cn => cn.ContentNodeVersionTracker)
                 .FirstOrDefaultAsync(cn => cn.Id == contentNodeId);
-                
+
             if (contentNode == null || contentNode.Type != ContentNodeType.BodyText || contentNode.ContentNodeVersionTracker == null)
             {
                 return null;
             }
-            
+
             var versions = contentNode.ContentNodeVersionTracker.ContentNodeVersions;
             var versionToPromote = versions.FirstOrDefault(v => v.Id == versionId);
-            
+
             if (versionToPromote == null)
             {
                 throw new ArgumentException($"Version with ID {versionId} not found for content node", nameof(versionId));
             }
-            
+
             // Create a version of the current state before promoting
             await CreateContentNodeVersionAsync(
-                contentNodeId, 
-                ContentNodeVersioningReason.System, 
+                contentNodeId,
+                ContentNodeVersioningReason.System,
                 $"Auto-versioned before promoting version {versionToPromote.Version}"
             );
-            
+
             // Update the current content node with the historical data
             contentNode.Text = versionToPromote.Text;
-            
-            // Add a comment about the promotion
-            var promotionComment = $"Promoted version {versionToPromote.Version}" + 
-                                  (string.IsNullOrEmpty(comment) ? "" : $": {comment}");
-                
+
             // Save changes
             await _dbContext.SaveChangesAsync();
-            
+
             return contentNode;
         }
 
@@ -278,7 +278,7 @@ namespace Microsoft.Greenlight.Shared.Services
                 var contentNodesQuery = enableTracking
                     ? _dbContext.ContentNodes
                     : _dbContext.ContentNodes.AsNoTracking();
-                
+
                 var childNodes = await contentNodesQuery
                     .Include(cn => cn.ContentNodeSystemItem)
                     .Where(cn => cn.ParentId.HasValue && currentLevelIds.Contains(cn.ParentId.Value))
@@ -304,24 +304,63 @@ namespace Microsoft.Greenlight.Shared.Services
             if (x.Type == ContentNodeType.BodyText && y.Type != ContentNodeType.BodyText) return -1;
             if (y.Type == ContentNodeType.BodyText && x.Type != ContentNodeType.BodyText) return 1;
 
-            // Extract and compare hierarchical numbers (e.g., 2.1.1)
-            var xParts = Regex.Matches(x.Text, @"\d+").Cast<Match>().Select(m => int.Parse(m.Value)).ToArray();
-            var yParts = Regex.Matches(y.Text, @"\d+").Cast<Match>().Select(m => int.Parse(m.Value)).ToArray();
-
-            int minLength = Math.Min(xParts.Length, yParts.Length);
-            for (int i = 0; i < minLength; i++)
+            // Only extract numeric parts for Title or Heading nodes to avoid processing lengthy body text
+            if (x.Type != ContentNodeType.Title && x.Type != ContentNodeType.Heading &&
+                y.Type != ContentNodeType.Title && y.Type != ContentNodeType.Heading)
             {
-                if (xParts[i] != yParts[i])
-                    return xParts[i].CompareTo(yParts[i]);
+                // Fall back to simple string comparison for non-title nodes
+                return string.Compare(x.Text, y.Text, StringComparison.Ordinal);
             }
 
-            // If one title is a subsection of the other, the shorter (parent) comes first
-            if (xParts.Length != yParts.Length)
-                return xParts.Length.CompareTo(yParts.Length);
+            try
+            {
+                // Extract and compare hierarchical numbers (e.g., 2.1.1)
+                var xParts = Regex.Matches(x.Text, @"\b\d+\b")
+                    .Cast<Match>()
+                    .Select(m =>
+                    {
+                        // Safely parse to long and constrain to int range for comparison
+                        if (long.TryParse(m.Value, out var num))
+                            return num <= int.MaxValue ? (int)num : int.MaxValue;
+                        return 0;
+                    })
+                    .ToArray();
+
+                var yParts = Regex.Matches(y.Text, @"\b\d+\b")
+                    .Cast<Match>()
+                    .Select(m =>
+                    {
+                        if (long.TryParse(m.Value, out var num))
+                            return num <= int.MaxValue ? (int)num : int.MaxValue;
+                        return 0;
+                    })
+                    .ToArray();
+
+                // If no numbers found in either node, fall back to string comparison
+                if (xParts.Length == 0 && yParts.Length == 0)
+                    return string.Compare(x.Text, y.Text, StringComparison.Ordinal);
+
+                int minLength = Math.Min(xParts.Length, yParts.Length);
+                for (int i = 0; i < minLength; i++)
+                {
+                    if (xParts[i] != yParts[i])
+                        return xParts[i].CompareTo(yParts[i]);
+                }
+
+                // If one title is a subsection of the other, the shorter (parent) comes first
+                if (xParts.Length != yParts.Length)
+                    return xParts.Length.CompareTo(yParts.Length);
+            }
+            catch (Exception)
+            {
+                // If any exception occurs during number parsing/comparison,
+                // fall back to simple string comparison
+            }
 
             // If numeric comparison is inconclusive or not applicable, fall back to string comparison
             return string.Compare(x.Text, y.Text, StringComparison.Ordinal);
         }
+
 
         /// <summary>
         /// Generate a flat full text from a list of content nodes.
@@ -336,7 +375,7 @@ namespace Microsoft.Greenlight.Shared.Services
             {
                 SortContentNodes(allContentNodes);
             }
-        
+
             var sb = new StringBuilder();
             foreach (var node in allContentNodes)
             {

@@ -1,6 +1,5 @@
 @using System.Net
 @using Microsoft.Greenlight.Shared.Contracts.DTO.Configuration
-@using Microsoft.Greenlight.Web.DocGen.Client.ServiceClients
 @inject IDocumentProcessApiClient DocumentProcessApiClient
 @inject IDocumentLibraryApiClient DocumentLibraryApiClient
 @inject IConfigurationApiClient ConfigurationApiClient
@@ -10,50 +9,60 @@
 @inject IDialogService DialogService
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
-    <MudPaper Class="pa-4">
-        <MudGrid>
-            <MudItem xs="12" md="6">
-                <MudText Typo="Typo.h6">Basic Information</MudText>
-                <MudTextField @bind-Value="_process.ShortName" Label="Short Name" Disabled="_isEditMode" OnBlur="ValidateAndFormatShortName" />
-                <MudTextField @bind-Value="_process.Description" Label="Description" />
-                <MudTextField @bind-Value="_process.BlobStorageContainerName" Label="Blob Storage Container Name" />
-                <MudTextField @bind-Value="_process.BlobStorageAutoImportFolderName" Label="Auto Import Folder Name" />
-                <MudTextField @bind-Value="_indexName"
-                              Label="Repository Index Name"
-                              Disabled="_isEditMode"
-                              OnInternalInputChanged="UpdateRepositories" />
-                <MudSelect T="DocumentProcessCompletionServiceType?" @bind-Value="_process.CompletionServiceType" Label="AI Completion Service Type">
-                    @foreach (var completionType in Enum.GetValues<DocumentProcessCompletionServiceType>())
-                    {
-                        <MudSelectItem Value="@(completionType as DocumentProcessCompletionServiceType?)">@completionType.ToString()</MudSelectItem>
-                    }
-                </MudSelect>
-                <MudSelect T="AiModelDeploymentInfo" @bind-Value="SelectedDeployment" Label="AI Model Deployment" 
-                           ToStringFunc="@(d => d.DeploymentName)">
-                    @foreach (var deployment in _aiModelDeployments)
-                    {
-                        <MudSelectItem Value="@deployment">
-                            @deployment.DeploymentName
-                        </MudSelectItem>
-                    }
-                </MudSelect>
-                
-                <MudSelect T="AiModelDeploymentInfo" @bind-Value="SelectedValidationDeployment" Label="AI Model Deployment for Validation" 
-                           ToStringFunc="@(d => d.DeploymentName)">
-                    @foreach (var deployment in _aiModelDeployments)
-                    {
-                        <MudSelectItem Value="@deployment">
-                            @deployment.DeploymentName
-                        </MudSelectItem>
-                    }
-                </MudSelect>
+    @if (_isLoading)
+    {
+        <!-- Loading indicator displayed during initialization -->
+        <MudPaper Class="pa-6 d-flex flex-column align-center justify-center" Style="min-height: 300px;">
+            <MudProgressCircular Size="Size.Large" Indeterminate="true" Color="Color.Primary" Class="mb-4" />
+            <MudText Typo="Typo.h5" Align="Align.Center">Loading Document Process details...</MudText>
+        </MudPaper>
+    }
+    else
+    {
+        <MudPaper Class="pa-4">
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudText Typo="Typo.h6">Basic Information</MudText>
+                    <MudTextField @bind-Value="_process.ShortName" Label="Short Name" Disabled="_isEditMode" OnBlur="ValidateAndFormatShortName" />
+                    <MudTextField @bind-Value="_process.Description" Label="Description" />
+                    <MudTextField @bind-Value="_process.BlobStorageContainerName" Label="Blob Storage Container Name" />
+                    <MudTextField @bind-Value="_process.BlobStorageAutoImportFolderName" Label="Auto Import Folder Name" />
+                    <MudTextField @bind-Value="_indexName"
+                                  Label="Repository Index Name"
+                                  Disabled="_isEditMode"
+                                  OnInternalInputChanged="UpdateRepositories" />
+                    <MudSelect T="DocumentProcessCompletionServiceType ?" @bind-Value="_process.CompletionServiceType" Label="AI Completion Service Type">
+                        @foreach (var completionType in Enum.GetValues<DocumentProcessCompletionServiceType>())
+                        {
+                            <MudSelectItem Value="@(completionType as DocumentProcessCompletionServiceType?)">@completionType.ToString()</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudSelect T="AiModelDeploymentInfo" @bind-Value="SelectedDeployment" Label="AI Model Deployment"
+                               ToStringFunc="@(d => d.DeploymentName)">
+                        @foreach (var deployment in _aiModelDeployments)
+                        {
+                            <MudSelectItem Value="@deployment">
+                                @deployment.DeploymentName
+                            </MudSelectItem>
+                        }
+                    </MudSelect>
 
-                <!-- File Upload Section -->
-                @if (ProcessId != null && _isEditMode)
-                {
-                    <MudDivider Class="my-4" />
+                    <MudSelect T="AiModelDeploymentInfo" @bind-Value="SelectedValidationDeployment" Label="AI Model Deployment for Validation"
+                               ToStringFunc="@(d => d.DeploymentName)">
+                        @foreach (var deployment in _aiModelDeployments)
+                        {
+                            <MudSelectItem Value="@deployment">
+                                @deployment.DeploymentName
+                            </MudSelectItem>
+                        }
+                    </MudSelect>
 
-                    <MudPaper Class="pa-4">
+                    <!-- File Upload Section -->
+                    @if (ProcessId != null && _isEditMode)
+                    {
+                        <MudDivider Class="my-4" />
+
+
                         <MudFileUpload T="IReadOnlyList<IBrowserFile>"
                                        FilesChanged="HandleFileSelected"
                                        MaximumFileCount="16384">
@@ -67,149 +76,153 @@
                                 </MudButton>
                             </ButtonTemplate>
                         </MudFileUpload>
-                    </MudPaper>
-                }
+                    }
 
-            </MudItem>
+                    @if (ProcessId != null && _isEditMode)
+                    {
+                        <MudSpacer />
 
-            <MudItem xs="12" md="6">
-                <MudText Typo="Typo.h6">Document Retrieval Settings</MudText>
+                        <MudGrid Spacing="2" Class="mt-2 mb-2">
+                            <MudItem>
+                                <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="OpenDocumentOutlineEditor">Document Outline Editor</MudButton>
+                            </MudItem>
+                            <MudItem>
+                                <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="OpenMetadataFieldEditor">Metadata Fields Editor</MudButton>
+                            </MudItem>
+                        </MudGrid>
 
-                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                    <MudSlider T="int" @bind-Value="_process.PrecedingSearchPartitionInclusionCount" Min="0" Max="10" TickMarks="true" ValueLabel="true" Immediate="true">
-                        # of Preceding Partitions to retrieve
-                    </MudSlider>
-                    <MudNumericField @bind-Value="_process.PrecedingSearchPartitionInclusionCount" Min="0" Max="10" Immediate="true" Style="width:80px;" />
-                </MudStack>
+                    }
+                    <MudSpacer />
 
-                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                    <MudSlider T="int" @bind-Value="_process.FollowingSearchPartitionInclusionCount" Min="0" Max="10" TickMarks="true" ValueLabel="true" Immediate="true">
-                        # of Following Partitions to retrieve
-                    </MudSlider>
-                    <MudNumericField @bind-Value="_process.FollowingSearchPartitionInclusionCount" Min="0" Max="10" Immediate="true" Style="width:80px;" />
-                </MudStack>
+                    <MudGrid Spacing="2" Class="mt-2 mb-2">
+                        <MudItem>
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveProcess">Save</MudButton>
+                        </MudItem>
+                        <MudItem>
+                            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="Cancel">Cancel</MudButton>
+                        </MudItem>
+                    </MudGrid>
 
-                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                    <MudSlider T="int" @bind-Value="_process.NumberOfCitationsToGetFromRepository" Min="0" Max="100" TickMarks="false" ValueLabel="true" Immediate="true">
-                        # Number of Citations to retrieve
-                    </MudSlider>
-                    <MudNumericField @bind-Value="_process.NumberOfCitationsToGetFromRepository" Min="0" Max="100" Immediate="true" Style="width:80px;" />
-                </MudStack>
-
-                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                    <MudSlider T="double" @bind-Value="_minimumRelevancePercentage" Min="0" Max="100" Step="10" TickMarks="true" TickMarkLabels="@_minimumRelevanceStepLabels" ValueLabel="true" Immediate="true">
-                        Minimum Relevance (%)
-                    </MudSlider>
-                    <MudNumericField @bind-Value="_minimumRelevancePercentage" Min="0" Max="100" Step="10" Immediate="true" Style="width:80px;" />
-                </MudStack>
-
-            </MudItem>
-        </MudGrid>
-
-        @if (ProcessId != null && _isEditMode)
-        {
-            <MudSpacer />
-
-            <MudGrid Spacing="2" Class="mt-2 mb-2">
-                <MudItem>
-                    <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="OpenDocumentOutlineEditor">Document Outline Editor</MudButton>
                 </MudItem>
-                <MudItem>
-                    <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="OpenMetadataFieldEditor">Metadata Fields Editor</MudButton>
+
+                <MudItem xs="12" md="6">
+                    <!-- Document Retrieval Settings section -->
+                    <MudText Typo="Typo.h6">Document Retrieval Settings</MudText>
+
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudSlider T="int" @bind-Value="_process.PrecedingSearchPartitionInclusionCount" Min="0" Max="10" TickMarks="true" ValueLabel="true" Immediate="true">
+                            # of Preceding Partitions to retrieve
+                        </MudSlider>
+                        <MudNumericField @bind-Value="_process.PrecedingSearchPartitionInclusionCount" Min="0" Max="10" Immediate="true" Style="width:80px;" />
+                    </MudStack>
+
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudSlider T="int" @bind-Value="_process.FollowingSearchPartitionInclusionCount" Min="0" Max="10" TickMarks="true" ValueLabel="true" Immediate="true">
+                            # of Following Partitions to retrieve
+                        </MudSlider>
+                        <MudNumericField @bind-Value="_process.FollowingSearchPartitionInclusionCount" Min="0" Max="10" Immediate="true" Style="width:80px;" />
+                    </MudStack>
+
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudSlider T="int" @bind-Value="_process.NumberOfCitationsToGetFromRepository" Min="0" Max="100" TickMarks="false" ValueLabel="true" Immediate="true">
+                            # Number of Citations to retrieve
+                        </MudSlider>
+                        <MudNumericField @bind-Value="_process.NumberOfCitationsToGetFromRepository" Min="0" Max="100" Immediate="true" Style="width:80px;" />
+                    </MudStack>
+
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudSlider T="double" @bind-Value="_minimumRelevancePercentage" Min="0" Max="100" Step="10" TickMarks="true" TickMarkLabels="@_minimumRelevanceStepLabels" ValueLabel="true" Immediate="true">
+                            Minimum Relevance (%)
+                        </MudSlider>
+                        <MudNumericField @bind-Value="_minimumRelevancePercentage" Min="0" Max="100" Step="10" Immediate="true" Style="width:80px;" />
+                    </MudStack>
+
+                    <!-- Validation Pipeline Settings section -->
+                    @if (_isEditMode)
+                    {
+                        <MudStack AlignItems="AlignItems.Start" Spacing="2">
+                            <ValidationStepsEditorComponent Steps="@_validationSteps"
+                                                            StepsChanged="@HandleValidationStepsChanged"
+                                                            RunValidationAutomatically="@_runValidationAutomatically"
+                                                            RunValidationAutomaticallyChanged="@HandleRunValidationAutomaticallyChanged" />
+                        </MudStack>
+                    }
+
                 </MudItem>
             </MudGrid>
-
-        }
-        <MudSpacer />
-
-        <MudGrid Spacing="2" Class="mt-2 mb-2">
-            <MudItem>
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveProcess">Save</MudButton>
-            </MudItem>
-            <MudItem>
-                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="Cancel">Cancel</MudButton>
-            </MudItem>
-        </MudGrid>
-    </MudPaper>
-
-    <!-- Document Libraries Association -->
+        </MudPaper>
+    }
+    
+    <!-- Place this after the main form MudPaper -->
     @if (_isEditMode)
     {
-        <!-- Divider -->
         <MudDivider Class="my-4" />
 
         <MudPaper Class="pa-4">
-            <MudText Typo="Typo.h6">Associated Document Libraries</MudText>
+            <MudTabs Elevation="4" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+                <MudTabPanel Text="Document Libraries">
+                    <MudText Typo="Typo.h6">Associated Document Libraries</MudText>
 
-            <MudTable Items="_associatedLibraries" Hover="true">
-                <HeaderContent>
-                    <MudTh>Library Name</MudTh>
-                    <MudTh>Description</MudTh>
-                    <MudTh>Actions</MudTh>
-                </HeaderContent>
-                <RowTemplate>
-                    <MudTd>@context.ShortName</MudTd>
-                    <MudTd>@context.DescriptionOfContents</MudTd>
-                    <MudTd>
-                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="() => ConfirmDisassociateLibrary(context.Id)" />
-                    </MudTd>
-                </RowTemplate>
-            </MudTable>
+                    <MudTable Items="_associatedLibraries" Hover="true">
+                        <HeaderContent>
+                            <MudTh>Library Name</MudTh>
+                            <MudTh>Description</MudTh>
+                            <MudTh>Actions</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.ShortName</MudTd>
+                            <MudTd>@context.DescriptionOfContents</MudTd>
+                            <MudTd>
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="() => ConfirmDisassociateLibrary(context.Id)" />
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
 
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ShowAssociateLibraryDialog">Associate Document Library</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ShowAssociateLibraryDialog" Class="mt-4">Associate Document Library</MudButton>
+                </MudTabPanel>
+
+                <MudTabPanel Text="Plugins">
+                    <MudText Typo="Typo.h6">Associated Plugins</MudText>
+
+                    <MudTable Items="_associatedPlugins" Hover="true">
+                        <HeaderContent>
+                            <MudTh>Plugin Name</MudTh>
+                            <MudTh>Version</MudTh>
+                            <MudTh>Actions</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.Plugin.Name</MudTd>
+                            <MudTd>
+                                <MudSelect T="string" @bind-Value="context.Version" Dense="true" OnBlur="() => UpdatePluginVersion(context)">
+                                    @foreach (var version in context.Plugin.Versions.Select(v => v.ToString()).OrderByDescending(v => v))
+                                    {
+                                        <MudSelectItem Value="@version">@version</MudSelectItem>
+                                    }
+                                </MudSelect>
+                            </MudTd>
+                            <MudTd>
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="() => ConfirmRemovePluginAssociation(context.Plugin.Id)" />
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ShowAssociatePluginDialog" Class="mt-4">Associate Plugin</MudButton>
+                </MudTabPanel>
+
+                <MudTabPanel Text="Prompts">
+                    @if (_showPrompts)
+                    {
+                        <PromptList Prompts="_prompts" />
+                    }
+                    else
+                    {
+                        <MudProgressCircular Indeterminate="true" />
+                    }
+                </MudTabPanel>
+            </MudTabs>
         </MudPaper>
     }
 
-    <!-- Plugin Associations Section -->
-    @if (_isEditMode)
-    {
-        <!-- Divider -->
-        <MudDivider Class="my-4" />
-
-        <MudPaper Class="pa-4">
-            <MudText Typo="Typo.h6">Associated Plugins</MudText>
-
-            <MudTable Items="_associatedPlugins" Hover="true">
-                <HeaderContent>
-                    <MudTh>Plugin Name</MudTh>
-                    <MudTh>Version</MudTh>
-                    <MudTh>Actions</MudTh>
-                </HeaderContent>
-                <RowTemplate>
-                    <MudTd>@context.Plugin.Name</MudTd>
-                    <MudTd>
-                        <MudSelect T="string" @bind-Value="context.Version" Dense="true" OnBlur="() => UpdatePluginVersion(context)">
-                            @foreach (var version in context.Plugin.Versions.Select(v => v.ToString()).OrderByDescending(v => v))
-                            {
-                                <MudSelectItem Value="@version">@version</MudSelectItem>
-                            }
-                        </MudSelect>
-                    </MudTd>
-                    <MudTd>
-                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="() => ConfirmRemovePluginAssociation(context.Plugin.Id)" />
-                    </MudTd>
-                </RowTemplate>
-            </MudTable>
-
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ShowAssociatePluginDialog">Associate Plugin</MudButton>
-        </MudPaper>
-    }
-
-
-    @if (_isEditMode && _showPrompts)
-    {
-        <MudDivider Class="my-4" />
-
-        <MudExpansionPanels>
-            <MudExpansionPanel Text="Prompts">
-                <PromptList Prompts="_prompts" />
-            </MudExpansionPanel>
-        </MudExpansionPanels>
-    }
-    else if (_isEditMode && !_showPrompts)
-    {
-        <MudProgressCircular Indeterminate="true" />
-    }
 
 </MudContainer>
 
@@ -219,10 +232,29 @@
     [Parameter] public EventCallback OnCancel { get; set; }
 
     private DocumentProcessInfo? _process = new();
-    private bool _isEditMode;
-    private bool _showPrompts;
     private List<PromptInfo> _prompts = [];
 
+    // Validation pipeline-related fields
+    private List<DocumentProcessValidationPipelineStepInfo> _validationSteps = [];
+    private DocumentProcessValidationPipelineInfo? _validationPipeline;
+    private bool _runValidationAutomatically = true;
+
+    // Plugin-related fields
+    private List<DynamicPluginInfo> _availablePlugins = new();
+    private List<PluginAssociationViewModel> _associatedPlugins = new();
+
+    // Document Library-related fields
+    private List<DocumentLibraryInfo> _associatedLibraries = new();
+    private List<DocumentLibraryInfo> _availableLibraries = new();
+    private List<AiModelDeploymentInfo> _aiModelDeployments = new();
+
+    private bool _isEditMode;
+    private bool _showPrompts;
+    
+    // Add loading state
+    private bool _isLoading = true;
+
+    private readonly string[] _minimumRelevanceStepLabels = Enumerable.Range(0, 11).Select(i => $"{i * 10}%").ToArray();
 
     private string _indexName = string.Empty;
     private double _minimumRelevancePercentage
@@ -232,6 +264,60 @@
         {
             if (_process != null)
                 _process.MinimumRelevanceForCitations = value / 100;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Load AI Model Deployments
+            _aiModelDeployments = await ConfigurationApiClient.GetAiModelDeploymentsAsync();
+
+            if (ProcessId.HasValue)
+            {
+                _isEditMode = true;
+                _process = await DocumentProcessApiClient.GetDocumentProcessInfoByIdAsync(ProcessId.Value) ?? new DocumentProcessInfo();
+
+                // Initialize _indexName with the existing repository value
+                if (_process.Repositories != null && _process.Repositories.Any())
+                {
+                    _indexName = _process.Repositories.First();
+                }
+                else
+                {
+                    _indexName = string.Empty;
+                }
+
+                // Load associated plugins
+                await LoadAssociatedPlugins();
+
+                // Load available plugins
+                _availablePlugins = await PluginApiClient.GetAllPluginsAsync();
+
+                // Load associated document libraries
+                await LoadAssociatedLibraries();
+
+                // Load available document libraries
+                await LoadAvailableLibraries();
+
+                // Load prompts
+                await LoadPrompts();
+
+                // Load validation pipeline
+                await LoadValidationPipelines();
+            }
+            else
+            {
+                // Set default model deployments for new Document Process
+                SelectedDeployment = _aiModelDeployments.FirstOrDefault(x => x.DeploymentName == "gpt-4o");
+                SelectedValidationDeployment = _aiModelDeployments.FirstOrDefault(x => x.DeploymentName == "gpt-4o");
+            }
+        }
+        finally
+        {
+            // Always set loading to false when done, even if there's an error
+            _isLoading = false;
         }
     }
 
@@ -277,55 +363,6 @@
         }
     }
 
-    private readonly string[] _minimumRelevanceStepLabels = Enumerable.Range(0, 11).Select(i => $"{i * 10}%").ToArray();
-
-    // Plugin-related fields
-    private List<DynamicPluginInfo> _availablePlugins = new();
-    private List<PluginAssociationViewModel> _associatedPlugins = new();
-
-    // Document Library-related fields
-    private List<DocumentLibraryInfo> _associatedLibraries = new();
-    private List<DocumentLibraryInfo> _availableLibraries = new();
-    private List<AiModelDeploymentInfo> _aiModelDeployments = new();
-
-    protected override async Task OnInitializedAsync()
-    {
-        if (ProcessId.HasValue)
-        {
-            // Load AI Model Deployments
-            _aiModelDeployments = await ConfigurationApiClient.GetAiModelDeploymentsAsync();
-
-            _isEditMode = true;
-            _process = await DocumentProcessApiClient.GetDocumentProcessInfoByIdAsync(ProcessId.Value) ?? new DocumentProcessInfo();
-
-            // Initialize _indexName with the existing repository value
-            if (_process.Repositories != null && _process.Repositories.Any())
-            {
-                _indexName = _process.Repositories.First();
-            }
-            else
-            {
-                _indexName = string.Empty;
-            }
-
-            // Load associated plugins
-            await LoadAssociatedPlugins();
-
-            // Load available plugins
-            _availablePlugins = await PluginApiClient.GetAllPluginsAsync();
-
-            // Load associated document libraries
-            await LoadAssociatedLibraries();
-
-            // Load available document libraries
-            await LoadAvailableLibraries();
-
-            // Load prompts
-            _prompts = await DocumentProcessApiClient.GetPromptsByProcessIdAsync(ProcessId.Value);
-            _showPrompts = true;
-        }
-    }
-
     private async Task HandleFileSelected(IReadOnlyList<IBrowserFile>? files)
     {
         if (files == null || files.Count == 0)
@@ -351,6 +388,18 @@
         }
     }
 
+    private async Task HandleValidationStepsChanged(List<DocumentProcessValidationPipelineStepInfo> steps)
+    {
+        _validationSteps = steps;
+        // No need to save immediately - will be saved when the form is submitted
+    }
+
+    private void HandleRunValidationAutomaticallyChanged(bool value)
+    {
+        _runValidationAutomatically = value;
+        // No need to save immediately - will be saved when the form is submitted
+    }
+
     private async Task LoadAssociatedLibraries()
     {
         if (_process == null)
@@ -365,6 +414,22 @@
         _availableLibraries = allLibraries.Where(l => !_associatedLibraries.Any(al => al.Id == l.Id)).ToList();
     }
 
+    private async Task LoadPrompts()
+    {
+        _prompts = await DocumentProcessApiClient.GetPromptsByProcessIdAsync(_process.Id);
+        _showPrompts = true;
+    }
+
+    private async Task LoadValidationPipelines()
+    {
+        _validationPipeline = await DocumentProcessApiClient.GetValidationPipelineAsync(ProcessId.Value);
+        if (_validationPipeline != null)
+        {
+            _validationSteps = _validationPipeline.ValidationPipelineSteps;
+            _runValidationAutomatically = _validationPipeline.RunValidationAutomatically;
+        }
+    }
+
     private async Task LoadAssociatedPlugins()
     {
         // Get associated plugins from the API
@@ -376,10 +441,10 @@
             var docProcess = p.DocumentProcesses.FirstOrDefault(dp => dp.DynamicDocumentProcessDefinitionId == _process.Id);
 
             return new PluginAssociationViewModel
-                {
-                    Plugin = p,
-                    Version = docProcess?.Version.ToString() ?? p.LatestVersion.ToString()
-                };
+            {
+                Plugin = p,
+                Version = docProcess?.Version.ToString() ?? p.LatestVersion.ToString()
+            };
 
         }).ToList();
     }
@@ -390,8 +455,27 @@
         ValidateAndFormatShortName();
         UpdateRepositories();
 
-        if (_isEditMode)
+        if (_isEditMode && _process != null)
         {
+            // Handle validation pipeline
+            if (_validationSteps.Any())
+            {
+                var pipelineInfo = _validationPipeline ?? new DocumentProcessValidationPipelineInfo
+                {
+                    DocumentProcessId = _process.Id
+                };
+
+                pipelineInfo.ValidationPipelineSteps = _validationSteps;
+                pipelineInfo.RunValidationAutomatically = _runValidationAutomatically;
+                await DocumentProcessApiClient.SaveValidationPipelineAsync(_process.Id, pipelineInfo);
+            }
+            else if (_validationPipeline != null)
+            {
+                // Delete the validation pipeline if it exists but there are no steps
+                await DocumentProcessApiClient.DeleteValidationPipelineAsync(_process.Id);
+                _validationPipeline = null;
+            }
+
             await DocumentProcessApiClient.UpdateDynamicDocumentProcessDefinitionAsync(_process);
             Snackbar.Add("Document process updated successfully.", Severity.Success);
         }
@@ -403,14 +487,27 @@
                 _process = createdProcess;
                 _isEditMode = true;
 
+                // Save validation pipeline if there are steps
+                if (_validationSteps.Any())
+                {
+                    var pipelineInfo = new DocumentProcessValidationPipelineInfo
+                    {
+                        DocumentProcessId = _process.Id,
+                        ValidationPipelineSteps = _validationSteps,
+                        RunValidationAutomatically = _runValidationAutomatically
+                    };
+
+                    _validationPipeline = await DocumentProcessApiClient.SaveValidationPipelineAsync(_process.Id, pipelineInfo);
+                }
+
                 // Load associated plugins and libraries
                 await LoadAssociatedPlugins();
                 await LoadAssociatedLibraries();
                 await LoadAvailableLibraries();
+                await LoadValidationPipelines();
 
                 // Load prompts
-                _prompts = await DocumentProcessApiClient.GetPromptsByProcessIdAsync(_process.Id);
-                _showPrompts = true;
+                await LoadPrompts();
 
                 Snackbar.Add("Document process created successfully.", Severity.Success);
             }
@@ -443,7 +540,7 @@
             { "DocumentProcessId", _process.Id },
             { "DocumentProcessName", _process.ShortName}
         };
-        var options = new DialogOptions { MaxWidth = MaxWidth.ExtraExtraLarge, FullScreen = true };
+        var options = new DialogOptions { MaxWidth = MaxWidth.ExtraLarge, FullWidth = true, DisableBackdropClick = true};
         var dialog = await DialogService.ShowAsync<EditMetadataFieldsDialog>("Metadata Fields Editor", parameters, options);
         var result = await dialog.Result;
 

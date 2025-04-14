@@ -3,7 +3,6 @@ using Microsoft.Greenlight.Extensions.Plugins;
 using Microsoft.SemanticKernel;
 using Microsoft.Greenlight.Plugins.Default.EarthQuake.Connectors;
 using Microsoft.Greenlight.Plugins.Default.EarthQuake.Models;
-using Microsoft.Greenlight.Shared.Interfaces;
 
 namespace Microsoft.Greenlight.Plugins.Default.EarthQuake;
 

@@ -6,9 +6,13 @@
     public class DbConfigurationInfo
     {
         /// <summary>
+        /// Default ID - should be the only one used.
+        /// </summary>
+        public static Guid DefaultId => Guid.Parse("52d7cb18-1543-4156-b535-8a7defbf9066");
+        /// <summary>
         /// The primary key for the configuration record.
         /// </summary>
-        public int Id { get; set; }
+        public Guid Id { get; set; }
 
         /// <summary>
         /// The configuration values stored as a JSON string.

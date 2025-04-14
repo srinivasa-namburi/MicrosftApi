@@ -86,6 +86,7 @@ public class GeneratedDocumentProfile : Profile
         // Mapping for GeneratedDocument
         CreateMap<GeneratedDocument, GeneratedDocumentInfo>()
             .ForMember(dest => dest.ContentNodes, opt => opt.Ignore())
+            .ForMember(dest => dest.DocumentProcessName, opt => opt.MapFrom(source => source.DocumentProcess))
             .AfterMap((src, dest, context) =>
             {
                 if (src.ContentNodes != null && src.ContentNodes.Count != 0)
@@ -96,6 +97,7 @@ public class GeneratedDocumentProfile : Profile
 
         CreateMap<GeneratedDocumentInfo, GeneratedDocument>()
             .ForMember(dest => dest.ContentNodes, opt => opt.Ignore())
+            .ForMember(dest => dest.DocumentProcess, opt => opt.MapFrom(source => source.DocumentProcessName))
             .AfterMap((src, dest, context) =>
             {
                 if (src.ContentNodes != null && src.ContentNodes.Count != 0)

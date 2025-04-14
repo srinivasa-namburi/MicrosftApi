@@ -1,8 +1,10 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Data.Sql;
+using Microsoft.Greenlight.Shared.Models.Configuration;
 using System.Text.Json;
 
 namespace Microsoft.Greenlight.Shared.Management.Configuration;
@@ -12,7 +14,7 @@ namespace Microsoft.Greenlight.Shared.Management.Configuration;
 /// </summary>
 public class EfCoreConfigurationProvider : ConfigurationProvider
 {
-    private readonly DocGenerationDbContext _dbContext;
+    private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
     private readonly ILogger<EfCoreConfigurationProvider> _logger;
     private readonly IOptionsMonitor<ServiceConfigurationOptions> _optionsMonitor;
     private readonly IConfigurationRoot _configurationRoot;
@@ -21,17 +23,17 @@ public class EfCoreConfigurationProvider : ConfigurationProvider
     /// <summary>
     /// Initializes a new instance of the <see cref="EfCoreConfigurationProvider"/> class.
     /// </summary>
-    /// <param name="dbContext">The database context.</param>
+    /// <param name="dbContextFactory">Database Context factory for scoping</param>
     /// <param name="logger">The logger.</param>
     /// <param name="optionsMonitor">The options monitor.</param>
     /// <param name="configurationRoot">The configuration root.</param>
     public EfCoreConfigurationProvider(
-        DocGenerationDbContext dbContext, 
+        IDbContextFactory<DocGenerationDbContext> dbContextFactory,
         ILogger<EfCoreConfigurationProvider> logger, 
         IOptionsMonitor<ServiceConfigurationOptions> optionsMonitor,
         IConfigurationRoot configurationRoot)
     {
-        _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
+        _dbContextFactory = dbContextFactory;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _optionsMonitor = optionsMonitor ?? throw new ArgumentNullException(nameof(optionsMonitor));
         _configurationRoot = configurationRoot ?? throw new ArgumentNullException(nameof(configurationRoot));
@@ -49,6 +51,7 @@ public class EfCoreConfigurationProvider : ConfigurationProvider
     /// </summary>
     public override void Load()
     {
+        var dbContext = _dbContextFactory.CreateDbContext();
         if (_isLoading)
         {
             return;
@@ -58,7 +61,8 @@ public class EfCoreConfigurationProvider : ConfigurationProvider
         {
             _isLoading = true;
 
-            var configuration = _dbContext.Configurations.FirstOrDefault(c => c.Id == 1);
+            var configuration = dbContext.Configurations.AsNoTracking().FirstOrDefault(
+                c => c.Id == DbConfiguration.DefaultId);
 
             if (configuration != null)
             {

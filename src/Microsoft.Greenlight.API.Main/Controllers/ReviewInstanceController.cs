@@ -1,11 +1,11 @@
 using AutoMapper;
-using MassTransit;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
-using Microsoft.Greenlight.Shared.Contracts.Messages.Review.Commands;
 using Microsoft.Greenlight.Shared.Data.Sql;
+using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Models.Review;
+using Microsoft.Greenlight.Shared.Services;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
@@ -17,23 +17,23 @@ public class ReviewInstanceController : BaseController
 {
     private readonly DocGenerationDbContext _dbContext;
     private readonly IMapper _mapper;
-    private readonly IPublishEndpoint _publishEndpoint;
+    private readonly IReviewService _reviewService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ReviewInstanceController"/> class.
     /// </summary>
     /// <param name="dbContext">The database context.</param>
     /// <param name="mapper">The AutoMapper instance.</param>
-    /// <param name="publishEndpoint">The MassTransit publish endpoint.</param>
+    /// <param name="reviewService">The review service.</param>
     public ReviewInstanceController(
         DocGenerationDbContext dbContext,
         IMapper mapper,
-        IPublishEndpoint publishEndpoint
+        IReviewService reviewService
     )
     {
         _dbContext = dbContext;
         _mapper = mapper;
-        _publishEndpoint = publishEndpoint;
+        _reviewService = reviewService;
     }
 
     /// <summary>
@@ -181,12 +181,12 @@ public class ReviewInstanceController : BaseController
     /// <param name="reviewInstanceId">The review instance ID.</param>
     /// <returns>The review instance information.
     /// Produces Status Codes:
-    ///     202 Accepted: When the execution request is submitted sucessfully
+    ///     202 Accepted: When the execution request is submitted successfully
     ///     404 Not Found: When the review instance could not be found using the review instance id provided
     /// </returns>
     [HttpPost("{reviewInstanceId:guid}/execute")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ReviewInstanceInfo>> SubmitExecutionRequestForReviewInstance(Guid reviewInstanceId)
     {
         var reviewInstance = await _dbContext.ReviewInstances.FindAsync(reviewInstanceId);
@@ -195,11 +195,20 @@ public class ReviewInstanceController : BaseController
             return NotFound();
         }
 
-        // TODO : Validation of the review instance state before submitting the execution request
-        await _publishEndpoint.Publish(new ExecuteReviewRequest(CorrelationId: reviewInstance.Id));
-        var reviewInstanceInfo = _mapper.Map<ReviewInstanceInfo>(reviewInstance);
+        // Validate the review instance state before submitting the execution request
+        if (reviewInstance.Status != ReviewInstanceStatus.Pending)
+        {
+            return BadRequest("Review instance is not in a valid state for execution.");
+        }
 
-        // Submit the execution request
+        // Use the ReviewService to execute the review - this triggers execution in Orleans
+        var executionSuccess = await _reviewService.ExecuteReviewAsync(reviewInstanceId);
+        if (!executionSuccess)
+        {
+            return BadRequest("Failed to submit the execution request for the review instance.");
+        }
+
+        var reviewInstanceInfo = _mapper.Map<ReviewInstanceInfo>(reviewInstance);
 
         return Accepted($"/api/review-instance/{reviewInstanceId}", reviewInstanceInfo);
     }

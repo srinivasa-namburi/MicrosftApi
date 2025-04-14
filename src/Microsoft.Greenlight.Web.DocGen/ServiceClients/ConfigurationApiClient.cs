@@ -57,6 +57,11 @@ public class ConfigurationApiClient : BaseServiceClient<ConfigurationApiClient>,
         return _serviceConfigurationOptions.CurrentValue.OpenAi;
     }
 
+    public async Task<ServiceConfigurationOptions.GreenlightServicesOptions.ScalabilityOptions> GetScalabilityOptionsAsync()
+    {
+        return _serviceConfigurationOptions.CurrentValue.GreenlightServices.Scalability;
+    }
+
     public async Task<DbConfigurationInfo> UpdateConfigurationAsync(ConfigurationUpdateRequest request)
     {
         var response = await SendPostRequestMessage("/api/configuration/update", request);
@@ -150,4 +155,6 @@ public class ConfigurationApiClient : BaseServiceClient<ConfigurationApiClient>,
         var response = await SendDeleteRequestMessage($"/api/configuration/ai-model-deployments/{id}");
         response?.EnsureSuccessStatusCode();
     }
+
+
 }

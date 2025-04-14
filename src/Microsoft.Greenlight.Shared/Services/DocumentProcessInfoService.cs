@@ -1,13 +1,11 @@
 using AutoMapper;
-using MassTransit;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
-using Microsoft.Greenlight.Shared.Configuration;
+using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
-using Microsoft.Greenlight.Shared.Contracts.Messages.DocumentProcesses;
 using Microsoft.Greenlight.Shared.Data.Sql;
+using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Models.DocumentProcess;
-using Microsoft.Greenlight.Shared.Repositories;
+using Microsoft.Greenlight.Shared.Prompts;
 
 namespace Microsoft.Greenlight.Shared.Services
 {
@@ -17,103 +15,93 @@ namespace Microsoft.Greenlight.Shared.Services
     public class DocumentProcessInfoService : IDocumentProcessInfoService
     {
         private readonly IMapper _mapper;
-        private readonly DynamicDocumentProcessDefinitionRepository _documentProcessRepository;
-        private readonly IPublishEndpoint _publishEndpoint;
-        private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
-        private readonly DocGenerationDbContext _dbContext;
+        private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
+        private readonly DefaultPromptCatalogTypes _defaultPromptCatalogTypes;
+        private readonly ILogger<DocumentProcessInfoService> _logger;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="DocumentProcessInfoService"/> class.
         /// </summary>
-        /// <param name="serviceConfigurationOptions">The service configuration options.</param>
-        /// <param name="mapper">The mapper.</param>
-        /// <param name="documentProcessRepository">The document process repository.</param>
-        /// <param name="publishEndpoint">The publish endpoint.</param>
-        /// <param name="dbContext">The database context.</param>
         public DocumentProcessInfoService(
-            IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
             IMapper mapper,
-            DynamicDocumentProcessDefinitionRepository documentProcessRepository,
-            IPublishEndpoint publishEndpoint, DocGenerationDbContext dbContext)
+            IDbContextFactory<DocGenerationDbContext> dbContextFactory,
+            ILogger<DocumentProcessInfoService> logger)
         {
             _mapper = mapper;
-            _documentProcessRepository = documentProcessRepository;
-            _publishEndpoint = publishEndpoint;
-            _dbContext = dbContext;
-            _serviceConfigurationOptions = serviceConfigurationOptions.Value;
+            _dbContextFactory = dbContextFactory;
+            _defaultPromptCatalogTypes = new DefaultPromptCatalogTypes();
+            _logger = logger;
         }
 
         /// <inheritdoc/>
         public async Task<List<DocumentProcessInfo>> GetCombinedDocumentProcessInfoListAsync()
         {
-            // Materialize the static definitions
-            var staticDefinitionOptions = _serviceConfigurationOptions.GreenlightServices.DocumentProcesses;
-            var mappedStaticDefinitions = staticDefinitionOptions.Select(x => _mapper.Map<DocumentProcessInfo>(x)).ToList();
+            using var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            // Remove duplicates from the static definitions
-            var distinctStaticDefinitions = mappedStaticDefinitions
-                .GroupBy(x => x.ShortName)
-                .Select(x => x.First())
-                .ToList();
+            // Only retrieve dynamic document process definitions from database
+            var dynamicDefinitions = await dbContext.DynamicDocumentProcessDefinitions
+                .Include(x => x.DocumentOutline)
+                .AsNoTracking()
+                .ToListAsync();
 
-            // Retrieve and map all dynamic definitions
-            var dynamicDefinitions = await _documentProcessRepository.GetAllDynamicDocumentProcessDefinitionsAsync();
-            var mappedDynamicDefinitions = dynamicDefinitions.Select(x => _mapper.Map<DocumentProcessInfo>(x)).ToList();
-
-            // Combine static and dynamic definitions in memory
-            return distinctStaticDefinitions.Concat(mappedDynamicDefinitions).ToList();
+            // Map them to DocumentProcessInfo objects
+            return _mapper.Map<List<DocumentProcessInfo>>(dynamicDefinitions);
         }
 
         /// <inheritdoc/>
         public async Task<DocumentProcessInfo?> GetDocumentProcessInfoByShortNameAsync(string shortName)
         {
-            // Retrieve and map static definitions
-            var staticDefinitionOptions = _serviceConfigurationOptions.GreenlightServices.DocumentProcesses;
-            var mappedStaticDefinitions = staticDefinitionOptions.Select(x => _mapper.Map<DocumentProcessInfo>(x)).ToList();
+            var dbContext = _dbContextFactory.CreateDbContext();
 
-            // Remove duplicates from the static definitions
-            var distinctStaticDefinitions = mappedStaticDefinitions
-                .GroupBy(x => x.ShortName)
-                .Select(x => x.First())
-                .ToList();
+            // Get document process from the database
+            var dynamicDocumentProcess = await dbContext.DynamicDocumentProcessDefinitions
+                .Include(x => x.DocumentOutline)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.ShortName == shortName);
 
-            // Search in static definitions first
-            var result = distinctStaticDefinitions.FirstOrDefault(x => x.ShortName == shortName);
-            if (result != null)
-            {
-                return result;
-            }
-
-            // If not found in static definitions, search in dynamic definitions from the database
-
-            var dynamicDocumentProcess = await _documentProcessRepository.GetByShortNameAsync(shortName);
             if (dynamicDocumentProcess == null) return null;
 
-            result = _mapper.Map<DocumentProcessInfo>(dynamicDocumentProcess);
-            return result;
+            // Map to DocumentProcessInfo
+            return _mapper.Map<DocumentProcessInfo>(dynamicDocumentProcess);
+        }
+
+        public DocumentProcessInfo GetDocumentProcessInfoByShortName(string shortName)
+        {
+            var dbContext = _dbContextFactory.CreateDbContext();
+
+            // Get document process from the database
+            var dynamicDocumentProcess = dbContext.DynamicDocumentProcessDefinitions
+                .Include(x => x.DocumentOutline)
+                .AsNoTracking()
+                .FirstOrDefault(x => x.ShortName == shortName);
+
+            if (dynamicDocumentProcess == null) return null;
+
+            // Map to DocumentProcessInfo
+            return _mapper.Map<DocumentProcessInfo>(dynamicDocumentProcess);
         }
 
         /// <inheritdoc/>
         public async Task<DocumentProcessInfo?> GetDocumentProcessInfoByIdAsync(Guid id)
         {
-            // If we're looking for a Document Process by ID, we should only look in the dynamic definitions, as 
-            // static definitions do not have an ID.
+            var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            var dynamicDocumentProcess = await _dbContext.DynamicDocumentProcessDefinitions
+            var dynamicDocumentProcess = await dbContext.DynamicDocumentProcessDefinitions
                 .Include(x => x.DocumentOutline)
                 .AsNoTracking()
                 .FirstOrDefaultAsync(x => x.Id == id);
 
             if (dynamicDocumentProcess == null) return null;
 
-            var result = _mapper.Map<DocumentProcessInfo>(dynamicDocumentProcess);
-            return result;
+            return _mapper.Map<DocumentProcessInfo>(dynamicDocumentProcess);
         }
 
         /// <inheritdoc/>
         public async Task<List<DocumentProcessInfo>> GetDocumentProcessesByLibraryIdAsync(Guid libraryId)
         {
-            var processes = await _dbContext.DocumentLibraryDocumentProcessAssociations
+            var dbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            var processes = await dbContext.DocumentLibraryDocumentProcessAssociations
                 .Where(x => x.DocumentLibraryId == libraryId)
                 .Include(x => x.DynamicDocumentProcessDefinition)
                     .ThenInclude(x => x!.DocumentOutline)
@@ -130,6 +118,8 @@ namespace Microsoft.Greenlight.Shared.Services
         /// <inheritdoc/>
         public async Task<DocumentProcessInfo> CreateDocumentProcessInfoAsync(DocumentProcessInfo documentProcessInfo)
         {
+            var dbContext = await _dbContextFactory.CreateDbContextAsync();
+
             ValidateAndFormatShortName(documentProcessInfo);
 
             var dynamicDocumentProcess = _mapper.Map<DynamicDocumentProcessDefinition>(documentProcessInfo);
@@ -145,72 +135,79 @@ namespace Microsoft.Greenlight.Shared.Services
                 OutlineItems =
                 [
                     new DocumentOutlineItem()
-                        {
-                            SectionNumber = "1",
-                            SectionTitle = "Chapter 1",
-                            Level = 0
-                        },
+                {
+                    SectionNumber = "1",
+                    SectionTitle = "Chapter 1",
+                    Level = 0
+                },
+                new DocumentOutlineItem()
+                {
+                    SectionNumber = "2",
+                    SectionTitle = "Chapter 2",
+                    Level = 0,
+                    Children =
+                    [
                         new DocumentOutlineItem()
                         {
-                            SectionNumber = "2",
-                            SectionTitle = "Chapter 2",
-                            Level = 0,
+                            SectionNumber = "2.1",
+                            SectionTitle = "Section 2.1",
+                            Level = 1,
                             Children =
                             [
                                 new DocumentOutlineItem()
                                 {
-                                    SectionNumber = "2.1",
-                                    SectionTitle = "Section 2.1",
-                                    Level = 1,
-                                    Children =
-                                    [
-                                        new DocumentOutlineItem()
-                                        {
-                                            SectionNumber = "2.1.1",
-                                            SectionTitle = "Section 2.1.1",
-                                            Level = 2
-                                        }
-                                    ]
-                                },
-                                new DocumentOutlineItem()
-                                {
-                                    SectionNumber = "2.2",
-                                    SectionTitle = "Section 2.2",
-                                    Level = 1
+                                    SectionNumber = "2.1.1",
+                                    SectionTitle = "Section 2.1.1",
+                                    Level = 2
                                 }
                             ]
                         },
                         new DocumentOutlineItem()
                         {
-                            SectionNumber = "3",
-                            SectionTitle = "Chapter 3",
-                            Level = 0,
-                            Children =
-                            [
-                                new DocumentOutlineItem()
-                                {
-                                    SectionNumber = "3.1",
-                                    SectionTitle = "Section 3.1",
-                                    Level = 1
-                                }
-                            ]
+                            SectionNumber = "2.2",
+                            SectionTitle = "Section 2.2",
+                            Level = 1
                         }
+                    ]
+                },
+                new DocumentOutlineItem()
+                {
+                    SectionNumber = "3",
+                    SectionTitle = "Chapter 3",
+                    Level = 0,
+                    Children =
+                    [
+                        new DocumentOutlineItem()
+                        {
+                            SectionNumber = "3.1",
+                            SectionTitle = "Section 3.1",
+                            Level = 1
+                        }
+                    ]
+                }
                 ]
             };
 
-            // END DUMMY DATA
-
             dynamicDocumentProcess.DocumentOutline = outline;
-            await _documentProcessRepository.AddAsync(dynamicDocumentProcess);
 
-            var createdDocumentProcess = await _documentProcessRepository.GetByShortNameAsync(dynamicDocumentProcess.ShortName);
+            // Add and save the new document process
+            await dbContext.DynamicDocumentProcessDefinitions.AddAsync(dynamicDocumentProcess);
+            await dbContext.SaveChangesAsync();
+
+            // Create missing prompt implementations
+            await CreateMissingPromptImplementations(dynamicDocumentProcess.Id, dbContext);
+
+            // Check if the document process was created successfully
+            var createdDocumentProcess = await dbContext.DynamicDocumentProcessDefinitions
+                .Include(x => x.DocumentOutline)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.ShortName == dynamicDocumentProcess.ShortName);
 
             if (createdDocumentProcess == null)
             {
                 throw new Exception("Document process could not be created.");
             }
 
-            await _publishEndpoint.Publish(new CreateDynamicDocumentProcessPrompts(createdDocumentProcess.Id));
             var createdDocumentProcessInfo = _mapper.Map<DocumentProcessInfo>(createdDocumentProcess);
             return createdDocumentProcessInfo;
         }
@@ -218,13 +215,136 @@ namespace Microsoft.Greenlight.Shared.Services
         /// <inheritdoc/>
         public async Task<bool> DeleteDocumentProcessInfoAsync(Guid processId)
         {
-            var documentProcess = await _documentProcessRepository.GetByIdAsync(processId, false);
-            if (documentProcess != null)
+            var dbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            var documentProcess = await dbContext.DynamicDocumentProcessDefinitions
+                .Include(p => p.Prompts)
+                .Include(d => d.DocumentOutline)
+                .ThenInclude(documentOutline => documentOutline!.OutlineItems)
+                .ThenInclude(y => y.Children)
+                .ThenInclude(v => v.Children)
+                .ThenInclude(w => w.Children)
+                .ThenInclude(x => x.Children)
+                .FirstOrDefaultAsync(x => x.Id == processId);
+
+            // No definition found to delete, so return false
+            if (documentProcess == null)
             {
-                await _documentProcessRepository.DeleteAsync(documentProcess);
-                return true;
+                return false;
             }
-            else return false;
+
+            // Recursively delete the document outline items, starting with leaf nodes
+            if (documentProcess.DocumentOutline != null)
+            {
+                var outlineItems = documentProcess.DocumentOutline.OutlineItems;
+                foreach (var item in outlineItems)
+                {
+                    await DeleteDocumentOutlineItem(item);
+                }
+
+                // Remove the document outline
+                dbContext.DocumentOutlines.Remove(documentProcess.DocumentOutline);
+            }
+
+            // Remove the document process itself
+            dbContext.DynamicDocumentProcessDefinitions.Remove(documentProcess);
+            await dbContext.SaveChangesAsync();
+
+            return true;
+        }
+
+        /// <summary>
+        /// Creates missing prompt implementations for a document process.
+        /// </summary>
+        /// <param name="documentProcessId">The ID of the document process.</param>
+        /// <param name="dbContext">The database context.</param>
+        private async Task CreateMissingPromptImplementations(Guid documentProcessId, DocGenerationDbContext dbContext)
+        {
+            var documentProcess = await dbContext.DynamicDocumentProcessDefinitions
+                .Include(x => x.DocumentOutline)
+                .FirstOrDefaultAsync(x => x.Id == documentProcessId);
+
+            if (documentProcess == null)
+            {
+                _logger.LogWarning(
+                    "DocumentProcessInfoService: Document Process with Id {DocumentProcessId} not found",
+                    documentProcessId);
+                return;
+            }
+
+            // Get all Prompt Implementations for the Dynamic Document Process to see if they already exist
+            var promptImplementationsForDocumentProcess = await dbContext.PromptImplementations
+                .Where(pi => pi.DocumentProcessDefinitionId == documentProcess.Id)
+                .Include(promptImplementation => promptImplementation.PromptDefinition)
+                .ToListAsync();
+
+            // Loop through all the properties in the DefaultPromptCatalogTypes class to see if there are any missing
+            // Prompt Implementations for this Document Process.
+            // We expect to have a Prompt Implementation for each property in the DefaultPromptCatalogTypes class
+
+            var numberOfPromptImplementationsAdded = 0;
+            foreach (var promptCatalogProperty in _defaultPromptCatalogTypes.GetType()
+                                                                            .GetProperties()
+                                                                            .Where(p => p.PropertyType == typeof(string)))
+            {
+                var promptImplementation =
+                    promptImplementationsForDocumentProcess.FirstOrDefault(pi =>
+                        pi.PromptDefinition != null && pi.PromptDefinition.ShortCode == promptCatalogProperty.Name);
+                if (promptImplementation == null)
+                {
+                    var promptDefinition = await dbContext.PromptDefinitions
+                        .FirstOrDefaultAsync(pd => pd.ShortCode == promptCatalogProperty.Name);
+
+                    if (promptDefinition != null)
+                    {
+                        promptImplementation = new PromptImplementation
+                        {
+                            DocumentProcessDefinitionId = documentProcess.Id,
+                            PromptDefinitionId = promptDefinition.Id,
+                            Text = promptCatalogProperty.GetValue(_defaultPromptCatalogTypes)?.ToString() ?? ""
+                        };
+
+                        _logger.LogInformation(
+                            "DocumentProcessInfoService: Creating prompt implementation of prompt {PromptName} for DP {DocumentProcessShortname}",
+                            promptDefinition.ShortCode,
+                            documentProcess.ShortName);
+
+                        await dbContext.PromptImplementations.AddAsync(promptImplementation);
+                        numberOfPromptImplementationsAdded++;
+                    }
+                }
+            }
+
+            if (numberOfPromptImplementationsAdded > 0)
+            {
+                await dbContext.SaveChangesAsync();
+            }
+
+            documentProcess.Status = DocumentProcessStatus.Active;
+
+            dbContext.DynamicDocumentProcessDefinitions.Update(documentProcess);
+            await dbContext.SaveChangesAsync();
+
+            _logger.LogInformation(
+                "DocumentProcessInfoService: Created {NumberOfPromptImplementationsAdded} prompt implementations for DP {DocumentProcessShortname}",
+                numberOfPromptImplementationsAdded,
+                documentProcess.ShortName);
+        }
+
+
+        private async Task DeleteDocumentOutlineItem(DocumentOutlineItem item)
+        {
+            var dbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            if (item.Children != null)
+            {
+                foreach (var child in item.Children)
+                {
+                    await DeleteDocumentOutlineItem(child);
+                }
+            }
+
+            dbContext.DocumentOutlineItems.Remove(item);
         }
 
         private void ValidateAndFormatShortName(DocumentProcessInfo documentProcessInfo)

@@ -52,12 +52,12 @@ namespace Microsoft.Greenlight.Shared.Services
         /// <param name="newText">The new text for the content node.</param>
         /// <param name="reason">The reason for replacing the content node text.</param>
         /// <param name="comment">Optional comment about this change.</param>
+        /// <param name="saveChanges"></param>
         /// <returns>The updated content node, or null if replacement failed.</returns>
-        Task<ContentNode?> ReplaceContentNodeTextAsync(
-            Guid existingContentNodeId,
+        Task<ContentNode?> ReplaceContentNodeTextAsync(Guid existingContentNodeId,
             string newText,
             ContentNodeVersioningReason reason = ContentNodeVersioningReason.ManualEdit,
-            string? comment = null);
+            string? comment = null, bool saveChanges = true);
 
         /// <summary>
         /// Retrieves all versions of a content node.

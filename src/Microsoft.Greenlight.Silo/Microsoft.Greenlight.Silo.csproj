@@ -1,0 +1,30 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<UserSecretsId>dotnet-Microsoft.Greenlight.Silo-82897ad0-6e79-456f-9c9b-6af3c4104e50</UserSecretsId>
+		<ServerGarbageCollection>true</ServerGarbageCollection>
+		<ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.4" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\Microsoft.Greenlight.Grains.Chat\Microsoft.Greenlight.Grains.Chat.csproj" />
+		<ProjectReference Include="..\Microsoft.Greenlight.Grains.Contracts\Microsoft.Greenlight.Grains.Contracts.csproj" />
+		<ProjectReference Include="..\Microsoft.Greenlight.Grains.Document\Microsoft.Greenlight.Grains.Document.csproj" />
+		<ProjectReference Include="..\Microsoft.Greenlight.Grains.Review\Microsoft.Greenlight.Grains.Review.csproj" />
+		<ProjectReference Include="..\Microsoft.Greenlight.Grains.Shared\Microsoft.Greenlight.Grains.Shared.csproj" />
+		<ProjectReference Include="..\Microsoft.Greenlight.Grains.Validation\Microsoft.Greenlight.Grains.Validation.csproj" />
+		<ProjectReference Include="..\Microsoft.Greenlight.ServiceDefaults\Microsoft.Greenlight.ServiceDefaults.csproj" />
+		<ProjectReference Include="..\Microsoft.Greenlight.Shared.Contracts\Microsoft.Greenlight.Shared.Contracts.csproj" />
+		<ProjectReference Include="..\Microsoft.Greenlight.Shared.Enums\Microsoft.Greenlight.Shared.Enums.csproj" />
+		<ProjectReference Include="..\Microsoft.Greenlight.Shared.Models\Microsoft.Greenlight.Shared.Models.csproj" />
+		<ProjectReference Include="..\Microsoft.Greenlight.Shared\Microsoft.Greenlight.Shared.csproj" />
+		<ProjectReference Include="..\Plugins\Microsoft.Greenlight.Plugins.Default\Microsoft.Greenlight.Plugins.Default.csproj" />
+	</ItemGroup>
+</Project>

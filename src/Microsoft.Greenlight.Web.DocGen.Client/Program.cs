@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Microsoft.Greenlight.Web.DocGen.Client.Auth;
 using Microsoft.Greenlight.Web.DocGen.Client.Components;
 using Microsoft.Greenlight.Web.DocGen.Client.ServiceClients;
+using Microsoft.Greenlight.Web.DocGen.Client.Services;
 using Microsoft.Greenlight.Web.Shared;
 using Microsoft.Greenlight.Web.Shared.ServiceClients;
 using MudBlazor.Services;
@@ -110,5 +111,13 @@ builder.Services.AddHttpClient<IContentReferenceApiClient, ContentReferenceApiCl
 {
     client.BaseAddress = serverBaseAddress;
 });
+
+builder.Services.AddHttpClient<IDocumentValidationApiClient, DocumentValidationApiClient>(client =>
+{
+    client.BaseAddress = serverBaseAddress;
+});
+
+// Service used to aid in constructing editors
+builder.Services.AddScoped<ValidationEditorService>();
 
 await builder.Build().RunAsync();

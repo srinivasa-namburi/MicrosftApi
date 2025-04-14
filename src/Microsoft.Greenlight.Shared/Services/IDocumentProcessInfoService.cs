@@ -15,6 +15,13 @@ public interface IDocumentProcessInfoService
     Task<DocumentProcessInfo?> GetDocumentProcessInfoByShortNameAsync(string shortName);
 
     /// <summary>
+    /// Gets the document processes by short name
+    /// </summary>
+    /// <param name="libraryId">The ID of the library.</param>
+    /// <returns>A list of document process information.</returns>
+    DocumentProcessInfo GetDocumentProcessInfoByShortName(string shortName);
+
+    /// <summary>
     /// Gets a combined list of document process information.
     /// </summary>
     /// <returns>A list of document process information.</returns>
@@ -47,4 +54,6 @@ public interface IDocumentProcessInfoService
     /// <param name="libraryId">The ID of the library.</param>
     /// <returns>A list of document process information.</returns>
     Task<List<DocumentProcessInfo>> GetDocumentProcessesByLibraryIdAsync(Guid libraryId);
+
+    
 }

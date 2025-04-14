@@ -1,12 +1,11 @@
 using MassTransit;
-using Microsoft.Greenlight.DocumentProcess.Shared;
 using Microsoft.Greenlight.ServiceDefaults;
 using Microsoft.Greenlight.Shared;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Core;
+using Microsoft.Greenlight.Shared.DocumentProcess.Shared;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Helpers;
-using Microsoft.Greenlight.Shared.Management;
 using Microsoft.Greenlight.Worker.Scheduler.Jobs;
 using Quartz;
 
@@ -24,16 +23,6 @@ AdminHelper.Initialize(builder.Configuration);
 // Add the DbContext and configuration provider
 builder.AddGreenlightDbContextAndConfiguration();
 
-// Bind the ServiceConfigurationOptions to configuration
-builder.Services.AddOptions<ServiceConfigurationOptions>()
-    .Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName))
-    .ValidateDataAnnotations()
-    .ValidateOnStart();
-
-// Enable reloading
-builder.Services.Configure<ServiceConfigurationOptions>(
-    builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
-
 var serviceConfigurationOptions = builder.Configuration
     .GetSection(ServiceConfigurationOptions.PropertyName)
     .Get<ServiceConfigurationOptions>()!;
@@ -43,11 +32,10 @@ await builder.DelayStartup(serviceConfigurationOptions.GreenlightServices.Docume
 builder.AddGreenlightServices(credentialHelper, serviceConfigurationOptions);
 builder.RegisterStaticPlugins(serviceConfigurationOptions);
 
-builder.AddRepositories();
 builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
-builder.AddSemanticKernelServices(serviceConfigurationOptions);
 
-// Configure Quartz
+builder.AddGreenlightOrleansClient(credentialHelper);
+
 // Configure Quartz
 builder.Services.AddQuartz(q =>
 {
@@ -113,6 +101,8 @@ builder.Services.AddQuartz(q =>
     );
 });
 
+Console.WriteLine("Delaying 5 seconds for configuration to load fully");
+await Task.Delay(TimeSpan.FromSeconds(5));
 
 builder.Services.AddQuartzHostedService(q => q.WaitForJobsToComplete = true);
 
@@ -144,7 +134,17 @@ builder.Services.AddMassTransit(x =>
     });
 });
 
-builder.Services.AddSingleton<IHostedService, ShutdownCleanupService>();
+// Bind the ServiceConfigurationOptions to configuration
+builder.Services.AddOptions<ServiceConfigurationOptions>()
+    .Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+// This enables reloading:
+builder.Services.Configure<ServiceConfigurationOptions>(
+    builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
+
+builder.Services.AddGreenlightHostedServices();
 
 var host = builder.Build();
 host.Run();

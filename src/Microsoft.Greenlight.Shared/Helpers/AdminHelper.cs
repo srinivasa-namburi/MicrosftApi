@@ -31,6 +31,20 @@ namespace Microsoft.Greenlight.Shared.Helpers
                 throw new InvalidOperationException("AdminHelper is not initialized. Call Initialize method with IConfiguration.");
             }
 
+            // Additional check for ASPNETCORE_ENVIRONMENT
+            var aspNetCoreEnvironment = _configuration["ASPNETCORE_ENVIRONMENT"];
+            if (!string.IsNullOrEmpty(aspNetCoreEnvironment) && !aspNetCoreEnvironment.Equals("Development", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            // Additional check for DOTNET_ENVIRONMENT
+            var dotNetEnvironment = _configuration["DOTNET_ENVIRONMENT"];
+            if (!string.IsNullOrEmpty(dotNetEnvironment) && !dotNetEnvironment.Equals("Development", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
             // Check for Azure Container Apps specific environment variable
             var azureContainerApp1 = _configuration["CONTAINER_APP_ENV"];
             if (!string.IsNullOrEmpty(azureContainerApp1))
@@ -41,13 +55,6 @@ namespace Microsoft.Greenlight.Shared.Helpers
             // Check for Azure Container Apps specific environment variable
             var azureContainerApp2 = _configuration["WEBSITE_INSTANCE_ID"];
             if (!string.IsNullOrEmpty(azureContainerApp2))
-            {
-                return true;
-            }
-
-            // Additional check for ASPNETCORE_ENVIRONMENT
-            var environment = _configuration["ASPNETCORE_ENVIRONMENT"];
-            if (!string.IsNullOrEmpty(environment) && environment.Equals("Production", StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }

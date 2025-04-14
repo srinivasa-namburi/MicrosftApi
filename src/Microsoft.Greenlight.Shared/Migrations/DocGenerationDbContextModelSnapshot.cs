@@ -17,7 +17,7 @@ namespace Microsoft.Greenlight.Shared.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.3")
+                .HasAnnotation("ProductVersion", "9.0.4")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -286,11 +286,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
 
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Configuration.DbConfiguration", b =>
                 {
-                    b.Property<int>("Id")
+                    b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("ConfigurationValues")
                         .IsRequired()
@@ -1672,6 +1670,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
 
+                    b.Property<bool>("RunValidationAutomatically")
+                        .HasColumnType("bit");
+
                     b.HasKey("Id");
 
                     b.HasIndex("DocumentProcessId")
@@ -1720,6 +1721,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int?>("ApplicationStatus")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
 
@@ -1746,6 +1750,8 @@ namespace Microsoft.Greenlight.Shared.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ApplicationStatus");
+
                     b.HasIndex("OriginalContentNodeId");
 
                     b.HasIndex("ResultantContentNodeId");
@@ -1753,6 +1759,8 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.HasIndex("ValidationPipelineExecutionStepId");
 
                     b.HasIndex("ValidationPipelineExecutionStepResultId");
+
+                    b.HasIndex("OriginalContentNodeId", "ResultantContentNodeId");
 
                     b.ToTable("ValidationExecutionStepContentNodeResults", (string)null);
                 });
@@ -1762,6 +1770,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ApplicationStatus")
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
@@ -1795,6 +1806,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("ApplicationStatus")
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
@@ -2503,7 +2517,7 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.HasOne("Microsoft.Greenlight.Shared.Models.Validation.ValidationPipelineExecutionStepResult", "ValidationPipelineExecutionStepResult")
                         .WithMany("ContentNodeResults")
                         .HasForeignKey("ValidationPipelineExecutionStepResultId")
-                        .OnDelete(DeleteBehavior.NoAction);
+                        .OnDelete(DeleteBehavior.Cascade);
 
                     b.Navigation("OriginalContentNode");
 

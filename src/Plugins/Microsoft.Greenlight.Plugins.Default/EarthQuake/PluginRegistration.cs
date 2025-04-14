@@ -10,8 +10,8 @@ public class PluginRegistration : IPluginRegistration
 {
     public void RegisterPlugin(IServiceCollection serviceCollection)
     {
-        serviceCollection.AddScoped<IEarthquakeConnector, USGSEarthquakeConnector>();
-        serviceCollection.AddScoped<EarthquakePlugin>();
+        serviceCollection.AddTransient<IEarthquakeConnector, USGSEarthquakeConnector>();
+        serviceCollection.AddTransient<EarthquakePlugin>();
     }
 
     public async Task InitializeAsync(IServiceProvider serviceProvider)

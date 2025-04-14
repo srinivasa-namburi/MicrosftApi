@@ -1,3 +1,4 @@
+using Orleans;
 using System.ComponentModel.DataAnnotations;
 
 namespace Microsoft.Greenlight.Shared.Models;
@@ -5,6 +6,7 @@ namespace Microsoft.Greenlight.Shared.Models;
 /// <summary>
 /// Represents the base class for all entities with common properties.
 /// </summary>
+[GenerateSerializer(GenerateFieldIds = GenerateFieldIds.PublicProperties)]
 public abstract class EntityBase
 {
     /// <summary>

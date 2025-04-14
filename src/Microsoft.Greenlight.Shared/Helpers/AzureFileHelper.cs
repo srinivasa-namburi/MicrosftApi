@@ -1,4 +1,6 @@
 using Azure.Storage.Blobs;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Extensions;
@@ -14,17 +16,21 @@ namespace Microsoft.Greenlight.Shared.Helpers;
 public class AzureFileHelper
 {
     private readonly BlobServiceClient _blobServiceClient;
-    private readonly DocGenerationDbContext _dbContext;
+    private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
+
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AzureFileHelper"/> class.
     /// </summary>
     /// <param name="blobServiceClient">The BlobServiceClient instance.</param>
-    /// <param name="dbContext">The database context.</param>
-    public AzureFileHelper(BlobServiceClient blobServiceClient, DocGenerationDbContext dbContext)
+    /// <param name="dbContextFactory">Database Context factory</param>
+    public AzureFileHelper(
+        [FromKeyedServices("blob-docing")]
+        BlobServiceClient blobServiceClient, 
+        IDbContextFactory<DocGenerationDbContext> dbContextFactory)
     {
         _blobServiceClient = blobServiceClient;
-        _dbContext = dbContext;
+        _dbContextFactory = dbContextFactory;
     }
 
     /// <summary>
@@ -57,6 +63,8 @@ public class AzureFileHelper
     /// <returns>The saved ExportedDocumentLink entity.</returns>
     public virtual async Task<ExportedDocumentLink> SaveFileInfoAsync(string absoluteUrl, string containerName, string fileName, Guid? generatedDocumentId = null)
     {
+        var dbContext = await _dbContextFactory.CreateDbContextAsync();
+
         var documentType = containerName switch
         {
             "document-export" => FileDocumentType.ExportedDocument,
@@ -85,7 +93,7 @@ public class AzureFileHelper
             Console.WriteLine($"Error calculating file hash for {fileName}: {ex.Message}");
         }
 
-        var entityEntry = await _dbContext.ExportedDocumentLinks.AddAsync(new ExportedDocumentLink
+        var entityEntry = await dbContext.ExportedDocumentLinks.AddAsync(new ExportedDocumentLink
         {
             GeneratedDocumentId = generatedDocumentId,
             AbsoluteUrl = absoluteUrl,
@@ -97,7 +105,7 @@ public class AzureFileHelper
             FileHash = fileHash // Set the calculated hash
         });
 
-        await _dbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
 
         return entityEntry.Entity;
     }

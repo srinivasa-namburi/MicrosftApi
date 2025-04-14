@@ -1,10 +1,12 @@
 using Microsoft.Greenlight.Shared.Enums;
+using Orleans;
 
 namespace Microsoft.Greenlight.Shared.Contracts.Chat;
 
 /// <summary>
 /// Data Transfer Object for chat messages.
 /// </summary>
+[GenerateSerializer(GenerateFieldIds = GenerateFieldIds.PublicProperties)]
 public class ChatMessageDTO
 {
     /// <summary>

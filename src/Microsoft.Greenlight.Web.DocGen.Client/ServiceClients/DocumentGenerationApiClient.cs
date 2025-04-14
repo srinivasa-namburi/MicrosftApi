@@ -81,4 +81,20 @@ public class DocumentGenerationApiClient : WebAssemblyBaseServiceClient<Document
         return await response?.Content.ReadFromJsonAsync<List<GeneratedDocumentListItem>>()! ??
                throw new IOException("No documents!");
     }
+
+    public async Task<bool> StartDocumentValidationAsync(string documentId)
+    {
+        try
+        {
+            var response = await SendPostRequestMessage($"/api/document-validation/{documentId}", null);
+            response?.EnsureSuccessStatusCode();
+        
+            return response?.IsSuccessStatusCode ?? false;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to start validation for document {DocumentId}", documentId);
+            return false;
+        }
+    }
 }

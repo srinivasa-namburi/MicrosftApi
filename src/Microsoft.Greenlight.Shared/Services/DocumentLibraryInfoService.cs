@@ -11,24 +11,28 @@ namespace Microsoft.Greenlight.Shared.Services
     /// </summary>
     public class DocumentLibraryInfoService : IDocumentLibraryInfoService
     {
-        private readonly DocGenerationDbContext _dbContext;
+        private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
         private readonly IMapper _mapper;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="DocumentLibraryInfoService"/> class.
         /// </summary>
-        /// <param name="dbContext">The database context.</param>
+        /// <param name="dbContextFactory">The database context factory.</param>
         /// <param name="mapper">The mapper.</param>
-        public DocumentLibraryInfoService(DocGenerationDbContext dbContext, IMapper mapper)
+        public DocumentLibraryInfoService(
+            IDbContextFactory<DocGenerationDbContext> dbContextFactory, 
+            IMapper mapper)
         {
-            _dbContext = dbContext;
+            _dbContextFactory = dbContextFactory;
             _mapper = mapper;
         }
 
         /// <inheritdoc/>
         public async Task<List<DocumentLibraryInfo>> GetAllDocumentLibrariesAsync()
         {
-            var libraries = await _dbContext.DocumentLibraries
+            using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+            
+            var libraries = await dbContext.DocumentLibraries
                 .Include(dl => dl.DocumentProcessAssociations)
                     .ThenInclude(assoc => assoc.DynamicDocumentProcessDefinition)
                 .AsNoTracking()
@@ -41,7 +45,9 @@ namespace Microsoft.Greenlight.Shared.Services
         /// <inheritdoc/>
         public async Task<DocumentLibraryInfo?> GetDocumentLibraryByIdAsync(Guid id)
         {
-            var library = await _dbContext.DocumentLibraries
+            using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+            
+            var library = await dbContext.DocumentLibraries
                 .Include(dl => dl.DocumentProcessAssociations)
                     .ThenInclude(assoc => assoc.DynamicDocumentProcessDefinition)
                 .AsNoTracking()
@@ -54,7 +60,9 @@ namespace Microsoft.Greenlight.Shared.Services
         /// <inheritdoc/>
         public async Task<DocumentLibraryInfo?> GetDocumentLibraryByShortNameAsync(string shortName)
         {
-            var library = await _dbContext.DocumentLibraries
+            using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+            
+            var library = await dbContext.DocumentLibraries
                 .Include(dl => dl.DocumentProcessAssociations)
                     .ThenInclude(assoc => assoc.DynamicDocumentProcessDefinition)
                 .AsNoTracking()
@@ -67,7 +75,9 @@ namespace Microsoft.Greenlight.Shared.Services
         /// <inheritdoc/>
         public async Task<List<DocumentLibraryInfo>> GetDocumentLibrariesByProcessIdAsync(Guid processId)
         {
-            var libraries = await _dbContext.DocumentLibraries
+            using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+            
+            var libraries = await dbContext.DocumentLibraries
                  .Include(dl => dl.DocumentProcessAssociations)
                      .ThenInclude(assoc => assoc.DynamicDocumentProcessDefinition)
                  .Where(dl => dl.DocumentProcessAssociations.Any(assoc => assoc.DynamicDocumentProcessDefinitionId == processId))
@@ -81,7 +91,9 @@ namespace Microsoft.Greenlight.Shared.Services
         /// <inheritdoc/>
         public async Task<DocumentLibraryInfo?> GetDocumentLibraryByIndexNameAsync(string documentLibraryIndexName)
         {
-            var library = await _dbContext.DocumentLibraries
+            using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+            
+            var library = await dbContext.DocumentLibraries
                 .Include(dl => dl.DocumentProcessAssociations)
                     .ThenInclude(assoc => assoc.DynamicDocumentProcessDefinition)
                 .AsNoTracking()
@@ -94,9 +106,11 @@ namespace Microsoft.Greenlight.Shared.Services
         /// <inheritdoc/>
         public async Task<DocumentLibraryInfo> CreateDocumentLibraryAsync(DocumentLibraryInfo documentLibraryInfo)
         {
+            using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+            
             var library = _mapper.Map<DocumentLibrary>(documentLibraryInfo);
-            _dbContext.DocumentLibraries.Add(library);
-            await _dbContext.SaveChangesAsync();
+            dbContext.DocumentLibraries.Add(library);
+            await dbContext.SaveChangesAsync();
 
             return _mapper.Map<DocumentLibraryInfo>(library);
         }
@@ -104,7 +118,9 @@ namespace Microsoft.Greenlight.Shared.Services
         /// <inheritdoc/>
         public async Task<DocumentLibraryInfo> UpdateDocumentLibraryAsync(DocumentLibraryInfo documentLibraryInfo)
         {
-            var library = await _dbContext.DocumentLibraries
+            using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+            
+            var library = await dbContext.DocumentLibraries
                 .Include(dl => dl.DocumentProcessAssociations)
                 .FirstOrDefaultAsync(dl => dl.Id == documentLibraryInfo.Id);
 
@@ -118,9 +134,9 @@ namespace Microsoft.Greenlight.Shared.Services
 
             // Update associations
             // This does not SaveChanges, so we can do it in a transaction
-            UpdateDocumentProcessAssociations(library, documentLibraryInfo.DocumentProcessAssociations);
+            UpdateDocumentProcessAssociations(dbContext, library, documentLibraryInfo.DocumentProcessAssociations);
 
-            await _dbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
 
             return _mapper.Map<DocumentLibraryInfo>(library);
         }
@@ -128,7 +144,9 @@ namespace Microsoft.Greenlight.Shared.Services
         /// <inheritdoc/>
         public async Task<bool> DeleteDocumentLibraryAsync(Guid id)
         {
-            var library = await _dbContext.DocumentLibraries
+            using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+            
+            var library = await dbContext.DocumentLibraries
                 .Include(dl => dl.DocumentProcessAssociations)
                 .FirstOrDefaultAsync(dl => dl.Id == id);
 
@@ -139,11 +157,11 @@ namespace Microsoft.Greenlight.Shared.Services
 
             if (library.DocumentProcessAssociations.Any())
             {
-                _dbContext.DocumentLibraryDocumentProcessAssociations.RemoveRange(library.DocumentProcessAssociations);
+                dbContext.DocumentLibraryDocumentProcessAssociations.RemoveRange(library.DocumentProcessAssociations);
             }
 
-            _dbContext.DocumentLibraries.Remove(library);
-            await _dbContext.SaveChangesAsync();
+            dbContext.DocumentLibraries.Remove(library);
+            await dbContext.SaveChangesAsync();
 
             return true;
         }
@@ -151,7 +169,9 @@ namespace Microsoft.Greenlight.Shared.Services
         /// <inheritdoc/>
         public async Task AssociateDocumentProcessAsync(Guid documentLibraryId, Guid documentProcessId)
         {
-            var associationExists = await _dbContext.DocumentLibraryDocumentProcessAssociations
+            using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+            
+            var associationExists = await dbContext.DocumentLibraryDocumentProcessAssociations
                 .AnyAsync(assoc => assoc.DocumentLibraryId == documentLibraryId && assoc.DynamicDocumentProcessDefinitionId == documentProcessId);
 
             if (associationExists)
@@ -165,14 +185,16 @@ namespace Microsoft.Greenlight.Shared.Services
                 DynamicDocumentProcessDefinitionId = documentProcessId
             };
 
-            _dbContext.DocumentLibraryDocumentProcessAssociations.Add(association);
-            await _dbContext.SaveChangesAsync();
+            dbContext.DocumentLibraryDocumentProcessAssociations.Add(association);
+            await dbContext.SaveChangesAsync();
         }
 
         /// <inheritdoc/>
         public async Task DisassociateDocumentProcessAsync(Guid documentLibraryId, Guid documentProcessId)
         {
-            var association = await _dbContext.DocumentLibraryDocumentProcessAssociations
+            using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+            
+            var association = await dbContext.DocumentLibraryDocumentProcessAssociations
                 .FirstOrDefaultAsync(assoc => assoc.DocumentLibraryId == documentLibraryId && assoc.DynamicDocumentProcessDefinitionId == documentProcessId);
 
             if (association == null)
@@ -181,17 +203,17 @@ namespace Microsoft.Greenlight.Shared.Services
                 return;
             }
 
-            _dbContext.DocumentLibraryDocumentProcessAssociations.Remove(association);
-            await _dbContext.SaveChangesAsync();
+            dbContext.DocumentLibraryDocumentProcessAssociations.Remove(association);
+            await dbContext.SaveChangesAsync();
         }
 
-        private void UpdateDocumentProcessAssociations(DocumentLibrary library, List<DocumentLibraryDocumentProcessAssociationInfo> associationInfos)
+        private void UpdateDocumentProcessAssociations(DocGenerationDbContext dbContext, DocumentLibrary library, List<DocumentLibraryDocumentProcessAssociationInfo> associationInfos)
         {
             // Remove associations not in the updated list
             var associationsToRemove = library.DocumentProcessAssociations
                 .Where(assoc => associationInfos.All(info => info.Id != assoc.Id))
                 .ToList();
-            _dbContext.DocumentLibraryDocumentProcessAssociations.RemoveRange(associationsToRemove);
+            dbContext.DocumentLibraryDocumentProcessAssociations.RemoveRange(associationsToRemove);
 
             // Add or update associations
             foreach (var assocInfo in associationInfos)

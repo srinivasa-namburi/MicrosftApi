@@ -1,0 +1,318 @@
+@page "/generate/{DocumentProcessName}"
+
+@using System.Text.Json
+@using Microsoft.Greenlight.UI.Default.FieldComponents
+
+@inject NavigationManager Navigation
+@inject IDocumentGenerationApiClient DocumentGenerationApiClient
+@inject IDocumentProcessApiClient DocumentProcessApiClient
+
+@attribute [Authorize]
+
+<style>
+    .full-width-container > * {
+        width: 100%; /* Ensures all fields occupy the full width of their container */
+        box-sizing: border-box; /* Ensures padding is included in the width */
+        margin-bottom: 10px; /* Adds consistent spacing between fields */
+    }
+
+    .full-width-container .mud-tooltip-root {
+        width: 100%;
+    }
+
+    .full-width-container .mud-input-control {
+        width: 100%;
+    }
+
+    .full-width-container .mud-grid,
+    .full-width-container .mud-item,
+    .full-width-container .mud-card,
+    .full-width-container .mud-card-content {
+        display: block;
+        width: 100%;
+    }
+
+        .full-width-container .mud-grid .mud-item .mud-tooltip-root,
+        .full-width-container .mud-card .mud-card-content .mud-tooltip-root {
+            display: block;
+            width: 100%;
+        }
+
+            .full-width-container .mud-grid .mud-item .mud-tooltip-root .mud-input-control,
+            .full-width-container .mud-card .mud-card-content .mud-tooltip-root .mud-input-control {
+                width: 100%;
+            }
+
+    .full-width-container .mud-tooltip {
+        position: absolute;
+        z-index: 1500;
+    }
+
+    .full-width-container .sentiment-reasoning-tooltip {
+        max-width: 225px !important;
+        white-space: normal !important;
+        height: auto !important;
+        line-height: 1.5 !important;
+    }
+
+        .full-width-container .sentiment-reasoning-tooltip .mud-tooltip-root {
+            font-size: 16px !important;
+            padding: 8px !important;
+        }
+
+</style>
+<PageTitle>Generate New Document</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Generate New Document for @DocumentProcessName</MudText>
+
+@if (!_isLoading)
+{
+    @if (_metadataFields.Any())
+    {
+        <CascadingValue Value="metadataModel">
+            <MudForm @ref="metadataForm" Model="@metadataModel" Validation="ValidateMetadataModel" Class="full-width-container">
+                <MudCard>
+                    <MudCardContent>
+                        <!-- Document Title/Name Field -->
+                        <MudTextField @bind-Value="documentGenerationRequest.DocumentTitle"
+                                      Label="Document Title"
+                                      Variant="Variant.Filled"
+                                      Margin="Margin.Normal"
+                                      Required="true" />
+                    </MudCardContent>
+
+                    @foreach (var field in _metadataFields.OrderBy(f => f.Order))
+                    {
+                        <MudCardContent>
+                            <MudText Typo="Typo.h6">@field.DisplayName</MudText>
+                                @if (!string.IsNullOrEmpty(field.DescriptionToolTip))
+                                {
+                                    @*   Due to a display bug we're disabling this for now *@
+                                    @*   <MudTooltip Text="@field.DescriptionToolTip"
+                                                Class="sentiment-reasoning-tooltip w-100"
+                                                Placement="Placement.Bottom"
+                                                ShowOnHover="false"
+                                                ShowOnFocus="true"
+                                                ShowOnClick="true"
+                                                Arrow="true"
+                                                Inline="true"> *@
+                                        @RenderFieldComponent(field)
+                                    @* </MudTooltip> *@
+                                }
+                                else
+                                {
+                                    @RenderFieldComponent(field)
+                                }
+                        </MudCardContent>
+                    }
+                    <MudCardActions>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="HandleSubmit" Disabled="@_isSubmitting" Style="mt-4">
+                            @_submitButtonText
+                        </MudButton>
+                    </MudCardActions>
+                </MudCard>
+            </MudForm>
+        </CascadingValue>
+    }
+    else
+    {
+        <!-- Fallback to JSON Editor -->
+        <MudText Typo="Typo.body1" Class="mb-4" GutterBottom="true">
+            No specific metadata fields defined for this document process. Please provide the JSON data below.
+        </MudText>
+        <MudForm @ref="jsonForm">
+            <MudTextField @bind-Value="documentGenerationRequest.StringifiedJson"
+                          Label="Stringified JSON"
+                          Lines="8"
+                          AutoGrow="true"
+                          MaxLines="12"
+                          Variant="Variant.Filled"
+                          Margin="Margin.Normal" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="HandleSubmit" Disabled="@_isSubmitting">
+                @_submitButtonText
+            </MudButton>
+        </MudForm>
+    }
+}
+else
+{
+    <MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Medium" Class="mt-4" />
+}
+
+@code {
+    [Parameter]
+    public string? DocumentProcessName { get; set; }
+
+    private bool _isLoading = true;
+    private bool _isSubmitting = false;
+    private string _submitButtonText = "Generate Document";
+
+    private DocumentProcessInfo? _documentProcessInfo;
+    private List<DocumentProcessMetadataFieldInfo> _metadataFields = new();
+    private Dictionary<string, object?> metadataModel = new();
+    private MudForm metadataForm;
+    private MudForm jsonForm;
+
+    private GenericDocumentGenerationRequest documentGenerationRequest = new GenericDocumentGenerationRequest();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (string.IsNullOrEmpty(DocumentProcessName))
+        {
+            Navigation.NavigateTo("/error");
+            return;
+        }
+
+        documentGenerationRequest.DocumentProcessName = DocumentProcessName;
+
+        // Fetch the DocumentProcessInfo
+        _documentProcessInfo = await DocumentProcessApiClient.GetDocumentProcessInfoByShortNameAsync(DocumentProcessName);
+
+        if (_documentProcessInfo != null)
+        {
+            // Fetch Metadata Fields
+            _metadataFields = await DocumentProcessApiClient.GetDocumentProcessMetadataFieldsAsync(_documentProcessInfo.Id);
+
+            // Initialize Metadata Model
+            foreach (var field in _metadataFields)
+            {
+                if (!field.HasPossibleValues)
+                {
+                    metadataModel[field.Name] = field.DefaultValue;
+                }
+                else if (field is { DefaultPossibleValue: not null, HasPossibleValues: true })
+                {
+                    metadataModel[field.Name] = field.DefaultPossibleValue;
+                }
+            }
+        }
+
+        _isLoading = false;
+    }
+
+    private RenderFragment RenderFieldComponent(DocumentProcessMetadataFieldInfo field) => builder =>
+    {
+        switch (field.FieldType)
+        {
+            case DynamicDocumentProcessMetaDataFieldType.Text:
+            case DynamicDocumentProcessMetaDataFieldType.MultilineText:
+            case DynamicDocumentProcessMetaDataFieldType.Number:
+                builder.OpenComponent<RenderMetadataTextField>(0);
+                break;
+
+            case DynamicDocumentProcessMetaDataFieldType.Date:
+            case DynamicDocumentProcessMetaDataFieldType.Time:
+            case DynamicDocumentProcessMetaDataFieldType.DateTime:
+                builder.OpenComponent<RenderMetadataDateTimeField>(0);
+                break;
+
+            case DynamicDocumentProcessMetaDataFieldType.BooleanCheckbox:
+            case DynamicDocumentProcessMetaDataFieldType.BooleanSwitchToggle:
+                builder.OpenComponent<RenderMetadataBooleanField>(0);
+                break;
+
+            case DynamicDocumentProcessMetaDataFieldType.File:
+                builder.OpenComponent<RenderMetadataFileField>(0);
+                break;
+
+            case DynamicDocumentProcessMetaDataFieldType.MultiSelectWithPossibleValues:
+            case DynamicDocumentProcessMetaDataFieldType.SelectRadioButton:
+            case DynamicDocumentProcessMetaDataFieldType.SelectDropdown:
+                builder.OpenComponent<RenderMetadataSelectField>(0);
+                break;
+
+            case DynamicDocumentProcessMetaDataFieldType.MapComponent:
+                builder.OpenComponent<RenderMetadataMapComponent>(0);
+                break;
+
+            default:
+                builder.OpenComponent<MudText>(0);
+                builder.AddAttribute(1, "Typo", Typo.body1);
+                builder.AddAttribute(2, "Class", "mb-4");
+                builder.AddContent(3, $"Field type '{field.FieldType}' is not supported.");
+                builder.CloseComponent();
+                return;
+        }
+
+        builder.AddAttribute(1, "FieldInfo", field);
+        builder.AddAttribute(2, "OnChanged", EventCallback.Factory.Create<(string FieldName, object? Value)>(this, OnFieldChanged));
+        builder.CloseComponent();
+    };
+
+    // In GenerateForm.razor
+    private async Task HandleSubmit()
+    {
+        _isSubmitting = true;
+        if (_metadataFields.Any())
+        {
+            await metadataForm.Validate();
+
+            if (metadataForm.IsValid)
+            {
+                // Serialize metadataModel to JSON
+                var metadataJson = JsonSerializer.Serialize(metadataModel);
+                documentGenerationRequest.StringifiedJson = metadataJson;
+            }
+            else
+            {
+                _isSubmitting = false;
+                return;
+            }
+        }
+        else
+        {
+            await jsonForm.Validate();
+
+            if (!jsonForm.IsValid)
+            {
+                _isSubmitting = false;
+                return;
+            }
+        }
+
+        documentGenerationRequest.Id = Guid.NewGuid();
+        documentGenerationRequest.DocumentTitle ??= $"{DocumentProcessName} {DateTime.UtcNow:yyyy-MM-dd}";
+
+        var generateDocumentDto = new GenerateDocumentDTO
+        {
+            DocumentProcessName = documentGenerationRequest.DocumentProcessName,
+            DocumentTitle = documentGenerationRequest.DocumentTitle,
+            AuthorOid = documentGenerationRequest.AuthorOid,
+            Id = documentGenerationRequest.Id,
+            RequestAsJson = JsonSerializer.Serialize(documentGenerationRequest)
+        };
+
+        await DocumentGenerationApiClient.GenerateDocumentAsync(generateDocumentDto);
+
+        Navigation.NavigateTo($"/docs/{documentGenerationRequest.Id}/true");
+    }
+
+
+
+    private void OnFieldChanged((string FieldName, object? Value) change)
+    {
+        metadataModel[change.FieldName] = change.Value;
+    }
+
+    private IEnumerable<string> ValidateMetadataModel()
+    {
+        var errors = new List<string>();
+
+        // Validate Document Title
+        if (string.IsNullOrWhiteSpace(documentGenerationRequest.DocumentTitle))
+        {
+            errors.Add("Document Title is required.");
+        }
+
+        // Validate Metadata Fields
+        foreach (var field in _metadataFields)
+        {
+            if (field.IsRequired && (metadataModel[field.Name] == null || string.IsNullOrWhiteSpace(metadataModel[field.Name]?.ToString())))
+            {
+                errors.Add($"{field.DisplayName} is required.");
+            }
+        }
+
+        return errors;
+    }
+}

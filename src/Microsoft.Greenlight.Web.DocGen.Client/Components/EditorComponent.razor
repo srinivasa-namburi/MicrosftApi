@@ -1,8 +1,6 @@
 ﻿@using BlazorMonaco.Editor
-@inject IJSRuntime JS
 
 <StandaloneCodeEditor @ref="monacoEditor"
-                      Id="my-code-editor"
                       ConstructionOptions="EditorConstructionOptions"
                       OnDidChangeModelContent="HandleContentChanged"
                       OnDidInit="HandleEditorInit"
@@ -29,25 +27,37 @@
     /// </summary>
     [Parameter] public bool? IsDarkMode { get; set; }
 
+    /// <summary>
+    /// The text to be displayed in the editor
+    /// </summary>
     [Parameter] public string Value { get; set; } = string.Empty;
+
     /// <summary>
     /// Height of the editor (default: 400px)
     /// </summary>
     [Parameter] public string HeightStyle { get; set; } = "400px";
+
     /// <summary>
     /// Width of the editor (default: 100%)
     /// </summary>
     [Parameter] public string WidthStyle { get; set; } = "100%";
 
     [Parameter] public string EditorTheme { get; set; } = "vs-light";
+
     /// <summary>
     /// Event to be raised when the value of the editor changes
     /// </summary>
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
+
     /// <summary>
     /// Event to be raised when the content of the editor changes
     /// </summary>
     [Parameter] public EventCallback OnContentChanged { get; set; }
+
+    /// <summary>
+    /// Event to be raised when the editor is initialized
+    /// </summary>
+    [Parameter] public EventCallback OnEditorInitialized { get; set; }
 
     // Use either the direct parameter or the cascading value
     private bool EffectiveIsDarkMode => IsDarkMode ?? CascadingIsDarkMode;
@@ -61,56 +71,62 @@
         }
     }
 
+    /// <summary>
+    /// Returns the construction options for the editor
+    /// </summary>
+    /// <param name="editor"></param>
+    /// <returns></returns>
     private StandaloneEditorConstructionOptions EditorConstructionOptions(StandaloneCodeEditor editor)
     {
         return new StandaloneEditorConstructionOptions
-            {
-                AutomaticLayout = true,
-                Language = "plaintext",
-                Theme = EffectiveIsDarkMode ? "vs-dark" : "vs-light",
-                Value = Value,
-                LineNumbers = "on",
-                WordWrap = "on",
-                
-                //EOL affecting behavior
-                AcceptSuggestionOnEnter = "on",
-                AutoIndent = "brackets",
-                ReadOnly = false,
-                TrimAutoWhitespace = false
-            };
+        {
+            AutomaticLayout = true,
+            Language = "plaintext",
+            Theme = EffectiveIsDarkMode ? "vs-dark" : "vs-light",
+            Value = Value,
+            LineNumbers = "on",
+            WordWrap = "on",
+
+            // EOL affecting behavior
+            AcceptSuggestionOnEnter = "on",
+            AutoIndent = "brackets",
+            ReadOnly = false,
+            TrimAutoWhitespace = false
+        };
     }
-    
+
     private async Task HandleContentChanged()
     {
-        var currentValue = await monacoEditor.GetValue(preserveBOM: true, lineEnding: "\n");
-        if (Value != currentValue)
+        if (monacoEditor != null)
         {
-            Value = currentValue;
-            await ValueChanged.InvokeAsync(currentValue);
+            string updatedValue = await monacoEditor.GetValue(preserveBOM: true, lineEnding: "\n");
+            if (Value != updatedValue)
+            {
+                Value = updatedValue;
+                await ValueChanged.InvokeAsync(updatedValue);
+            }
         }
 
         if (OnContentChanged.HasDelegate)
             await OnContentChanged.InvokeAsync();
     }
 
-    // In EditorComponent.razor, add this method
-    public async Task<string> GetRawValue()
-    {
-        if (monacoEditor == null)
-            return Value;
-        
-        return await monacoEditor.GetValue();
-    }
-
-
     private async Task HandleEditorInit()
     {
         await FocusAndSetCursorToTop();
+
+        if (OnEditorInitialized.HasDelegate)
+        {
+            await OnEditorInitialized.InvokeAsync();
+        }
     }
 
     private async Task FocusAndSetCursorToTop()
     {
-        await monacoEditor.Focus();
-        await monacoEditor.SetPosition(new BlazorMonaco.Position() { Column = 1, LineNumber = 1 }, "initial-focus");
+        if (monacoEditor != null)
+        {
+            await monacoEditor.Focus();
+            await monacoEditor.SetPosition(new BlazorMonaco.Position() { Column = 1, LineNumber = 1 }, "initial-focus");
+        }
     }
 }

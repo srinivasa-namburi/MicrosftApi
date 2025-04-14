@@ -1,3 +1,4 @@
+using Aspire.Hosting.Orleans;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Greenlight.AppHost;
 
@@ -11,16 +12,6 @@ var envConnectionStringsConfigurationSection = builder.Configuration.GetSection(
 var envAzureConfigurationSection = builder.Configuration.GetSection("Azure");
 var envKestrelConfigurationSection = builder.Configuration.GetSection("Kestrel");
 
-// Used to determine service configuration.
-var durableDevelopment =
-    Convert.ToBoolean(
-        builder.Configuration["ServiceConfiguration:GreenlightServices:DocumentGeneration:DurableDevelopmentServices"]
-    );
-
-// Set the Parameters:SqlPassword Key is user secrets (right click AppHost project, select User Secrets, add the key
-// and value)
-// Example: "Parameters:sqlPassword": "password"
-
 // Change from ADO
 var sqlPassword = builder.AddParameter("sqlPassword", true);
 var sqlDatabaseName = builder.Configuration["ServiceConfiguration:SQL:DatabaseName"];
@@ -32,86 +23,128 @@ IResourceBuilder<IResourceWithConnectionString> signalr;
 IResourceBuilder<IResourceWithConnectionString> azureAiSearch;
 IResourceBuilder<IResourceWithConnectionString> blobStorage;
 IResourceBuilder<IResourceWithConnectionString> insights = null!;
+IResourceBuilder<IResourceWithConnectionString> eventHub;
+IResourceBuilder<IResourceWithConnectionString> orleansClusteringTable;
+IResourceBuilder<IResourceWithConnectionString> orleansBlobStorage;
+IResourceBuilder<IResourceWithConnectionString> orleansCheckpointing;
+
+OrleansService orleans;
 
 if (builder.ExecutionContext.IsRunMode) // For local development
 {
-    if (durableDevelopment)
-    {
-        redisResource = builder.AddRedis("redis", 16379)
-            //.WithDataVolume("pvico-redis-vol")
-            //.WithLifetime(ContainerLifetime.Persistent);
-            ;
-        // Use Azure SQL Server for local development.
-        // Especially useful for ARM/AMD based machines that can't run SQL Server in a container
-        var useAzureSqlServer = Convert.ToBoolean(
-            builder.Configuration["ServiceConfiguration:GreenlightServices:Global:UseAzureSqlServer"]);
+    redisResource = builder.AddRedis("redis", 16379);
 
-        if (useAzureSqlServer)
-        {
-            docGenSql = builder
-             .AddAzureSqlServer("sqldocgen")
-             .AddDatabase(sqlDatabaseName!);
-        }
-        else
-        {
-            docGenSql = builder
-            .AddSqlServer("sqldocgen", password: sqlPassword, port: 9001)
-            .WithDataVolume("pvico-sql-docgen-vol")
-            .WithLifetime(ContainerLifetime.Persistent)
-            .AddDatabase(sqlDatabaseName!);
-        }
-    }
-    else // Don't persist data and queue content - it will be deleted on restart!
+    // Use Azure SQL Server for local development.
+    // Especially useful for ARM/AMD based machines that can't run SQL Server in a container
+    var useAzureSqlServer = Convert.ToBoolean(
+        builder.Configuration["ServiceConfiguration:GreenlightServices:Global:UseAzureSqlServer"]);
+
+    if (useAzureSqlServer)
     {
         docGenSql = builder
-            .AddSqlServer("sqldocgen", password: sqlPassword, 9001)
-            .AddDatabase(sqlDatabaseName!);
-
-        redisResource = builder.AddRedis("redis", 16379);
-    }
-
-    // The following resources are either deployed through the Aspire Azure Resource Manager or connected via
-    // connection string.
-    // Use the connection string to connect to the resources is the configuration key "Azure:SubscriptionId" is not
-    // set.
-    if (string.IsNullOrEmpty(builder.Configuration["Azure:SubscriptionId"]))
-    {
-        signalr = builder.AddConnectionString("signalr");
-        sbus = builder.AddConnectionString("sbus");
-        azureAiSearch = builder.AddConnectionString("aiSearch");
-        blobStorage = builder.AddConnectionString("blob-docing");
-
-        // Only add Application Insights if the connection string is set
-        if (!string.IsNullOrEmpty(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]))
-            insights = builder.AddConnectionString("insights", "APPLICATIONINSIGHTS_CONNECTION_STRING");
+         .AddAzureSqlServer("sqldocgen")
+         .AddDatabase(sqlDatabaseName!)
+         ;
     }
     else
     {
-        signalr = builder.AddAzureSignalR("signalr");
-        sbus = builder.AddAzureServiceBus("sbus");
-        azureAiSearch = builder.AddAzureSearch("aiSearch");
+        docGenSql = builder
+        .AddSqlServer("sqldocgen", password: sqlPassword, port: 9001)
+        .WithDataVolume("pvico-sql-docgen-vol")
+        .WithLifetime(ContainerLifetime.Persistent)
+        .AddDatabase(sqlDatabaseName!);
+    }
 
-        blobStorage = builder
+    // Test for each connection string. If it's not available, use the buidler.AddAzure... for each 
+    // resource type.
+    signalr = builder.Configuration.GetConnectionString("signalr") != null
+        ? builder.AddConnectionString("signalr")
+        : builder.AddAzureSignalR("signalr");
+
+    sbus = builder.Configuration.GetConnectionString("sbus") != null
+        ? builder.AddConnectionString("sbus")
+        : builder.AddAzureServiceBus("sbus");
+
+    eventHub = builder.Configuration.GetConnectionString("greenlight-cg-streams") != null
+        ? builder.AddConnectionString("greenlight-cg-streams")
+        : builder.AddAzureEventHubs("eventhub")
+            .AddHub("greenlight-hub")
+            .AddConsumerGroup("greenlight-cg-streams");
+
+    azureAiSearch = builder.Configuration.GetConnectionString("aiSearch") != null
+        ? builder.AddConnectionString("aiSearch")
+        : builder.AddAzureSearch("aiSearch");
+
+    blobStorage = builder.Configuration.GetConnectionString("blob-docing") != null
+        ? builder.AddConnectionString("blob-docing")
+        : builder
             .AddAzureStorage("docing")
             .AddBlobs("blob-docing");
 
-        // Add Application insights when configured to do so
+    // Only add Application Insights if the connection string is set
+    if (!string.IsNullOrEmpty(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]))
+        insights = builder.AddConnectionString("insights", "APPLICATIONINSIGHTS_CONNECTION_STRING");
+    else
+    {
         var useAppInsights = Convert.ToBoolean(
             builder.Configuration["ServiceConfiguration:GreenlightServices:Global:UseApplicationInsights"]);
         if (useAppInsights)
             insights = builder.AddAzureApplicationInsights("insights");
     }
+
+
+    var orleansStorage = builder
+        .AddAzureStorage("orleans-storage");
+
+    orleansBlobStorage = orleansStorage
+        .AddBlobs("blob-orleans");
+
+    orleansClusteringTable = orleansStorage
+        .AddTables("clustering");
+
+    orleansCheckpointing = orleansStorage
+        .AddTables("checkpointing");
+
 }
 else // For production/Azure deployment
 {
-    docGenSql = builder.AddAzureSqlServer("sqldocgen").AddDatabase(sqlDatabaseName!);
+    docGenSql = builder.AddAzureSqlServer("sqldocgen").
+        AddDatabase(sqlDatabaseName!);
+    
     redisResource = builder.AddAzureRedis("redis");
     sbus = builder.AddAzureServiceBus("sbus");
     azureAiSearch = builder.AddAzureSearch("aiSearch");
     signalr = builder.AddAzureSignalR("signalr");
-    blobStorage = builder.AddAzureStorage("docing").AddBlobs("blob-docing");
+    
+    blobStorage = builder.AddAzureStorage("docing")
+        .AddBlobs("blob-docing");
+
     insights = builder.AddAzureApplicationInsights("insights");
+    
+    eventHub = builder.AddAzureEventHubs("eventhub")
+        .AddHub("greenlight-hub")
+        .AddConsumerGroup("greenlight-cg-streams");
+
+    var orleansStorage = builder.AddAzureStorage("orleans-storage");
+
+    orleansBlobStorage = orleansStorage
+        .AddBlobs("blob-orleans");
+
+    orleansClusteringTable = orleansStorage
+        .AddTables("clustering");
+
+    orleansCheckpointing = orleansStorage
+        .AddTables("checkpointing");
 }
+
+orleans = builder.AddOrleans("default")
+    .WithClustering(orleansClusteringTable)
+    .WithClusterId("greenlight-cluster")
+    .WithServiceId("greenlight-main-silo")
+    .WithGrainStorage(orleansBlobStorage)
+    ;
+
+
 
 var dbSetupManager = builder
     .AddProject<Projects.Microsoft_Greenlight_SetupManager_DB>("db-setupmanager")
@@ -121,9 +154,10 @@ var dbSetupManager = builder
     .WithConfigSection(envAzureConfigurationSection)
     .WithConfigSection(envAzureAdConfigurationSection)
     .WithReference(docGenSql)
-    .WaitFor(docGenSql)
-    .WaitFor(redisResource);
-
+    .WithReference(redisResource)
+    .WaitFor(docGenSql) // We need this to be up and running before we can run the setup manager
+    .WaitFor(redisResource); // Wait for this to make it ready for other services
+ 
 var apiMain = builder
     .AddProject<Projects.Microsoft_Greenlight_API_Main>("api-main")
     .WithExternalHttpEndpoints()
@@ -138,7 +172,39 @@ var apiMain = builder
     .WithReference(docGenSql)
     .WithReference(sbus)
     .WithReference(azureAiSearch)
+    .WithReference(eventHub)
+    .WithReference(orleans.AsClient())
+    .WithReference(orleansCheckpointing)
+    .WithReference(orleansBlobStorage)
+    .WithReference(orleansClusteringTable)
     .WaitForCompletion(dbSetupManager);
+
+var silo = builder.AddProject<Projects.Microsoft_Greenlight_Silo>("silo")
+    .WithReplicas(1)
+    .WithConfigSection(envServiceConfigurationConfigurationSection)
+    .WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithConfigSection(envAzureConfigurationSection)
+    .WithConfigSection(envAzureAdConfigurationSection)
+    .WithReference(blobStorage)
+    .WithReference(docGenSql)
+    .WithReference(sbus)
+    .WithReference(redisResource)
+    .WithReference(azureAiSearch)
+    .WithReference(eventHub)
+    .WithReference(orleans)
+    .WithReference(orleansCheckpointing)
+    .WithReference(orleansBlobStorage)
+    .WithReference(orleansClusteringTable)
+    .WithReference(apiMain)
+    .WaitForCompletion(dbSetupManager);
+
+if (builder.ExecutionContext.IsRunMode)
+{
+    // Fix the ports on the Orleans silo for development to avoid
+    // gateway and silo port reshuffle which delays startup
+    silo.WithEnvironment("Orleans__Endpoints__GatewayPort", "10090")
+        .WithEnvironment("Orleans__Endpoints__SiloPort", "10091");
+}
 
 var docGenFrontend = builder
     .AddProject<Projects.Microsoft_Greenlight_Web_DocGen>("web-docgen")
@@ -154,10 +220,16 @@ var docGenFrontend = builder
     .WithReference(docGenSql)
     .WithReference(redisResource)
     .WithReference(signalr)
+    .WithReference(eventHub)
     .WithReference(apiMain)
+    .WithReference(orleans.AsClient())
+    .WithReference(orleansCheckpointing)
+    .WithReference(orleansBlobStorage)
+    .WithReference(orleansClusteringTable)
+    .WaitFor(apiMain)
     .WaitForCompletion(dbSetupManager);
 
-apiMain.WithReference(docGenFrontend); // Neccessary for CORS policy creation
+apiMain.WithReference(docGenFrontend); // Necessary for CORS policy creation
 
 var workerScheduler = builder
     .AddProject<Projects.Microsoft_Greenlight_Worker_Scheduler>("worker-scheduler")
@@ -172,28 +244,16 @@ var workerScheduler = builder
     .WithReference(redisResource)
     .WithReference(apiMain)
     .WithReference(azureAiSearch)
-    .WaitForCompletion(dbSetupManager);
-
-var workerDocumentGeneration = builder
-    .AddProject<Projects.Microsoft_Greenlight_Worker_DocumentGeneration>("worker-documentgeneration")
-    .WithReplicas(Convert.ToUInt16(
-        builder.Configuration["ServiceConfiguration:GreenlightServices:DocumentGeneration:NumberOfGenerationWorkers"]))
-    .WithConfigSection(envServiceConfigurationConfigurationSection)
-    .WithConfigSection(envConnectionStringsConfigurationSection)
-    .WithConfigSection(envAzureConfigurationSection)
-    .WithConfigSection(envAzureAdConfigurationSection)
-    .WithReference(azureAiSearch)
-    .WithReference(blobStorage)
-    .WithReference(docGenSql)
-    .WithReference(sbus)
-    .WithReference(redisResource)
-    .WithReference(apiMain)
+    .WithReference(eventHub)
+    .WithReference(orleans.AsClient())
+    .WithReference(orleansCheckpointing)
+    .WithReference(orleansBlobStorage)
+    .WithReference(orleansClusteringTable)
     .WaitForCompletion(dbSetupManager);
 
 var workerDocumentIngestion = builder
     .AddProject<Projects.Microsoft_Greenlight_Worker_DocumentIngestion>("worker-documentingestion")
-    .WithReplicas(Convert.ToUInt16(
-        builder.Configuration["ServiceConfiguration:GreenlightServices:DocumentIngestion:NumberOfIngestionWorkers"]))
+    .WithReplicas(1)
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
     .WithConfigSection(envAzureConfigurationSection)
@@ -204,46 +264,20 @@ var workerDocumentIngestion = builder
     .WithReference(sbus)
     .WithReference(redisResource)
     .WithReference(apiMain)
-    .WaitForCompletion(dbSetupManager);
-
-var workerChat = builder.AddProject<Projects.Microsoft_Greenlight_Worker_Chat>("worker-chat")
-    .WithConfigSection(envServiceConfigurationConfigurationSection)
-    .WithConfigSection(envConnectionStringsConfigurationSection)
-    .WithConfigSection(envAzureConfigurationSection)
-    .WithConfigSection(envAzureAdConfigurationSection)
-    .WithReference(azureAiSearch)
-    .WithReference(blobStorage)
-    .WithReference(docGenSql)
-    .WithReference(sbus)
-    .WithReference(redisResource)
-    .WithReference(apiMain)
-    .WaitForCompletion(dbSetupManager);
-
-var workerValidation = builder.AddProject<Projects.Microsoft_Greenlight_Worker_Validation>("worker-validation")
-    .WithReplicas(Convert.ToUInt16(
-        builder.Configuration["ServiceConfiguration:GreenlightServices:DocumentValidation:NumberOfValidationWorkers"]))
-    .WithConfigSection(envServiceConfigurationConfigurationSection)
-    .WithConfigSection(envConnectionStringsConfigurationSection)
-    .WithConfigSection(envAzureConfigurationSection)
-    .WithConfigSection(envAzureAdConfigurationSection)
-    .WithReference(azureAiSearch)
-    .WithReference(blobStorage)
-    .WithReference(docGenSql)
-    .WithReference(sbus)
-    .WithReference(redisResource)
-    .WithReference(apiMain)
+    .WithReference(eventHub)
+    .WithReference(orleans.AsClient())
+    .WithReference(orleansCheckpointing)
+    .WithReference(orleansBlobStorage)
+    .WithReference(orleansClusteringTable)
     .WaitForCompletion(dbSetupManager);
 
 if (insights is not null)
 {
     apiMain.WithReference(insights);
     workerScheduler.WithReference(insights);
-    workerDocumentGeneration.WithReference(insights);
     workerDocumentIngestion.WithReference(insights);
-    workerChat.WithReference(insights);
+    silo.WithReference(insights);
 }
-
-
 
 builder.Build().Run();
 

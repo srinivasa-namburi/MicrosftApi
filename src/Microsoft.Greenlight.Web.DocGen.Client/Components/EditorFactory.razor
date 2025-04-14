@@ -1,0 +1,55 @@
+﻿@if (EditorMode == EditorComponentEditorMode.MultiValueDiffEditor)
+{
+    <DiffEditorComponent Value="@Value"
+                         SecondValue="@SecondValue"
+                         IsDarkMode="@EffectiveIsDarkMode"
+                         HeightStyle="@HeightStyle"
+                         WidthStyle="@WidthStyle"
+                         SecondValueChanged="@OnEditorValueChanged"
+                         />
+}
+else
+{
+    <EditorComponent Value="@Value"
+                     IsDarkMode="@EffectiveIsDarkMode"
+                     HeightStyle="@HeightStyle"
+                     WidthStyle="@WidthStyle"
+                     ValueChanged="@OnEditorValueChanged"
+                     />
+}
+
+@code {
+    [CascadingParameter(Name = "IsDarkMode")]
+    public bool CascadingIsDarkMode { get; set; }
+
+    [Parameter] public bool? IsDarkMode { get; set; }
+    [Parameter] public string Value { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public string? SecondValue { get; set; }
+    [Parameter] public EventCallback<string> SecondValueChanged { get; set; }
+    [Parameter] public string HeightStyle { get; set; } = "400px";
+    [Parameter] public string WidthStyle { get; set; } = "100%";
+    [Parameter] public EditorComponentEditorMode EditorMode { get; set; } = EditorComponentEditorMode.SingleValue;
+
+    // Pass the parent's event directly down to the editors:
+    [Parameter] public EventCallback OnContentChanged { get; set; }
+    
+    private bool EffectiveIsDarkMode => IsDarkMode ?? CascadingIsDarkMode;
+
+    private void OnEditorValueChanged(string obj)
+    {
+        if (EditorMode == EditorComponentEditorMode.SingleValue)
+        {
+            Value = obj;
+            ValueChanged.InvokeAsync(obj);
+        }
+        else
+        {
+            SecondValue = obj;
+            SecondValueChanged.InvokeAsync(obj);
+        }
+        OnContentChanged.InvokeAsync(null);
+
+    }
+
+}

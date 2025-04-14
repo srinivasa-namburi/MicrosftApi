@@ -26,8 +26,8 @@ namespace Microsoft.Greenlight.Shared.Services.Validation
             var validationExecutionStep = await _dbContext.ValidationPipelineExecutionSteps
                 .Where(x => x.Id == step.ValidationPipelineExecutionStepId)
                 .Include(x => x.ValidationPipelineExecution)
-                .ThenInclude(x => x.DocumentProcessValidationPipeline)
-                .ThenInclude(x => x.DocumentProcess)
+                    .ThenInclude(x => x!.DocumentProcessValidationPipeline)
+                        .ThenInclude(x => x!.DocumentProcess)
                 .AsNoTracking()
                 .AsSplitQuery()
                 .FirstOrDefaultAsync();

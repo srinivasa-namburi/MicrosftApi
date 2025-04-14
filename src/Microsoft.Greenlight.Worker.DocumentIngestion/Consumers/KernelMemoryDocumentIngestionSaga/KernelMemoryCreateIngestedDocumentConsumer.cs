@@ -1,5 +1,4 @@
 using MassTransit;
-using Microsoft.Greenlight.DocumentProcess.Shared.Search;
 using Microsoft.Greenlight.Shared.Contracts.Messages.DocumentIngestion.Commands;
 using Microsoft.Greenlight.Shared.Contracts.Messages.DocumentIngestion.Events;
 using Microsoft.Greenlight.Shared.Enums;

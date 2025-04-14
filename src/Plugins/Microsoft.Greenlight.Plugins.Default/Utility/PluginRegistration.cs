@@ -9,8 +9,8 @@ public class PluginRegistration : IPluginRegistration
 {
     public void RegisterPlugin(IServiceCollection serviceCollection)
     {
-        serviceCollection.AddSingleton<DatePlugin>();
-        serviceCollection.AddSingleton<ConversionPlugin>();
+        serviceCollection.AddTransient<DatePlugin>();
+        serviceCollection.AddTransient<ConversionPlugin>();
     }
 
     public async Task InitializeAsync(IServiceProvider serviceProvider)

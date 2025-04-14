@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.Greenlight.Grains.Chat.Contracts;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
@@ -13,6 +14,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
     public class ContentReferencesController : BaseController
     {
         private readonly IContentReferenceService _contentReferenceService;
+        private readonly IClusterClient _clusterClient;
         private readonly ILogger<ContentReferencesController> _logger;
         private readonly DocGenerationDbContext _dbContext;
 
@@ -22,14 +24,17 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         /// <param name="contentReferenceService">The content reference service.</param>
         /// <param name="logger">The logger.</param>
         /// <param name="dbContext">The database context</param>
+        /// <param name="clusterClient">Orleans Cluster Client</param>
         public ContentReferencesController(
             IContentReferenceService contentReferenceService,
             ILogger<ContentReferencesController> logger, 
-            DocGenerationDbContext dbContext)
+            DocGenerationDbContext dbContext, 
+            IClusterClient clusterClient)
         {
             _contentReferenceService = contentReferenceService;
             _logger = logger;
             _dbContext = dbContext;
+            _clusterClient = clusterClient;
         }
 
         /// <summary>
@@ -157,17 +162,20 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         {
             try
             {
-                // Remove the reference from the conversation
-                var conversation = await _dbContext.ChatConversations.FindAsync(conversationId);
-                if (conversation == null)
-                    return NotFound("Conversation not found");
+                var conversationGrain = _clusterClient.GetGrain<IConversationGrain>(conversationId);
 
-                var reference = conversation.ReferenceItemIds.FirstOrDefault(x => x.Equals(referenceId));
+                if (conversationGrain == null)
+                {
+                    return NotFound("Conversation not found");
+                }
+                var conversationState = await conversationGrain.GetStateAsync();
+                // Remove the reference from the conversation
+                //var conversation = await _dbContext.ChatConversations.FindAsync(conversationId);
+                
+                var reference = conversationState.ReferenceItemIds.FirstOrDefault(x => x.Equals(referenceId));
                 if (reference == Guid.Empty)
                     return NotFound("Reference not found in conversation");
-
-                conversation.ReferenceItemIds.Remove(reference);
-                await _dbContext.SaveChangesAsync();
+                await conversationGrain.RemoveConversationReference(reference);
                 
                 return Ok("Reference removed successfully");
             }

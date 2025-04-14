@@ -46,69 +46,73 @@ public class DocumentOutline : EntityBase
     }
 
     private void ParseOutlineItemsFromText(string value)
+{
+    // Parse the full text into outline items
+    OutlineItems = new List<DocumentOutlineItem>();
+    var lines = value.Split('\n');
+    var parentStack = new Stack<DocumentOutlineItem>();
+    int orderIndex = 0;
+
+    foreach (var line in lines)
     {
-        // Parse the full text into outline items
-        // Each line in the full text represents a section in the outline
-        // The section number is the first part of the line, followed by a space, and then the section title
-        // The section number can be a number (1, 1.1, 1.1.1, etc.) or a set of hashes (#, ##, ###, etc.)
-        // The number of hashes indicates the level of the section
-        // Use the Level property to store the level of the section
-        // Use the SectionNumber and SectionTitle properties to store the section number and title
-        // Use the ParentId property to store the id of the parent section
-        // Use the Children property to store the child sections
-
-        OutlineItems = [];
-        var lines = value.Split('\n');
-        var parentStack = new Stack<DocumentOutlineItem>();
-        foreach (var line in lines)
+        var match = Regex.Match(line, @"^(\d+(\.\d+)*)|(\#+) ");
+        if (match.Success)
         {
-            var match = Regex.Match(line, @"^(\d+(\.\d+)*)|(\#+) ");
-            if (match.Success)
+            int level;
+            string sectionNumber;
+            if (match.Groups[1].Success)
             {
-                int level;
-                string sectionNumber;
-                if (match.Groups[1].Success)
+                // Numbering (1, 1.1, 1.1.1, etc.)
+                level = match.Groups[1].Value.Count(c => c == '.');
+                sectionNumber = match.Groups[1].Value.TrimEnd('.'); // Strip trailing periods
+            }
+            else
+            {
+                // Hashes (#, ##, ###, etc.)
+                level = match.Groups[3].Value.Length - 1;
+                // store the hashes as the section number
+                sectionNumber = match.Groups[3].Value;
+            }
+
+            var sectionTitle = line.Substring(match.Length).Trim();
+            var outlineItem = new DocumentOutlineItem
+            {
+                Level = level,
+                SectionNumber = sectionNumber,
+                SectionTitle = sectionTitle,
+                OrderIndex = orderIndex++ // Preserve the order from the input text
+            };
+
+            if (level == 0)
+            {
+                OutlineItems.Add(outlineItem);
+                parentStack.Clear();
+                parentStack.Push(outlineItem);
+            }
+            else
+            {
+                while (parentStack.Count > level)
                 {
-                    // Numbering (1, 1.1, 1.1.1, etc.)
-                    level = match.Groups[1].Value.Count(c => c == '.');
-                    sectionNumber = match.Groups[1].Value.Trim();
-                }
-                else
-                {
-                    // Hashes (#, ##, ###, etc.)
-                    level = match.Groups[3].Value.Length - 1;
-                    sectionNumber = match.Groups[3].Value.Trim();
+                    parentStack.Pop();
                 }
 
-                var sectionTitle = line.Substring(match.Length).Trim();
-                var outlineItem = new DocumentOutlineItem
-                {
-                    Level = level,
-                    SectionNumber = sectionNumber,
-                    SectionTitle = sectionTitle
-                };
-
-                if (level == 0)
-                {
-                    OutlineItems.Add(outlineItem);
-                    parentStack.Clear();
-                    parentStack.Push(outlineItem);
-                }
-                else
-                {
-                    while (parentStack.Count > level)
-                    {
-                        parentStack.Pop();
-                    }
-
-                    var parent = parentStack.Peek();
-                    outlineItem.ParentId = parent.Id;
-                    parent.Children.Add(outlineItem);
-                    parentStack.Push(outlineItem);
-                }
+                var parent = parentStack.Peek();
+                outlineItem.ParentId = parent.Id;
+                parent.Children.Add(outlineItem);
+                parentStack.Push(outlineItem);
             }
         }
     }
+
+    // Sort the outline items by Level and OrderIndex
+    OutlineItems = OutlineItems
+        .OrderBy(item => item.Level)
+        .ThenBy(item => item.SectionNumber, StringComparer.OrdinalIgnoreCase)
+        .ThenBy(item => item.OrderIndex)
+        .ToList();
+}
+
+
 
     private string RenderOutlineItemsAsText()
     {

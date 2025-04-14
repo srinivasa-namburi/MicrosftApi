@@ -73,10 +73,25 @@ public class USGSEarthquakeConnector : IEarthquakeConnector
                 Console.WriteLine();
 
                 // Convert the response content to a GeoJSON FeatureCollection
-                var featureCollection = JsonConvert.DeserializeObject<FeatureCollection>(responseContent);
+                FeatureCollection? featureCollection = null;
+                try
+                {
+                    featureCollection = JsonConvert.DeserializeObject<FeatureCollection>(responseContent);
+                }
+                catch (Exception ex)
+                {
+                    throw new InvalidOperationException(
+                        "Call failed because of communication issues with the API. Try again.");
+                }
+
+                if (featureCollection == null)
+                {
+                    throw new InvalidOperationException(
+                        "Call failed because of communication issues with the API. Try again.");
+                }
 
                 // Create a list of ProjectVico.Plugins.GeographicalData.Models.EarthQuakeDetail objects from the FeatureCollection
-                foreach (var feature in featureCollection.Features)
+                foreach (var feature in featureCollection!.Features)
                 {
                     try
                     {
@@ -127,9 +142,4 @@ public class USGSEarthquakeConnector : IEarthquakeConnector
             }
         }
     }
-
-
-
-
-
 }

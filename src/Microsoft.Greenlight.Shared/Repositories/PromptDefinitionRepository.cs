@@ -20,9 +20,9 @@ public class PromptDefinitionRepository : GenericRepository<PromptDefinition>
     /// <param name="dbContext">The database context.</param>
     /// <param name="redisConnection">The Redis connection.</param>
     public PromptDefinitionRepository(
-        DocGenerationDbContext dbContext,
+        IDbContextFactory<DocGenerationDbContext> dbContextFactory,
         IConnectionMultiplexer redisConnection
-    ) : base(dbContext, redisConnection)
+    ) : base(dbContextFactory, redisConnection)
     {
         SetCacheDuration(DefaultCacheDuration);
     }
@@ -61,6 +61,8 @@ public class PromptDefinitionRepository : GenericRepository<PromptDefinition>
     /// <inheritdoc/>
     public virtual new async Task<List<PromptDefinition>> GetAllAsync(bool useCache = false)
     {
+        var dbContext = await _dbContextFactory.CreateDbContextAsync();
+
         if (useCache)
         {
             var cachedData = await Cache.StringGetAsync(CacheKeyAll);
@@ -73,7 +75,7 @@ public class PromptDefinitionRepository : GenericRepository<PromptDefinition>
                 }
             }
 
-            var entities = await _dbContext.PromptDefinitions
+            var entities = await dbContext.PromptDefinitions
                 .Include(x => x.Variables)
                 .ToListAsync();
             await Cache.StringSetAsync(CacheKeyAll, JsonSerializer.Serialize(entities), CacheDuration);
@@ -81,7 +83,7 @@ public class PromptDefinitionRepository : GenericRepository<PromptDefinition>
         }
         else
         {
-            return await _dbContext.PromptDefinitions
+            return await dbContext.PromptDefinitions
                 .Include(x => x.Variables)
                 .ToListAsync();
         }

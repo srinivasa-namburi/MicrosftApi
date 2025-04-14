@@ -324,7 +324,7 @@ public class DocGenerationDbContext : DbContext
             .WithOne(x => x.ValidationPipelineExecutionStepResult)
             .HasForeignKey(x => x.ValidationPipelineExecutionStepResultId)
             .IsRequired(false)
-            .OnDelete(DeleteBehavior.NoAction);
+            .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<ValidationExecutionStepContentNodeResult>()
             .ToTable("ValidationExecutionStepContentNodeResults");
@@ -337,7 +337,16 @@ public class DocGenerationDbContext : DbContext
         modelBuilder.Entity<ValidationExecutionStepContentNodeResult>()
             .HasIndex(nameof(ValidationExecutionStepContentNodeResult.OriginalContentNodeId))
             .IsUnique(false);
-      
+
+        modelBuilder.Entity<ValidationExecutionStepContentNodeResult>()
+            .HasIndex(nameof(ValidationExecutionStepContentNodeResult.OriginalContentNodeId),
+                nameof(ValidationExecutionStepContentNodeResult.ResultantContentNodeId))
+            .IsUnique(false);
+
+        modelBuilder.Entity<ValidationExecutionStepContentNodeResult>()
+            .HasIndex(nameof(ValidationExecutionStepContentNodeResult.ApplicationStatus))
+            .IsUnique(false);
+
         modelBuilder.Entity<ValidationExecutionStepContentNodeResult>()
             .HasOne(x => x.OriginalContentNode)
             .WithMany()
@@ -632,6 +641,7 @@ public class DocGenerationDbContext : DbContext
 
         modelBuilder.Entity<DocumentOutlineItem>()
             .ToTable("DocumentOutlineItems");
+
         modelBuilder.Entity<DocumentOutlineItem>()
             .HasOne(x => x.DocumentOutline)
             .WithMany(x => x.OutlineItems)

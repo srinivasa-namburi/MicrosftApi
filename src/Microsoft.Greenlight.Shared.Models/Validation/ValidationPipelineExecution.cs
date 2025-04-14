@@ -1,4 +1,5 @@
-﻿using System.Text.Json.Serialization;
+﻿using Microsoft.Greenlight.Shared.Enums;
+using System.Text.Json.Serialization;
 
 namespace Microsoft.Greenlight.Shared.Models.Validation
 {
@@ -33,6 +34,11 @@ namespace Microsoft.Greenlight.Shared.Models.Validation
         /// </summary>
         [JsonIgnore] 
         public GeneratedDocument? GeneratedDocument { get; set; }
+
+        /// <summary>
+        /// The status of applying the validation execution results to the document
+        /// </summary>
+        public ValidationPipelineExecutionApplicationStatus ApplicationStatus { get; set; } = ValidationPipelineExecutionApplicationStatus.Unapplied;
 
     }
 }

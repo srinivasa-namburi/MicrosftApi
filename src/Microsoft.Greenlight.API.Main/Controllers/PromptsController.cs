@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Greenlight.DocumentProcess.Shared.Prompts;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
+using Microsoft.Greenlight.Shared.Prompts;
 using Microsoft.Greenlight.Shared.Services;
 using System.Text.RegularExpressions;
 

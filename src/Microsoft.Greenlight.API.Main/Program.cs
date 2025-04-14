@@ -1,20 +1,25 @@
+using Azure.Data.Tables;
+using Azure.Storage.Blobs;
 using MassTransit;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
-using Microsoft.Identity.Web;
-using Microsoft.OpenApi.Models;
-using Microsoft.Greenlight.API.Main.Hubs;
-using Microsoft.Greenlight.DocumentProcess.Shared;
 using Microsoft.Greenlight.ServiceDefaults;
-using Microsoft.Greenlight.Shared;
 using Microsoft.Greenlight.Shared.Configuration;
+using Microsoft.Greenlight.Shared.Contracts.Chat;
 using Microsoft.Greenlight.Shared.Core;
+using Microsoft.Greenlight.Shared.DocumentProcess.Shared;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Helpers;
-using Microsoft.Greenlight.Shared.Management;
+using Microsoft.Greenlight.Shared.Models;
+using Microsoft.Greenlight.Shared.Notifiers;
+using Microsoft.Identity.Web;
 using Microsoft.OpenApi.Any;
 using Microsoft.OpenApi.Interfaces;
+using Microsoft.OpenApi.Models;
+using Orleans.Configuration;
+using Orleans.Serialization;
 using Scalar.AspNetCore;
+using System.Reflection;
 
 //var builder = WebApplication.CreateBuilder(args);
 var builder = new GreenlightDynamicWebApplicationBuilder(args);
@@ -26,16 +31,6 @@ AdminHelper.Initialize(builder.Configuration);
 
 builder.AddGreenlightDbContextAndConfiguration();
 
-// Bind the ServiceConfigurationOptions to configuration
-builder.Services.AddOptions<ServiceConfigurationOptions>()
-    .Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName))
-    .ValidateDataAnnotations()
-    .ValidateOnStart();
-
-// This enables reloading:
-builder.Services.Configure<ServiceConfigurationOptions>(
-    builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
-
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
 
 // Due to a bug, this MUST come before .AddServiceDefaults() (keyed services can't be present in container)
@@ -45,12 +40,11 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.AddServiceDefaults();
 
-await builder.DelayStartup(serviceConfigurationOptions.GreenlightServices.DocumentGeneration.DurableDevelopmentServices);
+//await builder.DelayStartup(serviceConfigurationOptions.GreenlightServices.DocumentGeneration.DurableDevelopmentServices);
 
 builder.AddGreenlightServices(credentialHelper, serviceConfigurationOptions);
 
 builder.RegisterStaticPlugins(serviceConfigurationOptions);
-builder.AddRepositories();
 builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
 builder.AddSemanticKernelServices(serviceConfigurationOptions);
 
@@ -90,7 +84,7 @@ builder.Services.AddSwaggerGen(c =>
                 AuthorizationUrl = new Uri($"{entraInstance.TrimEnd('/')}/{entraTenantId}/oauth2/v2.0/authorize"),
                 TokenUrl = new Uri($"{entraInstance.TrimEnd('/')}/{entraTenantId}/oauth2/v2.0/token"),
                 Scopes = new Dictionary<string, string>
-                { 
+                {
                     { entraScopes!, "Access the API" },
                 },
                 // To allow Scalar to select PKCE by Default
@@ -143,10 +137,14 @@ builder.Services.AddCors(options =>
         .SetIsOriginAllowed((host) => true));
 });
 
+var useAzureSignalR = builder.Configuration["ServiceConfiguration:GreenlightServices:Scalability:UseAzureSignalR"];
+
 if (builder.Environment.IsDevelopment() ||
-    builder.Configuration.GetConnectionString("signalr") != null)
+    (useAzureSignalR == null || useAzureSignalR == "false") ||
+    builder.Configuration.GetConnectionString("signalr") == null ||
+    builder.Configuration.GetConnectionString("signalr") == string.Empty)
 {
-    builder.Services.AddSignalR();
+    builder.Services.AddSignalR(); // Default SignalR
 }
 else
 {
@@ -157,6 +155,93 @@ else
 }
 
 builder.Services.AddHttpContextAccessor();
+var eventHubConnectionString = builder.Configuration.GetConnectionString("greenlight-cg-streams");
+var checkPointTableStorageConnectionString = builder.Configuration.GetConnectionString("checkpointing");
+var orleansBlobStoreConnectionString = builder.Configuration.GetConnectionString("blob-orleans");
+
+var currentAssembly = Assembly.GetExecutingAssembly();
+
+//builder.AddGreenlightOrleansClient(credentialHelper);
+builder.UseOrleans(siloBuilder =>
+{
+    siloBuilder.Configure<ClusterOptions>(options =>
+    {
+        options.ClusterId = "greenlight-cluster";
+        options.ServiceId = "greenlight-api-silo";
+    });
+
+    siloBuilder.Services.AddSerializer(serializerBuilder =>
+    {
+        serializerBuilder.AddJsonSerializer(DetectSerializableAssemblies);
+
+        // Is there a way to add Orleans Serializers for referenced assemblies?
+        serializerBuilder.AddAssembly(typeof(ChatMessageDTO).Assembly);
+        serializerBuilder.AddAssembly(typeof(ChatMessage).Assembly);
+        serializerBuilder.AddAssembly(currentAssembly);
+    });
+
+    // Add EventHub-based streaming for high throughput
+    siloBuilder.AddEventHubStreams("StreamProvider", (ISiloEventHubStreamConfigurator streamsConfigurator) =>
+    {
+        streamsConfigurator.ConfigureEventHub(eventHubBuilder => eventHubBuilder.Configure(options =>
+        {
+            var eventHubNamespace = eventHubConnectionString!.Split("Endpoint=")[1].Split(":443/")[0];
+            var eventHubName = eventHubConnectionString!.Split("EntityPath=")[1].Split(";")[0];
+            var consumerGroup = eventHubConnectionString!.Split("ConsumerGroup=")[1].Split(";")[0];
+            options.ConfigureEventHubConnection(
+                eventHubNamespace,
+                eventHubName,
+                consumerGroup, credentialHelper.GetAzureCredential());
+
+        }));
+
+        streamsConfigurator.UseAzureTableCheckpointer(checkpointBuilder =>
+
+            checkpointBuilder.Configure(options =>
+            {
+                options.TableServiceClient = new TableServiceClient(
+                    new Uri(checkPointTableStorageConnectionString!), credentialHelper.GetAzureCredential());
+
+                options.PersistInterval = TimeSpan.FromSeconds(10);
+            }));
+
+    });
+
+    siloBuilder.AddAzureBlobGrainStorage("PubSubStore", options =>
+    {
+        var blobStorageUrl = new Uri(orleansBlobStoreConnectionString!);
+        options.BlobServiceClient =
+            new BlobServiceClient(blobStorageUrl, credentialHelper.GetAzureCredential());
+    });
+
+    siloBuilder.AddAzureBlobGrainStorageAsDefault(options =>
+    {
+        options.ContainerName = "grain-storage";
+        var blobStorageUrl = new Uri(orleansBlobStoreConnectionString!);
+        options.BlobServiceClient =
+            new BlobServiceClient(blobStorageUrl, credentialHelper.GetAzureCredential());
+    });
+
+    siloBuilder.UseAzureTableReminderService(options =>
+    {
+        // Use the same table storage connection that you're using for checkpointing
+        options.TableServiceClient = new TableServiceClient(
+            new Uri(checkPointTableStorageConnectionString!),
+            credentialHelper.GetAzureCredential());
+
+        options.TableName = "OrleansReminders";
+    });
+
+    bool DetectSerializableAssemblies(Type arg)
+    {
+        // Check if the type is in any assembly starting with Microsoft.Greenlight.Grain or Microsoft.Greenlight.Shared
+        // This is a bit of a hack, but it works for now
+        var assemblyName = arg.Assembly.GetName().Name;
+        return assemblyName != null &&
+               (assemblyName.StartsWith("Microsoft.Greenlight.Grain") ||
+                assemblyName.StartsWith("Microsoft.Greenlight.Shared"));
+    }
+});
 
 var serviceBusConnectionString = builder.Configuration.GetConnectionString("sbus");
 serviceBusConnectionString = serviceBusConnectionString?.Replace("https://", "sb://").Replace(":443/", "/");
@@ -178,7 +263,22 @@ builder.Services.AddMassTransit(x =>
     });
 });
 
-builder.Services.AddSingleton<IHostedService, ShutdownCleanupService>();
+
+// Bind the ServiceConfigurationOptions to configuration
+builder.Services.AddOptions<ServiceConfigurationOptions>()
+    .Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+// This enables reloading:
+builder.Services.Configure<ServiceConfigurationOptions>(
+    builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
+
+// This sets up a background worker + all SignalR notifiers.
+// We've currently disabled SignalR notifiers in the process of moving these
+// to grain orchestration.
+builder.Services.AddGreenlightHostedServices(addSignalrNotifiers: false);
+
 
 var app = builder.Build();
 
@@ -197,10 +297,8 @@ app.UseAuthorization();
 app.UseExceptionHandler(app.Environment.IsDevelopment() ? "/error-development" : "/error");
 app.UseStatusCodePages();
 
-app.MapHub<NotificationHub>("/hubs/notification-hub", options =>
-{
 
-});
+app.MapHub<NotificationHub>("/hubs/notification-hub");
 
 app.MapDefaultEndpoints();
 

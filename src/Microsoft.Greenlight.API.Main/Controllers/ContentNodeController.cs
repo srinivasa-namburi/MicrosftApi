@@ -178,7 +178,11 @@ public class ContentNodeController : BaseController
     [Produces<ContentNodeInfo>]
     public async Task<ActionResult<ContentNodeInfo>> UpdateContentNodeText(Guid contentNodeId, [FromBody] UpdateContentNodeTextRequest request)
     {
-        var updatedNode = await _contentNodeService.ReplaceContentNodeTextAsync(contentNodeId, request.NewText, request.VersioningReason, request.Comment);
+        var updatedNode = await _contentNodeService.ReplaceContentNodeTextAsync(
+            contentNodeId, request.NewText, 
+            request.VersioningReason, 
+            request.Comment,
+            saveChanges:true);
 
         if (updatedNode == null)
         {

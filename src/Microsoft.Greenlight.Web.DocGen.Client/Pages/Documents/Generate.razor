@@ -1,90 +1,20 @@
 @page "/generate"
 @page "/{DocumentProcessNameQueryParameter}/generate"
-@using System.Text
-@using Microsoft.Extensions.Options
-@using Microsoft.Greenlight.Shared.Configuration
-@using Microsoft.Greenlight.Web.Shared
-@inject NavigationManager Navigation
-@inject IOptions<ServiceConfigurationOptions> ServiceConfigurationOptionsSelector
-@inject DynamicComponentResolver DynamicComponentResolver
-@inject IDocumentProcessApiClient DocumentProcessApiClient
-
-
 
 @code {
     [Parameter] public string? DocumentProcessNameQueryParameter { get; set; }
-    private const string ComponentName = "GenerateForm";
-    private readonly Dictionary<string, object> DynamicComponentParameters = new();
-    private Type? ComponentType { get; set; }
-
 }
 
-<DynamicComponent Type="@ComponentType" Parameters="@DynamicComponentParameters" />
+<GenerateForm DocumentProcessName="@DocumentProcessNameQueryParameter"/>
 
 @code {
 
-    protected override async Task OnParametersSetAsync()
-    {
-        if (DocumentProcessNameQueryParameter is null)
-        {
-            Navigation.NavigateTo("/US.NuclearLicensing/generate", forceLoad: true);
-        }
-
-        ComponentType = GetComponentType() ?? throw new InvalidOperationException("Component type not found");
-        
-        // Update the parameters for the DynamicComponent
-        var documentProcessName = ToPascalCase(DocumentProcessNameQueryParameter.Replace("-", "."));
-        DynamicComponentParameters["DocumentProcessName"] = documentProcessName;
-    }
-
     protected override async Task OnInitializedAsync()
     {
-        var documentProcessName = ToPascalCase(DocumentProcessNameQueryParameter.Replace("-", "."));
-        DynamicComponentParameters.Clear();
-        DynamicComponentParameters.Add("DocumentProcessName", documentProcessName);
-    }
-
-    private Type? GetComponentType()
-    {
-        if (DocumentProcessNameQueryParameter is not null)
+        if (string.IsNullOrWhiteSpace(DocumentProcessNameQueryParameter))
         {
-            // The DocumentProcessNameDashed will be camelCase, so we need to convert it to PascalCase. Also change dashes to periods.
-            var documentProcessName = ToPascalCase(DocumentProcessNameQueryParameter.Replace("-", "."));
-            var dp = DocumentProcessApiClient.GetDocumentProcessInfoByShortNameAsync(documentProcessName);
-
-            var dynamicComponentType = DynamicComponentResolver
-                .GetDynamicComponent($"Microsoft.Greenlight.UI.{documentProcessName}",
-                    $"Microsoft.Greenlight.UI.{documentProcessName}", ComponentName);
-
-            return dynamicComponentType;
+            DocumentProcessNameQueryParameter = "NRC.Review";
         }
-        else
-        {
-            return null;
-        }
-    }
-
-    private string ToPascalCase(string inputString)
-    {
-        // You will receive a string that contains periods separating words. You need to convert each word to PascalCase from camelCase.
-        // Split the string by periods
-        var words = inputString.Split('.');
-        var result = new StringBuilder();
-
-        foreach (var word in words)
-        {
-            // Convert the first letter to uppercase
-            result.Append(char.ToUpper(word[0]));
-            // Append the rest of the word
-            result.Append(word.Substring(1));
-            // Append a period again
-            result.Append('.');
-        }
-
-        // Remove the last period
-        result.Remove(result.Length - 1, 1);
-
-        return result.ToString();
-
+        
     }
 }

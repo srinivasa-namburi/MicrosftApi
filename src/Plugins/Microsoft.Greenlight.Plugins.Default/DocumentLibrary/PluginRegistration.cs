@@ -8,7 +8,7 @@ public class PluginRegistration : IPluginRegistration
 {
     public void RegisterPlugin(IServiceCollection serviceCollection)
     {
-        serviceCollection.AddSingleton<DocumentLibraryPlugin>();
+        serviceCollection.AddTransient<DocumentLibraryPlugin>();
     }
 
     public async Task InitializeAsync(IServiceProvider serviceProvider)

@@ -26,6 +26,7 @@ public class IngestDocumentsFromAutoImportPathConsumer : IConsumer<IngestDocumen
     /// <param name="documentProcessInfoService">The document process info service.</param>
     /// <param name="documentLibraryInfoService">The document library info service.</param>
     public IngestDocumentsFromAutoImportPathConsumer(
+        [FromKeyedServices("blob-docing")]
         BlobServiceClient blobServiceClient,
         ILogger<IngestDocumentsFromAutoImportPathConsumer> logger,
         IDocumentProcessInfoService documentProcessInfoService,

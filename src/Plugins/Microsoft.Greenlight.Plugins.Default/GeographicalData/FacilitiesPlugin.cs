@@ -4,7 +4,6 @@ using Microsoft.SemanticKernel;
 using Microsoft.Greenlight.Plugins.Default.GeographicalData.Connectors;
 using Microsoft.Greenlight.Plugins.Default.GeographicalData.Models;
 using Microsoft.Greenlight.Shared.Helpers;
-using Microsoft.Greenlight.Shared.Interfaces;
 
 namespace Microsoft.Greenlight.Plugins.Default.GeographicalData;
 
@@ -119,7 +118,11 @@ public class FacilitiesPlugin : IPluginImplementation
 
     // This method generates an image of a map with given latitude and longitude. The image is stored in blob storage and a link to the image is returned.
     [KernelFunction("GetMapImageLinkForLatLongAsync")]
-    [Description("Gets the relative url path of a map image based on latitude and longitude. Do not add a host, http or https protocols or anything else to the path. Use as returned. ")]
+    [Description("Gets the relative url path of a map image based on latitude and longitude. " +
+                 "Do not add a host, http or https protocols or anything else to the path. Use as returned. " +
+                 "The path should look like this: '/api/file/download/asset/<filename>'. " +
+                 "There is no extension on the filename. " +
+                 "Dont add anything before this path.")]
     public async Task<string> GetMapImageLinkForLatLongAsync(
 
         [Description("The latitude of the location to search for facilities. Must be a float. Decimal from -90 to 90 degrees.")]
@@ -127,7 +130,7 @@ public class FacilitiesPlugin : IPluginImplementation
         [Description("The longitude of the location to search for facilities. Must be a float. Decimal from -180 to 180 degrees.")]
         double longitude,
         [Description("The zoom used when generating the map, determining how zoomed in on the latitude and logitude provided. There are 3 options: Close, Normal and Far. The default is Normal. \"Close\" option should be used when details are needed, while \"Far\" option should be used when an overview is needed")]
-        MapZoomLevel mapZoomLevel = MapZoomLevel.Normal,
+        string mapZoomLevelString,
         [Description("The required width of the resulting map image in pixels. The default is 768 pixels wide.")]
         int imageWidth = 768,
         [Description("The required height of the image in pixels. The default is 512 pixels tall.")]
@@ -136,7 +139,17 @@ public class FacilitiesPlugin : IPluginImplementation
     {
         ValidateCoordinates(latitude, longitude);
 
-        var mapStream = _mappingConnector.GetMapImageStream(latitude, longitude, ((int)mapZoomLevel), imageWidth, imageHeight);
+        if (string.IsNullOrWhiteSpace(mapZoomLevelString))
+        {
+            mapZoomLevelString = nameof(MapZoomLevel.Normal);
+        }
+
+        if (!Enum.TryParse<MapZoomLevel>(mapZoomLevelString, true, out var mapZoomLevelEnum))
+        {
+            throw new ArgumentException($"Invalid map zoom level: {mapZoomLevelString}. Valid values are: Close, Normal, Far.");
+        }
+        
+        var mapStream = _mappingConnector.GetMapImageStream(latitude, longitude, ((int)mapZoomLevelEnum), imageWidth, imageHeight);
         var fileName = $"map-{Guid.NewGuid()}.png";
         var mapLink = await _fileHelper.UploadFileToBlobAsync(mapStream, fileName, "document-assets", true);
 
@@ -148,9 +161,9 @@ public class FacilitiesPlugin : IPluginImplementation
 
     public enum MapZoomLevel
     {
-        Close = 5,
-        Normal = 12,
-        Far = 17
+        Close = 12,
+        Normal = 10,
+        Far = 8
     }
 
     // Helper method to validate latitude and longitude.

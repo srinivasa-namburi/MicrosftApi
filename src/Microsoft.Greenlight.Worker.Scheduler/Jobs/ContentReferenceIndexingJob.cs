@@ -1,6 +1,4 @@
-﻿using Microsoft.Extensions.Options;
-using Microsoft.Greenlight.Shared.Configuration;
-using Microsoft.Greenlight.Shared.Services.ContentReference;
+﻿using Microsoft.Greenlight.Shared.Services.ContentReference;
 using Quartz;
 
 namespace Microsoft.Greenlight.Worker.Scheduler.Jobs

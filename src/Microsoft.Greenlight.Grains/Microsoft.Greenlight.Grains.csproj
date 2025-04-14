@@ -1,0 +1,17 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Microsoft.Greenlight.Grains.Chat\Microsoft.Greenlight.Grains.Chat.csproj" />
+    <ProjectReference Include="..\Microsoft.Greenlight.Grains.Contracts\Microsoft.Greenlight.Grains.Contracts.csproj" />
+    <ProjectReference Include="..\Microsoft.Greenlight.Grains.Document\Microsoft.Greenlight.Grains.Document.csproj" />
+    <ProjectReference Include="..\Microsoft.Greenlight.Grains.Shared\Microsoft.Greenlight.Grains.Shared.csproj" />
+    <ProjectReference Include="..\Microsoft.Greenlight.Grains.Validation\Microsoft.Greenlight.Grains.Validation.csproj" />
+  </ItemGroup>
+
+</Project>

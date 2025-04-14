@@ -2,7 +2,6 @@
 using MassTransit;
 using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Shared.Contracts.Messages;
-using Microsoft.Greenlight.Shared.Helpers;
 
 namespace Microsoft.Greenlight.Shared.Management.Configuration
 {

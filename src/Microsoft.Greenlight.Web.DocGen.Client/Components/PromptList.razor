@@ -4,13 +4,11 @@
 <MudTable Items="Prompts" Hover="true" Striped="true">
     <HeaderContent>
         <MudTh>Short Code</MudTh>
-        <MudTh>Description</MudTh>
         <MudTh>Text</MudTh>
         <MudTh>Actions</MudTh>
     </HeaderContent>
     <RowTemplate>
         <MudTd>@context.ShortCode</MudTd>
-        <MudTd>@context.Description</MudTd>
         <MudTd>
             @if (context.Text.Length > 350)
             {

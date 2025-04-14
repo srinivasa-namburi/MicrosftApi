@@ -1,4 +1,3 @@
-using System.Net.Http;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Greenlight.Shared.Configuration;
@@ -12,12 +11,6 @@ public class ConfigurationApiClient : WebAssemblyBaseServiceClient<Configuration
 {
     public ConfigurationApiClient(HttpClient httpClient, ILogger<ConfigurationApiClient> logger, AuthenticationStateProvider authStateProvider) : base(httpClient, logger, authStateProvider)
     {
-    }
-
-    public async Task<string> GetCurrentAccessTokenAsync()
-    {
-        return await base.GetAccessTokenAsync();
-
     }
 
     public async Task<string?> GetAzureMapsKeyAsync()
@@ -50,8 +43,18 @@ public class ConfigurationApiClient : WebAssemblyBaseServiceClient<Configuration
         var response = await SendGetRequestMessage($"/api/configuration/feature-flags");
         response?.EnsureSuccessStatusCode();
 
-        return await response?.Content.ReadFromJsonAsync<ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions>()! ??
+        return await response?.Content
+                   .ReadFromJsonAsync<ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions>()! ??
                throw new IOException("No feature flags available!");
+    }
+
+    public async Task<ServiceConfigurationOptions.GreenlightServicesOptions.ScalabilityOptions> GetScalabilityOptionsAsync()
+    {
+        var response = await SendGetRequestMessage($"/api/configuration/scalability-options");
+        response?.EnsureSuccessStatusCode();
+        return await response?.Content
+                   .ReadFromJsonAsync<ServiceConfigurationOptions.GreenlightServicesOptions.ScalabilityOptions>()! ??
+               throw new IOException("No Greenlight services available!");
     }
 
     public async Task<ServiceConfigurationOptions.GreenlightServicesOptions> GetGreenlightServicesAsync()
@@ -59,7 +62,8 @@ public class ConfigurationApiClient : WebAssemblyBaseServiceClient<Configuration
         var response = await SendGetRequestMessage($"/api/configuration/greenlight-services");
         response?.EnsureSuccessStatusCode();
 
-        return await response?.Content.ReadFromJsonAsync<ServiceConfigurationOptions.GreenlightServicesOptions>()! ??
+        return await response?.Content
+                   .ReadFromJsonAsync<ServiceConfigurationOptions.GreenlightServicesOptions>()! ??
                throw new IOException("No Greenlight services available!");
 
     }
@@ -69,7 +73,8 @@ public class ConfigurationApiClient : WebAssemblyBaseServiceClient<Configuration
         var response = await SendGetRequestMessage($"/api/configuration/frontend", authorize: false);
         response?.EnsureSuccessStatusCode();
 
-        return await response?.Content.ReadFromJsonAsync<ServiceConfigurationOptions.GreenlightServicesOptions.FrontendOptions>()! ??
+        return await response?.Content
+                   .ReadFromJsonAsync<ServiceConfigurationOptions.GreenlightServicesOptions.FrontendOptions>()! ??
                throw new IOException("No frontend options available!");
     }
 
@@ -77,7 +82,8 @@ public class ConfigurationApiClient : WebAssemblyBaseServiceClient<Configuration
     {
         var response = await SendGetRequestMessage("/api/configuration/openai-options");
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<ServiceConfigurationOptions.OpenAiOptions>()! ??
+        return await response.Content
+                   .ReadFromJsonAsync<ServiceConfigurationOptions.OpenAiOptions>()! ??
                throw new IOException("No OpenAI options available!");
     }
 
@@ -87,7 +93,8 @@ public class ConfigurationApiClient : WebAssemblyBaseServiceClient<Configuration
         var response = await SendPostRequestMessage("/api/configuration/update", request);
         response?.EnsureSuccessStatusCode();
 
-        return await response?.Content.ReadFromJsonAsync<DbConfigurationInfo>()! ??
+        return await response?.Content
+                   .ReadFromJsonAsync<DbConfigurationInfo>()! ??
                throw new IOException("Unable to update configuration!");
     }
 

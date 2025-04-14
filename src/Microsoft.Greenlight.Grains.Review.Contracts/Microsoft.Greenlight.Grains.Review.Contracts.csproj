@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Microsoft.Greenlight.Grains.Shared.Contracts\Microsoft.Greenlight.Grains.Shared.Contracts.csproj" />
+    <ProjectReference Include="..\Microsoft.Greenlight.Shared.Contracts\Microsoft.Greenlight.Shared.Contracts.csproj" />
+    <ProjectReference Include="..\Microsoft.Greenlight.Shared.Enums\Microsoft.Greenlight.Shared.Enums.csproj" />
+    <ProjectReference Include="..\Microsoft.Greenlight.Shared.Models\Microsoft.Greenlight.Shared.Models.csproj" />
+  </ItemGroup>
+
+</Project>

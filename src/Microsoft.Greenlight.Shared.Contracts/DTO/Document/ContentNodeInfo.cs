@@ -1,4 +1,5 @@
 ﻿using Microsoft.Greenlight.Shared.Enums;
+using System.Text.Json.Serialization;
 
 namespace Microsoft.Greenlight.Shared.Contracts.DTO.Document;
 
@@ -74,4 +75,20 @@ public class ContentNodeInfo
     /// List of child content nodes.
     /// </summary>
     public List<ContentNodeInfo> Children { get; set; } = [];
+
+
+    // Below is a set of properties that is used for UI manipulation only, and shouldn't travel across the wire.
+
+    /// <summary>
+    /// A validation change has been request for this (section) content node
+    /// </summary>
+    [JsonIgnore]
+    public bool ValidationChangeRequested { get; set; } = false;
+
+
+    /// <summary>
+    /// If a validation change has been requested
+    /// </summary>
+    [JsonIgnore]
+    public Guid? ContentNodeIdContainingBodyTextChanges { get; set; }
 }

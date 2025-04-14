@@ -1,10 +1,12 @@
 using Microsoft.Greenlight.Shared.Enums;
+using Orleans;
 
 namespace Microsoft.Greenlight.Shared.Contracts.DTO;
 
 /// <summary>
 /// Represents information about a review question.
 /// </summary>
+[GenerateSerializer(GenerateFieldIds = GenerateFieldIds.PublicProperties)]
 public class ReviewQuestionInfo
 {
     /// <summary>

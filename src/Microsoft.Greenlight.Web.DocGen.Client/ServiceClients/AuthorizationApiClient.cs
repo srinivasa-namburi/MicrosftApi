@@ -3,7 +3,6 @@ using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Web.Shared.ServiceClients;
 using System.Net;
-using System.Net.Http;
 using System.Net.Http.Json;
 
 namespace Microsoft.Greenlight.Web.DocGen.Client.ServiceClients;

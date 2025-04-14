@@ -1,7 +1,7 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Shared.Contracts;
 using Microsoft.Greenlight.Shared.Enums;
-using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Models.SourceReferences;
 using Microsoft.KernelMemory;
 using System.Net;
@@ -109,7 +109,7 @@ public class KernelMemoryRepository : IKernelMemoryRepository
 
         await memory.DeleteDocumentAsync(fileName, indexName);
     }
-   
+
     public async Task<List<KernelMemoryDocumentSourceReferenceItem>> SearchAsync(
     string documentLibraryName,
     string searchText,
@@ -154,7 +154,7 @@ public class KernelMemoryRepository : IKernelMemoryRepository
         {
             sourceReferenceItemFactory = citation => new DocumentLibrarySourceReferenceItem
             {
-                DocumentLibraryShortName = "Reviews", 
+                DocumentLibraryShortName = "Reviews",
                 IndexName = options.IndexName
             };
         }
@@ -380,15 +380,31 @@ public class KernelMemoryRepository : IKernelMemoryRepository
     {
         if (documentLibraryName.StartsWith("Additional-"))
         {
+            // Handle additional document libraries
             var internalDocumentLibraryName = documentLibraryName.Replace("Additional-", "");
             var memory = await _kernelMemoryInstanceFactory.GetKernelMemoryInstanceForDocumentLibrary(internalDocumentLibraryName);
             return memory;
         }
-        else
+        else if (documentLibraryName.StartsWith("Reviews"))
         {
-            // For standard Document Processes, we have an instance of this repository for each process, so the Kernel Memory Instance is set to a member variable
+            var scope = _sp.CreateScope();
+
+            var memory = scope.ServiceProvider.GetKeyedService<IKernelMemory>("Reviews-IKernelMemory");
+            if (memory == null)
+            {
+                _logger.LogError("Kernel Memory service not found for Reviews");
+                throw new Exception("Kernel Memory service not found for Reviews");
+            }
+
+            return memory;
+        }
+        else // We're dealing with a Document Process
+        {
+            // Handle standard document processes
             if (_memory != null) return _memory;
-            _memory = _sp.GetServiceForDocumentProcess<IKernelMemory>(documentLibraryName);
+
+            // Use the KernelMemoryInstanceFactory to resolve the Kernel Memory instance for the document process
+            _memory = await _kernelMemoryInstanceFactory.GetKernelMemoryInstanceForDocumentProcess(documentLibraryName);
 
             if (_memory == null)
             {

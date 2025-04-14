@@ -1,10 +1,12 @@
 using Microsoft.Greenlight.Shared.Enums;
+using Orleans;
 
 namespace Microsoft.Greenlight.Shared.Models;
 
 /// <summary>
 /// Represents user information with authentication details.
 /// </summary>
+[GenerateSerializer(GenerateFieldIds = GenerateFieldIds.PublicProperties)]
 public class UserInformation : EntityBase
 {
     /// <summary>

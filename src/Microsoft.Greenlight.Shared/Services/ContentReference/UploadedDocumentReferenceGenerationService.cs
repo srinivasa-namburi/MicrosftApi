@@ -5,7 +5,6 @@ using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Models;
 using Microsoft.Greenlight.Shared.Services.Search;
-using System.IO;
 using System.Text;
 
 namespace Microsoft.Greenlight.Shared.Services.ContentReference;

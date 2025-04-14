@@ -191,4 +191,61 @@ public class DocumentProcessApiClient : WebAssemblyBaseServiceClient<DocumentPro
         response?.EnsureSuccessStatusCode();
         return await response?.Content.ReadFromJsonAsync<List<string>>()! ?? [];
     }
+
+    public async Task<DocumentProcessValidationPipelineInfo?> GetValidationPipelineAsync(Guid documentProcessId)
+    {
+        var url = $"/api/document-processes/{documentProcessId}/validation-pipeline";
+        var response = await SendGetRequestMessage(url);
+
+        // If we get a 404, it means that the validation pipeline does not exist - return null
+        if (response?.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response?.EnsureSuccessStatusCode();
+
+        // Return the validation pipeline if found - otherwise return null
+        var result = await response?.Content.ReadFromJsonAsync<DocumentProcessValidationPipelineInfo>()! ?? null;
+        return result;
+    }
+
+    public async Task<DocumentProcessValidationPipelineInfo?> SaveValidationPipelineAsync(Guid documentProcessId, DocumentProcessValidationPipelineInfo pipelineInfo)
+    {
+        var url = $"/api/document-processes/{documentProcessId}/validation-pipeline";
+        var response = await SendPostRequestMessage(url, pipelineInfo);
+    
+        response?.EnsureSuccessStatusCode();
+
+        // Return the created/updated validation pipeline
+        var result = await response?.Content.ReadFromJsonAsync<DocumentProcessValidationPipelineInfo>()! ?? null;
+        return result;
+    }
+
+    public async Task<bool> DeleteValidationPipelineAsync(Guid documentProcessId)
+    {
+        var url = $"/api/document-processes/{documentProcessId}/validation-pipeline";
+        var response = await SendDeleteRequestMessage(url);
+    
+        if (response?.StatusCode == HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+    
+        response?.EnsureSuccessStatusCode();
+        return true;
+    }
+
+    public async Task<bool> HasValidationPipelineAsync(string documentProcessShortName)
+    {
+        var url = $"/api/document-processes/short-name/{documentProcessShortName}/has-validation-pipeline";
+        var response = await SendGetRequestMessage(url);
+    
+        if (!response!.IsSuccessStatusCode)
+        {
+            return false;
+        }
+
+        return await response.Content.ReadFromJsonAsync<bool>();
+    }
 }

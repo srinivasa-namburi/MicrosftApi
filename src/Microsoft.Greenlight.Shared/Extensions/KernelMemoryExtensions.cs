@@ -150,7 +150,7 @@ public static class KernelMemoryExtensions
         return kernelMemory;
     }
 
-    private static IKernelMemory CreateKernelMemoryInstance(
+    public static IKernelMemory CreateKernelMemoryInstance(
         IServiceProvider serviceProvider,
         ServiceConfigurationOptions serviceConfigurationOptions,
         string blobContainerName,

@@ -10,6 +10,7 @@ using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Models;
 using System.Text.RegularExpressions;
 using AutoMapper;
+using Microsoft.Greenlight.Grains.Document.Contracts;
 using Microsoft.Greenlight.Shared.Contracts.DTO.Document;
 using Microsoft.Greenlight.Shared.Models.Validation;
 using Microsoft.Greenlight.Shared.Services;
@@ -28,6 +29,7 @@ public partial class DocumentsController : BaseController
     private readonly IContentNodeService _contentNodeService;
     private readonly AzureFileHelper _fileHelper;
     private readonly IMapper _mapper;
+    private readonly IClusterClient _clusterClient;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DocumentsController"/> class.
@@ -38,6 +40,7 @@ public partial class DocumentsController : BaseController
     /// <param name="contentNodeService">The content node service for retrieving and sorting Content Nodes</param>
     /// <param name="fileHelper">The Azure file helper for managing files.</param>
     /// <param name="mapper">The AutoMapper instance for mapping objects.</param>
+    /// <param name="clusterClient"></param>
     public DocumentsController(
         IPublishEndpoint publishEndpoint,
         DocGenerationDbContext dbContext,
@@ -45,8 +48,8 @@ public partial class DocumentsController : BaseController
         IDocumentExporter wordDocumentExporter,
         IContentNodeService contentNodeService,
         AzureFileHelper fileHelper,
-        IMapper mapper
-    )
+        IMapper mapper, 
+        IClusterClient clusterClient)
     {
         _publishEndpoint = publishEndpoint;
         _dbContext = dbContext;
@@ -54,6 +57,7 @@ public partial class DocumentsController : BaseController
         _contentNodeService = contentNodeService;
         _fileHelper = fileHelper;
         _mapper = mapper;
+        _clusterClient = clusterClient;
     }
 
     /// <summary>
@@ -96,8 +100,13 @@ public partial class DocumentsController : BaseController
         var claimsPrincipal = HttpContext.User;
         generateDocumentDto.AuthorOid = claimsPrincipal.GetObjectId();
 
-        await _publishEndpoint.Publish(generateDocumentDto);
+        //await _publishEndpoint.Publish(generateDocumentDto);
+        var grain = _clusterClient.GetGrain<IDocumentGenerationOrchestrationGrain>(generateDocumentDto.Id);
 
+        // Fire and forget the document creation process - this progresses 
+        // asynchronously and will be tracked by the orchestration grain
+        _ = grain.StartDocumentGenerationAsync(generateDocumentDto);
+        
         return Accepted();
     }
 

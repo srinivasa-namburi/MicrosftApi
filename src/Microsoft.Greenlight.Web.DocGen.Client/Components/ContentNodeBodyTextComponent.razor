@@ -1,9 +1,14 @@
 ﻿@using Microsoft.Greenlight.Shared.Contracts.Components
 @using Microsoft.Greenlight.Shared.Contracts.DTO.Document
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Validation
+
+@implements IDisposable
 
 @inject IContentNodeApiClient ContentNodeApiClient
+@inject IDocumentValidationApiClient DocumentValidationApiClient
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
+@inject ValidationEditorService ValidationEditorService
 
 <div class="content-node-editor">
     @if (!IsEditing && !ShowVersions)
@@ -15,11 +20,12 @@
     else if (IsEditing)
     {
         <div class="editor-container">
-            <EditorComponent @ref="editor"
-                             @bind-Value="editText"
-                             IsDarkMode="@IsDarkMode"
-                             HeightStyle="300px"
-                             OnContentChanged="HandleContentChanged" />
+            <EditorFactory @bind-Value="editText"
+                           @bind-SecondValue="secondValueText"
+                           EditorMode="@EditorMode"
+                           HeightStyle="300px"
+                           OnContentChanged="HandleContentChanged"
+                           />
 
             <div class="mt-3 d-flex align-center">
                 <MudTextField @bind-Value="versionComment" Label="Comment (optional)" Variant="Variant.Outlined" Class="mr-2 flex-grow-1" />
@@ -31,18 +37,36 @@
             </div>
 
             <div class="mt-3 d-flex justify-end">
-                <MudButton Variant="Variant.Text" Color="Color.Secondary" OnClick="CancelEdit" Class="mr-2">Cancel</MudButton>
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveChanges" Disabled="@IsBusy">
-                    @if (IsBusy)
-                    {
-                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
-                        <span>Saving...</span>
-                    }
-                    else
-                    {
-                        <span>Save</span>
-                    }
-                </MudButton>
+                @if (CurrentValidationChange != null)
+                {
+                    <MudButton Variant="Variant.Text" Color="Color.Secondary" OnClick="RejectChange" Class="mr-2">Reject</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AcceptChange" Disabled="@IsBusy">
+                        @if (IsBusy)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                            <span>Accepting...</span>
+                        }
+                        else
+                        {
+                            <span>Accept</span>
+                        }
+                    </MudButton>
+                }
+                else
+                {
+                    <MudButton Variant="Variant.Text" Color="Color.Secondary" OnClick="CancelEdit" Class="mr-2">Cancel</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveChanges" Disabled="@IsBusy">
+                        @if (IsBusy)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                            <span>Saving...</span>
+                        }
+                        else
+                        {
+                            <span>Save</span>
+                        }
+                    </MudButton>
+                }
             </div>
         </div>
     }
@@ -52,7 +76,7 @@
             <MudCard>
                 <MudCardContent>
                     <MudText Typo="Typo.h6" Class="mb-2">Version History</MudText>
-                    <MudTable Items="versions" Hover="true" Striped="true">
+                    <MudTable Items="versions?.OrderByDescending(x => x.Version)" Hover="true" Striped="true">
                         <HeaderContent>
                             <MudTh>Version</MudTh>
                             <MudTh>Time</MudTh>
@@ -94,76 +118,178 @@
 </div>
 
 @code {
-
     [CascadingParameter(Name = "IsDarkMode")]
     public bool IsDarkMode { get; set; }
 
     [Parameter] public ContentNodeInfo Node { get; set; } = null!;
+    [Parameter] public string? SecondValue { get; set; }
     [Parameter] public EventCallback<ContentNodeInfo> OnNodeUpdated { get; set; }
+    [Parameter] public EditorComponentEditorMode EditorMode { get; set; } = EditorComponentEditorMode.SingleValue;
 
-    private bool IsEditing { get; set; } = false;
+    public bool IsEditing { get; set; } = false;
     private bool ShowVersions { get; set; } = false;
     private bool IsBusy { get; set; } = false;
     private string editText = "";
-    private string lastUpdateText = "";
+    private string secondValueText = "";
+    private string lastUpdateEditText = "";
+    private string lastUpdateSecondValueText = "";
     private string versionComment = "";
     private ContentNodeVersioningReason versionReason = ContentNodeVersioningReason.ManualEdit;
-    private EditorComponent? editor;
     private List<ContentNodeVersion>? versions;
     private ContentNodeVersion? previewVersion;
+    private ValidationContentChangeInfo? CurrentValidationChange;
+
+    protected override void OnInitialized()
+    {
+        ValidationEditorService.StateChanged += HandleValidationEditorStateChanged;
+
+        if (Node.ParentId.HasValue)
+        {
+            ContentNodeBodyTextComponentRegistry.RegisterComponent(Node.ParentId.Value, this);
+        }
+    }
+
+    public void Dispose()
+    {
+        ValidationEditorService.StateChanged -= HandleValidationEditorStateChanged;
+
+        if (Node.ParentId.HasValue)
+        {
+            ContentNodeBodyTextComponentRegistry.UnregisterComponent(Node.ParentId.Value, this);
+        }
+    }
+
+    private void HandleValidationEditorStateChanged(ValidationEditorStateChange stateChange)
+    {
+        if (stateChange.ContentNodeId == Node.Id)
+        {
+            EditorMode = stateChange.Data.EditorMode;
+            editText = Node.Text;
+            secondValueText = stateChange.Data.SuggestedText;
+            CurrentValidationChange = stateChange.Data.ValidationChangeInfo; // Track the validation change
+
+            if (stateChange.Data.IsVisible && !IsEditing)
+            {
+                IsEditing = true;
+                ShowVersions = false;
+
+                // Set validation options
+                if (EditorMode == EditorComponentEditorMode.MultiValueDiffEditor)
+                {
+                    versionReason = ContentNodeVersioningReason.ValidationRun;
+                    versionComment = "Validation changes applied";
+                }
+
+                InvokeAsync(StateHasChanged);
+            }
+        }
+    }
 
     protected override void OnParametersSet()
     {
         editText = Node.Text;
+
+        if (EditorMode == EditorComponentEditorMode.MultiValueDiffEditor)
+        {
+            // For a diff editor, ensure we set up both the original and suggested text
+            if (!string.IsNullOrEmpty(SecondValue))
+            {
+                secondValueText = SecondValue;
+                // Initialize lastUpdate variables to track if changes were made
+                lastUpdateEditText = editText;
+                lastUpdateSecondValueText = string.Empty; // Empty means no changes yet
+            }
+        }
+        else
+        {
+            // Single value editor
+            lastUpdateEditText = editText;
+        }
     }
 
     public async Task StartEdit()
     {
         editText = Node.Text;
-        versionComment = "";
+
+        if (EditorMode == EditorComponentEditorMode.MultiValueDiffEditor && !string.IsNullOrEmpty(SecondValue))
+        {
+            secondValueText = SecondValue;
+            versionReason = ContentNodeVersioningReason.ValidationRun;
+            versionComment = "Validation changes applied";
+
+            // Initialize the lastUpdate variables
+            lastUpdateEditText = editText;
+            lastUpdateSecondValueText = string.Empty; // Empty means no changes yet
+        }
+
         IsEditing = true;
         ShowVersions = false;
 
-        // Wait for rendering to complete and then focus the editor
-        await Task.Delay(50);
-        StateHasChanged();
+        // Ensure UI updates before proceeding
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task HandleContentChanged()
     {
-        editText = editor!.Value;
-
-        // The editor removes new lines on final close, so we need to keep track of the last update text
-        // before the editor closes. This is then used when saving changes instead of the last state of the editor.
-        lastUpdateText = editText;
+        // Store latest content
+        lastUpdateEditText = editText;
+        lastUpdateSecondValueText = secondValueText;
     }
 
     private async Task SaveChanges()
     {
-        if (lastUpdateText == Node.Text)
+        // Determine which text to use (single editor or diff editor)
+        string finalText;
+
+        if (EditorMode == EditorComponentEditorMode.SingleValue)
         {
+            finalText = lastUpdateEditText;
+        }
+        else
+        {
+            finalText = !string.IsNullOrEmpty(lastUpdateSecondValueText)
+                ? lastUpdateSecondValueText
+                : secondValueText;
+        }
+
+        // Check if the text has actually changed
+        if (string.IsNullOrWhiteSpace(finalText) || finalText == Node.Text)
+        {
+            Snackbar.Add("No changes detected - no save performed", Severity.Info);
             IsEditing = false;
             return;
         }
 
-        editText = lastUpdateText;
         IsBusy = true;
 
         try
         {
+            // Update the content node text via the API
             var updatedNode = await ContentNodeApiClient.UpdateContentNodeTextAsync(
                 Node.Id,
-                editText,
+                finalText,
                 versionReason,
                 string.IsNullOrWhiteSpace(versionComment) ? null : versionComment);
 
             if (updatedNode != null)
             {
-                // Update the UI
+                // Update the local Node object with the updated content
                 Node.Text = updatedNode.Text;
                 Node.ContentNodeVersionTrackerId = updatedNode.ContentNodeVersionTrackerId;
 
                 Snackbar.Add("Content saved successfully - new version added", Severity.Success);
+
+                // If the editor was set to multi-value diff editor mode, reset it back to single value
+                if (EditorMode == EditorComponentEditorMode.MultiValueDiffEditor)
+                {
+                    EditorMode = EditorComponentEditorMode.SingleValue;
+                    SecondValue = null; // Reset the second value
+                }
+
+                // Clear any validation data for this node since it's been saved
+                ValidationEditorService.ClearEditorData(Node.Id);
+
+                // Notify parent component about the updated node
                 await OnNodeUpdated.InvokeAsync(updatedNode);
             }
             else
@@ -179,14 +305,102 @@
         {
             IsBusy = false;
             IsEditing = false;
+            CurrentValidationChange = null; // Clear the current validation change
         }
     }
+
+
 
     private void CancelEdit()
     {
         IsEditing = false;
         editText = Node.Text;
     }
+
+    private async Task AcceptChange()
+    {
+        if (CurrentValidationChange == null) return;
+
+        IsBusy = true;
+
+        try
+        {
+            // Update the ApplicationStatus to Accepted
+            CurrentValidationChange.ApplicationStatus = ValidationContentNodeApplicationStatus.Accepted;
+
+            // Call the API to update the validation content change status
+            var success = await DocumentValidationApiClient.UpdateValidationContentChangeStatusAsync(
+                CurrentValidationChange.OriginalValidationExecutionStepContentNodeResultId,
+                ValidationContentNodeApplicationStatus.Accepted);
+
+            if (!success)
+            {
+                Snackbar.Add("Failed to update validation change status to Accepted", Severity.Error);
+                return;
+            }
+
+            // Get the parent section ID for clearing validation data
+            Guid? parentSectionId = CurrentValidationChange.ParentContentNodeId;
+        
+            // Clear validation status for this node and its parent section
+            ValidationEditorService.ClearValidationStatus(Node.Id, parentSectionId);
+
+            // Then save the changes
+            await SaveChanges();
+
+            Snackbar.Add("Validation change accepted successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error accepting validation change: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsBusy = false;
+            CurrentValidationChange = null; // Clear the current validation change
+        }
+    }
+
+    private async Task RejectChange()
+    {
+        if (CurrentValidationChange == null) return;
+
+        IsBusy = true;
+
+        try
+        {
+            // Update the validation content change status to Rejected
+            var success = await DocumentValidationApiClient.UpdateValidationContentChangeStatusAsync(
+                CurrentValidationChange.OriginalValidationExecutionStepContentNodeResultId,
+                ValidationContentNodeApplicationStatus.Rejected);
+
+            if (!success)
+            {
+                Snackbar.Add("Failed to update validation change status to Rejected", Severity.Error);
+                return;
+            }
+
+            // Get the parent section ID for clearing validation data
+            Guid? parentSectionId = CurrentValidationChange.ParentContentNodeId;
+        
+            // Clear validation status for this node and its parent section
+            ValidationEditorService.ClearValidationStatus(Node.Id, parentSectionId);
+
+            Snackbar.Add("Validation change rejected successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error rejecting validation change: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsBusy = false;
+            IsEditing = false;
+            CurrentValidationChange = null; // Clear the current validation change
+        }
+    }
+
+
 
     public async Task ShowVersionHistory()
     {
@@ -251,6 +465,16 @@
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    public void NotifyParentNodeUpdated(ContentNodeInfo parentNode)
+    {
+        // Only handle if this is really our parent
+        if (Node.ParentId == parentNode.Id)
+        {
+            // Update any UI elements affected by the parent's state
+            InvokeAsync(StateHasChanged);
         }
     }
 

@@ -1,8 +1,8 @@
 using MassTransit;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.Greenlight.API.Main.Hubs;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Review.Events;
 using Microsoft.Greenlight.Shared.Hubs;
+using Microsoft.Greenlight.Shared.Notifiers;
 
 namespace Microsoft.Greenlight.API.Main.Consumers;
 

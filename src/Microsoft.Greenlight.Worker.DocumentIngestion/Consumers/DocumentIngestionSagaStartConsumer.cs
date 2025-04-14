@@ -72,17 +72,5 @@ public class DocumentIngestionSagaStartConsumer : IConsumer<DocumentIngestionReq
                 UploadedByUserOid = context.Message.UploadedByUserOid
             });
         }
-        else
-        {
-            _logger.LogInformation("DocumentIngestionSagaStartConsumer : Received Classic message with ID : {CorrelationID} for Document Process {DocumentProcessName}", context.Message.Id, context.Message.DocumentLibraryShortName);
-            await context.Publish(new ClassicDocumentIngestionRequest(context.Message.Id)
-            {
-                DocumentProcessName = context.Message.DocumentLibraryShortName,
-                FileName = context.Message.FileName,
-                OriginalDocumentUrl = context.Message.OriginalDocumentUrl,
-                UploadedByUserOid = context.Message.UploadedByUserOid,
-                Plugin = context.Message.Plugin
-            });
-        }
     }
 }

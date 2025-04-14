@@ -1,5 +1,4 @@
-﻿using AutoMapper;
-using Azure.AI.OpenAI;
+﻿using Azure.AI.OpenAI;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -11,13 +10,13 @@ using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Models.Configuration;
+using Microsoft.Greenlight.Shared.Services.Microsoft.Greenlight.Shared.Services;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 using Microsoft.SemanticKernel.Embeddings;
 using OpenAI.Chat;
-using System.Collections.Concurrent;
 using System.Globalization;
 
 #pragma warning disable SKEXP0011
@@ -28,41 +27,40 @@ namespace Microsoft.Greenlight.Shared.Services
     /// <inheritdoc />
     public class SemanticKernelFactory : IKernelFactory
     {
-        private readonly IDocumentProcessInfoService _documentProcessInfoService;
         private readonly ILogger<SemanticKernelFactory> _logger;
-        private readonly IMapper _mapper;
-        private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
         private readonly IServiceProvider _serviceProvider;
-        private readonly AzureOpenAIClient _openAIClient;
-        private readonly DocGenerationDbContext _dbContext;
+        private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
+        private readonly SemanticKernelInstanceContainer _instanceContainer;
+        private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
 
-        // Caches for different types of kernels
-        private readonly ConcurrentDictionary<string, Kernel> _standardKernels = new();
-        private readonly ConcurrentDictionary<string, Kernel> _validationKernels = new();
-        private readonly ConcurrentDictionary<string, Kernel> _genericKernels = new();
+        private readonly AzureOpenAIClient _openAiClient;
 
         public SemanticKernelFactory(
-            IDocumentProcessInfoService documentProcessInfoService,
             ILogger<SemanticKernelFactory> logger,
-            IMapper mapper,
-            IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
             IServiceProvider serviceProvider,
-            DocGenerationDbContext dbContext)
+            IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
+            SemanticKernelInstanceContainer instanceContainer,
+            IDbContextFactory<DocGenerationDbContext> dbContextFactory,
+            [FromKeyedServices("openai-planner")]
+            AzureOpenAIClient openAiClient
+            )
         {
-            _documentProcessInfoService = documentProcessInfoService;
             _logger = logger;
-            _mapper = mapper;
-            _serviceConfigurationOptions = serviceConfigurationOptions.Value;
             _serviceProvider = serviceProvider;
-            _dbContext = dbContext;
-            _openAIClient = serviceProvider.GetRequiredKeyedService<AzureOpenAIClient>("openai-planner");
+            _serviceConfigurationOptions = serviceConfigurationOptions.Value;
+            _instanceContainer = instanceContainer;
+            _dbContextFactory = dbContextFactory;
+            _openAiClient = openAiClient;
         }
 
         /// <inheritdoc />
         public async Task<Kernel> GetKernelForDocumentProcessAsync(string documentProcessName)
         {
+            using var scope = _serviceProvider.CreateScope();
+            var documentProcessInfoService = scope.ServiceProvider.GetRequiredService<IDocumentProcessInfoService>();
+            
             // Get document process info and create a new kernel
-            var documentProcess = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentProcessName);
+            var documentProcess = await documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentProcessName);
             if (documentProcess == null)
             {
                 throw new InvalidOperationException($"Document process with name {documentProcessName} not found");
@@ -75,7 +73,7 @@ namespace Microsoft.Greenlight.Shared.Services
         public async Task<Kernel> GetKernelForDocumentProcessAsync(DocumentProcessInfo documentProcess)
         {
             // Check if we already have a kernel for this document process
-            if (_standardKernels.TryGetValue(documentProcess.ShortName, out var existingKernel))
+            if (_instanceContainer.StandardKernels.TryGetValue(documentProcess.ShortName, out var existingKernel))
             {
                 // Return a new instance of the existing kernel to avoid sharing state, but keeping configuration
                 var newInstanceOfExistingKernel = existingKernel.Clone();
@@ -88,15 +86,18 @@ namespace Microsoft.Greenlight.Shared.Services
 
             // Create a new kernel for this document process
             var kernel = await CreateKernelForDocumentProcessAsync(documentProcess);
-            _standardKernels[documentProcess.ShortName] = kernel;
+            _instanceContainer.StandardKernels[documentProcess.ShortName] = kernel;
             return kernel;
         }
 
         /// <inheritdoc />
         public async Task<Kernel> GetValidationKernelForDocumentProcessAsync(string documentProcessName)
         {
+            using var scope = _serviceProvider.CreateScope();
+            var documentProcessInfoService = scope.ServiceProvider.GetRequiredService<IDocumentProcessInfoService>();
+
             // Get document process info and create a new validation kernel
-            var documentProcess = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentProcessName);
+            var documentProcess = await documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentProcessName);
             if (documentProcess == null)
             {
                 throw new InvalidOperationException($"Document process with name {documentProcessName} not found");
@@ -109,7 +110,7 @@ namespace Microsoft.Greenlight.Shared.Services
         public async Task<Kernel> GetValidationKernelForDocumentProcessAsync(DocumentProcessInfo documentProcess)
         {
             // Check if we already have a validation kernel for this document process
-            if (_validationKernels.TryGetValue(documentProcess.ShortName, out var existingKernel))
+            if (_instanceContainer.ValidationKernels.TryGetValue(documentProcess.ShortName, out var existingKernel))
             {
                 // Return a new instance of the existing kernel to avoid sharing state, but keeping configuration
                 var newInstanceOfExistingKernel = existingKernel.Clone();
@@ -122,7 +123,7 @@ namespace Microsoft.Greenlight.Shared.Services
 
             // Create a new validation kernel for this document process
             var kernel = await CreateValidationKernelForDocumentProcessAsync(documentProcess);
-            _validationKernels[documentProcess.ShortName] = kernel;
+            _instanceContainer.ValidationKernels[documentProcess.ShortName] = kernel;
             return kernel;
         }
 
@@ -130,7 +131,7 @@ namespace Microsoft.Greenlight.Shared.Services
         public async Task<Kernel> GetGenericKernelAsync(string modelIdentifier)
         {
             // Check if we already have a generic kernel for this model
-            if (_genericKernels.TryGetValue(modelIdentifier, out var existingKernel))
+            if (_instanceContainer.GenericKernels.TryGetValue(modelIdentifier, out var existingKernel))
             {
                 // Return a new instance of the existing kernel to avoid sharing state, but keeping configuration
                 var newInstanceOfExistingKernel = existingKernel.Clone();
@@ -140,7 +141,7 @@ namespace Microsoft.Greenlight.Shared.Services
 
             // Create a new generic kernel with the specified model
             var kernel = CreateGenericKernel(modelIdentifier);
-            _genericKernels[modelIdentifier] = kernel;
+            _instanceContainer.GenericKernels[modelIdentifier] = kernel;
             return kernel;
         }
 
@@ -154,7 +155,10 @@ namespace Microsoft.Greenlight.Shared.Services
         public async Task<AzureOpenAIPromptExecutionSettings> GetPromptExecutionSettingsForDocumentProcessAsync(
             string documentProcessName, AiTaskType aiTaskType)
         {
-            var documentProcess = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentProcessName);
+            using var scope = _serviceProvider.CreateScope();
+            var documentProcessInfoService = scope.ServiceProvider.GetRequiredService<IDocumentProcessInfoService>();
+
+            var documentProcess = await documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentProcessName);
             if (documentProcess == null)
             {
                 throw new InvalidOperationException($"Document process with name {documentProcessName} not found");
@@ -167,20 +171,33 @@ namespace Microsoft.Greenlight.Shared.Services
         public async Task<AzureOpenAIPromptExecutionSettings> GetPromptExecutionSettingsForDocumentProcessAsync(
             DocumentProcessInfo documentProcess, AiTaskType aiTaskType)
         {
+            using var scope = _serviceProvider.CreateScope();
+            var dbContext = await _dbContextFactory.CreateDbContextAsync();
+
             Guid? aiModelDeploymentId;
             if (documentProcess.Source != ProcessSource.Static)
             {
                 // For dynamic document processes, use the AI model deployment ID from the document process,
                 // or fall back to the known value for gpt-4o
-                aiModelDeploymentId = documentProcess.AiModelDeploymentId ?? Guid.Parse("453a06c4-3ce8-4468-a7a8-7444f8352aa6", CultureInfo.InvariantCulture);
+
+                if (aiTaskType == AiTaskType.Validation)
+                {
+                    aiModelDeploymentId = documentProcess.AiModelDeploymentForValidationId ?? 
+                                          Guid.Parse("453a06c4-3ce8-4468-a7a8-7444f8352aa6", CultureInfo.InvariantCulture);
+                }
+                else
+                {
+                    aiModelDeploymentId = documentProcess.AiModelDeploymentId ?? Guid.Parse("453a06c4-3ce8-4468-a7a8-7444f8352aa6", CultureInfo.InvariantCulture);
+                }
+                    
             }
             else
             {
-                // Set the AI model deployment ID to the known value for gpt-4o
+                // Set the AI model deployment ID to the known value for gpt-4o for static document processes
                 aiModelDeploymentId = Guid.Parse("453a06c4-3ce8-4468-a7a8-7444f8352aa6", CultureInfo.InvariantCulture);
             }
 
-            var aiModelDeployment = await _dbContext.AiModelDeployments
+            var aiModelDeployment = await dbContext.AiModelDeployments
                 .Where(x => x.Id == aiModelDeploymentId!)
                 .Include(x => x.AiModel)
                 .AsNoTracking()
@@ -288,7 +305,7 @@ namespace Microsoft.Greenlight.Shared.Services
                     additionalSettings.FrequencyPenalty = 0.5f;
                     break;
                 case AiTaskType.Validation:
-                    additionalSettings.Temperature = 0.5f;
+                    additionalSettings.Temperature = 0.7f;
                     additionalSettings.FrequencyPenalty = null;
                     break;
                 case AiTaskType.ChatReplies:
@@ -324,6 +341,7 @@ namespace Microsoft.Greenlight.Shared.Services
             {
                 AiTaskType.ContentGeneration => true,
                 AiTaskType.ChatReplies => true,
+                AiTaskType.Validation => true,
                 _ => false
             };
 
@@ -350,9 +368,11 @@ namespace Microsoft.Greenlight.Shared.Services
         {
             _logger.LogInformation("Creating new kernel for document process: {DocumentProcessName}", documentProcess.ShortName);
 
+            using var scope = _serviceProvider.CreateScope();
+            
             // Create kernel with document process-specific completion service
             var kernelBuilder = Kernel.CreateBuilder();
-            kernelBuilder.Services.AddSingleton(_serviceProvider);
+            kernelBuilder.Services.AddSingleton(scope.ServiceProvider);
 
             // Add a document process-specific chat completion service
             kernelBuilder.Services.AddSingleton<IChatCompletionService>(sp =>
@@ -374,7 +394,7 @@ namespace Microsoft.Greenlight.Shared.Services
                 // Create the chat completion service with the document-specific model
                 return new AzureOpenAIChatCompletionService(
                     deploymentName,
-                    _openAIClient,
+                    _openAiClient,
                     $"openai-chatcompletion-{documentProcess.ShortName}");
             });
 
@@ -382,7 +402,7 @@ namespace Microsoft.Greenlight.Shared.Services
             {
                 var embeddingGenerationService = new AzureOpenAITextEmbeddingGenerationService(
                     _serviceConfigurationOptions.OpenAi.EmbeddingModelDeploymentName,
-                    _openAIClient, $"openai-embeddinggeneration-{documentProcess.ShortName}");
+                    _openAiClient, $"openai-embeddinggeneration-{documentProcess.ShortName}");
                 return embeddingGenerationService;
 
             });
@@ -394,7 +414,7 @@ namespace Microsoft.Greenlight.Shared.Services
 
             // Add function invocation filter
             kernel.FunctionInvocationFilters.Add(
-                _serviceProvider.GetRequiredKeyedService<IFunctionInvocationFilter>("InputOutputTrackingPluginInvocationFilter"));
+                scope.ServiceProvider.GetRequiredKeyedService<IFunctionInvocationFilter>("InputOutputTrackingPluginInvocationFilter"));
 
             return kernel;
         }
@@ -406,9 +426,10 @@ namespace Microsoft.Greenlight.Shared.Services
         {
             _logger.LogInformation("Creating new validation kernel for document process: {DocumentProcessName}", documentProcess.ShortName);
 
+            using var scope = _serviceProvider.CreateScope();
             // Create kernel with document process-specific completion service
             var kernelBuilder = Kernel.CreateBuilder();
-            kernelBuilder.Services.AddSingleton(_serviceProvider);
+            kernelBuilder.Services.AddSingleton(scope.ServiceProvider);
 
             // Add a document process-specific chat completion service
             kernelBuilder.Services.AddSingleton<IChatCompletionService>(sp =>
@@ -437,7 +458,7 @@ namespace Microsoft.Greenlight.Shared.Services
                 // Create the chat completion service with the document-specific model
                 return new AzureOpenAIChatCompletionService(
                     deploymentName,
-                    _openAIClient,
+                    _openAiClient,
                     $"openai-chatvalidation-{documentProcess.ShortName}");
             });
 
@@ -445,7 +466,7 @@ namespace Microsoft.Greenlight.Shared.Services
             {
                 var embeddingGenerationService = new AzureOpenAITextEmbeddingGenerationService(
                     _serviceConfigurationOptions.OpenAi.EmbeddingModelDeploymentName,
-                    _openAIClient, $"openai-embeddinggeneration-validation-{documentProcess.ShortName}");
+                    _openAiClient, $"openai-embeddinggeneration-validation-{documentProcess.ShortName}");
                 return embeddingGenerationService;
 
             });
@@ -476,16 +497,17 @@ namespace Microsoft.Greenlight.Shared.Services
         {
             _logger.LogInformation("Creating new generic kernel with model: {ModelIdentifier}", modelIdentifier);
 
+            using var scope = _serviceProvider.CreateScope();
             // Create kernel builder
             var kernelBuilder = Kernel.CreateBuilder();
-            kernelBuilder.Services.AddSingleton(_serviceProvider);
+            kernelBuilder.Services.AddSingleton(scope.ServiceProvider);
 
             // Add chat completion service with the specified model
             kernelBuilder.Services.AddSingleton<IChatCompletionService>(sp =>
             {
                 return new AzureOpenAIChatCompletionService(
                     modelIdentifier,
-                    _openAIClient,
+                    _openAiClient,
                     $"openai-generic-{modelIdentifier}");
             });
 
@@ -493,7 +515,7 @@ namespace Microsoft.Greenlight.Shared.Services
             {
                 var embeddingGenerationService = new AzureOpenAITextEmbeddingGenerationService(
                     _serviceConfigurationOptions.OpenAi.EmbeddingModelDeploymentName,
-                    _openAIClient, $"openai-generic-embeddings-{modelIdentifier}");
+                    _openAiClient, $"openai-generic-embeddings-{modelIdentifier}");
                 return embeddingGenerationService;
             });
 
@@ -506,8 +528,9 @@ namespace Microsoft.Greenlight.Shared.Services
         /// </summary>
         private string? GetAiModelDeploymentName(Guid aiModelDeploymentId)
         {
+            var dbContext = _dbContextFactory.CreateDbContext();
             // TODO : This should be a service with Hybrid Cache behind it
-            var aiModelDeployment = _dbContext.AiModelDeployments.Where(x => x.Id == aiModelDeploymentId)
+            var aiModelDeployment = dbContext.AiModelDeployments.Where(x => x.Id == aiModelDeploymentId)
                 .AsNoTracking()
                 .FirstOrDefault();
 
@@ -520,5 +543,9 @@ namespace Microsoft.Greenlight.Shared.Services
         public double? Temperature { get; set; }
         public double? FrequencyPenalty { get; set; }
         public ChatReasoningEffortLevel? ReasoningEffort { get; set; }
+    }
+
+    namespace Microsoft.Greenlight.Shared.Services
+    {
     }
 }

@@ -57,7 +57,7 @@ builder.Services.AddSingleton<AzureCredentialHelper>();
 var credentialHelper = new AzureCredentialHelper(builder.Configuration);
 
 // Register Azure blob client, Redis client and other services (unchanged)
-builder.AddAzureBlobClient("blob-docing", settings =>
+builder.AddKeyedAzureBlobClient("blob-docing", settings =>
 {
     settings.Credential = credentialHelper.GetAzureCredential();
 });

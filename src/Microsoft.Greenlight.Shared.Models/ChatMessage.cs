@@ -1,11 +1,13 @@
 using System.Text.Json.Serialization;
 using Microsoft.Greenlight.Shared.Enums;
+using Orleans;
 
 namespace Microsoft.Greenlight.Shared.Models;
 
 /// <summary>
 /// Represents a chat message within a conversation.
 /// </summary>
+[GenerateSerializer(GenerateFieldIds = GenerateFieldIds.PublicProperties)]
 public class ChatMessage : EntityBase
 {
     /// <summary>

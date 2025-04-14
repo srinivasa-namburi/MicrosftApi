@@ -19,4 +19,8 @@ public interface IDocumentProcessApiClient : IServiceClient
     Task <List<DocumentProcessMetadataFieldInfo>> GetDocumentProcessMetadataFieldsAsync(Guid processId);
     Task<List<DocumentProcessMetadataFieldInfo>> StoreMetaDataFieldsForDocumentProcess(Guid processId, List<DocumentProcessMetadataFieldInfo> metadataFields);
     Task<List<string>> GetRequiredPromptVariablesForPromptName(string promptName);
+    Task<DocumentProcessValidationPipelineInfo?> GetValidationPipelineAsync(Guid documentProcessId);
+    Task<DocumentProcessValidationPipelineInfo?> SaveValidationPipelineAsync(Guid documentProcessId, DocumentProcessValidationPipelineInfo pipelineInfo);
+    Task<bool> DeleteValidationPipelineAsync(Guid documentProcessId);
+    Task<bool> HasValidationPipelineAsync(string documentProcessShortName);
 }

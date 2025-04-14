@@ -8,7 +8,6 @@ using Microsoft.Greenlight.Shared.Models.SourceReferences;
 using Microsoft.SemanticKernel.TextGeneration;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
-using MassTransit;
 
 namespace Microsoft.Greenlight.Shared.Tests.Plugins
 {

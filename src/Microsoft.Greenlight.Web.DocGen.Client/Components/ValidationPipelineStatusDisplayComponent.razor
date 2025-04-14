@@ -1,0 +1,169 @@
+﻿@using Microsoft.Greenlight.Shared.Contracts.DTO.Validation
+
+@inject IDocumentValidationApiClient DocumentValidationApiClient
+@inject ISnackbar Snackbar
+
+<MudExpansionPanel @bind-IsExpanded="@_isExpanded" Class="mt-2">
+    <TitleContent>
+        <div class="d-flex align-center">
+            <MudIcon Icon="@Icons.Material.Filled.Assessment" Class="mr-2" />
+            <MudText>Validation Pipeline</MudText>
+            @if (HasUnappliedValidations)
+            {
+                <MudChip Color="Color.Warning" Size="Size.Small" Class="ml-2">Pending Changes</MudChip>
+            }
+        </div>
+    </TitleContent>
+    <ChildContent>
+        <MudPaper Class="pa-2" Outlined="true">
+            @if (IsLoading)
+            {
+                <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="mr-2" />
+                <MudText>Loading validation status...</MudText>
+            }
+            else if (ValidationStatus != null)
+            {
+                <MudList Dense="true">
+                    @foreach (var step in ValidationStatus.Steps.OrderBy(s => s.Order))
+                    {
+                        <MudListItem>
+                            <div class="d-flex align-center">
+                                <MudIcon Icon="@GetStepIcon(step.Status)" Color="@GetStepColor(step.Status)" Size="Size.Small" Class="mr-2" />
+                                <MudText Typo="Typo.body2">Step @(step.Order): @step.ExecutionType</MudText>
+                                <MudSpacer />
+                                @if (step == ValidationStatus.Steps.OrderBy(s => s.Order).LastOrDefault() && 
+                                     ValidationResults?.ApplicationStatus == ValidationPipelineExecutionApplicationStatus.Unapplied &&
+                                     step.Status == "Done")
+                                {
+                                    <MudButton Size="Size.Small" 
+                                               Color="Color.Success" 
+                                               Variant="Variant.Filled" 
+                                               OnClick="() => ApplyValidation(true)" 
+                                               StartIcon="@Icons.Material.Filled.Check"
+                                               Class="mr-2">
+                                        Accept
+                                    </MudButton>
+                                    <MudButton Size="Size.Small" 
+                                               Color="Color.Error" 
+                                               Variant="Variant.Filled" 
+                                               OnClick="() => ApplyValidation(false)" 
+                                               StartIcon="@Icons.Material.Filled.Close">
+                                        Reject
+                                    </MudButton>
+                                }
+                            </div>
+                        </MudListItem>
+                    }
+                </MudList>
+            }
+            else if (PotentialValidationSteps != null && PotentialValidationSteps.Any())
+            {
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Configured validation steps</MudText>
+                <MudList Dense="true">
+                    @foreach (var step in PotentialValidationSteps.OrderBy(s => s.Order))
+                    {
+                        <MudListItem>
+                            <div class="d-flex align-center">
+                                <MudIcon Icon="@Icons.Material.Outlined.Assignment" Size="Size.Small" Class="mr-2" />
+                                <MudText Typo="Typo.body2">Step @(step.Order): @step.PipelineExecutionType.ToString()</MudText>
+                            </div>
+                        </MudListItem>
+                    }
+                </MudList>
+                <MudText Typo="Typo.caption" Class="mt-2 mud-text-secondary">
+                    Automatic validation: @(RunValidationAutomatically ? "Enabled" : "Disabled")
+                </MudText>
+            }
+            else
+            {
+                <MudText>No validation pipeline configuration available.</MudText>
+            }
+        </MudPaper>
+    </ChildContent>
+</MudExpansionPanel>
+
+@code {
+    [Parameter] public Guid DocumentId { get; set; }
+    [Parameter] public ValidationStatusInfo? ValidationStatus { get; set; }
+    [Parameter] public ValidationResultsInfo? ValidationResults { get; set; }
+    [Parameter] public List<DocumentProcessValidationPipelineStepInfo>? PotentialValidationSteps { get; set; }
+    [Parameter] public bool RunValidationAutomatically { get; set; }
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public EventCallback OnValidationStatusChanged { get; set; }
+
+    private bool _isExpanded;
+
+    protected override void OnInitialized()
+    {
+        // Auto-expand if there are unapplied validations
+        _isExpanded = HasUnappliedValidations;
+    }
+
+    protected override void OnParametersSet()
+    {
+        // Auto-expand if there are unapplied validations when parameters change
+        if (HasUnappliedValidations && !_isExpanded)
+        {
+            _isExpanded = true;
+        }
+    }
+
+    private bool HasUnappliedValidations => 
+        ValidationResults?.ApplicationStatus == ValidationPipelineExecutionApplicationStatus.Unapplied;
+
+    private string GetStepIcon(string status)
+    {
+        return status switch
+        {
+            "NotStarted" => Icons.Material.Outlined.Pending,
+            "InProgress" => Icons.Material.Outlined.HourglassTop,
+            "Done" => Icons.Material.Filled.CheckCircle,
+            "Failed" => Icons.Material.Filled.Error,
+            _ => Icons.Material.Outlined.Help
+        };
+    }
+
+    private Color GetStepColor(string status)
+    {
+        return status switch
+        {
+            "NotStarted" => Color.Default,
+            "InProgress" => Color.Info,
+            "Done" => Color.Success,
+            "Failed" => Color.Error,
+            _ => Color.Default
+        };
+    }
+
+    private async Task ApplyValidation(bool accept)
+    {
+        if (ValidationResults == null) return;
+
+        try
+        {
+            // Update the validation execution application status
+            var newStatus = accept 
+                ? ValidationPipelineExecutionApplicationStatus.Applied 
+                : ValidationPipelineExecutionApplicationStatus.Abandoned;
+            
+            await DocumentValidationApiClient.UpdateValidationApplicationStatusAsync(
+                ValidationResults.ValidationExecutionId.ToString(), newStatus);
+
+            if (accept)
+            {
+                Snackbar.Add("Validation changes accepted and applied.", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("Validation changes rejected.", Severity.Info);
+            }
+
+            // Notify parent component that status has changed
+            await OnValidationStatusChanged.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error updating validation status: {ex.Message}", Severity.Error);
+        }
+    }
+}

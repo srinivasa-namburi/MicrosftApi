@@ -1,0 +1,18 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Microsoft.Greenlight.Grains.ApiSpecific.Contracts\Microsoft.Greenlight.Grains.ApiSpecific.Contracts.csproj" />
+    <ProjectReference Include="..\Microsoft.Greenlight.Grains.Chat.Contracts\Microsoft.Greenlight.Grains.Chat.Contracts.csproj" />
+    <ProjectReference Include="..\Microsoft.Greenlight.Grains.Document.Contracts\Microsoft.Greenlight.Grains.Document.Contracts.csproj" />
+    <ProjectReference Include="..\Microsoft.Greenlight.Grains.Review.Contracts\Microsoft.Greenlight.Grains.Review.Contracts.csproj" />
+    <ProjectReference Include="..\Microsoft.Greenlight.Grains.Shared.Contracts\Microsoft.Greenlight.Grains.Shared.Contracts.csproj" />
+    <ProjectReference Include="..\Microsoft.Greenlight.Grains.Validation.Contracts\Microsoft.Greenlight.Grains.Validation.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -92,7 +92,8 @@ public static class Extensions
                                  "Microsoft.AspNetCore.Hosting",
                                  "Microsoft.AspNetCore.Server.Kestrel",
                                  InstrumentationOptions.MeterName, // MassTransit Meter
-                                 "System.Net.Http")
+                                 "System.Net.Http",
+                                 "Microsoft.Orleans")
                        .AddRuntimeInstrumentation()
                        .AddAspNetCoreInstrumentation()
                        .AddHttpClientInstrumentation()
@@ -107,7 +108,9 @@ public static class Extensions
                 }
 
                 tracing.AddSource("Microsoft.SemanticKernel*",
-                                  DiagnosticHeaders.DefaultListenerName // MassTransit ActivitySource
+                                  DiagnosticHeaders.DefaultListenerName,// MassTransit ActivitySource
+                                  "Microsoft.Orleans.Runtime",
+                                  "Microsoft.Orleans.Application"
                                   )
                        .AddAspNetCoreInstrumentation()
                        .AddGrpcClientInstrumentation()

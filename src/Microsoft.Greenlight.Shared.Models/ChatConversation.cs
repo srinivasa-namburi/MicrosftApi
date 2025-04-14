@@ -1,8 +1,11 @@
+using Orleans;
+
 namespace Microsoft.Greenlight.Shared.Models;
 
 /// <summary>
 /// Represents a chat conversation, including the document process name, system prompt, and chat messages.
 /// </summary>
+[GenerateSerializer(GenerateFieldIds = GenerateFieldIds.PublicProperties)]
 public class ChatConversation : EntityBase
 {
     /// <summary>

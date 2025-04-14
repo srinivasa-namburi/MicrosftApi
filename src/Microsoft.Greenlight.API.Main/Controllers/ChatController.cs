@@ -1,140 +1,107 @@
 using AutoMapper;
-using MassTransit;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.Greenlight.Grains.Chat.Contracts;
 using Microsoft.Greenlight.Shared.Contracts.Chat;
-using Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Commands;
-using Microsoft.Greenlight.Shared.Data.Sql;
-using Microsoft.Greenlight.Shared.Models;
+using Microsoft.Greenlight.Shared.Prompts;
 using Microsoft.Greenlight.Shared.Services;
 
-namespace Microsoft.Greenlight.API.Main.Controllers;
-
-/// <summary>
-/// Controller for handling chat-related operations.
-/// </summary>
-public class ChatController : BaseController
+namespace Microsoft.Greenlight.API.Main.Controllers
 {
-    private readonly DocGenerationDbContext _dbContext;
-    private readonly IMapper _mapper;
-    private readonly IPublishEndpoint _publishEndpoint;
-    private readonly IServiceProvider _sp;
-    private readonly IPromptInfoService _promptInfoService;
-
     /// <summary>
-    /// Initializes a new instance of the <see cref="ChatController"/> class.
+    /// Controller for handling chat-related operations using Orleans directly
     /// </summary>
-    /// <param name="dbContext">The database context.</param>
-    /// <param name="mapper">The AutoMapper instance.</param>
-    /// <param name="publishEndpoint">The publish endpoint for messaging.</param>
-    /// <param name="sp">The service provider.</param>
-    /// <param name="promptInfoService">Prompt Info Service to retrieve prompts</param>
-    public ChatController(
-        DocGenerationDbContext dbContext,
-        IMapper mapper,
-        IPublishEndpoint publishEndpoint,
-        IServiceProvider sp, IPromptInfoService promptInfoService)
+    public class ChatController : BaseController
     {
-        _dbContext = dbContext;
-        _mapper = mapper;
-        _publishEndpoint = publishEndpoint;
-        _sp = sp;
-        _promptInfoService = promptInfoService;
-    }
+        private readonly IMapper _mapper;
+        private readonly IClusterClient _clusterClient;
+        private readonly IPromptInfoService _promptInfoService;
+        private readonly ILogger<ChatController> _logger;
 
-    /// <summary>
-    /// Sends a chat message.
-    /// </summary>
-    /// <param name="chatMessageDto">The chat message DTO.</param>
-    /// <returns>An <see cref="IActionResult"/> representing the result of the operation.
-    /// Produces Status Codes:
-    ///     204 No content: When completed sucessfully
-    /// </returns>
-    [HttpPost("")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [Consumes("application/json")]
-    public async Task<IActionResult> SendChatMessage([FromBody] ChatMessageDTO chatMessageDto)
-    {
-        await _publishEndpoint.Publish(new ProcessChatMessage(chatMessageDto.ConversationId, chatMessageDto));
-        return NoContent();
-    }
-
-    /// <summary>
-    /// Gets chat messages for a specific conversation. Creates
-    /// a new conversation if one does not exist.
-    /// </summary>
-    /// <param name="documentProcessName">The name of the document process.</param>
-    /// <param name="conversationId">The ID of the conversation.</param>
-    /// <returns>An <see cref="ActionResult"/> containing the chat messages.
-    /// Produces Status Codes:
-    ///     200 OK: When completed successfully
-    ///     400 Bad Request: When a required parameter is not provided. 
-    ///     404 Not found: When no chat messages are found for the provided Conversation Id
-    /// </returns>
-    [HttpGet("{documentProcessName}/{conversationId}")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [Produces("application/json")]
-    [Produces<List<ChatMessageDTO>>]
-    public async Task<ActionResult<List<ChatMessageDTO>>> GetChatMessages(string documentProcessName, Guid conversationId)
-    {
-        if (conversationId == Guid.Empty || string.IsNullOrEmpty(documentProcessName))
+        /// <summary>
+        /// Initializes a new instance of the <see cref="ChatController"/> class.
+        /// </summary>
+        public ChatController(
+            IMapper mapper,
+            IClusterClient clusterClient,
+            IPromptInfoService promptInfoService,
+            ILogger<ChatController> logger)
         {
-            return BadRequest("Document Process Name and Conversation ID are both required");
+            _mapper = mapper;
+            _clusterClient = clusterClient;
+            _promptInfoService = promptInfoService;
+            _logger = logger;
         }
 
-        var chatMessages = new List<ChatMessageDTO>();
-
-        var chatMessageEntities = await _dbContext.ChatMessages
-            .Where(x => x.ConversationId == conversationId)
-            .OrderBy(x => x.CreatedUtc)
-            .Include(x => x.AuthorUserInformation)
-            .ToListAsync();
-
-        if (chatMessageEntities.Count == 0)
+        /// <summary>
+        /// Sends a chat message directly to the conversation grain.
+        /// </summary>
+        /// <param name="chatMessageDto">The chat message DTO.</param>
+        /// <returns>An <see cref="IActionResult"/> representing the result of the operation.</returns>
+        [HttpPost("")]
+        [ProducesResponseType(StatusCodes.Status202Accepted)]
+        [Consumes("application/json")]
+        public async Task<IActionResult> SendChatMessage([FromBody] ChatMessageDTO chatMessageDto)
         {
-            // if there is no existing conversation, create a new one, and then return a 404
-            await CreateChatConversationAsync(documentProcessName, conversationId);
-            return NotFound();
-        }
-
-        foreach (var chatMessageModel in chatMessageEntities)
-        {
-            var chatMessageDto = _mapper.Map<ChatMessageDTO>(chatMessageModel);
-            if (chatMessageModel.AuthorUserInformation != null)
+            try
             {
-                chatMessageDto.UserId = chatMessageModel.AuthorUserInformation.ProviderSubjectId;
-                chatMessageDto.UserFullName = chatMessageModel.AuthorUserInformation.FullName;
+                // Get the conversation grain
+                var grain = _clusterClient.GetGrain<IConversationGrain>(chatMessageDto.ConversationId);
+                
+                // Process the message asynchronously (fire and forget)
+                // We don't wait for the full response as it will be streamed back via Orleans streams
+                _ = grain.ProcessMessageAsync(chatMessageDto);
+                
+                return Accepted();
             }
-            chatMessages.Add(chatMessageDto);
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending chat message for conversation {ConversationId}", chatMessageDto.ConversationId);
+                return StatusCode(500, "An error occurred while processing the chat message");
+            }
         }
 
-        return Ok(chatMessages);
-    }
-
-    /// <summary>
-    /// Creates a new chat conversation.
-    /// </summary>
-    /// <param name="documentProcessName">The name of the document process.</param>
-    /// <param name="conversationId">The ID of the conversation.</param>
-    /// <returns>The created <see cref="ChatConversation"/>.</returns>
-    private async Task<ChatConversation> CreateChatConversationAsync(string documentProcessName, Guid conversationId)
-    {
-        var conversation = new ChatConversation
+        /// <summary>
+        /// Gets chat messages for a specific conversation. Creates
+        /// a new conversation if one does not exist.
+        /// </summary>
+        /// <param name="documentProcessName">The name of the document process.</param>
+        /// <param name="conversationId">The ID of the conversation.</param>
+        /// <returns>An <see cref="ActionResult"/> containing the chat messages.</returns>
+        [HttpGet("{documentProcessName}/{conversationId}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [Produces("application/json")]
+        public async Task<ActionResult<List<ChatMessageDTO>>> GetChatMessages(string documentProcessName, Guid conversationId)
         {
-            Id = conversationId,
-            CreatedUtc = DateTime.UtcNow,
-            ModifiedUtc = DateTime.UtcNow,
-            DocumentProcessName = documentProcessName
-        };
+            if (conversationId == Guid.Empty || string.IsNullOrEmpty(documentProcessName))
+            {
+                return BadRequest("Document Process Name and Conversation ID are both required");
+            }
 
-
-        var systemPromptInfo = await _promptInfoService.GetPromptByShortCodeAndProcessNameAsync("ChatSystemPrompt", documentProcessName);
-        conversation.SystemPrompt = systemPromptInfo != null ? systemPromptInfo.Text : "";
-
-        _dbContext.ChatConversations.Add(conversation);
-        await _dbContext.SaveChangesAsync();
-        return conversation;
+            // Get the conversation grain
+            var grain = _clusterClient.GetGrain<IConversationGrain>(conversationId);
+            
+            // Check if the conversation exists
+            var state = await grain.GetStateAsync();
+            
+            // If the conversation doesn't exist or has no messages, create a new one
+            if (state.Id == Guid.Empty || state.Messages.Count == 0)
+            {
+                // Get the system prompt
+                var systemPrompt = await _promptInfoService.GetPromptTextByShortCodeAndProcessNameAsync(
+                    PromptNames.ChatSystemPrompt, documentProcessName);
+                
+                // Initialize the conversation
+                await grain.InitializeAsync(documentProcessName, systemPrompt);
+                
+                // Return an empty list with 404 status
+                return NotFound();
+            }
+            
+            // Get the messages
+            var messages = await grain.GetMessagesAsync();
+            return Ok(messages);
+        }
     }
 }

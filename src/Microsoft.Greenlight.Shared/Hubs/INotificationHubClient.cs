@@ -3,6 +3,7 @@ using Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Commands;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Events;
 using Microsoft.Greenlight.Shared.Contracts.Messages.DocumentGeneration.Events;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Review.Events;
+using Microsoft.Greenlight.Shared.Contracts.Messages.Validation.Events;
 
 namespace Microsoft.Greenlight.Shared.Hubs;
 
@@ -61,6 +62,13 @@ public interface INotificationHubClient
     Task ReceiveBackendProcessingMessageGeneratedNotification(BackendProcessingMessageGenerated message);
 
     /// <summary>
+    /// Receives a notification that a review execution has been completed.
+    /// </summary>
+    /// <param name="message"></param>
+    /// <returns></returns>
+    Task ReceiveReviewCompletedNotification(ReviewCompletedNotification message);
+
+    /// <summary>
     /// Receives a conversation references updated notification.
     /// </summary>
     /// <param name="message">The conversation references updated message.</param>
@@ -70,8 +78,15 @@ public interface INotificationHubClient
     /// <summary>
     /// Sends a chat message status notification to a specific group.
     /// </summary>
-    /// <param name="messageId">The ID of the message to send the notification to.</param>
     /// <param name="notification">The chat message status notification.</param>
     Task ReceiveChatMessageStatusNotification(ChatMessageStatusNotification notification);
+
+    /// <summary>
+    /// Sends a notification that a validation pipeline execution has reached a certain state for a document.
+    /// </summary>
+    /// <param name="notification"></param>
+    /// <returns></returns>
+    Task ReceiveValidationExecutionForDocumentNotification(
+        ValidationExecutionForDocumentNotification notification);
 
 }

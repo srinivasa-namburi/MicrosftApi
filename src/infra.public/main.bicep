@@ -119,6 +119,29 @@ module sqldocgen 'sqldocgen/sqldocgen.module.bicep' = {
     exists: existingSqlServer 
   }
 }
+
+module eventhub 'eventhub/eventhub.module.bicep' = {
+  name: 'eventhub'
+  scope: resourceGroup('${resourceGroupName}')
+  params: {
+    location: location
+    principalId: resources.outputs.MANAGED_IDENTITY_PRINCIPAL_ID
+    principalType: 'ServicePrincipal'
+    deploymentModel: deploymentModel
+  }
+}
+
+module orleansStorage 'orleans/orleans.module.bicep' = {
+  name: 'orleansStorage'
+  scope: resourceGroup('${resourceGroupName}')
+  params: {
+    location: location
+    principalId: resources.outputs.MANAGED_IDENTITY_PRINCIPAL_ID
+    principalType: 'ServicePrincipal'
+    deploymentModel: deploymentModel
+  }
+}
+
 // Deploy private endpoints if deploymentModel is private.
 module privateEndpoints 'privateEndpoints.bicep' = if (isPrivate) {
   name: 'privateEndpoints'
@@ -138,6 +161,10 @@ module privateEndpoints 'privateEndpoints.bicep' = if (isPrivate) {
     signalrName: signalr.outputs.resourceName
     sqldocgenId: sqldocgen.outputs.resourceId
     sqldocgenName: sqldocgen.outputs.resourceName
+    eventhubId: eventhub.outputs.resourceId
+    eventhubName: eventhub.outputs.resourceName
+    orleansStorageId: orleansStorage.outputs.resourceId
+    orleansStorageName: orleansStorage.outputs.resourceName
   }
 }
 
@@ -159,6 +186,17 @@ output SBUS_SERVICEBUSENDPOINT string = sbus.outputs.serviceBusEndpoint
 output SIGNALR_HOSTNAME string = signalr.outputs.hostName
 output SQLDOCGEN_SQLSERVERFQDN string = sqldocgen.outputs.sqlServerFqdn
 
+output EVENTHUB_CONNECTIONSTRING string = eventhub.outputs.connectionString
+output EVENTHUB_NAME string = eventhub.outputs.eventHubName
+output EVENTHUB_CONSUMERGROUP string = eventhub.outputs.consumerGroupName
+output EVENTHUB_EVENTHUBSENDPOINT string = eventhub.outputs.eventHubsEndpoint
+
+output ORLEANS_STORAGE_BLOBENDPOINT string = orleansStorage.outputs.blobEndpoint
+output ORLEANS_STORAGE_CONNECTIONSTRING string = orleansStorage.outputs.connectionString
+output ORLEANS_BLOB_CONNECTIONSTRING string = orleansStorage.outputs.blobConnectionString
+output ORLEANS_STORAGE_TABLEENDPOINT string = orleansStorage.outputs.tableEndpoint
+output ORLEANS_TABLE_CONNECTIONSTRING string = orleansStorage.outputs.tableConnectionString
+
 // Custom outputs
 output AI_SEARCH_RESOURCE_ID string = aiSearch.outputs.resourceId
 output DOCING_RESOURCE_ID string = docing.outputs.resourceId
@@ -166,3 +204,5 @@ output REDIS_RESOURCE_ID string = redis.outputs.resourceId
 output SBUS_RESOURCE_ID string = sbus.outputs.resourceId
 output SIGNALR_RESOURCE_ID string = signalr.outputs.resourceId
 output SQLDOCGEN_RESOURCE_ID string = sqldocgen.outputs.resourceId
+output EVENTHUB_RESOURCE_ID string = eventhub.outputs.resourceId
+output ORLEANS_STORAGE_RESOURCE_ID string = orleansStorage.outputs.resourceId

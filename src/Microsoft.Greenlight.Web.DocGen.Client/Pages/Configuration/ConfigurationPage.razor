@@ -19,24 +19,88 @@
         </MudCardContent>
     </MudCard>
 
-    <MudCard Class="mb-4">
-        <MudCardContent>
-            <MudText Typo="Typo.h6">Feature Toggles</MudText>
-            <MudDivider Class="my-2" />
-            <MudItem xs="12">
-                <MudSwitch @bind-Value="_featureFlags.EnableMassDocumentProduction" Color="Color.Primary" Label="Enable Mass Document Production" />
-            </MudItem>
-            <MudItem xs="12">
-                <MudSwitch @bind-Value="_featureFlags.EnableReviews" Color="Color.Primary" Label="Enable Reviews" />
-            </MudItem>
-            <MudItem xs="12">
-                <MudSwitch @bind-Value="_featureFlags.EnableReferenceFrontend" Color="Color.Primary" Label="Enable Source Reference Frontend for generation" />
-            </MudItem>
-            <MudItem xs="12">
-                <MudSwitch @bind-Value="_featureFlags.EnableContentReferences" Color="Color.Primary" Label="Enable Content Reference System (internal links)" />
-            </MudItem>
-        </MudCardContent>
-    </MudCard>
+    <MudGrid>
+        <!-- Feature Toggles Column -->
+        <MudItem xs="12" md="6">
+            <MudCard Class="mb-4">
+                <MudCardContent>
+                    <MudText Typo="Typo.h6">Feature Toggles</MudText>
+                    <MudDivider Class="my-2" />
+                    <MudItem xs="12">
+                        <MudSwitch @bind-Value="_featureFlags.EnableMassDocumentProduction" Color="Color.Primary" Label="Enable Mass Document Production" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudSwitch @bind-Value="_featureFlags.EnableReviews" Color="Color.Primary" Label="Enable Reviews" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudSwitch @bind-Value="_featureFlags.EnableReferenceFrontend" Color="Color.Primary" Label="Enable Source Reference Frontend for generation" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudSwitch @bind-Value="_featureFlags.EnableContentReferences" Color="Color.Primary" Label="Enable Content Reference System (internal links)" />
+                    </MudItem>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        <!-- Scalability Options Column -->
+        <MudItem xs="12" md="6">
+            <MudCard Class="mb-4">
+                <MudCardContent>
+                    <MudText Typo="Typo.h6">Scalability Options</MudText>
+                    <MudDivider Class="my-2" />
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudSlider T="int"
+                                   @bind-Value="_scalabilityOptions.NumberOfValidationWorkers"
+                                   Min="1" Max="10"
+                                   TickMarks="true" ValueLabel="true" Immediate="true">
+                            Number of Validation Workers
+                        </MudSlider>
+                        <MudNumericField T="int"
+                                         @bind-Value="_scalabilityOptions.NumberOfValidationWorkers"
+                                         Min="1" Max="10"
+                                         Immediate="true" Style="width:80px;" />
+                    </MudStack>
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudSlider T="int"
+                                   @bind-Value="_scalabilityOptions.NumberOfGenerationWorkers"
+                                   Min="1" Max="10"
+                                   TickMarks="true" ValueLabel="true" Immediate="true">
+                            Number of Document Generation Workers
+                        </MudSlider>
+                        <MudNumericField T="int"
+                                         @bind-Value="_scalabilityOptions.NumberOfGenerationWorkers"
+                                         Min="1" Max="10"
+                                         Immediate="true" Style="width:80px;" />
+                    </MudStack>
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudSlider T="int"
+                                   @bind-Value="_scalabilityOptions.NumberOfIngestionWorkers"
+                                   Min="1" Max="10"
+                                   TickMarks="true" ValueLabel="true" Immediate="true">
+                            Number of Document Ingestion Workers
+                        </MudSlider>
+                        <MudNumericField T="int"
+                                         @bind-Value="_scalabilityOptions.NumberOfIngestionWorkers"
+                                         Min="1" Max="10"
+                                         Immediate="true" Style="width:80px;" />
+                    </MudStack>
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudSlider T="int"
+                                   @bind-Value="_scalabilityOptions.NumberOfReviewWorkers"
+                                   Min="1" Max="10"
+                                   TickMarks="true" ValueLabel="true" Immediate="true">
+                            Number of Document Review Workers
+                        </MudSlider>
+                        <MudNumericField T="int"
+                                         @bind-Value="_scalabilityOptions.NumberOfReviewWorkers"
+                                         Min="1" Max="10"
+                                         Immediate="true" Style="width:80px;" />
+                    </MudStack>
+
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
 
     <MudCard>
         <MudCardContent>
@@ -54,6 +118,7 @@
 @code {
     private ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions _featureFlags = new();
     private ServiceConfigurationOptions.GreenlightServicesOptions.FrontendOptions _frontendOptions = new();
+    private ServiceConfigurationOptions.GreenlightServicesOptions.ScalabilityOptions _scalabilityOptions = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -61,6 +126,7 @@
         {
             _featureFlags = await ConfigurationApiClient.GetFeatureFlagsAsync();
             _frontendOptions = await ConfigurationApiClient.GetFrontEndAsync();
+            _scalabilityOptions = await ConfigurationApiClient.GetScalabilityOptionsAsync();
         }
         catch (Exception ex)
         {
@@ -75,12 +141,26 @@
             var request = new ConfigurationUpdateRequest
             {
                 ConfigurationItems = new Dictionary<string, string>
-                {
-                    { "ServiceConfiguration:GreenlightServices:FeatureFlags:EnableMassDocumentProduction", _featureFlags.EnableMassDocumentProduction.ToString() },
-                    { "ServiceConfiguration:GreenlightServices:FeatureFlags:EnableReviews", _featureFlags.EnableReviews.ToString() },
-                    { "ServiceConfiguration:GreenlightServices:FeatureFlags:EnableReferenceFrontend", _featureFlags.EnableReferenceFrontend.ToString() },
-                    { "ServiceConfiguration:GreenlightServices:FrontEnd:SiteName", _frontendOptions.SiteName }
-                }
+              {
+                  { "ServiceConfiguration:GreenlightServices:FeatureFlags:EnableMassDocumentProduction",
+                      _featureFlags.EnableMassDocumentProduction.ToString() },
+                  { "ServiceConfiguration:GreenlightServices:FeatureFlags:EnableReviews",
+                      _featureFlags.EnableReviews.ToString() },
+                  { "ServiceConfiguration:GreenlightServices:FeatureFlags:EnableReferenceFrontend",
+                      _featureFlags.EnableReferenceFrontend.ToString() },
+                  { "ServiceConfiguration:GreenlightServices:FeatureFlags:EnableContentReferences",
+                      _featureFlags.EnableContentReferences.ToString() },
+                  { "ServiceConfiguration:GreenlightServices:FrontEnd:SiteName",
+                      _frontendOptions.SiteName },
+                  { "ServiceConfiguration:GreenlightServices:Scalability:NumberOfValidationWorkers",
+                      _scalabilityOptions.NumberOfValidationWorkers.ToString() },
+                  { "ServiceConfiguration:GreenlightServices:Scalability:NumberOfGenerationWorkers",
+                      _scalabilityOptions.NumberOfGenerationWorkers.ToString() },
+                  { "ServiceConfiguration:GreenlightServices:Scalability:NumberOfIngestionWorkers",
+                      _scalabilityOptions.NumberOfIngestionWorkers.ToString() },
+                  { "ServiceConfiguration:GreenlightServices:Scalability:NumberOfReviewWorkers",
+                      _scalabilityOptions.NumberOfReviewWorkers.ToString() }
+              }
             };
 
             await ConfigurationApiClient.UpdateConfigurationAsync(request);

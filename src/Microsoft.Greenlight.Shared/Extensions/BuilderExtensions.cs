@@ -1,21 +1,32 @@
 using Aspire.Azure.Messaging.ServiceBus;
 using Aspire.Azure.Search.Documents;
 using Aspire.Azure.Storage.Blobs;
+using AutoMapper;
 using Azure.AI.OpenAI;
-using DocumentFormat.OpenXml.Office2016.Drawing.ChartDrawing;
+using Azure.Data.Tables;
+using Azure.Storage.Blobs;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Greenlight.Shared.Configuration;
+using Microsoft.Greenlight.Shared.Contracts.Chat;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Data.Sql;
+using Microsoft.Greenlight.Shared.DocumentProcess.Dynamic;
+using Microsoft.Greenlight.Shared.DocumentProcess.Dynamic.Generation;
+using Microsoft.Greenlight.Shared.DocumentProcess.Shared.Generation;
+using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Exporters;
 using Microsoft.Greenlight.Shared.Helpers;
+using Microsoft.Greenlight.Shared.Management;
 using Microsoft.Greenlight.Shared.Management.Configuration;
 using Microsoft.Greenlight.Shared.Mappings;
+using Microsoft.Greenlight.Shared.Models;
 using Microsoft.Greenlight.Shared.Plugins;
+using Microsoft.Greenlight.Shared.Repositories;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.Shared.Services.ContentReference;
 using Microsoft.Greenlight.Shared.Services.Search;
@@ -24,6 +35,8 @@ using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
 using Microsoft.SemanticKernel.Embeddings;
+using Orleans.Configuration;
+using Orleans.Serialization;
 using StackExchange.Redis;
 using StackExchange.Redis.Configuration;
 using System.ClientModel;
@@ -47,7 +60,8 @@ public static class BuilderExtensions
     public static IHostApplicationBuilder AddGreenlightDbContextAndConfiguration(this IHostApplicationBuilder builder)
     {
         // Get service configuration options from static configuration
-        var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
+        var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName)
+            .Get<ServiceConfigurationOptions>()!;
 
         // Add the database context
         builder.AddDocGenDbContext(serviceConfigurationOptions);
@@ -56,18 +70,18 @@ public static class BuilderExtensions
         var entryAssemblyName = Assembly.GetEntryAssembly()?.GetName().Name;
         if (entryAssemblyName != "Microsoft.Greenlight.SetupManager.DB")
         {
-            // Create the source first
-            var configSource = new EfCoreConfigurationProviderSource(builder.Services);
+            // Create the source first. This contains no build logic.
+            var configSource = new EfCoreConfigurationProviderSource();
 
             // Add the database configuration provider
             builder.Services.AddSingleton<EfCoreConfigurationProvider>(sp =>
             {
-                var dbContext = sp.GetRequiredService<DocGenerationDbContext>();
                 var logger = sp.GetRequiredService<ILogger<EfCoreConfigurationProvider>>();
                 var optionsMonitor = sp.GetRequiredService<IOptionsMonitor<ServiceConfigurationOptions>>();
                 var configuration = (IConfigurationRoot)sp.GetRequiredService<IConfiguration>();
+                var dbContextFactory = sp.GetRequiredService<IDbContextFactory<DocGenerationDbContext>>();
 
-                var provider = new EfCoreConfigurationProvider(dbContext, logger, optionsMonitor, configuration);
+                var provider = new EfCoreConfigurationProvider(dbContextFactory, logger, optionsMonitor, configuration);
 
                 // Store the reference to this instance in the source
                 configSource.SetProviderInstance(provider);
@@ -77,10 +91,12 @@ public static class BuilderExtensions
 
             // Add the EfCoreConfigurationProvider to the configuration sources
             builder.Configuration.Add(configSource);
+
         }
 
         return builder;
     }
+
     /// <summary>
     /// Adds Greenlight services to the host application builder.
     /// </summary>
@@ -88,9 +104,12 @@ public static class BuilderExtensions
     /// <param name="credentialHelper">The Azure credential helper.</param>
     /// <param name="serviceConfigurationOptions">The service configuration options.</param>
     /// <returns>The updated host application builder.</returns>
-    public static IHostApplicationBuilder AddGreenlightServices(this IHostApplicationBuilder builder, AzureCredentialHelper credentialHelper, ServiceConfigurationOptions serviceConfigurationOptions)
+    public static IHostApplicationBuilder AddGreenlightServices(this IHostApplicationBuilder builder,
+        AzureCredentialHelper credentialHelper, ServiceConfigurationOptions serviceConfigurationOptions)
     {
         builder.Services.AddAutoMapper(typeof(DocumentProcessInfoProfile));
+
+        builder.AddGreenLightRedisClient("redis", credentialHelper, serviceConfigurationOptions);
 
         // Common services and dependencies
         builder.AddAzureServiceBusClient("sbus", configureSettings: delegate (AzureMessagingServiceBusSettings settings)
@@ -103,10 +122,43 @@ public static class BuilderExtensions
             settings.Credential = credentialHelper.GetAzureCredential();
         });
 
-        builder.AddAzureBlobClient("blob-docing", configureSettings: delegate (AzureStorageBlobsSettings settings)
+        builder.AddKeyedAzureBlobClient("blob-docing", configureSettings: delegate (AzureStorageBlobsSettings settings)
         {
             settings.Credential = credentialHelper.GetAzureCredential();
         });
+
+        builder.AddKeyedAzureBlobClient("blob-orleans", configureSettings: delegate (AzureStorageBlobsSettings settings)
+        {
+            settings.Credential = credentialHelper.GetAzureCredential();
+        });
+
+        builder.AddKeyedAzureTableClient("clustering", settings =>
+        {
+            settings.Credential = credentialHelper.GetAzureCredential();
+        });
+
+        builder.AddKeyedAzureTableClient("checkpointing", settings =>
+        {
+            settings.Credential = credentialHelper.GetAzureCredential();
+        });
+
+        // Event Hub used by Orleans client and server for Orleans streaming
+
+        builder.AddAzureEventHubConsumerClient("greenlight-cg-streams", configureSettings =>
+        {
+            configureSettings.Credential = credentialHelper.GetAzureCredential();
+        });
+
+        builder.AddAzureEventHubProducerClient("greenlight-cg-streams", configureSettings =>
+        {
+            configureSettings.Credential = credentialHelper.GetAzureCredential();
+        });
+
+        builder.AddAzureEventHubBufferedProducerClient("greenlight-cg-streams", configureSettings =>
+        {
+            configureSettings.Credential = credentialHelper.GetAzureCredential();
+        });
+
 
         builder.Services.AddKeyedSingleton<AzureOpenAIClient>("openai-planner", (sp, obj) =>
         {
@@ -119,52 +171,112 @@ public static class BuilderExtensions
 
             // If the connection string doesn't contain a Key, use credentialHelper.GetAzureCredential() method.
             // Otherwise, use the key with an ApiKeyCredential.
-            return string.IsNullOrEmpty(key) ? 
-                new AzureOpenAIClient(new Uri(endpoint), credentialHelper.GetAzureCredential()) : 
-                new AzureOpenAIClient(new Uri(endpoint), new ApiKeyCredential(key));
+            return string.IsNullOrEmpty(key)
+                ? new AzureOpenAIClient(new Uri(endpoint), credentialHelper.GetAzureCredential())
+                : new AzureOpenAIClient(new Uri(endpoint), new ApiKeyCredential(key));
         });
 
-        builder.Services.AddScoped<IChatCompletionService>(service =>
+        builder.Services.AddTransient<IChatCompletionService>(service =>
             new AzureOpenAIChatCompletionService(serviceConfigurationOptions.OpenAi.Gpt4o_Or_Gpt4128KDeploymentName,
                 service.GetRequiredKeyedService<AzureOpenAIClient>("openai-planner"), "openai-chatcompletion")
         );
 
 
-        builder.Services.AddScoped<ITextEmbeddingGenerationService>(service =>
-            new AzureOpenAITextEmbeddingGenerationService(serviceConfigurationOptions.OpenAi.EmbeddingModelDeploymentName,
+        builder.Services.AddTransient<ITextEmbeddingGenerationService>(service =>
+            new AzureOpenAITextEmbeddingGenerationService(
+                serviceConfigurationOptions.OpenAi.EmbeddingModelDeploymentName,
                 service.GetRequiredKeyedService<AzureOpenAIClient>("openai-planner"), "openai-embeddinggeneration")
         );
 
-        builder.AddGreenLightRedisClient("redis", credentialHelper, serviceConfigurationOptions);
 
-        builder.Services.AddScoped<AzureFileHelper>();
+        builder.Services.AddTransient<DynamicDocumentProcessServiceFactory>();
+
+        builder.Services.AddTransient<AzureFileHelper>();
         builder.Services.AddSingleton<SearchClientFactory>();
+
+        builder.Services.AddTransient<IDocumentProcessInfoService, DocumentProcessInfoService>();
+        builder.Services.AddTransient<IPromptInfoService, PromptInfoService>();
+        builder.Services.AddTransient<IPluginService, PluginService>();
+        builder.Services.AddTransient<IDocumentLibraryInfoService, DocumentLibraryInfoService>();
 
         builder.Services.AddKeyedTransient<IDocumentExporter, WordDocumentExporter>("IDocumentExporter-Word");
 
         builder.Services.AddSingleton<IPluginSourceReferenceCollector, PluginSourceReferenceCollector>();
-        builder.Services.AddKeyedScoped<IFunctionInvocationFilter, InputOutputTrackingPluginInvocationFilter>("InputOutputTrackingPluginInvocationFilter");
+        builder.Services.AddKeyedTransient<IFunctionInvocationFilter, InputOutputTrackingPluginInvocationFilter>(
+            "InputOutputTrackingPluginInvocationFilter");
 
-        builder.Services.AddScoped<ValidationStepExecutionLogicFactory>();
+        builder.AddRepositories();
+
+        builder.Services.AddTransient<ValidationStepExecutionLogicFactory>();
 
         // Add all IValidationStepExecutionLogic implementations
         builder.Services
-            .AddKeyedScoped<IValidationStepExecutionLogic, ParallelByOuterChapterValidationStepExecutionLogic>(
+            .AddKeyedTransient<IValidationStepExecutionLogic, ParallelByOuterChapterValidationStepExecutionLogic>(
                 nameof(ParallelByOuterChapterValidationStepExecutionLogic));
 
         builder.Services
-            .AddKeyedScoped<IValidationStepExecutionLogic, ParallelFullDocumentValidationStepExecutionLogic>(
+            .AddKeyedTransient<IValidationStepExecutionLogic, ParallelFullDocumentValidationStepExecutionLogic>(
                 nameof(ParallelFullDocumentValidationStepExecutionLogic));
 
         builder.Services
-            .AddKeyedScoped<IValidationStepExecutionLogic, SequentialFullDocumentValidationStepExecutionLogic>(
+            .AddKeyedTransient<IValidationStepExecutionLogic, SequentialFullDocumentValidationStepExecutionLogic>(
                 nameof(SequentialFullDocumentValidationStepExecutionLogic));
 
-        builder.Services.AddScoped<IContentNodeService, ContentNodeService>();
 
-        builder.Services.AddScoped<IContentReferenceService, ContentReferenceService>();
-        
+
+        // Content Reference Services
+        builder.Services.AddTransient<IContentNodeService, ContentNodeService>();
+        builder.Services.AddTransient<IContentReferenceService, ContentReferenceService>();
+        builder.Services.AddTransient<IPromptDefinitionService, PromptDefinitionService>();
+
+        // Register the factory
+        builder.Services
+            .AddTransient<IContentReferenceGenerationServiceFactory, ContentReferenceGenerationServiceFactory>();
+
+        // Register primary content reference service
+        builder.Services.AddTransient<IContentReferenceService, ContentReferenceService>();
+
+        // Register content type specific generation services
+        builder.Services
+            .AddTransient<IContentReferenceGenerationService<GeneratedDocument>,
+                GeneratedDocumentReferenceGenerationService>();
+        builder.Services
+            .AddTransient<IContentReferenceGenerationService<ExportedDocumentLink>,
+                UploadedDocumentReferenceGenerationService>();
+
+        // Context Builder that uses embeddings generation to build rag contexts from content references for user queries
+        builder.Services.AddTransient<IRagContextBuilder, RagContextBuilder>();
+
+        // Add the shared Dynamic Outline Service
+        builder.Services.AddKeyedTransient<IDocumentOutlineService, DynamicDocumentOutlineService>(
+            "Dynamic-IDocumentOutlineService");
+        builder.Services.AddTransient<IDocumentOutlineService, DynamicDocumentOutlineService>();
+
+        // Review services
+        builder.Services.AddTransient<IReviewService, ReviewService>();
+
+        // Add the plugin registry as a singleton (it hosts plugins)
+        builder.Services.AddSingleton<IPluginRegistry, DefaultPluginRegistry>();
+
         return builder;
+    }
+
+    /// <summary>
+    /// Adds standard hosted services that run on all hosts.
+    /// This must be called AFTER Orleans Client setup (normally at the end of the builder).
+    /// </summary>
+    /// <param name="services">The Service Collection</param>
+    /// <param name="addSignalrNotifiers">Whether to add the SignalR notifiers on this host</param>
+    /// <returns></returns>
+    public static IServiceCollection AddGreenlightHostedServices(this IServiceCollection services,
+        bool addSignalrNotifiers = false)
+    {
+        services.AddConfigurationStreamNotifier();
+        services.StartOrleansStreamSubscriberService();
+
+        services.AddHostedService<DatabaseConfigurationRefreshService>();
+        services.AddHostedService<ShutdownCleanupService>();
+        return services;
     }
 
     /// <summary>
@@ -204,23 +316,219 @@ public static class BuilderExtensions
             builder.AddRedisClient(redisConnectionStringName);
             builder.AddRedisDistributedCache(redisConnectionStringName);
         }
-        
+
         return builder;
     }
 
 
     /// <summary>
-    /// Gets a service for the specified document process.
+    /// Add an Orleans Silo to the Builder
     /// </summary>
-    /// <typeparam name="T">The type of the service to get.</typeparam>
-    /// <param name="sp">The service provider.</param>
-    /// <param name="documentProcessInfo">The document process information.</param>
-    /// <returns>The service instance if found; otherwise, null.</returns>
-    public static T? GetServiceForDocumentProcess<T>(this IServiceProvider sp, DocumentProcessInfo documentProcessInfo)
+    /// <param name="builder"></param>
+    /// <param name="credentialHelper"></param>
+    /// <param name="clusterRole"></param>
+    /// <returns></returns>
+    public static IHostApplicationBuilder AddGreenLightOrleansSilo(
+        this IHostApplicationBuilder builder, AzureCredentialHelper credentialHelper,
+        string clusterRole = "DefaultRole")
     {
-        var service = sp.GetServiceForDocumentProcess<T>(documentProcessInfo.ShortName);
-        return service;
+        var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName)
+            .Get<ServiceConfigurationOptions>()!;
+        var eventHubConnectionString = builder.Configuration.GetConnectionString("greenlight-cg-streams");
+        var checkPointTableStorageConnectionString = builder.Configuration.GetConnectionString("checkpointing");
+        var orleansBlobStoreConnectionString = builder.Configuration.GetConnectionString("blob-orleans");
+
+        var currentAssembly = Assembly.GetExecutingAssembly();
+
+        builder.UseOrleans(siloBuilder =>
+        {
+            
+            siloBuilder.Services.AddSerializer(serializerBuilder =>
+            {
+                serializerBuilder.AddJsonSerializer(DetectSerializableAssemblies);
+
+                // Is there a way to add Orleans Serializers for referenced assemblies?
+                serializerBuilder.AddAssembly(typeof(ChatMessageDTO).Assembly);
+                serializerBuilder.AddAssembly(typeof(ChatMessage).Assembly);
+                serializerBuilder.AddAssembly(currentAssembly);
+            });
+
+            // Add EventHub-based streaming for high throughput
+            siloBuilder.AddEventHubStreams("StreamProvider", (ISiloEventHubStreamConfigurator streamsConfigurator) =>
+            {
+                streamsConfigurator.ConfigureEventHub(eventHubBuilder => eventHubBuilder.Configure(options =>
+                {
+                    var eventHubNamespace = eventHubConnectionString!.Split("Endpoint=")[1].Split(":443/")[0];
+                    var eventHubName = eventHubConnectionString!.Split("EntityPath=")[1].Split(";")[0];
+                    var consumerGroup = eventHubConnectionString!.Split("ConsumerGroup=")[1].Split(";")[0];
+                    options.ConfigureEventHubConnection(
+                        eventHubNamespace,
+                        eventHubName,
+                        consumerGroup, credentialHelper.GetAzureCredential());
+
+                }));
+
+                streamsConfigurator.UseAzureTableCheckpointer(checkpointBuilder =>
+
+                    checkpointBuilder.Configure(options =>
+                    {
+                        options.TableServiceClient = new TableServiceClient(
+                            new Uri(checkPointTableStorageConnectionString!), credentialHelper.GetAzureCredential());
+
+                        options.PersistInterval = TimeSpan.FromSeconds(10);
+                    }));
+
+            });
+
+            siloBuilder.AddAzureBlobGrainStorage("PubSubStore", options =>
+            {
+                var blobStorageUrl = new Uri(orleansBlobStoreConnectionString!);
+                options.BlobServiceClient =
+                    new BlobServiceClient(blobStorageUrl, credentialHelper.GetAzureCredential());
+            });
+
+            siloBuilder.AddAzureBlobGrainStorageAsDefault(options =>
+            {
+                options.ContainerName = "grain-storage";
+                var blobStorageUrl = new Uri(orleansBlobStoreConnectionString!);
+                options.BlobServiceClient =
+                    new BlobServiceClient(blobStorageUrl, credentialHelper.GetAzureCredential());
+            });
+
+            siloBuilder.UseAzureTableReminderService(options =>
+            {
+                // Use the same table storage connection that you're using for checkpointing
+                options.TableServiceClient = new TableServiceClient(
+                    new Uri(checkPointTableStorageConnectionString!),
+                    credentialHelper.GetAzureCredential());
+
+                options.TableName = "OrleansReminders";
+            });
+
+            bool DetectSerializableAssemblies(Type arg)
+            {
+                // Check if the type is in any assembly starting with Microsoft.Greenlight.Grain or Microsoft.Greenlight.Shared
+                // This is a bit of a hack, but it works for now
+                var assemblyName = arg.Assembly.GetName().Name;
+                return assemblyName != null &&
+                       (assemblyName.StartsWith("Microsoft.Greenlight.Grain") ||
+                        assemblyName.StartsWith("Microsoft.Greenlight.Shared"));
+            }
+        });
+
+        return builder;
     }
+
+
+    /// <summary>
+    /// Adds the standardized Orleans Client to the Builder
+    /// </summary>
+    /// <param name="builder"></param>
+    /// <param name="credentialHelper"></param>
+    /// <returns></returns>
+    public static IHostApplicationBuilder AddGreenlightOrleansClient(
+        this IHostApplicationBuilder builder,
+        AzureCredentialHelper credentialHelper)
+    {
+        var eventHubConnectionString = builder.Configuration.GetConnectionString("greenlight-cg-streams");
+
+        builder.UseOrleansClient(siloBuilder =>
+        {
+            siloBuilder.UseConnectionRetryFilter(async (exception, token) =>
+            {
+                // Log the connection failure
+                Console.WriteLine($"Orleans client connection failed: {exception.Message}");
+
+                // Wait before retrying
+                await Task.Delay(TimeSpan.FromSeconds(5), token);
+
+                // Return true to retry the connection
+                return true;
+            });
+
+            // Increase connection timeout
+            siloBuilder.Configure<ClientMessagingOptions>(options =>
+            {
+                options.ResponseTimeout = TimeSpan.FromMinutes(5);
+            });
+
+            siloBuilder.Services.AddSerializer(serializerBuilder =>
+            {
+                serializerBuilder.AddJsonSerializer(DetectSerializableAssemblies);
+
+                // Is there a way to add Orleans Serializers for referenced assemblies?
+                serializerBuilder.AddAssembly(typeof(ChatMessageDTO).Assembly);
+                serializerBuilder.AddAssembly(typeof(ChatMessage).Assembly);
+
+                // Get the currently executing assembly and add it
+                var executingAssembly = Assembly.GetExecutingAssembly();
+                serializerBuilder.AddAssembly(executingAssembly);
+            });
+
+            bool DetectSerializableAssemblies(Type arg)
+            {
+                // Check if the type is in any assembly starting with Microsoft.Greenlight.Grain or Microsoft.Greenlight.Shared
+                // This is a bit of a hack, but it works for now
+                var assemblyName = arg.Assembly.GetName().Name;
+                return assemblyName != null &&
+                       (assemblyName.StartsWith("Microsoft.Greenlight.Grain") ||
+                        assemblyName.StartsWith("Microsoft.Greenlight.Shared"));
+            }
+
+            siloBuilder.AddEventHubStreams("StreamProvider", (IClusterClientEventHubStreamConfigurator configurator) =>
+            {
+                configurator.ConfigureEventHub(eventHubBuilder => eventHubBuilder.Configure(options =>
+                {
+                    var eventHubNamespace = eventHubConnectionString!.Split("Endpoint=")[1].Split(":443/")[0];
+                    var eventHubName = eventHubConnectionString!.Split("EntityPath=")[1].Split(";")[0];
+                    var consumerGroup = eventHubConnectionString!.Split("ConsumerGroup=")[1].Split(";")[0];
+
+                    options.ConfigureEventHubConnection(
+                        eventHubNamespace,
+                        eventHubName,
+                        consumerGroup, credentialHelper.GetAzureCredential());
+
+                }));
+            });
+        });
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds repositories to the IHostApplicationBuilder.
+    /// </summary>
+    /// <param name="builder">The IHostApplicationBuilder to add the repositories to.</param>
+    /// <returns>The updated IHostApplicationBuilder.</returns>
+    private static IHostApplicationBuilder AddRepositories(this IHostApplicationBuilder builder)
+    {
+        // Add GenericRepository<T> itself
+        builder.Services.AddScoped(typeof(GenericRepository<>));
+
+        // Get the assembly containing the repositories
+        var repositoryAssembly = typeof(GenericRepository<>).Assembly;
+
+        // Register all classes in the specified namespace that inherit from GenericRepository<T>
+        foreach (var type in repositoryAssembly.GetTypes())
+        {
+            if (type is { IsClass: true, IsAbstract: false, Namespace: "Microsoft.Greenlight.Shared.Repositories" })
+            {
+                var baseType = type.BaseType;
+                while (baseType != null && baseType != typeof(object))
+                {
+                    if (baseType.IsGenericType && baseType.GetGenericTypeDefinition() == typeof(GenericRepository<>))
+                    {
+                        builder.Services.AddScoped(type);
+                        break;
+                    }
+                    baseType = baseType.BaseType;
+                }
+            }
+        }
+
+        return builder;
+    }
+
 
     /// <summary>
     /// Gets a required service for the specified document process.
@@ -267,11 +575,27 @@ public static class BuilderExtensions
     {
         T? service = default;
 
-        // Don't use using here as we are retrieving a service to be used outside of the scope of the current request.
-        var scope = sp.CreateScope();
 
-        var documentProcessInfoService = scope.ServiceProvider.GetRequiredService<IDocumentProcessInfoService>();
-        var documentProcessInfo = documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentProcessName).Result;
+        var documentProcessInfoService = sp.GetRequiredService<IDocumentProcessInfoService>();
+        var dbContext = sp.GetRequiredService<DocGenerationDbContext>();
+        var mapper = sp.GetRequiredService<IMapper>();
+
+        DocumentProcessInfo? documentProcessInfo = null;
+        try
+        {
+            documentProcessInfo = documentProcessInfoService.GetDocumentProcessInfoByShortName(documentProcessName);
+        }
+        catch
+        {
+            var dynamicDocumentProcess = dbContext.DynamicDocumentProcessDefinitions
+                .AsNoTracking()
+                .FirstOrDefault(x => x.ShortName == documentProcessName);
+
+            if (dynamicDocumentProcess != null)
+            {
+                documentProcessInfo = mapper.Map<DocumentProcessInfo>(dynamicDocumentProcess);
+            }
+        }
 
         if (documentProcessInfo == null && documentProcessName != "Reviews")
         {
@@ -281,17 +605,20 @@ public static class BuilderExtensions
         var dynamicServiceKey = $"Dynamic-{typeof(T).Name}";
         var documentProcessServiceKey = $"{documentProcessName}-{typeof(T).Name}";
 
-        // Try to get a scoped service for the specific document process, then the dynamic service, then the default service, then finally a service with no key.
-        // This allows for a service to be registered for a specific document process, or a default service to be registered for all document processes,
-        // or a service to be registered with no key for use outside of the document process context.
-        service = scope.ServiceProvider.GetKeyedService<T>(documentProcessServiceKey) ??
-                  scope.ServiceProvider.GetKeyedService<T>(dynamicServiceKey) ??
-                  scope.ServiceProvider.GetKeyedService<T>($"Default-{typeof(T).Name}") ??
-                  scope.ServiceProvider.GetService<T>();
+        // We try to get service for the specific document process first from the DynamicDocumentProcessServiceFactory
+        if (documentProcessInfo?.Source == ProcessSource.Dynamic)
+        {
+            using var scope = sp.CreateScope();
+            var factory = scope.ServiceProvider.GetRequiredService<DynamicDocumentProcessServiceFactory>();
+            service = factory.GetService<T>(documentProcessName);
+        }
 
-        // If the service is still null - it may not be scoped but exists as a singleton. Try to get the singleton service.
+        // If we didn't find the service in the factory, we try to get it from the scope in descending order of specificity
         if (service == null)
         {
+            // Try to get a scoped service for the specific document process,
+            // then the dynamic service, then the default service,
+            // then finally a service with no key.
             service = sp.GetKeyedService<T>(documentProcessServiceKey) ??
                       sp.GetKeyedService<T>(dynamicServiceKey) ??
                       sp.GetKeyedService<T>($"Default-{typeof(T).Name}") ??
@@ -309,6 +636,8 @@ public static class BuilderExtensions
     /// <returns></returns>
     public static Kernel? GetValidationSemanticKernelForDocumentProcess(this IServiceProvider sp, string documentProcessName)
     {
+        using var scope = sp.CreateScope();
+        var scopedServiceProvider = scope.ServiceProvider;
         if (sp == null)
         {
             throw new ArgumentNullException(nameof(sp));
@@ -319,9 +648,9 @@ public static class BuilderExtensions
             throw new ArgumentNullException(nameof(documentProcessName));
         }
 
-        var kernelFactory = sp.GetRequiredService<IKernelFactory>();
+        var kernelFactory = scopedServiceProvider.GetRequiredService<IKernelFactory>();
         var kernel = kernelFactory.GetValidationKernelForDocumentProcessAsync(documentProcessName).Result;
-        
+
         return kernel;
     }
 }

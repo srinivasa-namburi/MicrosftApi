@@ -35,6 +35,19 @@ param sqldocgenId string
 @description('Resource name of the SQL server.')
 param sqldocgenName string
 
+@description('Resource ID of the Event Hub namespace.')
+param eventhubId string
+
+@description('Resource name of the Event Hub namespace.')
+param eventhubName string
+
+@description('Resource ID of the Orleans storage account.')
+param orleansStorageId string
+
+@description('Resource name of the Orleans storage account.')
+param orleansStorageName string
+
+
 // Private endpoint for Azure Search
 resource peAiSearch 'Microsoft.Network/privateEndpoints@2023-11-01' = {
   name: '${aiSearchName}-pl'
@@ -164,6 +177,69 @@ resource peSqldocgen 'Microsoft.Network/privateEndpoints@2023-11-01' = {
         }
       }
     ]
+  }
+}
+
+resource eventhubPrivateEndpoint 'Microsoft.Network/privateEndpoints@2022-09-01' = {
+  name: '${eventhubName}-pl'
+  location: location
+  properties: {
+    privateLinkServiceConnections: [
+      {
+        name: '${eventhubName}-pl'
+        properties: {
+          privateLinkServiceId: eventhubId
+          groupIds: [
+            'namespace'
+          ]
+        }
+      }
+    ]
+    subnet: {
+      id: peSubnet
+    }
+  }
+}
+
+resource orleansStoragePrivateEndpoint 'Microsoft.Network/privateEndpoints@2022-09-01' = {
+  name: '${orleansStorageName}-blob-pl'
+  location: location
+  properties: {
+    privateLinkServiceConnections: [
+      {
+        name: '${orleansStorageName}-pl'
+        properties: {
+          privateLinkServiceId: orleansStorageId
+          groupIds: [
+            'blob'
+          ]
+        }
+      }
+    ]
+    subnet: {
+      id: peSubnet
+    }
+  }
+}
+
+resource orleansStorageTablePrivateEndpoint 'Microsoft.Network/privateEndpoints@2022-09-01' = {
+  name: '${orleansStorageName}-table-pl'
+  location: location
+  properties: {
+    privateLinkServiceConnections: [
+      {
+        name: '${orleansStorageName}-table-pl'
+        properties: {
+          privateLinkServiceId: orleansStorageId
+          groupIds: [
+            'table'
+          ]
+        }
+      }
+    ]
+    subnet: {
+      id: peSubnet
+    }
   }
 }
 

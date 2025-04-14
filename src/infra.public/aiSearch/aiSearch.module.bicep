@@ -48,6 +48,15 @@ resource aiSearch_SearchServiceContributor 'Microsoft.Authorization/roleAssignme
   scope: aiSearch
 }
 
-output connectionString string = 'Endpoint=https://${aiSearch.name}.search.windows.net'
+var searchSuffixMap = {
+  AzureCloud: 'search.windows.net'
+  AzureUSGovernment: 'search.azure.us' 
+  AzureChinaCloud: 'search.azure.cn'
+}
+
+var currentEnvName = environment().name
+var searchSuffix = searchSuffixMap[?currentEnvName] ?? 'search.windows.net'
+
+output connectionString string = 'Endpoint=https://${aiSearch.name}.${searchSuffix}'
 output resourceId string = aiSearch.id
 output resourceName string = aiSearch.name

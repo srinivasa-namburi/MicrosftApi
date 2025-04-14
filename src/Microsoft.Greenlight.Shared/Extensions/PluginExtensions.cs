@@ -26,22 +26,11 @@ namespace Microsoft.Greenlight.Shared.Extensions
         {
             string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
 
-            string[] pluginAssemblyPaths = Directory.GetFiles(baseDirectory, "Microsoft.Greenlight.Plugins.*.dll")
+            string[] allAssemblyPaths = Directory.GetFiles(baseDirectory, "Microsoft.Greenlight.Plugins.*.dll")
                 .Where(path => !path.Contains("Microsoft.Greenlight.Plugins.Shared"))
                 .ToArray();
 
-            string[] documentProcessAssemblyPaths = Directory.GetFiles(baseDirectory, "Microsoft.Greenlight.DocumentProcess.*.dll")
-                .ToArray();
-
-            var configuredDocumentProcesses = options.GreenlightServices.DocumentProcesses.Select(dp => dp!.Name).ToList();
-
-            documentProcessAssemblyPaths = documentProcessAssemblyPaths
-                .Where(path => configuredDocumentProcesses.Any(dp => path.Contains(dp)))
-                .Concat(new[] { Path.Combine(baseDirectory, "Microsoft.Greenlight.DocumentProcess.Shared.dll") })
-                .ToArray();
-
             // Combine all assembly paths and load them.
-            var allAssemblyPaths = pluginAssemblyPaths.Concat(documentProcessAssemblyPaths).Distinct().ToArray();
             var assemblies = allAssemblyPaths.Select(Assembly.LoadFrom).ToArray();
 
             // Use Scrutor assembly scanning to scan these assemblies for types implementing IPluginInitializer

@@ -1,0 +1,187 @@
+﻿<MudText Class="mt-6" Typo="Typo.h6">Validation Pipeline Settings</MudText>
+
+    <MudCheckBox @bind-Value="RunAutomatically" Label="Run Validation Pipeline Steps automatically after Generation" Class="mb-4" />
+
+    <MudText Typo="Typo.subtitle1" Class="mb-2">Validation Steps</MudText>
+
+    @if (_steps.Count == 0)
+    {
+        <MudText Class="my-4">No validation steps defined. Add a step to enable document validation.</MudText>
+    }
+    else
+    {
+        <MudList Dense="true" DisablePadding="true">
+            @for (int i = 0; i < _steps.Count; i++)
+            {
+                var step = _steps[i];
+                var index = i;
+
+                <MudListItem>
+                    <div class="d-flex align-center gap-2">
+                        <div style="width: 30px; text-align: center;">
+                            <MudText Typo="Typo.body2">@(index + 1)</MudText>
+                        </div>
+
+                        <MudSelect T="ValidationPipelineExecutionType" Value="step.PipelineExecutionType"
+                                   ValueChanged="@((val) => UpdateStepType(index, val))" Label="Validation Type" Class="flex-grow-1">
+                            @foreach (var executionType in Enum.GetValues<ValidationPipelineExecutionType>())
+                            {
+                                <MudSelectItem Value="@executionType">@GetExecutionTypeDisplayName(executionType)</MudSelectItem>
+                            }
+                        </MudSelect>
+
+                        <div class="d-flex gap-1">
+                            @if (index > 0)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.ArrowUpward"
+                                               Size="Size.Small" OnClick="() => MoveStepUp(index)" />
+                            }
+                            else
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.ArrowUpward"
+                                               Size="Size.Small" Disabled="true" />
+                            }
+
+                            @if (index < _steps.Count - 1)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.ArrowDownward"
+                                               Size="Size.Small" OnClick="() => MoveStepDown(index)" />
+                            }
+                            else
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.ArrowDownward"
+                                               Size="Size.Small" Disabled="true" />
+                            }
+
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                                           Size="Size.Small" OnClick="() => RemoveStep(index)" />
+                        </div>
+                    </div>
+                </MudListItem>
+            }
+        </MudList>
+    }
+
+    <MudButton StartIcon="@Icons.Material.Filled.Add"
+               Variant="Variant.Filled"
+               Color="Color.Primary"
+               Class="mt-4"
+               OnClick="AddStep">Add Validation Step</MudButton>
+
+
+@code {
+    [Parameter] public List<DocumentProcessValidationPipelineStepInfo> Steps { get; set; } = [];
+    [Parameter] public EventCallback<List<DocumentProcessValidationPipelineStepInfo>> StepsChanged { get; set; }
+
+    [Parameter] public bool RunValidationAutomatically { get; set; } = true;
+    [Parameter] public EventCallback<bool> RunValidationAutomaticallyChanged { get; set; }
+
+    private List<DocumentProcessValidationPipelineStepInfo> _steps = [];
+
+    // Property for two-way binding of the RunAutomatically checkbox
+    private bool RunAutomatically
+    {
+        get => RunValidationAutomatically;
+        set
+        {
+            if (RunValidationAutomatically != value)
+            {
+                RunValidationAutomatically = value;
+                RunValidationAutomaticallyChanged.InvokeAsync(value);
+            }
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        // Create a deep copy of the list to avoid modifying the original
+        _steps = Steps.Select(s => new DocumentProcessValidationPipelineStepInfo
+        {
+            Id = s.Id,
+            Order = s.Order,
+            PipelineExecutionType = s.PipelineExecutionType
+        }).ToList();
+
+        // Ensure steps are in correct order
+        UpdateStepOrders();
+    }
+
+    private string GetExecutionTypeDisplayName(ValidationPipelineExecutionType executionType)
+    {
+        return executionType switch
+        {
+            ValidationPipelineExecutionType.ParallelFullDocument => "Parallel Full Document Validation",
+            ValidationPipelineExecutionType.SequentialFullDocument => "Sequential Full Document Validation",
+            ValidationPipelineExecutionType.ParallelByOuterChapter => "Parallel Validation By Chapter",
+            _ => executionType.ToString()
+        };
+    }
+
+    private async Task AddStep()
+    {
+        _steps.Add(new DocumentProcessValidationPipelineStepInfo
+        {
+            Id = Guid.NewGuid(),
+            PipelineExecutionType = ValidationPipelineExecutionType.SequentialFullDocument,
+            Order = _steps.Count
+        });
+
+        await NotifyChanges();
+    }
+
+    private async Task RemoveStep(int index)
+    {
+        if (index >= 0 && index < _steps.Count)
+        {
+            _steps.RemoveAt(index);
+            UpdateStepOrders();
+            await NotifyChanges();
+        }
+    }
+
+    private async Task MoveStepUp(int index)
+    {
+        if (index > 0 && index < _steps.Count)
+        {
+            var step = _steps[index];
+            _steps.RemoveAt(index);
+            _steps.Insert(index - 1, step);
+            UpdateStepOrders();
+            await NotifyChanges();
+        }
+    }
+
+    private async Task MoveStepDown(int index)
+    {
+        if (index >= 0 && index < _steps.Count - 1)
+        {
+            var step = _steps[index];
+            _steps.RemoveAt(index);
+            _steps.Insert(index + 1, step);
+            UpdateStepOrders();
+            await NotifyChanges();
+        }
+    }
+
+    private async Task UpdateStepType(int index, ValidationPipelineExecutionType newType)
+    {
+        if (index >= 0 && index < _steps.Count)
+        {
+            _steps[index].PipelineExecutionType = newType;
+            await NotifyChanges();
+        }
+    }
+
+    private void UpdateStepOrders()
+    {
+        for (int i = 0; i < _steps.Count; i++)
+        {
+            _steps[i].Order = i;
+        }
+    }
+
+    private async Task NotifyChanges()
+    {
+        await StepsChanged.InvokeAsync(_steps);
+    }
+}

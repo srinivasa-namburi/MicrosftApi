@@ -1,8 +1,12 @@
 @using Microsoft.Greenlight.Shared.Contracts.DTO.Document
 
 @inject IContentNodeApiClient ContentNodeApiClient
+@inject ValidationEditorService ValidationEditorService
 
 @code {
+    [CascadingParameter]
+    private GeneratedDocumentDisplay? ParentDocumentDisplay { get; set; }
+
     [Parameter] public ContentNodeInfo? Node { get; set; }
     [Parameter] public bool Recursive { get; set; } = false;
     [Parameter] public bool EnableReferenceFrontend { get; set; } = false;
@@ -12,10 +16,130 @@
     private bool IsPanelExpanded = false;
     private bool IsLoadingSystemInfo = false;
     private bool HasVersions = false;
-    
-    private ContentNodeBodyTextComponent? bodyTextComponent;
 
-    private async void ToggleSystemInfo(ContentNodeInfo node)
+    private EditorComponentEditorMode EditorMode { get; set; } = EditorComponentEditorMode.SingleValue;
+    private ContentNodeBodyTextComponent? BodyTextComponent;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check if body text node has versions
+        if (Node?.Type == ContentNodeType.BodyText && Node.ContentNodeVersionTrackerId.HasValue)
+        {
+            try
+            {
+                HasVersions = await ContentNodeApiClient.HasPreviousVersionsAsync(Node.Id);
+            }
+            catch
+            {
+                HasVersions = false;
+            }
+        }
+
+        // Subscribe to validation status changes
+        ValidationEditorService.ValidationStatusChanged += HandleValidationStatusChanged;
+    }
+
+    private async void HandleValidationStatusChanged(Guid contentNodeId)
+    {
+        // If this notification is for a child node of our current node
+        if (Node?.Children.Any(child => child.Id == contentNodeId) == true)
+        {
+            // Force UI update to reevaluate the HasPendingValidationChanges
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>
+    /// Renders the validation UI for the content node.
+    /// The content node expected here is the section heading node.
+    /// </summary>
+    /// <param name="node">Section requesting changes</param>
+    private async Task ToggleValidationEditor(ContentNodeInfo node)
+    {
+        // Expand the panel to show child nodes
+        IsPanelExpanded = true;
+        await InvokeAsync(StateHasChanged);
+
+        // Allow panel to expand
+        await Task.Delay(50);
+
+        var bodyTextNode = node.Children.FirstOrDefault();
+        if (bodyTextNode is { ContentNodeIdContainingBodyTextChanges: not null })
+        {
+            if (bodyTextNode.ContentNodeIdContainingBodyTextChanges.HasValue)
+            {
+                // Get the parent GeneratedDocumentDisplay component
+                var parentComponent = ParentDocumentDisplay;
+
+                if (parentComponent != null)
+                {
+                    try
+                    {
+                        // Check if we already have editor data for this node
+                        var existingData = ValidationEditorService.GetEditorData(bodyTextNode.Id);
+
+                        if (existingData != null)
+                        {
+                            // Just update the visibility flag and trigger the editor
+                            ValidationEditorService.SetEditorData(
+                                bodyTextNode.Id,
+                                existingData with { IsVisible = true }
+                            );
+                        }
+                        else
+                        {
+                            // Get cached content or fetch if needed
+                            var resultantNodeId = bodyTextNode.ContentNodeIdContainingBodyTextChanges.Value;
+                            var suggestedText = await ValidationEditorService.GetValidationSuggestedTextAsync(resultantNodeId);
+
+                            if (suggestedText != null)
+                            {
+                                // Look for existing validation changes in the parent document display
+                                var validationChange = parentComponent.ValidationResults?.ContentChanges
+                                    .FirstOrDefault(c => c.OriginalContentNodeId == bodyTextNode.Id);
+
+                                // Set the editor data with complete information
+                                ValidationEditorService.SetEditorData(
+                                    bodyTextNode.Id,
+                                    new ValidationEditorData(
+                                        EditorMode: EditorComponentEditorMode.MultiValueDiffEditor,
+                                        OriginalText: bodyTextNode.Text,
+                                        SuggestedText: suggestedText,
+                                        IsVisible: true,
+                                        ValidationChangeInfo: validationChange
+                                    )
+                                );
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine($"Error in ToggleValidationEditor: {ex.Message}");
+                    }
+                }
+            }
+        }
+    }
+
+    private bool HasPendingValidationChanges(ContentNodeInfo node)
+    {
+        if (!node.Children.Any()) return false;
+
+        // Check the body text node for pending validation changes
+        var bodyTextNode = node.Children.FirstOrDefault();
+        if (bodyTextNode == null) return false;
+
+        // Use the validation service to check if there's actual validation data
+        var editorData = ValidationEditorService.GetEditorData(bodyTextNode.Id);
+
+        // Consider the change as pending if there's validation data with a non-null ValidationChangeInfo
+        // and the status is not Accepted or Rejected
+        return editorData?.ValidationChangeInfo != null &&
+               editorData.ValidationChangeInfo.ApplicationStatus != ValidationContentNodeApplicationStatus.Accepted &&
+               editorData.ValidationChangeInfo.ApplicationStatus != ValidationContentNodeApplicationStatus.Rejected;
+    }
+
+    private async Task ToggleSystemInfo(ContentNodeInfo node)
     {
         if (IsLoadingSystemInfo) return;
 
@@ -52,23 +176,8 @@
             _ => ""
         };
     }
-    
-    protected override async Task OnInitializedAsync()
-    {
-        // Check if body text node has versions
-        if (Node?.Type == ContentNodeType.BodyText && Node.ContentNodeVersionTrackerId.HasValue)
-        {
-            try
-            {
-                HasVersions = await ContentNodeApiClient.HasPreviousVersionsAsync(Node.Id);
-            }
-            catch
-            {
-                HasVersions = false;
-            }
-        }
-    }
-    
+
+
     private async Task HandleNodeUpdated(ContentNodeInfo updatedNode)
     {
         // Copy the updated properties to the current node
@@ -79,6 +188,12 @@
             HasVersions = true;
         }
         await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        // Unsubscribe from the event when component is disposed
+        ValidationEditorService.ValidationStatusChanged -= HandleValidationStatusChanged;
     }
 }
 
@@ -115,10 +230,33 @@
                             <MudItem xs="9">
                                 @Node.Text
                             </MudItem>
-                            <MudItem xs="2">
+
+                            <MudItem xs="1">
+                                @if (Node.ValidationChangeRequested)
+                                {
+                                    var hasValidationData = HasPendingValidationChanges(Node);
+
+                                    @if (hasValidationData)
+                                    {
+                                        <MudTooltip Text="View suggested changes">
+                                            <MudIconButton OnClick="() => ToggleValidationEditor(Node)"
+                                                           Icon="@Icons.Material.Rounded.ChangeHistory"
+                                                           Color="Color.Warning"
+                                                           Size="Size.Small" />
+                                        </MudTooltip>
+                                    }
+                                    else
+                                    {
+                                        // If the validation flag is set but there's no actual data,
+                                        // clear the flag to avoid showing the button permanently
+                                        Node.ValidationChangeRequested = false;
+                                    }
+                                }
+                            </MudItem>
+                            <MudItem xs="1">
                                 <MudTooltip Text="Reference information is available for this section. Click here to show it."
                                             Placement="Placement.Bottom">
-                                    <MudIconButton OnClick="()=>ToggleSystemInfo(Node)"
+                                    <MudIconButton OnClick="() => ToggleSystemInfo(Node)"
                                                    Icon="@Icons.Material.Rounded.Info"
                                                    Color="Color.Info"
                                                    Size="Size.Small" />
@@ -165,24 +303,26 @@
                             @if (HasVersions)
                             {
                                 <MudTooltip Text="View version history">
-                                    <MudIconButton Icon="@Icons.Material.Filled.History" 
-                                                Size="Size.Small" 
-                                                Color="Color.Info" 
-                                                OnClick="@(() => bodyTextComponent?.ShowVersionHistory())" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.History"
+                                                   Size="Size.Small"
+                                                   Color="Color.Info"
+                                                   OnClick="@(() => BodyTextComponent?.ShowVersionHistory())" />
                                 </MudTooltip>
                             }
                             @if (Node.Type == ContentNodeType.BodyText)
                             {
                                 <MudTooltip Text="Edit content">
-                                    <MudIconButton Icon="@Icons.Material.Filled.Edit" 
-                                                Size="Size.Small" 
-                                                Color="Color.Primary" 
-                                                OnClick="@(() => bodyTextComponent?.StartEdit())" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                                   Size="Size.Small"
+                                                   Color="Color.Primary"
+                                                   OnClick="@(() => BodyTextComponent?.StartEdit())" />
                                 </MudTooltip>
                             }
                         </div>
                     }
-                    <ContentNodeBodyTextComponent @ref="bodyTextComponent" Node="@Node" OnNodeUpdated="@HandleNodeUpdated" />
+                    <ContentNodeBodyTextComponent @ref="BodyTextComponent"
+                                                  Node="@Node"
+                                                  OnNodeUpdated="@HandleNodeUpdated" />
                 </div>
             </MudCardContent>
         </MudCard>

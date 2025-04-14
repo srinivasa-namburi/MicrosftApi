@@ -94,6 +94,9 @@ public class ServiceConfigurationOptions
         /// </summary>
         public FeatureFlagsOptions FeatureFlags { get; set; } = new FeatureFlagsOptions();
 
+        /// <inheritdoc cref="ScalabilityOptions"/>>
+        public ScalabilityOptions Scalability { get; set; } = new ScalabilityOptions();
+
         /// <summary>
         /// Options for document generation.
         /// </summary>
@@ -125,6 +128,29 @@ public class ServiceConfigurationOptions
             public int RefreshIntervalMinutes { get; set; }
         }
 
+        /// <summary>
+        /// Options for scaling the system
+        /// </summary>
+        public class ScalabilityOptions
+        {
+            /// <summary>
+            /// Number of available validation workers
+            /// </summary>
+            public int NumberOfValidationWorkers { get; set; } = 1;
+            /// <summary>
+            /// Number of available document generation workers
+            /// </summary>
+            public int NumberOfGenerationWorkers { get; set; } = 1;
+            /// <summary>
+            /// Number of available document ingestion workers
+            /// </summary>
+            public int NumberOfIngestionWorkers { get; set; } = 1;
+
+            /// <summary>
+            /// Number of available document review workers
+            /// </summary>
+            public int NumberOfReviewWorkers { get; set; } = 1;
+        }
 
         /// <summary>
         /// Options for frontend - these are typically used for display manipulation
@@ -169,11 +195,6 @@ public class ServiceConfigurationOptions
         public class DocumentIngestionOptions
         {
             /// <summary>
-            /// Number of ingestion workers.
-            /// </summary>
-            public ushort NumberOfIngestionWorkers { get; set; }
-
-            /// <summary>
             /// Enable processing tables.
             /// </summary>
             public bool ProcessTables { get; set; }
@@ -199,15 +220,6 @@ public class ServiceConfigurationOptions
             /// </summary>
             public bool CreateBodyTextNodes { get; set; }
 
-            /// <summary>
-            /// Enable full document outline generation.
-            /// </summary>
-            public bool UseFullDocumentOutlineGeneration { get; set; } = false;
-
-            /// <summary>
-            /// Number of generation workers.
-            /// </summary>
-            public ushort NumberOfGenerationWorkers { get; set; }
         }
     }
 

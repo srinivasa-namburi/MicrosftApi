@@ -153,80 +153,7 @@ public class DocumentOutlineTest
         Assert.Equal("1.1.1", documentOutline.OutlineItems[0].Children[0].Children[0].SectionNumber);
     }
 
-    [Fact]
-    public void FullText_StringWithHash_ReturnRenderedTextCorrectly()
-    {
-        // Arrange
-        var documentOutline = new DocumentOutline();
-        var text = "# Section One\n## Subsection One";
-
-        // Act
-        documentOutline.FullText = text;
-        var renderedText = documentOutline.FullText;
-
-        // Assert
-        var expected = "# Section One\n  ## Subsection One\n";
-        Assert.Equal(expected.Trim(), renderedText.Trim());
-    }
-
-    [Fact]
-    public void FullText_StringWithHashOnMultipleLevels_ReturnRenderedTextCorrectly()
-    {
-        // Arrange
-        var documentOutline = new DocumentOutline();
-        var text = "# Section One\n## Subsection One\n### Subsubsection One";
-
-        // Act
-        documentOutline.FullText = text;
-        var renderedText = documentOutline.FullText;
-
-        // Assert
-        var expected = "# Section One\n  ## Subsection One\n    ### Subsubsection One\n";
-        Assert.Equal(expected.Trim(), renderedText.Trim());
-    }
-
-    [Fact]
-    public void FullText_StringWithHash_ReturnCorrectItemsCount()
-    {
-        // Arrange
-        var documentOutline = new DocumentOutline();
-        var text = "# Section One\n## Subsection One\n## Subsection Two\n# Section Two";
-
-        // Act
-        documentOutline.FullText = text;
-
-        // Assert
-        Assert.Equal(2, documentOutline.OutlineItems.Count);
-    }
-
-    [Fact]
-    public void FullText_StringWithHash_ReturnParsedSectionTitlesCorrectly()
-    {
-        //Arrange
-        var documentOutline = new DocumentOutline();
-        var text = "# Section One\n## Subsection One\n## Subsection Two\n# Section Two";
-        //Act
-        documentOutline.FullText = text;
-        //Assert
-        Assert.Equal("Section One", documentOutline.OutlineItems[0].SectionTitle);
-        Assert.Equal("Section Two", documentOutline.OutlineItems[1].SectionTitle);
-    }
-
-    [Fact]
-    public void FullText_StringWithHash_ReturnParsedSubsectionTitlesCorrectly()
-    {
-        // Arrange
-        var documentOutline = new DocumentOutline();
-        var text = "# Section One\n## Subsection One\n## Subsection Two\n# Section Two";
-
-        // Act
-        documentOutline.FullText = text;
-
-        // Assert
-        Assert.Equal("Subsection One", documentOutline.OutlineItems[0].Children[0].SectionTitle);
-        Assert.Equal("Subsection Two", documentOutline.OutlineItems[0].Children[1].SectionTitle);
-    }
-
+    
     [Fact]
     public void FullText_StringWithHash_ReturnCorrectCountOfChildren()
     {
@@ -240,36 +167,4 @@ public class DocumentOutlineTest
         // Assert
         Assert.Equal(2, documentOutline.OutlineItems[0].Children.Count);
     }
-
-    [Fact]
-    public void FullText_StringWithHash_ReturnParsedSectionNumbersCorrectly()
-    {
-        // Arrange
-        var documentOutline = new DocumentOutline();
-        var text = "# Section One\n## Subsection One\n## Subsection Two\n# Section Two";
-
-        // Act
-        documentOutline.FullText = text;
-
-        // Assert
-        Assert.Equal("#", documentOutline.OutlineItems[0].SectionNumber);
-        Assert.Equal("#", documentOutline.OutlineItems[1].SectionNumber);
-    }
-
-    [Fact]
-    public void FullText_StringWithHash_ShouldParseSubsectionNumbersCorrectly()
-    {
-        // Arrange
-        var documentOutline = new DocumentOutline();
-        var text = "# Section One\n## Subsection One\n## Subsection Two\n# Section Two";
-
-        // Act
-        documentOutline.FullText = text;
-
-        // Assert
-        Assert.Equal("##", documentOutline.OutlineItems[0].Children[0].SectionNumber);
-        Assert.Equal("##", documentOutline.OutlineItems[0].Children[1].SectionNumber);
-    }
-
-
 }

@@ -14,6 +14,11 @@ namespace Microsoft.Greenlight.Shared.Models.Validation
         public required Guid DocumentProcessId { get; set; }
 
         /// <summary>
+        /// Indicates whether validation pipeline steps should run automatically after document generation
+        /// </summary>
+        public bool RunValidationAutomatically { get; set; } = false;
+
+        /// <summary>
         /// The document process that this pipeline is associated with
         /// </summary> 
         [JsonIgnore]
@@ -28,5 +33,7 @@ namespace Microsoft.Greenlight.Shared.Models.Validation
         /// The validation executions that have been run for this pipeline
         /// </summary>
         public List<ValidationPipelineExecution> ValidationPipelineExecutions { get; set; } = [];
+
+        
     }
 }

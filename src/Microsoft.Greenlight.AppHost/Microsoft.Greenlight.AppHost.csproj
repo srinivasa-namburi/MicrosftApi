@@ -15,6 +15,7 @@
 		<PackageReference Include="Aspire.Hosting.AppHost" Version="9.1.0" />		
 		<PackageReference Include="Aspire.Hosting.Azure" Version="9.1.0" />
 		<PackageReference Include="Aspire.Hosting.Azure.ApplicationInsights" Version="9.1.0" />
+		<PackageReference Include="Aspire.Hosting.Azure.EventHubs" Version="9.1.0" />
 		<PackageReference Include="Aspire.Hosting.Azure.Storage" Version="9.1.0" />
 		<PackageReference Include="Aspire.Hosting.Azure.ServiceBus" Version="9.1.0" />
 		<PackageReference Include="Aspire.Hosting.Azure.Sql" Version="9.1.0" />
@@ -24,10 +25,10 @@
 		<PackageReference Include="Aspire.Hosting.Azure.Redis" Version="9.1.0" />
 		<PackageReference Include="Aspire.Hosting.Azure.SignalR" Version="9.1.0" />
 		<PackageReference Include="Aspire.Hosting.Azure.Search" Version="9.1.0" />
+		<PackageReference Include="Aspire.Hosting.Orleans" Version="9.1.0" />
 		<PackageReference Include="Aspire.Hosting.Redis" Version="9.1.0" />
 		<PackageReference Include="Aspire.Hosting.SqlServer" Version="9.1.0" />
-		<PackageReference Include="Microsoft.Azure.SignalR" Version="1.28.0" />
-		<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.3">
+		<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.4">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
@@ -35,13 +36,11 @@
 	<ItemGroup>
 		<ProjectReference Include="..\Microsoft.Greenlight.API.Main\Microsoft.Greenlight.API.Main.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.SetupManager.DB\Microsoft.Greenlight.SetupManager.DB.csproj" />
+		<ProjectReference Include="..\Microsoft.Greenlight.Silo\Microsoft.Greenlight.Silo.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.Web.DocGen\Microsoft.Greenlight.Web.DocGen.csproj" />
-		<ProjectReference Include="..\Microsoft.Greenlight.Worker.Chat\Microsoft.Greenlight.Worker.Chat.csproj" />
-		<ProjectReference Include="..\Microsoft.Greenlight.Worker.DocumentGeneration\Microsoft.Greenlight.Worker.DocumentGeneration.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.Worker.DocumentIngestion\Microsoft.Greenlight.Worker.DocumentIngestion.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.Worker.Scheduler\Microsoft.Greenlight.Worker.Scheduler.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.Shared\Microsoft.Greenlight.Shared.csproj" IsAspireProjectResource="false" />
-		<ProjectReference Include="..\Microsoft.Greenlight.Worker.Validation\Microsoft.Greenlight.Worker.Validation.csproj" />
 	</ItemGroup>
 	<ProjectExtensions>
 		<VisualStudio>

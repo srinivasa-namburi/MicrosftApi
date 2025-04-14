@@ -22,6 +22,7 @@ public class CleanupExportedDocumentConsumer : IConsumer<CleanupExportedDocument
     /// <param name="dbContext">The database context.</param>
     /// <param name="logger">The logger instance.</param>
     public CleanupExportedDocumentConsumer(
+        [FromKeyedServices("blob-docing")]
         BlobServiceClient blobServiceClient,
         DocGenerationDbContext dbContext,
         ILogger<CleanupExportedDocumentConsumer> logger

@@ -21,6 +21,11 @@ public class GeneratedDocumentInfo
     public string Name { get; set; } = string.Empty;
 
     /// <summary>
+    /// The Associated Document Process ShortName
+    /// </summary>
+    public string DocumentProcessName { get; set; } = string.Empty;
+
+    /// <summary>
     /// Unique identifier of the author.
     /// </summary>
     public Guid? AuthorOid { get; set; }
