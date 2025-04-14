@@ -7,8 +7,15 @@ DEFAULT_DOCUMENT_WORKERS=4
 envName=$(echo $AZURE_CONTAINER_REGISTRY_ENDPOINT | cut -d'.' -f1 | cut -c4-)
 resourceGroup="$AZURE_RESOURCE_GROUP"
 workloadProfileType="$AZURE_CAE_WORKLOAD_TYPE"
+containerAppEnvName="env-$envName"
 
 if [ "$SKIP_POSTDEPLOY" == "true" ]; then
+    # We're not scaling the db-setupmanager container app, but we do need to set the environment variable for it
+    echo "Setting environment variable GREENLIGHT_PRODUCTION=true for db-setupmanager..." >&2
+    az containerapp update -n db-setupmanager -g $resourceGroup --set-env-vars GREENLIGHT_PRODUCTION=true > /dev/null
+    # And then restart the app to apply the environment variable
+    echo "Restarting db-setupmanager to apply environment variable..." >&2
+    az containerapp revision copy -n db-setupmanager -g $resourceGroup > /dev/null
     echo "Skipping post-deploy script execution as SKIP_POSTDEPLOY is set to true."
     exit 0
 fi
@@ -24,6 +31,29 @@ declare -A containerApps=(
 
 echo "Scaling container apps in $resourceGroup..." >&2
 
+# Determine CPU and memory settings based on workload profile
+cpuValue=1
+memoryValue="1Gi"
+
+if [ "$workloadProfileType" != "consumption" ]; then
+    # Query the workload profile details
+    echo "Querying workload profile type..." >&2
+    workloadProfileSku=$(az containerapp env workload-profile show -g "$resourceGroup" -n "$containerAppEnvName" --workload-profile-name dedicated --query "sku.name" -o tsv 2>/dev/null || echo "Unknown")
+    
+    echo "Detected workload profile SKU: $workloadProfileSku" >&2
+    
+    # Set CPU and memory based on workload profile SKU
+    if [ "$workloadProfileSku" == "D4" ]; then
+        cpuValue=1
+        memoryValue="1Gi"
+        echo "Using D4 profile settings: 1 CPU, 1GB memory" >&2
+    else
+        cpuValue=2
+        memoryValue="2Gi"
+        echo "Using D8+ profile settings: 2 CPU, 2GB memory" >&2
+    fi
+fi
+
 # Loop through each container app and scale it
 for app in "${!containerApps[@]}"
 do
@@ -37,17 +67,24 @@ do
     if [ "$workloadProfileType" != "consumption" ]; then
         echo "Updating workload profile for $app... (setting to dedicated)" >&2
         az containerapp update -n $app -g $resourceGroup --workload-profile-name dedicated > /dev/null
+
+        # Set min and max replicas for the silo container
+        if [ "$app" == "silo" ]; then
+            echo "Scaling $app to min replicas $instanceCount and max replicas 10 with $cpuValue CPU cores and $memoryValue memory..." >&2
+            az containerapp update -n $app -g $resourceGroup --min-replicas $instanceCount --max-replicas 10 --cpu $cpuValue --memory $memoryValue > /dev/null
+        else
+            echo "Scaling $app to $instanceCount instances with default CPU and memory settings" >&2
+            az containerapp update -n $app -g $resourceGroup --min-replicas $instanceCount --max-replicas $instanceCount > /dev/null
+        fi
     else
         echo "Skipping moving $app to dedicated workload profile as workload type is set to consumption" >&2
-    fi
-
-    # Set min and max replicas for the silo container
-    if [ "$app" == "silo" ]; then
-        echo "Scaling $app to min replicas $instanceCount and max replicas 10..." >&2
-        az containerapp update -n $app -g $resourceGroup --min-replicas $instanceCount --max-replicas 10 > /dev/null
-    else
-        echo "Scaling $app to $instanceCount instances..." >&2
-        az containerapp update -n $app -g $resourceGroup --min-replicas $instanceCount --max-replicas $instanceCount > /dev/null
+        if [ "$app" == "silo" ]; then
+            echo "Scaling $app to min replicas $instanceCount and max replicas 10..." >&2
+            az containerapp update -n $app -g $resourceGroup --min-replicas $instanceCount --max-replicas 10 > /dev/null
+        else
+            echo "Scaling $app to $instanceCount instances..." >&2
+            az containerapp update -n $app -g $resourceGroup --min-replicas $instanceCount --max-replicas $instanceCount > /dev/null
+        fi
     fi
 done
 
