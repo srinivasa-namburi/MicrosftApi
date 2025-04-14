@@ -31,6 +31,13 @@ namespace Microsoft.Greenlight.Shared.Helpers
                 throw new InvalidOperationException("AdminHelper is not initialized. Call Initialize method with IConfiguration.");
             }
 
+            // Check for custom GREENLIGHT_PRODUCTION environment variable
+            var greenlightProduction = _configuration["GREENLIGHT_PRODUCTION"];
+            if (!string.IsNullOrEmpty(greenlightProduction) && !greenlightProduction.Equals("false", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
             // Additional check for ASPNETCORE_ENVIRONMENT
             var aspNetCoreEnvironment = _configuration["ASPNETCORE_ENVIRONMENT"];
             if (!string.IsNullOrEmpty(aspNetCoreEnvironment) && !aspNetCoreEnvironment.Equals("Development", StringComparison.OrdinalIgnoreCase))

@@ -29,6 +29,10 @@ for app in "${!containerApps[@]}"
 do
     instanceCount=${containerApps[$app]}
 
+    # Add the environment variable GREENLIGHT_PRODUCTION=true
+    echo "Setting environment variable GREENLIGHT_PRODUCTION=true for $app..." >&2
+    az containerapp envvar set -n $app -g $resourceGroup --env-vars GREENLIGHT_PRODUCTION=true > /dev/null
+
     # Only update the workload profile if the type is not 'consumption'
     if [ "$workloadProfileType" != "consumption" ]; then
         echo "Updating workload profile for $app... (setting to dedicated)" >&2
