@@ -5,6 +5,7 @@ using AutoMapper;
 using Azure.AI.OpenAI;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
+using Humanizer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -342,7 +343,13 @@ public static class BuilderExtensions
 
         builder.UseOrleans(siloBuilder =>
         {
-            
+
+            siloBuilder.Configure<MessagingOptions>(options =>
+            {
+                options.ResponseTimeout = 30.Minutes();
+                options.DropExpiredMessages = false;
+            });
+
             siloBuilder.Services.AddSerializer(serializerBuilder =>
             {
                 serializerBuilder.AddJsonSerializer(DetectSerializableAssemblies);
@@ -434,6 +441,13 @@ public static class BuilderExtensions
 
         builder.UseOrleansClient(siloBuilder =>
         {
+
+            siloBuilder.Configure<MessagingOptions>(options =>
+            {
+                options.ResponseTimeout = 30.Minutes();
+                options.DropExpiredMessages = false;
+            });
+
             siloBuilder.UseConnectionRetryFilter(async (exception, token) =>
             {
                 // Log the connection failure

@@ -1,5 +1,6 @@
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
+using Humanizer;
 using MassTransit;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -168,6 +169,12 @@ builder.UseOrleans(siloBuilder =>
     {
         options.ClusterId = "greenlight-cluster";
         options.ServiceId = "greenlight-api-silo";
+    });
+
+    siloBuilder.Configure<MessagingOptions>(options =>
+    {
+        options.ResponseTimeout = 30.Minutes();
+        options.DropExpiredMessages = false;
     });
 
     siloBuilder.Services.AddSerializer(serializerBuilder =>

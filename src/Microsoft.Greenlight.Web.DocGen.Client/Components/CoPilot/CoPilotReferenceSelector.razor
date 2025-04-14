@@ -76,7 +76,17 @@
     {
         if (firstRender)
         {
-            await JSRuntime.InvokeVoidAsync("registerSelectorComponent", _componentReference);
+            try
+            {
+                // First ensure the script is imported before registering the component
+                await JSRuntime.InvokeVoidAsync("import", "/js/contentReferenceUtils.js");
+                // Then register the component
+                await JSRuntime.InvokeVoidAsync("registerSelectorComponent", _componentReference);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error in CoPilotReferenceSelector.OnAfterRenderAsync: {ex.Message}");
+            }
         }
     }
 

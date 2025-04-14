@@ -128,16 +128,22 @@
     {
         if (firstRender)
         {
-            // Register JS interop
-            await JSRuntime.InvokeVoidAsync("import", "/js/contentReferenceUtils.js");
-            await JSRuntime.InvokeVoidAsync("registerInputComponent", _componentReference);
+            try {
+                // Register JS interop
+                await JSRuntime.InvokeVoidAsync("import", "/js/contentReferenceUtils.js");
+                await Task.Delay(100); // Give a small delay to ensure JS is loaded
+                await JSRuntime.InvokeVoidAsync("registerInputComponent", _componentReference);
 
-            // Setup keyboard event interception
-            if (_mudChatTextField != null)
-            {
-                string elementId = await JSRuntime.InvokeAsync<string>("eval",
-                    $"document.querySelector('.chat-input-row .mud-input').id");
-                await JSRuntime.InvokeVoidAsync("setupKeyboardInterceptor", elementId, _componentReference);
+                // Setup keyboard event interception
+                if (_mudChatTextField != null)
+                {
+                    string elementId = await JSRuntime.InvokeAsync<string>("eval",
+                        $"document.querySelector('.chat-input-row .mud-input').id");
+                    await JSRuntime.InvokeVoidAsync("setupKeyboardInterceptor", elementId, _componentReference);
+                }
+            }
+            catch (Exception ex) {
+                await Console.Error.WriteLineAsync($"Error in CoPilotInputComponent.OnAfterRenderAsync: {ex.Message}");
             }
         }
 
