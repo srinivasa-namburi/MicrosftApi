@@ -1,20 +1,38 @@
-## Solution Deployment
+# Solution Deployment
 
-# Pre-Requisites
+## Important Update Notes
+
+04/14/25:
+
+- This update includes three additional services - Azure Event Hubs, a new Storage account and a table storage account on that new storage account. If you deploy in _private_ mode, you will need to set the private dns zone for these three new private endpoints after deployment. Please make sure you have these private DNS zones created and available in your environment on an accessible subscription. They are as follows (replace with Azure US Government zone names if applicable):
+
+  - Azure Event Hubs: "privatelink.servicebus.windows.net" (you should already have this if you have an earlier deployment)
+  - Storage Account: "privatelink.blob.core.windows.net" (you should already have this if you have an earlier deployment)
+  - Table Storage Account: "privatelink.table.core.windows.net"
+
+  The endpoint names are as follows:
+
+  - "orleans`<deploymentid>`-blob-pl"
+  - "orleans`<deploymentid>`-table-pl"
+  - "eventhub`<deploymentid>`-pl"
+
+- It is now possible to disable reliance on the Azure SignalR service. If you want to do this and instead use the API as your SignalR endpoint, create a variable called "ENABLE_AZURE_SIGNALR" and set it the value to false - without quotes.
+
+## Pre-Requisites
 
 1. Fork the Repository, then download the fork you've created of the GenAI for Industry Permitting repository with git, and run this command from a PowerShell prompt (if you're on Windows, open Powershell through Terminal or the Windows Powershell application, if you're on Linux/Mac, precede the follow script name with "pwsh"). Make sure your active working directory is wherever you downloaded the repository to. This script creates the Service Principle used by the applicaion for it's ongoing operation. It acts as the Application client against Microsoft Entra to run authentication. Take note of the outputted secret details at the end of the script, this will be required for the PVICO_ENTRA_CREDENTIALS secret later on.
 
-   ```
-   .\build\scripts\sp-create.ps1
-   ```
+```powershell
+.\build\scripts\sp-create.ps1
+```
 
-   - ![ForkGithubRepository](./docs/assets/ForkRepository.png)
+- ![ForkGithubRepository](./docs/assets/ForkRepository.png)
 
 2. Create a Service Principal for GitHub Actions to utilize for deployment. Either (1) Cloud Application Administrator or (2) Application Developer permission on the tenant (Microsoft Entra) is required to perform this step. Application Developer is normally sufficient - and both Cloud Application Administrator and Application Developer supersede it. To do this, run this command (you must have the Azure CLI installed and be logged on to the tenant using "az login" first - you can download the Azure CLI here if you don't have it : <https://learn.microsoft.com/en-us/cli/azure/install-azure-cli>). The output of this script should be noted for storage in the AZURE_CREDENTIALS secret in a later step. Substitute <subscriptionId> with your actual subscription id:
 
 To create the service principal with owner permissions on the subscription(which allows the solution to create resource groups), run the following command:
 
-```
+```bash
   az ad sp create-for-rbac
           --name "sp-ms-industrypermitting-deploy"
           --scopes "/subscriptions/<subscriptionId>"
@@ -24,7 +42,7 @@ To create the service principal with owner permissions on the subscription(which
 If you have a pre existing resource group you wish to use, you can create the service principal
 with owner permissions on the resource group instead of the subscription. To do this, run the following command:
 
-```
+```bash
   az ad sp create-for-rbac
           --name "sp-ms-industrypermitting-deploy"
           --scopes "/subscriptions/<subscriptionId>/resourceGroups/<resourceGroupName>"
@@ -35,7 +53,7 @@ Please note that this requires the Resource Group to be created manually before 
 
 If you wish to grant access to a an additional, different resource group for the already created service principal, you can run the following command, where <appId> is the application id of the service principal created above:
 
-```
+```bash
   az role assignment create
           --role "Owner"
           --assignee <appId>
@@ -91,7 +109,9 @@ If you wish to grant access to a an additional, different resource group for the
        }
        ```
 
-     - <img width="394" alt="SetGithubSecrets" src="./docs/assets/GithubSecrets.png">
+     - ENABLE_AZURE_SIGNALR: (Optional) Set to false if you want to disable the Azure SignalR service and use the API as your SignalR endpoint.
+
+![SetGithubSecrets](./docs/assets/GithubSecrets.png)
 
 Note that if you previously had an AZURE_ENV variable, this has been replaced by the
 AZURE_RESOURCE_GROUP variable. To maintain backwards compatibility, you can keep using the
