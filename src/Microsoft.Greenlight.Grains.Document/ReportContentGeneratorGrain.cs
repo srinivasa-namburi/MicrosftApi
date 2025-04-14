@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Humanizer;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -85,10 +86,10 @@ public class ReportContentGeneratorGrain : Grain, IReportContentGeneratorGrain
             {
                 await orchestrationGrain.OnContentNodeGeneratedAsync(node.Id, true);
             }
-
-            foreach (var (node, outlineJson) in generationMessages)
+            
+            foreach ((ContentNode node, string outlineJson) in generationMessages)
             {
-                await _throttleSemaphore.WaitAsync(TimeSpan.FromSeconds(600));
+                await _throttleSemaphore.WaitAsync(15.Minutes());
 
                 var sectionGeneratorGrain = GrainFactory.GetGrain<IReportTitleSectionGeneratorGrain>(Guid.NewGuid());
                 var contentNodeJson = JsonSerializer.Serialize(node);

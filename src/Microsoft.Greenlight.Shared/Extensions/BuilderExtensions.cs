@@ -333,8 +333,6 @@ public static class BuilderExtensions
         this IHostApplicationBuilder builder, AzureCredentialHelper credentialHelper,
         string clusterRole = "DefaultRole")
     {
-        var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName)
-            .Get<ServiceConfigurationOptions>()!;
         var eventHubConnectionString = builder.Configuration.GetConnectionString("greenlight-cg-streams");
         var checkPointTableStorageConnectionString = builder.Configuration.GetConnectionString("checkpointing");
         var orleansBlobStoreConnectionString = builder.Configuration.GetConnectionString("blob-orleans");
@@ -344,11 +342,18 @@ public static class BuilderExtensions
         builder.UseOrleans(siloBuilder =>
         {
 
-            siloBuilder.Configure<MessagingOptions>(options =>
+            siloBuilder.Configure<SiloMessagingOptions>(options =>
             {
-                options.ResponseTimeout = 30.Minutes();
+                options.ResponseTimeout = TimeSpan.FromMinutes(15);
                 options.DropExpiredMessages = false;
             });
+
+            siloBuilder.Configure<ClientMessagingOptions>(options =>
+            {
+                options.ResponseTimeout = TimeSpan.FromMinutes(15);
+                options.DropExpiredMessages = false;
+            });
+
 
             siloBuilder.Services.AddSerializer(serializerBuilder =>
             {
@@ -442,9 +447,15 @@ public static class BuilderExtensions
         builder.UseOrleansClient(siloBuilder =>
         {
 
-            siloBuilder.Configure<MessagingOptions>(options =>
+            siloBuilder.Configure<ClientMessagingOptions>(options =>
             {
-                options.ResponseTimeout = 30.Minutes();
+                options.ResponseTimeout = TimeSpan.FromMinutes(15);
+                options.DropExpiredMessages = false;
+            });
+
+            siloBuilder.Configure<ClientMessagingOptions>(options =>
+            {
+                options.ResponseTimeout = TimeSpan.FromMinutes(15);
                 options.DropExpiredMessages = false;
             });
 

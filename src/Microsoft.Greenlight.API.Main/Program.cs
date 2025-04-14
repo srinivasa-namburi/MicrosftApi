@@ -171,9 +171,15 @@ builder.UseOrleans(siloBuilder =>
         options.ServiceId = "greenlight-api-silo";
     });
 
-    siloBuilder.Configure<MessagingOptions>(options =>
+    siloBuilder.Configure<SiloMessagingOptions>(options =>
     {
-        options.ResponseTimeout = 30.Minutes();
+        options.ResponseTimeout = TimeSpan.FromMinutes(15);
+        options.DropExpiredMessages = false;
+    });
+
+    siloBuilder.Configure<ClientMessagingOptions>(options =>
+    {
+        options.ResponseTimeout = TimeSpan.FromMinutes(15);
         options.DropExpiredMessages = false;
     });
 
