@@ -56,62 +56,67 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
     List<Guid> referenceItemIds,
     List<ChatMessage> conversationMessages,
     List<ConversationSummary> conversationSummaries)
-{
-    try
     {
-        _logger.LogInformation("Processing message {MessageId} for conversation {ConversationId}",
-            userMessageDto.Id, conversationId);
-
-        // Result object that will contain extracted references and the generated response
-        var result = new ProcessMessageResult
+        try
         {
-            ExtractedReferences = new List<ContentReferenceItem>(),
-            UserMessageEntity = _mapper.Map<ChatMessage>(userMessageDto)
-        };
+            _logger.LogInformation("Processing message {MessageId} for conversation {ConversationId}",
+                userMessageDto.Id, conversationId);
 
-        // Process user information
-        if (userMessageDto.Source == ChatMessageSource.User && !string.IsNullOrEmpty(userMessageDto.UserId))
-        {
-            result.UserMessageEntity.AuthorUserInformation = new UserInformation
+            // Result object that will contain extracted references and the generated response
+            var result = new ProcessMessageResult
             {
-                ProviderSubjectId = userMessageDto.UserId,
-                FullName = userMessageDto.UserFullName
+                ExtractedReferences = new List<ContentReferenceItem>(),
+                UserMessageEntity = _mapper.Map<ChatMessage>(userMessageDto)
             };
+
+            // Process user information
+            if (userMessageDto.Source == ChatMessageSource.User && !string.IsNullOrEmpty(userMessageDto.UserId))
+            {
+                result.UserMessageEntity.AuthorUserInformation = new UserInformation
+                {
+                    ProviderSubjectId = userMessageDto.UserId,
+                    FullName = userMessageDto.UserFullName
+                };
+            }
+            else
+            {
+                result.UserMessageEntity.AuthorUserInformation = null;
+            }
+
+            // Extract references if it's a user message
+            if (userMessageDto.Source == ChatMessageSource.User && !string.IsNullOrEmpty(userMessageDto.Message))
+            {
+                result.ExtractedReferences = await ExtractReferencesFromChatMessageAsync(userMessageDto);
+            }
+
+            if (result.ExtractedReferences.Any())
+            {
+                referenceItemIds.AddRange(result.ExtractedReferences.Select(item => item.Id));
+            }
+
+            // Generate the assistant's response
+            result.AssistantMessageDto = await GenerateAssistantResponseAsync(
+                userMessageDto,
+                documentProcessName,
+                systemPrompt,
+                referenceItemIds,
+                conversationMessages,
+                conversationSummaries);
+
+            // Create the assistant message entity
+            result.AssistantMessageEntity = _mapper.Map<ChatMessage>(result.AssistantMessageDto);
+
+            // Call back to the ConversationGrain
+            var conversationGrain = GrainFactory.GetGrain<IConversationGrain>(conversationId);
+            await conversationGrain.OnMessageProcessingComplete(result);
         }
-        else
+        catch (Exception ex)
         {
-            result.UserMessageEntity.AuthorUserInformation = null;
+            _logger.LogError(ex, "Error processing message {Id} for conversation {ConversationId}",
+                userMessageDto.Id, conversationId);
+            throw;
         }
-
-        // Extract references if it's a user message
-        if (userMessageDto.Source == ChatMessageSource.User && !string.IsNullOrEmpty(userMessageDto.Message))
-        {
-            result.ExtractedReferences = await ExtractReferencesFromChatMessageAsync(userMessageDto);
-        }
-
-        // Generate the assistant's response
-        result.AssistantMessageDto = await GenerateAssistantResponseAsync(
-            userMessageDto,
-            documentProcessName,
-            systemPrompt,
-            referenceItemIds,
-            conversationMessages,
-            conversationSummaries);
-
-        // Create the assistant message entity
-        result.AssistantMessageEntity = _mapper.Map<ChatMessage>(result.AssistantMessageDto);
-
-        // Call back to the ConversationGrain
-        var conversationGrain = GrainFactory.GetGrain<IConversationGrain>(conversationId);
-        await conversationGrain.OnMessageProcessingComplete(result);
     }
-    catch (Exception ex)
-    {
-        _logger.LogError(ex, "Error processing message {Id} for conversation {ConversationId}",
-            userMessageDto.Id, conversationId);
-        throw;
-    }
-}
 
 
     private async Task<List<ContentReferenceItem>> ExtractReferencesFromChatMessageAsync(ChatMessageDTO messageDto)
@@ -121,7 +126,7 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
             // Don't process references from assistant messages
             return [];
         }
-        
+
         if (string.IsNullOrEmpty(messageDto.Message))
         {
             return [];
@@ -242,9 +247,9 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
         var openAiSettings = await _kernelFactory.GetPromptExecutionSettingsForDocumentProcessAsync(
             documentProcessInfo, AiTaskType.ChatReplies);
 
-        #pragma warning disable SKEXP0010
+#pragma warning disable SKEXP0010
         openAiSettings.ChatDeveloperPrompt = systemPrompt;
-        #pragma warning restore SKEXP0010
+#pragma warning restore SKEXP0010
 
         // Prepare chat history and summaries
         var chatHistoryString = CreateChatHistoryString(conversationMessages, 10);
@@ -400,9 +405,9 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
     private async Task SendReferencesUpdatedNotificationAsync(Guid conversationId, List<ContentReferenceItemInfo> referenceItems)
     {
         var notification = new ConversationReferencesUpdatedNotification(conversationId, referenceItems);
-        
+
         _logger.LogInformation("Sending references updated notification for conversation {MessageId}.", conversationId);
-        
+
         var notifierGrain = GrainFactory.GetGrain<ISignalRNotifierGrain>(Guid.Empty);
         await notifierGrain.NotifyConversationReferencesUpdatedAsync(notification);
     }
