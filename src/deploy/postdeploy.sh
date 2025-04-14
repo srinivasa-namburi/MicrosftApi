@@ -31,7 +31,7 @@ do
 
     # Add the environment variable GREENLIGHT_PRODUCTION=true
     echo "Setting environment variable GREENLIGHT_PRODUCTION=true for $app..." >&2
-    az containerapp envvar set -n $app -g $resourceGroup --env-vars GREENLIGHT_PRODUCTION=true > /dev/null
+    az containerapp update -n $app -g $resourceGroup --set-env-vars GREENLIGHT_PRODUCTION=true > /dev/null
 
     # Only update the workload profile if the type is not 'consumption'
     if [ "$workloadProfileType" != "consumption" ]; then
