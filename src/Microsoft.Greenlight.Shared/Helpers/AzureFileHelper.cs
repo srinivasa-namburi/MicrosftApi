@@ -1,6 +1,7 @@
 using Azure.Storage.Blobs;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Extensions;
@@ -17,6 +18,7 @@ public class AzureFileHelper
 {
     private readonly BlobServiceClient _blobServiceClient;
     private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
+    private readonly ILogger<AzureFileHelper> _logger;
 
 
     /// <summary>
@@ -27,10 +29,12 @@ public class AzureFileHelper
     public AzureFileHelper(
         [FromKeyedServices("blob-docing")]
         BlobServiceClient blobServiceClient, 
-        IDbContextFactory<DocGenerationDbContext> dbContextFactory)
+        IDbContextFactory<DocGenerationDbContext> dbContextFactory,
+        ILogger<AzureFileHelper> logger)
     {
         _blobServiceClient = blobServiceClient;
         _dbContextFactory = dbContextFactory;
+        _logger = logger;
     }
 
     /// <summary>
@@ -61,54 +65,66 @@ public class AzureFileHelper
     /// <param name="fileName">The name of the file.</param>
     /// <param name="generatedDocumentId">The ID of the generated document.</param>
     /// <returns>The saved ExportedDocumentLink entity.</returns>
-    public virtual async Task<ExportedDocumentLink> SaveFileInfoAsync(string absoluteUrl, string containerName, string fileName, Guid? generatedDocumentId = null)
+   public virtual async Task<ExportedDocumentLink> SaveFileInfoAsync(string absoluteUrl, string containerName, string fileName, Guid? generatedDocumentId = null)
+{
+    var dbContext = await _dbContextFactory.CreateDbContextAsync();
+
+    var documentType = containerName switch
     {
-        var dbContext = await _dbContextFactory.CreateDbContextAsync();
+        "document-export" => FileDocumentType.ExportedDocument,
+        "document-assets" => FileDocumentType.DocumentAsset,
+        "reviews" => FileDocumentType.Review,
+        "temporary-references" => FileDocumentType.TemporaryReferenceFile,
+        _ => FileDocumentType.ExportedDocument
+    };
 
-        var documentType = containerName switch
+    // Calculate file hash by retrieving the file and computing its hash
+    string? fileHash = null;
+    try
+    {
+        // Get the file stream using the existing method - wrap with both null-safety and try-catch
+        var fileStream = await GetFileAsStreamFromFullBlobUrlAsync(absoluteUrl);
+        if (fileStream != null)
         {
-            "document-export" => FileDocumentType.ExportedDocument,
-            "document-assets" => FileDocumentType.DocumentAsset,
-            "reviews" => FileDocumentType.Review,
-            "temporary-references" => FileDocumentType.TemporaryReferenceFile,
-            _ => FileDocumentType.ExportedDocument
-        };
-
-        // Calculate file hash by retrieving the file and computing its hash
-        string? fileHash = null;
-        try
-        {
-            // Get the file stream using the existing method
-            await using var fileStream = await GetFileAsStreamFromFullBlobUrlAsync(absoluteUrl);
-            if (fileStream != null)
+            try
             {
                 // Use the StreamExtensions helper to generate the hash
                 fileHash = fileStream.GenerateHashFromStreamAndResetStream();
             }
+            catch (Exception ex)
+            {
+                // Log but continue - we'll just save without the hash
+                _logger.LogError($"Error calculating hash for {fileName}: {ex.Message}");
+            }
         }
-        catch (Exception ex)
+        else
         {
-            // Log but continue - the file hash is optional
-            // If we can't get the file hash, we'll just save without it
-            Console.WriteLine($"Error calculating file hash for {fileName}: {ex.Message}");
+            _logger.LogWarning($"Warning: Could not retrieve file stream for {absoluteUrl}");
         }
-
-        var entityEntry = await dbContext.ExportedDocumentLinks.AddAsync(new ExportedDocumentLink
-        {
-            GeneratedDocumentId = generatedDocumentId,
-            AbsoluteUrl = absoluteUrl,
-            BlobContainer = containerName,
-            Created = DateTimeOffset.UtcNow,
-            FileName = fileName,
-            MimeType = new MimeTypesDetection().GetFileType(fileName),
-            Type = documentType,
-            FileHash = fileHash // Set the calculated hash
-        });
-
-        await dbContext.SaveChangesAsync();
-
-        return entityEntry.Entity;
     }
+    catch (Exception ex)
+    {
+        // Log but continue - the file hash is optional
+        _logger.LogError($"Error calculating file hash for {fileName}: {ex.Message}");
+    }
+
+    var entityEntry = await dbContext.ExportedDocumentLinks.AddAsync(new ExportedDocumentLink
+    {
+        GeneratedDocumentId = generatedDocumentId,
+        AbsoluteUrl = absoluteUrl,
+        BlobContainer = containerName,
+        Created = DateTimeOffset.UtcNow,
+        FileName = fileName,
+        MimeType = new MimeTypesDetection().GetFileType(fileName),
+        Type = documentType,
+        FileHash = fileHash // Set the calculated hash - which may be null
+    });
+
+    await dbContext.SaveChangesAsync();
+
+    return entityEntry.Entity;
+}
+
 
 
     /// <summary>

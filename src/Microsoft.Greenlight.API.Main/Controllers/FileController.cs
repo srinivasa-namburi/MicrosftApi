@@ -265,72 +265,132 @@ public class FileController : BaseController
             return BadRequest("Invalid file name.");
         }
 
-        // Read the file stream
-        await using var stream = file.OpenReadStream();
+        ContentReferenceItem contentReferenceItem;
+        ExportedDocumentLink exportedDocumentLink;
+        string blobUrl;
+        string blobFileName = string.Empty;
 
-        // Generate a random file name for the backend in blob storage
-        var blobFileName = Guid.NewGuid() + Path.GetExtension(fileName);
-
-        // Upload the file to blob storage
-        var blobUrl = await _fileHelper.UploadFileToBlobAsync(stream, blobFileName, containerName, true);
-
-        // Save the file information in the database
-        var exportedDocumentLink = await _fileHelper.SaveFileInfoAsync(blobUrl, containerName, fileName);
-
-        // Check if there's an existing reference with the same file hash
-        if (!string.IsNullOrEmpty(exportedDocumentLink.FileHash))
+        try
         {
-            var existingReferences = await _dbContext.ContentReferenceItems
-                .Where(r => r.ReferenceType == ContentReferenceType.ExternalFile)
-                .Join(_dbContext.ExportedDocumentLinks,
-                    r => r.ContentReferenceSourceId,
-                    e => e.Id,
-                    (r, e) => new { Reference = r, ExportedDoc = e })
-                .Where(j => j.ExportedDoc.FileHash == exportedDocumentLink.FileHash &&
-                            j.ExportedDoc.Id != exportedDocumentLink.Id)
-                .Select(j => j.Reference)
-                .ToListAsync();
+            // Read the file stream
+            await using var stream = file.OpenReadStream();
 
-            if (existingReferences.Any())
+            // Generate a random file name for the backend in blob storage
+            blobFileName = Guid.NewGuid() + Path.GetExtension(fileName);
+
+            // Upload the file to blob storage
+            blobUrl = await _fileHelper.UploadFileToBlobAsync(stream, blobFileName, containerName, true);
+
+            // Save the file information in the database
+            exportedDocumentLink = await _fileHelper.SaveFileInfoAsync(blobUrl, containerName, fileName);
+
+            // Safely try to deduplicate based on file hash - handle any failures gracefully
+            try
             {
-                // Use the existing reference instead (deduplicate)
-                var existingRef = existingReferences.First();
+                if (!string.IsNullOrEmpty(exportedDocumentLink.FileHash))
+                {
+                    var existingReferences = await _dbContext.ContentReferenceItems
+                        .Where(r => r.ReferenceType == ContentReferenceType.ExternalFile)
+                        .Join(_dbContext.ExportedDocumentLinks,
+                            r => r.ContentReferenceSourceId,
+                            e => e.Id,
+                            (r, e) => new { Reference = r, ExportedDoc = e })
+                        .Where(j => j.ExportedDoc.FileHash == exportedDocumentLink.FileHash &&
+                                    j.ExportedDoc.Id != exportedDocumentLink.Id)
+                        .Select(j => j.Reference)
+                        .ToListAsync();
 
-                // Log the duplicate detection
-                _logger.LogInformation(
-                    "Found duplicate file reference. New URL: {NewUrl}, using existing reference: {ExistingId} with same hash {FileHash}",
-                    blobUrl, existingRef.Id, exportedDocumentLink.FileHash);
+                    if (existingReferences != null && existingReferences.Any())
+                    {
+                        // Use the existing reference instead (deduplicate)
+                        var existingRef = existingReferences.First();
 
-                // Delete the newly uploaded file and document link since we're using the existing one
-                await _fileHelper.DeleteBlobAsync(containerName, blobFileName);
-                _dbContext.ExportedDocumentLinks.Remove(exportedDocumentLink);
-                await _dbContext.SaveChangesAsync();
+                        // Log the duplicate detection
+                        _logger.LogInformation(
+                            "Found duplicate file reference. New URL: {NewUrl}, using existing reference: {ExistingId} with same hash {FileHash}",
+                            blobUrl, existingRef.Id, exportedDocumentLink.FileHash);
 
-                // Return the existing reference
-                var existingReferenceInfo = _mapper.Map<ContentReferenceItemInfo>(existingRef);
-                return Ok(existingReferenceInfo);
+                        try
+                        {
+                            // Delete the newly uploaded file and document link since we're using the existing one
+                            await _fileHelper.DeleteBlobAsync(containerName, blobFileName);
+                            _dbContext.ExportedDocumentLinks.Remove(exportedDocumentLink);
+                            await _dbContext.SaveChangesAsync();
+                        }
+                        catch (Exception ex)
+                        {
+                            // Log but continue - we can still use the existing reference
+                            _logger.LogWarning(ex, "Error cleaning up duplicate file, but will still use existing reference");
+                        }
+
+                        // Return the existing reference
+                        var existingReferenceInfo = _mapper.Map<ContentReferenceItemInfo>(existingRef);
+                        return Ok(existingReferenceInfo);
+                    }
+                }
             }
+            catch (Exception ex)
+            {
+                // If anything goes wrong with deduplication, log and continue with creating a new reference
+                _logger.LogWarning(ex, "Error during file deduplication check - will create new reference anyway");
+                // No return - we'll fall through to the normal creation flow
+            }
+
+            // If no duplicate found or deduplication failed, continue with creating a new reference
+            contentReferenceItem = new ContentReferenceItem
+            {
+                Id = Guid.NewGuid(),
+                ContentReferenceSourceId = exportedDocumentLink.Id,
+                ReferenceType = ContentReferenceType.ExternalFile,
+                DisplayName = fileName,
+                Description = $"Uploaded document: {fileName}",
+                FileHash = exportedDocumentLink.FileHash // This might be null, which is fine
+            };
+
+            _dbContext.ContentReferenceItems.Add(contentReferenceItem);
+            await _dbContext.SaveChangesAsync();
+
+            // Return the content reference info
+            var contentReferenceItemInfo = _mapper.Map<ContentReferenceItemInfo>(contentReferenceItem);
+            return Ok(contentReferenceItemInfo);
         }
-
-        // If no duplicate found, continue with creating a new reference
-        var contentReferenceItem = new ContentReferenceItem
+        catch (Exception ex)
         {
-            Id = Guid.NewGuid(),
-            ContentReferenceSourceId = exportedDocumentLink.Id,
-            ReferenceType = ContentReferenceType.ExternalFile,
-            DisplayName = fileName,
-            Description = $"Uploaded document: {fileName}",
-            FileHash = exportedDocumentLink.FileHash // Make sure to copy the file hash
-        };
+            // Log the exception
+            _logger.LogError(ex, "Error uploading file {FileName}", fileName);
 
-        _dbContext.ContentReferenceItems.Add(contentReferenceItem);
-        await _dbContext.SaveChangesAsync();
+            // Try to clean up any resources if possible
+            try
+            {
+                if (!string.IsNullOrEmpty(blobFileName))
+                {
+                    await _fileHelper.DeleteBlobAsync(containerName, blobFileName);
+                }
+            }
+            catch
+            {
+                // Suppress any exception during cleanup
+            }
 
-        // Return the content reference info
-        var contentReferenceItemInfo = _mapper.Map<ContentReferenceItemInfo>(contentReferenceItem);
+            // Create a new ContentReferenceItem without file hash as a fallback
+            contentReferenceItem = new ContentReferenceItem
+            {
+                Id = Guid.NewGuid(),
+                ReferenceType = ContentReferenceType.ExternalFile,
+                DisplayName = fileName,
+                Description = $"Uploaded document: {fileName}",
+                // No ContentReferenceSourceId or FileHash since we couldn't process the file
+            };
 
-        return Ok(contentReferenceItemInfo);
+            _dbContext.ContentReferenceItems.Add(contentReferenceItem);
+            await _dbContext.SaveChangesAsync();
+
+            // Return the content reference info - at least we can give the user something
+            var contentReferenceItemInfo = _mapper.Map<ContentReferenceItemInfo>(contentReferenceItem);
+            return Ok(contentReferenceItemInfo);
+        }
     }
+
 
 
     /// <summary>
