@@ -56,12 +56,6 @@
     <Project Path="Microsoft.Greenlight.Silo/Microsoft.Greenlight.Silo.csproj">
       <BuildType Solution="Publish|*" Project="Release" />
     </Project>
-    <Project Path="Microsoft.Greenlight.Worker.DocumentIngestion/Microsoft.Greenlight.Worker.DocumentIngestion.csproj">
-      <BuildType Solution="Publish|*" Project="Debug" />
-    </Project>
-    <Project Path="Microsoft.Greenlight.Worker.Scheduler/Microsoft.Greenlight.Worker.Scheduler.csproj">
-      <BuildType Solution="Publish|*" Project="Debug" />
-    </Project>
   </Folder>
   <Folder Name="/30. Orleans Framework/" />
   <Folder Name="/30. Orleans Framework/ApiSpecific/" Id="379c094c-ec04-4eda-8be9-d628967378f8">
@@ -93,6 +87,14 @@
       <BuildType Solution="Publish|*" Project="Release" />
     </Project>
     <Project Path="Microsoft.Greenlight.Grains.Document/Microsoft.Greenlight.Grains.Document.csproj">
+      <BuildType Solution="Publish|*" Project="Release" />
+    </Project>
+  </Folder>
+  <Folder Name="/30. Orleans Framework/Ingestion/" Id="9a6bf3c9-25e3-44a9-9a88-3e3b3969269f">
+    <Project Path="Microsoft.Greenlight.Grains.Ingestion.Contracts/Microsoft.Greenlight.Grains.Ingestion.Contracts.csproj" Id="6f1ac409-093f-4a2d-8b2b-60d2142774b7">
+      <BuildType Solution="Publish|*" Project="Release" />
+    </Project>
+    <Project Path="Microsoft.Greenlight.Grains.Ingestion/Microsoft.Greenlight.Grains.Ingestion.csproj" Id="b944e1db-fc29-42b7-8d3a-e24799a4e36d">
       <BuildType Solution="Publish|*" Project="Release" />
     </Project>
   </Folder>

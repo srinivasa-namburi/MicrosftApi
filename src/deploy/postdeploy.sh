@@ -22,10 +22,8 @@ fi
 
 # Define the container apps and their desired instance counts (initial values)
 declare -A containerApps=(
-    ["worker-documentingestion"]=4
     ["web-docgen"]=1
     ["api-main"]=1
-    ["worker-scheduler"]=1
     ["silo"]=4 # Min replicas for silo
 )
 
@@ -92,7 +90,9 @@ defunctServices=(
     "worker-chat"
     "worker-validation"
     "services-setupmanager"
-    "worker-documentgeneration" # Newly added defunct service
+    "worker-documentgeneration"
+    "worker-scheduler",
+    "worker-documentingestion"
 )
 
 # Loop through defunct services and remove them if they exist

@@ -38,8 +38,6 @@
 		<ProjectReference Include="..\Microsoft.Greenlight.SetupManager.DB\Microsoft.Greenlight.SetupManager.DB.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.Silo\Microsoft.Greenlight.Silo.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.Web.DocGen\Microsoft.Greenlight.Web.DocGen.csproj" />
-		<ProjectReference Include="..\Microsoft.Greenlight.Worker.DocumentIngestion\Microsoft.Greenlight.Worker.DocumentIngestion.csproj" />
-		<ProjectReference Include="..\Microsoft.Greenlight.Worker.Scheduler\Microsoft.Greenlight.Worker.Scheduler.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.Shared\Microsoft.Greenlight.Shared.csproj" IsAspireProjectResource="false" />
 	</ItemGroup>
 	<ProjectExtensions>

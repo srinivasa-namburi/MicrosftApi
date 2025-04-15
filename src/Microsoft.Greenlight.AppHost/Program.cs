@@ -231,51 +231,9 @@ var docGenFrontend = builder
 
 apiMain.WithReference(docGenFrontend); // Necessary for CORS policy creation
 
-var workerScheduler = builder
-    .AddProject<Projects.Microsoft_Greenlight_Worker_Scheduler>("worker-scheduler")
-    .WithReplicas(1) // There can only be one Scheduler
-    .WithConfigSection(envServiceConfigurationConfigurationSection)
-    .WithConfigSection(envConnectionStringsConfigurationSection)
-    .WithConfigSection(envAzureConfigurationSection)
-    .WithConfigSection(envAzureAdConfigurationSection)
-    .WithReference(blobStorage)
-    .WithReference(docGenSql)
-    .WithReference(sbus)
-    .WithReference(redisResource)
-    .WithReference(apiMain)
-    .WithReference(azureAiSearch)
-    .WithReference(eventHub)
-    .WithReference(orleans.AsClient())
-    .WithReference(orleansCheckpointing)
-    .WithReference(orleansBlobStorage)
-    .WithReference(orleansClusteringTable)
-    .WaitForCompletion(dbSetupManager);
-
-var workerDocumentIngestion = builder
-    .AddProject<Projects.Microsoft_Greenlight_Worker_DocumentIngestion>("worker-documentingestion")
-    .WithReplicas(1)
-    .WithConfigSection(envServiceConfigurationConfigurationSection)
-    .WithConfigSection(envConnectionStringsConfigurationSection)
-    .WithConfigSection(envAzureConfigurationSection)
-    .WithConfigSection(envAzureAdConfigurationSection)
-    .WithReference(azureAiSearch)
-    .WithReference(blobStorage)
-    .WithReference(docGenSql)
-    .WithReference(sbus)
-    .WithReference(redisResource)
-    .WithReference(apiMain)
-    .WithReference(eventHub)
-    .WithReference(orleans.AsClient())
-    .WithReference(orleansCheckpointing)
-    .WithReference(orleansBlobStorage)
-    .WithReference(orleansClusteringTable)
-    .WaitForCompletion(dbSetupManager);
-
 if (insights is not null)
 {
     apiMain.WithReference(insights);
-    workerScheduler.WithReference(insights);
-    workerDocumentIngestion.WithReference(insights);
     silo.WithReference(insights);
 }
 

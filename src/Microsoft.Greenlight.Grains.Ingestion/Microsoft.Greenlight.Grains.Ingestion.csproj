@@ -8,7 +8,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Microsoft.Greenlight.Grains.Ingestion.Contracts\Microsoft.Greenlight.Grains.Ingestion.Contracts.csproj" />
-    <ProjectReference Include="..\Microsoft.Greenlight.Grains.Shared.Contracts\Microsoft.Greenlight.Grains.Shared.Contracts.csproj" />
     <ProjectReference Include="..\Microsoft.Greenlight.Shared\Microsoft.Greenlight.Shared.csproj" />
   </ItemGroup>
 

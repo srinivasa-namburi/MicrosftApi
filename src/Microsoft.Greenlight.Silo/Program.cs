@@ -1,4 +1,5 @@
 using MassTransit;
+using Microsoft.Greenlight.Grains.Shared.Scheduling;
 using Microsoft.Greenlight.ServiceDefaults;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.DocumentProcess.Shared;
@@ -69,6 +70,10 @@ builder.Services.Configure<ServiceConfigurationOptions>(
     builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
 
 builder.Services.AddGreenlightHostedServices();
+
+// Run the scheduler initialization service
+
+builder.Services.AddHostedService<SchedulerStartupService>();
 
 var host = builder.Build();
 host.Run();

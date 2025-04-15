@@ -452,6 +452,19 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
 
             if (allStaleReferences.Any())
             {
+
+                // Find ContentEmbeddings for each stale reference and remove them first
+                foreach (var reference in allStaleReferences)
+                {
+                    var embeddings = await _dbContext.ContentEmbeddings
+                        .Where(e => e.ContentReferenceItemId == reference.Id)
+                        .ToListAsync(ct);
+                    if (embeddings.Any())
+                    {
+                        _dbContext.ContentEmbeddings.RemoveRange(embeddings);
+                    }
+                }
+
                 _dbContext.ContentReferenceItems.RemoveRange(allStaleReferences);
                 await _dbContext.SaveChangesAsync(ct);
             }
