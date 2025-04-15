@@ -83,7 +83,6 @@ done
 
 # Wait for all background processes to complete
 wait
-done
 
 # Cleanup unnecessary container apps
 echo "Checking for container apps to clean up..." >&2
