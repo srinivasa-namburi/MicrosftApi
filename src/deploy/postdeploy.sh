@@ -58,34 +58,31 @@ fi
 for app in "${!containerApps[@]}"
 do
     instanceCount=${containerApps[$app]}
+    updateArgs=("--name" "$app" "--resource-group" "$resourceGroup" "--set-env-vars" "GREENLIGHT_PRODUCTION=true")
 
-    # Add the environment variable GREENLIGHT_PRODUCTION=true
-    echo "Setting environment variable GREENLIGHT_PRODUCTION=true for $app..." >&2
-    az containerapp update -n $app -g $resourceGroup --set-env-vars GREENLIGHT_PRODUCTION=true > /dev/null
-
-    # Only update the workload profile if the type is not 'consumption'
+    # Add workload profile and scaling arguments
     if [ "$workloadProfileType" != "consumption" ]; then
-        echo "Updating workload profile for $app... (setting to dedicated)" >&2
-        az containerapp update -n $app -g $resourceGroup --workload-profile-name dedicated > /dev/null
-
-        # Set min and max replicas for the silo container
+        updateArgs+=("--workload-profile-name" "dedicated")
         if [ "$app" == "silo" ]; then
-            echo "Scaling $app to min replicas $instanceCount and max replicas 10 with $cpuValue CPU cores and $memoryValue memory..." >&2
-            az containerapp update -n $app -g $resourceGroup --min-replicas $instanceCount --max-replicas 10 --cpu $cpuValue --memory $memoryValue > /dev/null
+            updateArgs+=("--min-replicas" "$instanceCount" "--max-replicas" "10" "--cpu" "$cpuValue" "--memory" "$memoryValue")
         else
-            echo "Scaling $app to $instanceCount instances with default CPU and memory settings" >&2
-            az containerapp update -n $app -g $resourceGroup --min-replicas $instanceCount --max-replicas $instanceCount > /dev/null
+            updateArgs+=("--min-replicas" "$instanceCount" "--max-replicas" "$instanceCount")
         fi
     else
-        echo "Skipping moving $app to dedicated workload profile as workload type is set to consumption" >&2
         if [ "$app" == "silo" ]; then
-            echo "Scaling $app to min replicas $instanceCount and max replicas 10..." >&2
-            az containerapp update -n $app -g $resourceGroup --min-replicas $instanceCount --max-replicas 10 > /dev/null
+            updateArgs+=("--min-replicas" "$instanceCount" "--max-replicas" "10")
         else
-            echo "Scaling $app to $instanceCount instances..." >&2
-            az containerapp update -n $app -g $resourceGroup --min-replicas $instanceCount --max-replicas $instanceCount > /dev/null
+            updateArgs+=("--min-replicas" "$instanceCount" "--max-replicas" "$instanceCount")
         fi
     fi
+
+    # Run the update command in the background
+    echo "Updating $app with arguments: ${updateArgs[*]}..." >&2
+    az containerapp update "${updateArgs[@]}" > /dev/null &
+done
+
+# Wait for all background processes to complete
+wait
 done
 
 # Cleanup unnecessary container apps
