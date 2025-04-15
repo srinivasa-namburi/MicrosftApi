@@ -220,5 +220,41 @@ public class ReviewController : BaseController
 
         return NoContent();
     }
+
+    /// <summary>
+    /// Gets recent review instances.
+    /// </summary>
+    /// <param name="count">Optional. Number of recent instances to return. If 0 or not specified, returns all instances.</param>
+    /// <returns>A list of recent <see cref="ReviewInstanceInfo"/> ordered by creation date.
+    /// Produces Status Codes:
+    ///     200 Ok: When completed successfully
+    ///     404 Not Found: When no review instances could be found
+    /// </returns>
+    [HttpGet("recent-instances")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [Produces("application/json")]
+    [Produces<List<ReviewInstanceInfo>>]
+    public async Task<ActionResult<List<ReviewInstanceInfo>>> GetRecentReviewInstances([FromQuery] int count = 0)
+    {
+        IQueryable<ReviewInstance> query = _dbContext.ReviewInstances
+            .Include(ri => ri.ReviewDefinition)
+            .OrderByDescending(ri => ri.CreatedUtc);
+    
+        if (count > 0)
+        {
+            query = query.Take(count);
+        }
+    
+        var reviewInstances = await query.ToListAsync();
+    
+        if (reviewInstances.Count < 1)
+        {
+            return NotFound();
+        }
+    
+        var reviewInstanceDtos = _mapper.Map<List<ReviewInstanceInfo>>(reviewInstances);
+        return Ok(reviewInstanceDtos);
+    }
 }
 

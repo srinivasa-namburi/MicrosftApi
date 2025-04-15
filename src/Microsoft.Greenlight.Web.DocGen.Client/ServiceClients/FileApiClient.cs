@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Web.Shared.ServiceClients;
+using System.Net;
 using System.Net.Http.Json;
 
 namespace Microsoft.Greenlight.Web.DocGen.Client.ServiceClients;
@@ -49,5 +50,35 @@ public class FileApiClient : WebAssemblyBaseServiceClient<FileApiClient>, IFileA
         var responseContent = await result!.Content.ReadFromJsonAsync<ContentReferenceItemInfo>();
         return responseContent!;
 
+    }
+
+    public async Task<ExportedDocumentLinkInfo?> GetFileInfoById(Guid linkId)
+    {
+        var encodedLinkId = linkId.ToString();
+        var url = $"/api/file/file-info/{encodedLinkId}";
+    
+        var response = await SendGetRequestMessage(url);
+    
+        if (response?.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+    
+        try
+        {
+            response?.EnsureSuccessStatusCode();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error retrieving file info for link ID {LinkId}", linkId);
+            return null;
+        }
+    
+        return await response.Content.ReadFromJsonAsync<ExportedDocumentLinkInfo>();
+    }
+
+    public string GetDownloadUrlForExportedLinkId(Guid linkId)
+    {
+        return $"{HttpClient.BaseAddress}api/file/download/asset/{linkId}";
     }
 }

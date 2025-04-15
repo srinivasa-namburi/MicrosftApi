@@ -537,6 +537,10 @@ public class DocGenerationDbContext : DbContext
             .HasIndex(nameof(ReviewInstance.Status))
             .IsUnique(false);
 
+        modelBuilder.Entity<ReviewInstance>()
+            .HasIndex(nameof(ReviewInstance.CreatedUtc))
+            .IsUnique(false);
+
         modelBuilder.Entity<ReviewDefinition>()
             .ToTable("ReviewDefinitions");
 

@@ -144,6 +144,32 @@ public class ReviewApiClient : WebAssemblyBaseServiceClient<ReviewApiClient>, IR
         return result;
     }
 
+    public async Task<List<ReviewInstanceInfo>> GetRecentReviewInstances(int count = 0)
+    {
+        string url = count > 0 
+            ? $"/api/review/recent-instances?count={count}" 
+            : "/api/review/recent-instances";
+        
+        var response = await SendGetRequestMessage(url);
+    
+        if (response?.StatusCode == HttpStatusCode.NotFound)
+        {
+            return [];
+        }
+    
+        try
+        {
+            response?.EnsureSuccessStatusCode();
+        }
+        catch (Exception e)
+        {
+            Logger.LogError(e, "Error retrieving recent review instances");
+            return [];
+        }
+    
+        return await response.Content.ReadFromJsonAsync<List<ReviewInstanceInfo>>() ?? [];
+    }
+
     public async Task<ReviewInstanceInfo?> GetReviewInstanceById(Guid id)
     {
         var url = $"/api/review-instance/{id}";

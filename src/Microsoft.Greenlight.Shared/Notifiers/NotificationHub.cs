@@ -151,6 +151,13 @@ public class NotificationHub : Hub<INotificationHubClient>
     /// <param name="groupName">The name of the group to remove the connection from.</param>
     public async Task RemoveFromGroup(string groupName)
     {
-        await Groups.RemoveFromGroupAsync(Context.ConnectionId, groupName);
+        try
+        {
+            await Groups.RemoveFromGroupAsync(Context.ConnectionId, groupName);
+        }
+        catch
+        {
+            // Do nothing - this is not critical.
+        }
     }
 }

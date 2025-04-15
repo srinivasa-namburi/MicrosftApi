@@ -723,3 +723,21 @@ table:not(.mud-table-root) {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+/**************************************/
+/* Review styles                      */
+/**************************************/
+
+/* Custom styles for sentiment tooltips */
+.sentiment-reasoning-tooltip {
+    max-width: 300px; /* Set a reasonable maximum width */
+    white-space: normal; /* Allow text to wrap */
+    overflow-wrap: break-word; /* Break long words if needed */
+    line-height: 1.4; /* Improve readability with better line spacing */
+    font-size: 0.875rem; /* Slightly smaller font size for tooltips */
+}
+
+    /* Style the tooltip inner content */
+    .sentiment-reasoning-tooltip .mud-tooltip-root {
+        padding: 8px 12px;
+    }

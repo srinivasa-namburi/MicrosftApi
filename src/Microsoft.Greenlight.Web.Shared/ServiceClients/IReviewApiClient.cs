@@ -16,4 +16,5 @@ public interface IReviewApiClient : IServiceClient
     Task<List<ReviewQuestionAnswerInfo>> GetReviewQuestionAnswersByReviewInstanceId(Guid reviewInstanceId);
     Task<ExportedDocumentLinkInfo> UploadDocumentForReviewInstanceAsync(IBrowserFile file);
     Task<ReviewInstanceInfo?> ExecuteReview(ReviewInstanceInfo id);
+    Task<List<ReviewInstanceInfo>> GetRecentReviewInstances(int count = 0);
 }

@@ -1,11 +1,14 @@
-﻿using Microsoft.Extensions.Logging;
-using Microsoft.Greenlight.Grains.Review.Contracts.Models;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Grains.Review.Contracts;
-using Microsoft.Greenlight.Shared.Contracts.Messages.Review.Events;
-using Microsoft.Greenlight.Shared.Contracts.Messages;
-using Orleans.Concurrency;
+using Microsoft.Greenlight.Grains.Review.Contracts.Models;
 using Microsoft.Greenlight.Grains.Review.Contracts.State;
+using Microsoft.Greenlight.Shared.Contracts.Messages;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Review.Commands;
+using Microsoft.Greenlight.Shared.Contracts.Messages.Review.Events;
+using Microsoft.Greenlight.Shared.Data.Sql;
+using Microsoft.Greenlight.Shared.Enums;
+using Orleans.Concurrency;
 
 namespace Microsoft.Greenlight.Grains.Review
 {
@@ -17,15 +20,18 @@ namespace Microsoft.Greenlight.Grains.Review
     {
         private readonly IPersistentState<ReviewExecutionState> _state;
         private readonly ILogger<ReviewExecutionOrchestrationGrain> _logger;
+        private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
         private readonly SemaphoreSlim _stateLock = new(1, 1);
 
         public ReviewExecutionOrchestrationGrain(
-            [PersistentState("reviewExecution")] 
+            [PersistentState("reviewExecution")]
             IPersistentState<ReviewExecutionState> state,
-            ILogger<ReviewExecutionOrchestrationGrain> logger)
+            ILogger<ReviewExecutionOrchestrationGrain> logger,
+            IDbContextFactory<DocGenerationDbContext> dbContextFactory)
         {
             _state = state;
             _logger = logger;
+            _dbContextFactory = dbContextFactory;
         }
 
         public override async Task OnActivateAsync(CancellationToken cancellationToken)
@@ -81,7 +87,7 @@ namespace Microsoft.Greenlight.Grains.Review
         {
             try
             {
-                _logger.LogInformation("Document ingested for review instance {Id} with {QuestionCount} total questions", 
+                _logger.LogInformation("Document ingested for review instance {Id} with {QuestionCount} total questions",
                     this.GetPrimaryKey(), ingestionResult.TotalNumberOfQuestions);
 
                 // Update state with document info and total questions
@@ -165,7 +171,7 @@ namespace Microsoft.Greenlight.Grains.Review
 
                 if (!analysisResult.IsSuccess)
                 {
-                    _logger.LogWarning("Failed to analyze sentiment for answer {AnswerId}, but continuing process: {ErrorMessage}", 
+                    _logger.LogWarning("Failed to analyze sentiment for answer {AnswerId}, but continuing process: {ErrorMessage}",
                         questionAnswerId, analysisResult.ErrorMessage);
                 }
 
@@ -184,19 +190,19 @@ namespace Microsoft.Greenlight.Grains.Review
             try
             {
                 bool shouldFinalize = false;
-        
+
                 await _stateLock.WaitAsync();
                 try
                 {
-                    _logger.LogInformation("Question answer analyzed for answer ID {AnswerId} in review instance {Id}", 
+                    _logger.LogInformation("Question answer analyzed for answer ID {AnswerId} in review instance {Id}",
                         questionAnswerId, this.GetPrimaryKey());
 
                     _state.State.NumberOfQuestionsAnalyzed++;
                     _state.State.LastUpdatedUtc = DateTime.UtcNow;
-            
+
                     // Check if all questions have been processed (while under lock)
                     shouldFinalize = _state.State.NumberOfQuestionsAnalyzed >= _state.State.TotalNumberOfQuestions;
-            
+
                     await _state.WriteStateAsync();
                 }
                 finally
@@ -220,11 +226,34 @@ namespace Microsoft.Greenlight.Grains.Review
         {
             _logger.LogInformation("Finalizing review execution for review instance {Id}", this.GetPrimaryKey());
 
-            _state.State.Status = ReviewExecutionStatus.Completed;
-            await SafeWriteStateAsync();
+            try
+            {
+                // Update grain state
+                _state.State.Status = ReviewExecutionStatus.Completed;
+                await SafeWriteStateAsync();
 
-            // Send completion notification
-            await SendProcessingMessageAsync("SYSTEM:ReviewInstanceCompleted");
+                // Update the database entity
+                await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+                var reviewInstance = await dbContext.ReviewInstances.FindAsync(this.GetPrimaryKey());
+
+                if (reviewInstance != null)
+                {
+                    reviewInstance.Status = ReviewInstanceStatus.Completed;
+                    await dbContext.SaveChangesAsync();
+                    _logger.LogInformation("Updated review instance status to Completed in database for {Id}", this.GetPrimaryKey());
+                }
+                else
+                {
+                    _logger.LogWarning("Could not find review instance {Id} in database to update status", this.GetPrimaryKey());
+                }
+
+                // Send completion notification
+                await SendProcessingMessageAsync("SYSTEM:ReviewInstanceCompleted");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error finalizing review instance {Id}", this.GetPrimaryKey());
+            }
         }
 
         private async Task HandleFailureAsync(string reason, string details)
@@ -232,10 +261,33 @@ namespace Microsoft.Greenlight.Grains.Review
             _logger.LogError("Review execution failed for review instance {Id}: {Reason} - {Details}",
                 this.GetPrimaryKey(), reason, details);
 
-            _state.State.Status = ReviewExecutionStatus.Failed;
-            _state.State.FailureReason = reason;
-            _state.State.FailureDetails = details;
-            await SafeWriteStateAsync();
+            try
+            {
+                // Update grain state
+                _state.State.Status = ReviewExecutionStatus.Failed;
+                _state.State.FailureReason = reason;
+                _state.State.FailureDetails = details;
+                await SafeWriteStateAsync();
+
+                // Update the database entity
+                await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+                var reviewInstance = await dbContext.ReviewInstances.FindAsync(this.GetPrimaryKey());
+
+                if (reviewInstance != null)
+                {
+                    reviewInstance.Status = ReviewInstanceStatus.Failed;
+                    await dbContext.SaveChangesAsync();
+                    _logger.LogInformation("Updated review instance status to Failed in database for {Id}", this.GetPrimaryKey());
+                }
+                else
+                {
+                    _logger.LogWarning("Could not find review instance {Id} in database to update status", this.GetPrimaryKey());
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating failed status for review instance {Id}", this.GetPrimaryKey());
+            }
         }
 
         private async Task SendProcessingMessageAsync(string message)
