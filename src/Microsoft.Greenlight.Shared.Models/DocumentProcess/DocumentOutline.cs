@@ -64,14 +64,13 @@ public class DocumentOutline : EntityBase
                 {
                     // Numbering (1, 1.1, 1.1.1, etc.)
                     level = match.Groups[1].Value.Count(c => c == '.');
-                    sectionNumber = match.Groups[1].Value.TrimEnd('.'); // Strip trailing periods
+                    sectionNumber = match.Groups[1].Value.TrimEnd('.'); // Strip trailing periods if present
                 }
                 else
                 {
                     // Hashes (#, ##, ###, etc.)
                     level = match.Groups[3].Value.Length - 1;
-                    // Store the hashes as the section number
-                    sectionNumber = match.Groups[3].Value;
+                    sectionNumber = match.Groups[3].Value; // Store the hashes as the section number
                 }
 
                 // Adjust sectionTitle to exclude any leading space or period
