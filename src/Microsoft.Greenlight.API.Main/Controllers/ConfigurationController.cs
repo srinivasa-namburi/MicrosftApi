@@ -1,5 +1,5 @@
 using AutoMapper;
-using MassTransit;
+
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -25,7 +25,6 @@ namespace Microsoft.Greenlight.API.Main.Controllers;
 [Route("api/[controller]")]
 public class ConfigurationController : BaseController
 {
-    private readonly IPublishEndpoint _publishEndpoint;
     private readonly IOptionsMonitor<ServiceConfigurationOptions> _serviceConfigurationOptionsMonitor;
     private readonly DocGenerationDbContext _dbContext;
     private readonly IMapper _mapper;
@@ -61,15 +60,13 @@ public class ConfigurationController : BaseController
     /// <param name="clusterClient">Orleans cluster client</param>
     public ConfigurationController(
         IOptionsMonitor<ServiceConfigurationOptions> serviceConfigurationOptionsMonitor,
-        IPublishEndpoint publishEndpoint,
         DocGenerationDbContext dbContext,
         IMapper mapper,
         ILogger<ConfigurationController> logger,
         EfCoreConfigurationProvider configProvider,
-        IConfiguration configuration, 
+        IConfiguration configuration,
         IClusterClient clusterClient)
     {
-        _publishEndpoint = publishEndpoint;
         _serviceConfigurationOptionsMonitor = serviceConfigurationOptionsMonitor;
         _dbContext = dbContext;
         _mapper = mapper;
@@ -171,19 +168,6 @@ public class ConfigurationController : BaseController
     }
 
     /// <summary>
-    /// Restarts the workers.
-    /// </summary>
-    /// <returns>A confirmation message.</returns>
-    [HttpPost("restart-workers")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [Produces("application/json")]
-    public async Task<ActionResult<string>> RestartWorkers()
-    {
-        await _publishEndpoint.Publish(new RestartWorker(Guid.NewGuid()));
-        return Ok("Restart command sent to all workers.");
-    }
-
-    /// <summary>
     /// Update the configuration
     /// </summary>
     /// <param name="request"></param>
@@ -242,7 +226,7 @@ public class ConfigurationController : BaseController
             // Publish to Orleans Stream
             var streamProvider = _clusterClient.GetStreamProvider("StreamProvider");
             var stream = streamProvider.GetStream<ConfigurationUpdated>(
-                SystemStreamNameSpaces.ConfigurationUpdatedNamespace, 
+                SystemStreamNameSpaces.ConfigurationUpdatedNamespace,
                 Guid.Empty);
 
             await stream.OnNextAsync(configurationUpdatedMessage);

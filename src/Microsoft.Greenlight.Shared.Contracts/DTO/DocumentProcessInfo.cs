@@ -85,7 +85,7 @@ public class DocumentProcessInfo : IDocumentProcessInfo
     /// <summary>
     /// Number of citations to get from the repository.
     /// </summary>
-    public int NumberOfCitationsToGetFromRepository { get; set; } = 50;
+    public int NumberOfCitationsToGetFromRepository { get; set; } = 10;
 
     /// <summary>
     /// Minimum relevance threshold for citations.

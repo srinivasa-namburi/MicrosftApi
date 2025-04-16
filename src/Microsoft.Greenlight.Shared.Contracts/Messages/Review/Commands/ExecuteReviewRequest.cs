@@ -1,4 +1,3 @@
-using MassTransit;
 using Orleans;
 
 namespace Microsoft.Greenlight.Shared.Contracts.Messages.Review.Commands;
@@ -8,7 +7,7 @@ namespace Microsoft.Greenlight.Shared.Contracts.Messages.Review.Commands;
 /// </summary>
 /// <param name="CorrelationId">Review Instance ID</param>
 [GenerateSerializer(GenerateFieldIds = GenerateFieldIds.PublicProperties)]
-public record ExecuteReviewRequest(Guid CorrelationId) : CorrelatedBy<Guid>
+public record ExecuteReviewRequest(Guid CorrelationId)
 {
 
 }

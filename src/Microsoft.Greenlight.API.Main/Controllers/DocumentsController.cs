@@ -1,4 +1,4 @@
-using MassTransit;
+
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Identity.Web;
@@ -23,7 +23,6 @@ namespace Microsoft.Greenlight.API.Main.Controllers;
 [Route("/api/documents")]
 public partial class DocumentsController : BaseController
 {
-    private readonly IPublishEndpoint _publishEndpoint;
     private readonly DocGenerationDbContext _dbContext;
     private readonly IDocumentExporter _wordDocumentExporter;
     private readonly IContentNodeService _contentNodeService;
@@ -42,7 +41,6 @@ public partial class DocumentsController : BaseController
     /// <param name="mapper">The AutoMapper instance for mapping objects.</param>
     /// <param name="clusterClient"></param>
     public DocumentsController(
-        IPublishEndpoint publishEndpoint,
         DocGenerationDbContext dbContext,
         [FromKeyedServices("IDocumentExporter-Word")]
         IDocumentExporter wordDocumentExporter,
@@ -51,7 +49,6 @@ public partial class DocumentsController : BaseController
         IMapper mapper, 
         IClusterClient clusterClient)
     {
-        _publishEndpoint = publishEndpoint;
         _dbContext = dbContext;
         _wordDocumentExporter = wordDocumentExporter;
         _contentNodeService = contentNodeService;
@@ -78,7 +75,10 @@ public partial class DocumentsController : BaseController
         foreach (var generateDocumentDto in generateDocumentsDto.Documents)
         {
             generateDocumentDto.AuthorOid = claimsPrincipal.GetObjectId();
-            await _publishEndpoint.Publish(generateDocumentDto);
+            var grain = _clusterClient.GetGrain<IDocumentGenerationOrchestrationGrain>(generateDocumentDto.Id);
+            // Fire and forget the document creation process - this progresses
+            // asynchronously and will be tracked by the orchestration grain
+            _ = grain.StartDocumentGenerationAsync(generateDocumentDto);
         }
 
         return Accepted();
@@ -100,7 +100,6 @@ public partial class DocumentsController : BaseController
         var claimsPrincipal = HttpContext.User;
         generateDocumentDto.AuthorOid = claimsPrincipal.GetObjectId();
 
-        //await _publishEndpoint.Publish(generateDocumentDto);
         var grain = _clusterClient.GetGrain<IDocumentGenerationOrchestrationGrain>(generateDocumentDto.Id);
 
         // Fire and forget the document creation process - this progresses 

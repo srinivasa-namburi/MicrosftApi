@@ -1,5 +1,4 @@
-﻿using MassTransit;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Grains.ApiSpecific.Contracts;
 using Microsoft.Greenlight.Grains.Validation.Contracts;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Validation.Events;
@@ -11,14 +10,10 @@ namespace Microsoft.Greenlight.Grains.Validation
     [StatelessWorker]
     public class ValidationNotifierGrain : Grain, IValidationNotifierGrain
     {
-        private readonly IPublishEndpoint _publishEndpoint;
         private readonly ILogger<ValidationNotifierGrain> _logger;
 
-        public ValidationNotifierGrain(
-            IPublishEndpoint publishEndpoint,
-            ILogger<ValidationNotifierGrain> logger)
+        public ValidationNotifierGrain(ILogger<ValidationNotifierGrain> logger)
         {
-            _publishEndpoint = publishEndpoint;
             _logger = logger;
         }
 
@@ -28,20 +23,17 @@ namespace Microsoft.Greenlight.Grains.Validation
             {
                 _logger.LogInformation("Publishing validation pipeline completion notification for {ExecutionId}", validationExecutionId);
                 
-                // Publish validation pipeline completed event
-                await _publishEndpoint.Publish(new ValidationPipelineCompleted(validationExecutionId)
+                // Create notification message
+                var notification = new ValidationExecutionForDocumentNotification(
+                    correlationId: validationExecutionId, 
+                    generatedDocumentId)
                 {
-                    ValidationPipelineExecutionId = validationExecutionId
-                });
+                    NotificationType = ValidationExecutionStatusNotificationType.ValidationExecutionCompleted
+                };
 
-                // Publish document notification event
-                await _publishEndpoint.Publish(
-                    new ValidationExecutionForDocumentNotification(
-                        correlationId: validationExecutionId,
-                        generatedDocumentId)
-                    {
-                        NotificationType = ValidationExecutionStatusNotificationType.ValidationExecutionCompleted
-                    });
+                // Send the notification via SignalR notifier grain
+                var signalRNotifierGrain = GrainFactory.GetGrain<ISignalRNotifierGrain>(Guid.Empty);
+                await signalRNotifierGrain.NotifyValidationExecutionForDocumentAsync(notification);
             }
             catch (Exception ex)
             {
@@ -55,20 +47,17 @@ namespace Microsoft.Greenlight.Grains.Validation
             {
                 _logger.LogInformation("Publishing validation pipeline failure notification for {ExecutionId}", validationExecutionId);
                 
-                // Publish validation pipeline failed event
-                await _publishEndpoint.Publish(new ValidationPipelineFailed(validationExecutionId)
+                // Create notification message
+                var notification = new ValidationExecutionForDocumentNotification(
+                    correlationId: validationExecutionId, 
+                    generatedDocumentId)
                 {
-                    ErrorMessage = errorMessage
-                });
+                    NotificationType = ValidationExecutionStatusNotificationType.ValidationExecutionFailed
+                };
 
-                // Publish document notification event
-                await _publishEndpoint.Publish(
-                    new ValidationExecutionForDocumentNotification(
-                        correlationId: validationExecutionId,
-                        generatedDocumentId)
-                    {
-                        NotificationType = ValidationExecutionStatusNotificationType.ValidationExecutionFailed
-                    });
+                // Send the notification via SignalR notifier grain
+                var signalRNotifierGrain = GrainFactory.GetGrain<ISignalRNotifierGrain>(Guid.Empty);
+                await signalRNotifierGrain.NotifyValidationExecutionForDocumentAsync(notification);
             }
             catch (Exception ex)
             {

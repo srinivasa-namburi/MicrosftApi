@@ -1,4 +1,3 @@
-using MassTransit;
 
 namespace Microsoft.Greenlight.Shared.Contracts.Messages.DocumentGeneration.Events;
 
@@ -6,7 +5,7 @@ namespace Microsoft.Greenlight.Shared.Contracts.Messages.DocumentGeneration.Even
 /// Event raised when a content node is generated.
 /// </summary>
 /// <param name="CorrelationId">The correlation ID of the event.</param>
-public record ContentNodeGenerated(Guid CorrelationId) : CorrelatedBy<Guid>
+public record ContentNodeGenerated(Guid CorrelationId)
 {
     /// <summary>
     /// Content node ID.

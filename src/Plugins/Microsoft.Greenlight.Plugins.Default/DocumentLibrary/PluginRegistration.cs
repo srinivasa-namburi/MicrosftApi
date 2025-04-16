@@ -16,6 +16,4 @@ public class PluginRegistration : IPluginRegistration
         var registry = serviceProvider.GetRequiredService<IPluginRegistry>();
         registry.AddPlugin("DocumentLibraryPlugin", serviceProvider.GetRequiredService<DocumentLibraryPlugin>(), isDynamic:false);
     }
-
-    
 }

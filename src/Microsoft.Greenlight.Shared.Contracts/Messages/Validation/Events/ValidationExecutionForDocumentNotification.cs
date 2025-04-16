@@ -1,5 +1,4 @@
-﻿using MassTransit;
-using Microsoft.Greenlight.Shared.Contracts.DTO.Validation;
+﻿using Microsoft.Greenlight.Shared.Contracts.DTO.Validation;
 using Microsoft.Greenlight.Shared.Enums;
 using Orleans;
 using System.Text.Json.Serialization;
@@ -10,7 +9,7 @@ namespace Microsoft.Greenlight.Shared.Contracts.Messages.Validation.Events
     /// Notification indicating that various stages of validation execution has reached a certain state.
     /// </summary>
     [GenerateSerializer(GenerateFieldIds = GenerateFieldIds.PublicProperties)]
-    public record ValidationExecutionForDocumentNotification : CorrelatedBy<Guid>
+    public record ValidationExecutionForDocumentNotification 
     {
         /// <summary>
         /// Constructor for the ValidationExecutionForDocumentNotification message

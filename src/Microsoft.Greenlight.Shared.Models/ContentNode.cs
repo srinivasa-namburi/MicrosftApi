@@ -50,17 +50,6 @@ public class ContentNode : EntityBase
     public string? PromptInstructions { get; set; }
 
     /// <summary>
-    /// Unique ID for ingested document.
-    /// </summary>
-    public Guid? IngestedDocumentId { get; set; }
-
-    /// <summary>
-    /// Ingested document associated with the content node.
-    /// </summary>
-    [JsonIgnore]
-    public virtual IngestedDocument? IngestedDocument { get; set; }
-
-    /// <summary>
     /// Unique ID for generated document.
     /// This is only used for outer parent nodes to establish the hierarchy.
     /// </summary>
@@ -107,9 +96,4 @@ public class ContentNode : EntityBase
     /// </summary>
     [JsonIgnore]
     public virtual ContentNodeVersionTracker? ContentNodeVersionTracker { get; set; }
-
-    /// <summary>
-    /// Bounding regions of the content node.
-    /// </summary>
-    public List<BoundingRegion>? BoundingRegions { get; set; } = [];
 }

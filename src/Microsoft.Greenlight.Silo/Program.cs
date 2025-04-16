@@ -1,4 +1,3 @@
-using MassTransit;
 using Microsoft.Greenlight.Grains.Shared.Scheduling;
 using Microsoft.Greenlight.ServiceDefaults;
 using Microsoft.Greenlight.Shared.Configuration;
@@ -32,27 +31,6 @@ if (!serviceConfigurationOptions.GreenlightServices.DocumentGeneration.CreateBod
 
 builder.RegisterStaticPlugins(serviceConfigurationOptions);
 builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
-
-var serviceBusConnectionString = builder.Configuration.GetConnectionString("sbus");
-serviceBusConnectionString = serviceBusConnectionString?.Replace("https://", "sb://").Replace(":443/", "/");
-
-/* Keep Masstransit Present because some common services depend on being able to send still */
-builder.Services.AddMassTransit(x =>
-{
-    x.SetKebabCaseEndpointNameFormatter();
-    x.AddConsumers(typeof(Program).Assembly);
-    x.AddFanOutConsumersForNonWorkerNode();
-    x.UsingAzureServiceBus((context, cfg) =>
-    {
-        cfg.Host(serviceBusConnectionString, configure: config =>
-        {
-            config.TokenCredential = credentialHelper.GetAzureCredential();
-        });
-        cfg.ConfigureEndpoints(context);
-        cfg.AddFanOutSubscriptionEndpointsForNonWorkerNode(context);
-
-    });
-});
 
 builder.AddGreenLightOrleansSilo(credentialHelper);
 

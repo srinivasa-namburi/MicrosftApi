@@ -1,5 +1,6 @@
 ﻿@inject IJSRuntime JSRuntime
 @inject IContentReferenceApiClient ContentReferenceApiClient
+@inject ISnackbar Snackbar
 
 <div class="chat-input-row" style="position: relative;">
     <MudTextField @ref="_mudChatTextField" T="string"
@@ -17,6 +18,7 @@
                   Variant="Variant.Outlined"
                   AdornmentColor="Color.Primary"
                   AdornmentIcon="@Icons.Material.Filled.Send" />
+
     <MudIconButton Icon="@Icons.Material.Filled.Send"
                    Color="Color.Primary"
                    OnClick="@SendMessage"
@@ -187,6 +189,15 @@
 
     private async Task HandleFileUploaded(ContentReferenceItemInfo uploadedReference)
     {
+        if (uploadedReference == null)
+        {
+            Snackbar.Add("Error: Uploaded reference is null.", Severity.Error);
+            return;
+        }
+
+        // Ensure _displayMessage is not null
+        _displayMessage ??= string.Empty;
+
         // Get or assign a reference number for the newly uploaded file
         string referenceId = $"{uploadedReference.ReferenceType}:{uploadedReference.Id}";
         int referenceNumber;
@@ -328,15 +339,37 @@
             _showReferenceSelector = true;
             _currentState = InputState.SelectingReference;
 
+            // Prevent default behavior for '#' key
+            await JSRuntime.InvokeVoidAsync("preventDefaultForKey", e.Key);
+
             // Force render to show popover, then update position
             StateHasChanged();
             await Task.Delay(10); // Short delay to ensure DOM is updated
             await UpdateCaretPositionAnchor();
+            return;
         }
 
-        // Track Enter (without Shift) to potentially send message
-        // The actual sending logic will be handled by our JS interceptor
-        _chatTextLastKeyWasEnter = e is { Key: "Enter", ShiftKey: false };
+        // Handle Enter key
+        if (e.Key == "Enter" && !e.ShiftKey)
+        {
+            if (_showReferenceSelector)
+            {
+                // If the reference selector is open, let it handle the Enter key
+                return;
+            }
+
+            // Prevent default behavior for Enter key
+            await JSRuntime.InvokeVoidAsync("preventDefaultForKey", e.Key);
+
+            // Otherwise, send the message
+            await SendMessage();
+        }
+    }
+
+    private bool ShouldPreventDefault(KeyboardEventArgs e)
+    {
+        // Prevent default behavior for Enter key when the reference selector is not open
+        return e is { Key: "Enter", ShiftKey: false } && !_showReferenceSelector;
     }
 
     private async Task OnChatTextFieldUpdated(string newText)

@@ -1,4 +1,3 @@
-using MassTransit;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
@@ -151,7 +150,12 @@ builder.Services.AddSingleton<IUserIdProvider, SignalRCustomUserIdProvider>();
 
 builder.Services.AddMudServices();
 
-if (builder.Environment.IsDevelopment())
+var useAzureSignalR = builder.Configuration["ServiceConfiguration:GreenlightServices:Scalability:UseAzureSignalR"];
+
+if (builder.Environment.IsDevelopment() ||
+    (useAzureSignalR == null || useAzureSignalR == "false") ||
+    builder.Configuration.GetConnectionString("signalr") == null ||
+    builder.Configuration.GetConnectionString("signalr") == string.Empty)
 {
     builder.Services.AddSignalR();
 }
@@ -163,13 +167,13 @@ else
         options.ClaimsProvider = context =>
         {
             var user = context.User;
-            return new[]
-            {
+            return
+            [
                 new Claim("name", user.Identity?.Name ?? "unknown"),
                 new Claim("preferred_username", user.FindFirst("preferred_username")?.Value ?? "unknown"),
                 new Claim("access_token", user.FindFirst("access_token")?.Value ?? "unknown"),
                 new Claim("sub", user.FindFirst("sub")?.Value ?? "unknown")
-            };
+            ];
         };
     });
 }
@@ -179,23 +183,6 @@ builder.Services.AddSingleton<DynamicComponentResolver>();
 builder.Services.Configure<FormOptions>(options =>
 {
     options.MultipartBodyLengthLimit = 10 * 1024 * 1024 * 20; // 200MB
-});
-
-var serviceBusConnectionString = builder.Configuration.GetConnectionString("sbus");
-serviceBusConnectionString = serviceBusConnectionString?.Replace("https://", "sb://").Replace(":443/", "/");
-
-builder.Services.AddMassTransit(x =>
-{
-    x.SetKebabCaseEndpointNameFormatter();
-    x.AddFanOutConsumersForNonWorkerNode();
-    x.UsingAzureServiceBus((context, cfg) =>
-    {
-        cfg.Host(serviceBusConnectionString, configure: config =>
-        {
-            config.TokenCredential = credentialHelper.GetAzureCredential();
-        });
-        cfg.AddFanOutSubscriptionEndpointsForNonWorkerNode(context);
-    });
 });
 
 builder.Services.AddSingleton<IHostedService, ShutdownCleanupService>();

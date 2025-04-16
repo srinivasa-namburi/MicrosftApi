@@ -164,7 +164,7 @@ public static class BuilderExtensions
         builder.Services.AddKeyedSingleton<AzureOpenAIClient>("openai-planner", (sp, obj) =>
         {
             // Here's the connection string format. Parse this for endpoint and key
-            // Endpoint=https://pvico-oai-swedencentral.openai.azure.com/;Key=18daceb070ee44eea06a277ff0454492
+            // Endpoint=https://pvico-oai-swedencentral.openai.azure.com/;Key=sdfsdfsdfsdfsdfsdfsdf
 
             var connectionString = builder.Configuration.GetConnectionString("openai-planner");
             var endpoint = connectionString!.Split(';')[0].Split('=')[1];
@@ -173,8 +173,14 @@ public static class BuilderExtensions
             // If the connection string doesn't contain a Key, use credentialHelper.GetAzureCredential() method.
             // Otherwise, use the key with an ApiKeyCredential.
             return string.IsNullOrEmpty(key)
-                ? new AzureOpenAIClient(new Uri(endpoint), credentialHelper.GetAzureCredential())
-                : new AzureOpenAIClient(new Uri(endpoint), new ApiKeyCredential(key));
+                ? new AzureOpenAIClient(new Uri(endpoint), credentialHelper.GetAzureCredential(), new AzureOpenAIClientOptions()
+                {
+                    NetworkTimeout = 30.Minutes()
+                })
+                : new AzureOpenAIClient(new Uri(endpoint), new ApiKeyCredential(key), new AzureOpenAIClientOptions()
+                {
+                    NetworkTimeout = 30.Minutes()
+                });
         });
 
         builder.Services.AddTransient<IChatCompletionService>(service =>
@@ -651,31 +657,5 @@ public static class BuilderExtensions
         }
 
         return service;
-    }
-
-    /// <summary>
-    /// Get a Semantic Kernel instance specifically for document validation for a given document process.
-    /// </summary>
-    /// <param name="sp"></param>
-    /// <param name="documentProcessName"></param>
-    /// <returns></returns>
-    public static Kernel? GetValidationSemanticKernelForDocumentProcess(this IServiceProvider sp, string documentProcessName)
-    {
-        using var scope = sp.CreateScope();
-        var scopedServiceProvider = scope.ServiceProvider;
-        if (sp == null)
-        {
-            throw new ArgumentNullException(nameof(sp));
-        }
-
-        if (documentProcessName == null)
-        {
-            throw new ArgumentNullException(nameof(documentProcessName));
-        }
-
-        var kernelFactory = scopedServiceProvider.GetRequiredService<IKernelFactory>();
-        var kernel = kernelFactory.GetValidationKernelForDocumentProcessAsync(documentProcessName).Result;
-
-        return kernel;
     }
 }

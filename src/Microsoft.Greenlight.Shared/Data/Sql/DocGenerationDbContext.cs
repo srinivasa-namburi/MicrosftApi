@@ -3,7 +3,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Microsoft.Greenlight.Shared.Contracts.Components;
-using Microsoft.Greenlight.Shared.Contracts.Messages.Validation;
 using Microsoft.Greenlight.Shared.Models;
 using Microsoft.Greenlight.Shared.Models.Configuration;
 using Microsoft.Greenlight.Shared.Models.DocumentLibrary;
@@ -13,7 +12,6 @@ using Microsoft.Greenlight.Shared.Models.Plugins;
 using Microsoft.Greenlight.Shared.Models.Review;
 using Microsoft.Greenlight.Shared.Models.SourceReferences;
 using Microsoft.Greenlight.Shared.Models.Validation;
-using Microsoft.Greenlight.Shared.SagaState;
 
 namespace Microsoft.Greenlight.Shared.Data.Sql;
 
@@ -917,34 +915,6 @@ public class DocGenerationDbContext : DbContext
             .HasIndex(d => d.DocumentProcess)
             .IsUnique(false);
 
-        modelBuilder.Entity<IngestedDocument>()
-            .HasMany(d => d.Tables)
-            .WithOne(x => x.IngestedDocument)
-            .HasForeignKey(x => x.IngestedDocumentId)
-            .IsRequired(false)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<Table>()
-            .HasOne(x => x.IngestedDocument)
-            .WithMany(x => x.Tables)
-            .HasForeignKey(x => x.IngestedDocumentId)
-            .IsRequired(false)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<IngestedDocument>()
-            .HasMany(d => d.ContentNodes)
-            .WithOne(x => x.IngestedDocument)
-            .HasForeignKey(x => x.IngestedDocumentId)
-            .IsRequired(false)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        modelBuilder.Entity<ContentNode>()
-            .HasOne(x => x.IngestedDocument)
-            .WithMany(x => x.ContentNodes)
-            .HasForeignKey(x => x.IngestedDocumentId)
-            .IsRequired(false)
-            .OnDelete(DeleteBehavior.Restrict);
-
         modelBuilder.Entity<ContentNode>()
             .HasOne(x => x.ContentNodeVersionTracker)
             .WithOne(x => x.ContentNode)
@@ -1000,151 +970,7 @@ public class DocGenerationDbContext : DbContext
             .IsRequired(false)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // Optionally, ContentNodes can have Bounding Regions if they are created from an Ingested Document
-        modelBuilder.Entity<ContentNode>()
-            .HasMany(c => c.BoundingRegions)
-            .WithOne(x => x.ContentNode)
-            .HasForeignKey(x => x.ContentNodeId)
-            .IsRequired(false)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        modelBuilder.Entity<BoundingRegion>()
-            .HasOne(x => x.ContentNode)
-            .WithMany(x => x.BoundingRegions)
-            .HasForeignKey(x => x.ContentNodeId)
-            .IsRequired(false)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // Table structures for ingested documents
-        modelBuilder.Entity<Table>()
-            .HasMany(t => t.Cells)
-            .WithOne(c => c.Table)
-            .HasForeignKey(c => c.TableId)
-            .IsRequired()
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<TableCell>()
-            .HasOne(c => c.Table)
-            .WithMany(t => t.Cells)
-            .HasForeignKey(c => c.TableId)
-            .IsRequired()
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<Table>()
-            .HasMany(t => t.BoundingRegions)
-            .WithOne(x => x.Table)
-            .HasForeignKey(x => x.TableId)
-            .IsRequired(false)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        modelBuilder.Entity<BoundingRegion>()
-            .HasOne(x => x.Table)
-            .WithMany(x => x.BoundingRegions)
-            .HasForeignKey(x => x.TableId)
-            .IsRequired(false)
-            .OnDelete(DeleteBehavior.Restrict);
-
-
-        modelBuilder.Entity<BoundingRegion>()
-            .HasIndex(nameof(BoundingRegion.Page))
-            .IsUnique(false);
-
-        modelBuilder.Entity<BoundingPolygon>()
-            .HasIndex(nameof(BoundingPolygon.X), nameof(BoundingPolygon.Y));
-
-        modelBuilder.Entity<BoundingRegion>()
-            .HasOne(x => x.Table)
-            .WithMany(x => x.BoundingRegions)
-            .HasForeignKey(x => x.TableId)
-            .IsRequired(false)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        modelBuilder.Entity<BoundingRegion>()
-            .HasMany(br => br.BoundingPolygons)
-            .WithOne(bp => bp.BoundingRegion)
-            .HasForeignKey(bp => bp.BoundingRegionId)
-            .IsRequired()
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<BoundingPolygon>()
-            .HasOne(bp => bp.BoundingRegion)
-            .WithMany(br => br.BoundingPolygons)
-            .HasForeignKey(bp => bp.BoundingRegionId)
-            .IsRequired()
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<BoundingPolygon>()
-            .Property<decimal>(x => x.X).HasPrecision(12, 6);
-        modelBuilder.Entity<BoundingPolygon>()
-            .Property<decimal>(x => x.Y).HasPrecision(12, 6);
-
-
-
-        // Mass Transit SAGA for Document Generation
-        modelBuilder.Entity<DocumentGenerationSagaState>()
-            .ToTable("DocumentGenerationSagaStates");
-        modelBuilder.Entity<DocumentGenerationSagaState>()
-            .HasKey(x => x.CorrelationId);
-
-        // Mass Transit SAGA for Validation Pipeline Execution
-        modelBuilder.Entity<ValidationPipelineSagaState>()
-            .ToTable("ValidationPipelineSagaStates");
-
-        modelBuilder.Entity<ValidationPipelineSagaState>()
-            .HasKey(x => x.CorrelationId);
-
-        modelBuilder.Entity<ValidationPipelineSagaState>()
-            .Property(x => x.OrderedSteps)
-            .HasConversion(
-                v => JsonSerializer.Serialize(v, (JsonSerializerOptions)null!),
-                v => JsonSerializer.Deserialize<List<ValidationPipelineSagaStepInfo>>(v, (JsonSerializerOptions)null!) ?? new List<ValidationPipelineSagaStepInfo>())
-            .Metadata.SetValueComparer(new ValueComparer<List<ValidationPipelineSagaStepInfo>>(
-                (c1, c2) => c1!.SequenceEqual(c2!),
-                c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
-                c => c.ToList()
-            ));
-
         
-        // Table per hierarchy for Document Ingestion SAGA
-        modelBuilder.Entity<DocumentIngestionSagaState>()
-            .HasDiscriminator<string>("Discriminator")
-            .HasValue<DocumentIngestionSagaState>("DocumentIngestionSagaState")
-            .HasValue<KernelMemoryDocumentIngestionSagaState>("KernelMemoryDocumentIngestionSagaState");
-
-        modelBuilder.Entity<DocumentIngestionSagaState>()
-            .Property("Discriminator")
-            .HasMaxLength(100);
-
-        // Mass Transit SAGA for Review Execution
-        modelBuilder.Entity<ReviewExecutionSagaState>()
-            .ToTable("ReviewExecutionSagaStates");
-        modelBuilder.Entity<ReviewExecutionSagaState>()
-            .HasKey(x => x.CorrelationId);
-        modelBuilder.Entity<ReviewExecutionSagaState>()
-            .HasIndex(x => x.ExportedDocumentLinkId)
-            .IsUnique(false);
-        
-        // Mass Transit SAGA for Document Ingestion
-        modelBuilder.Entity<DocumentIngestionSagaState>()
-            .ToTable("DocumentIngestionSagaStates");
-        modelBuilder.Entity<DocumentIngestionSagaState>()
-            .HasKey(x => x.CorrelationId);
-        modelBuilder.Entity<DocumentIngestionSagaState>()
-            .HasIndex(x => x.FileHash)
-            .IsUnique(false);
-        modelBuilder.Entity<DocumentIngestionSagaState>()
-            .HasIndex(x => x.DocumentLibraryShortName)
-            .IsUnique(false);
-
-        // Mass Transit SAGA for Kernel Memory Document Ingestion
-        // The Key is the same as the base class - this is an EF Core requirement for Table per hierarchy
-        modelBuilder.Entity<KernelMemoryDocumentIngestionSagaState>()
-            .HasIndex(x => x.FileHash)
-            .IsUnique(false);
-        modelBuilder.Entity<KernelMemoryDocumentIngestionSagaState>()
-            .HasIndex(x => x.DocumentLibraryShortName)
-            .IsUnique(false);
-
     }
     
     /// <summary>
@@ -1186,26 +1012,6 @@ public class DocGenerationDbContext : DbContext
     /// Gets or sets the ingested documents.
     /// </summary>
     public DbSet<IngestedDocument> IngestedDocuments { get; set; }
-
-    /// <summary>
-    /// Gets or sets the tables.
-    /// </summary>
-    public DbSet<Table> Tables { get; set; }
-
-    /// <summary>
-    /// Gets or sets the table cells.
-    /// </summary>
-    public DbSet<TableCell> TableCells { get; set; }
-
-    /// <summary>
-    /// Gets or sets the bounding regions.
-    /// </summary>
-    public DbSet<BoundingRegion> BoundingRegions { get; set; }
-
-    /// <summary>
-    /// Gets or sets the bounding polygons.
-    /// </summary>
-    public DbSet<BoundingPolygon> BoundingPolygons { get; set; }
 
     /// <summary>
     /// Gets or sets the chat conversations.

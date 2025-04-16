@@ -1,5 +1,5 @@
 using AutoMapper;
-using MassTransit;
+
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
@@ -25,8 +25,7 @@ public class DocumentProcessController : BaseController
     private readonly IPluginService _pluginService;
     private readonly IDocumentLibraryInfoService _documentLibraryInfoService;
     private readonly IMapper _mapper;
-    private readonly IPublishEndpoint _publishEndpoint;
-
+    
     /// <summary>
     /// Initializes a new instance of the <see cref="DocumentProcessController"/> class.
     /// </summary>
@@ -41,15 +40,13 @@ public class DocumentProcessController : BaseController
         IDocumentProcessInfoService documentProcessInfoService,
         IPluginService pluginService,
         IDocumentLibraryInfoService documentLibraryInfoService,
-        IMapper mapper,
-        IPublishEndpoint publishEndpoint)
+        IMapper mapper)
     {
         _dbContext = dbContext;
         _documentProcessInfoService = documentProcessInfoService;
         _pluginService = pluginService;
         _documentLibraryInfoService = documentLibraryInfoService;
         _mapper = mapper;
-        _publishEndpoint = publishEndpoint;
     }
 
     /// <summary>
@@ -167,7 +164,6 @@ public class DocumentProcessController : BaseController
     public async Task<ActionResult<DocumentProcessInfo>> CreateDocumentProcess([FromBody] DocumentProcessInfo documentProcessInfo)
     {
         var createdDocumentProcessInfo = await _documentProcessInfoService.CreateDocumentProcessInfoAsync(documentProcessInfo);
-        // Restarts are done in the background CreateDynamicDocumentProcessPromptsConsumer.
         return Created($"/api/document-process/{createdDocumentProcessInfo.Id}", createdDocumentProcessInfo);
     }
 
@@ -200,11 +196,6 @@ public class DocumentProcessController : BaseController
         // Simply update and save changes
         _dbContext.DynamicDocumentProcessDefinitions.Update(existingDocumentProcess);
         await _dbContext.SaveChangesAsync();
-
-        if (AdminHelper.IsRunningInProduction())
-        {
-            await _publishEndpoint.Publish(new RestartWorker(Guid.NewGuid()));
-        }
 
         return Accepted($"/api/document-process/{documentProcessInfo.Id}", documentProcessInfo);
     }
@@ -288,10 +279,6 @@ public class DocumentProcessController : BaseController
             // Remove the document process
             await _documentProcessInfoService.DeleteDocumentProcessInfoAsync(id);
 
-            if (AdminHelper.IsRunningInProduction())
-            {
-                await _publishEndpoint.Publish(new RestartWorker(Guid.NewGuid()));
-            }
         }
         catch
         {
@@ -640,12 +627,6 @@ public class DocumentProcessController : BaseController
         documentProcess.ValidationPipeline = null;
 
         await _dbContext.SaveChangesAsync();
-
-        if (AdminHelper.IsRunningInProduction())
-        {
-            await _publishEndpoint.Publish(new RestartWorker(Guid.NewGuid()));
-        }
-
         return NoContent();
     }
 }

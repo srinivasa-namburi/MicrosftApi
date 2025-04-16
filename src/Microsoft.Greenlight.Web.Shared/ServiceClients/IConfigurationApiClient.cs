@@ -8,10 +8,7 @@ public interface IConfigurationApiClient : IServiceClient
 {
     Task<string?> GetAzureMapsKeyAsync();
     Task<List<DocumentProcessOptions?>> GetDocumentProcessesAsync();
-
-    Task RestartWorkersAsync();
     Task<ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions> GetFeatureFlagsAsync();
-
     Task<ServiceConfigurationOptions.GreenlightServicesOptions> GetGreenlightServicesAsync();
     Task<ServiceConfigurationOptions.GreenlightServicesOptions.FrontendOptions> GetFrontEndAsync();
     Task<ServiceConfigurationOptions.OpenAiOptions> GetOpenAiOptionsAsync();

@@ -28,15 +28,10 @@ public class AzureCredentialHelper
     /// <returns>A <see cref="TokenCredential"/> instance.</returns>
     public TokenCredential GetAzureCredential()
     {
-
-        // We need to determine if we're running Azure Public Cloud or Azure Government Cloud and set the appropriate environment
-        
-
         TokenCredential? credential;
         // If there is no specific tenant ID, use the default Azure credential
         if (string.IsNullOrEmpty(_configuration["Azure:TenantId"]))
         {
-
             credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions
             {
                 AuthorityHost = _authorityHost,
@@ -73,7 +68,6 @@ public class AzureCredentialHelper
     {
 
         var azureInstance = _configuration["AzureAd:Instance"];
-        
         if (azureInstance != null && azureInstance.Contains(AzureAuthorityHosts.AzureGovernment.ToString()))
         {
             _authorityHost = AzureAuthorityHosts.AzureGovernment;

@@ -1,4 +1,4 @@
-using MassTransit;
+
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Greenlight.Shared.Contracts.DTO.DocumentLibrary;
 using Microsoft.Greenlight.Shared.Contracts.Messages;
@@ -14,20 +14,17 @@ namespace Microsoft.Greenlight.API.Main.Controllers
     public class DocumentLibraryController : BaseController
     {
         private readonly IDocumentLibraryInfoService _documentLibraryInfoService;
-        private readonly IPublishEndpoint _publishEndpoint;
-
+        
         /// <summary>
         /// Initializes a new instance of the <see cref="DocumentLibraryController"/> class.
         /// </summary>
         /// <param name="documentLibraryInfoService">The document library info service.</param>
         /// <param name="publishEndpoint">The publish endpoint.</param>
         public DocumentLibraryController(
-            IDocumentLibraryInfoService documentLibraryInfoService,
-            IPublishEndpoint publishEndpoint
+            IDocumentLibraryInfoService documentLibraryInfoService
         )
         {
             _documentLibraryInfoService = documentLibraryInfoService;
-            _publishEndpoint = publishEndpoint;
         }
 
         /// <summary>
@@ -143,11 +140,6 @@ namespace Microsoft.Greenlight.API.Main.Controllers
 
             var createdLibrary = await _documentLibraryInfoService.CreateDocumentLibraryAsync(documentLibraryInfo);
 
-            if (AdminHelper.IsRunningInProduction())
-            {
-                await _publishEndpoint.Publish(new RestartWorker(Guid.NewGuid()));
-            }
-
             return CreatedAtAction(nameof(GetDocumentLibraryById), new { id = createdLibrary.Id }, createdLibrary);
         }
 
@@ -197,11 +189,6 @@ namespace Microsoft.Greenlight.API.Main.Controllers
             if (!success)
             {
                 return NotFound();
-            }
-
-            if (AdminHelper.IsRunningInProduction())
-            {
-                await _publishEndpoint.Publish(new RestartWorker(Guid.NewGuid()));
             }
 
             return NoContent();

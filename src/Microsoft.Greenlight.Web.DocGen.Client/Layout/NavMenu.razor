@@ -43,8 +43,6 @@
         <MudNavLink Href="/configuration" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Settings">Configuration</MudNavLink>
     </MudNavGroup>
 
-    <MudNavLink OnClick="@ShowRestartWorkersDialog" Icon="@Icons.Material.Filled.Refresh">Restart Workers</MudNavLink>
-
     <LogInOrOut />
 </MudNavMenu>
 
@@ -63,38 +61,6 @@
         catch
         {
             return;
-        }
-    }
-
-    private async Task ShowRestartWorkersDialog()
-    {
-        var parameters = new DialogParameters
-        {
-            { "ContentText", "Are you sure you want to restart the workers? This will take approximately 1 minute." },
-            { "ButtonText", "OK" },
-            { "CancelButtonText", "Cancel" },
-            { "DialogColor", Color.Warning }
-        };
-
-        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
-        var dialog = await DialogService.ShowAsync<ConfirmationDialog>("Restart Workers", parameters, options);
-        var result = await dialog.Result;
-
-        if (!result.Canceled)
-        {
-            await RestartWorkers();
-        }
-    }
-
-    private async Task RestartWorkers()
-    {
-        try
-        {
-            await ConfigurationApiClient.RestartWorkersAsync();
-        }
-        catch (Exception ex)
-        {
-            // Handle exceptions if necessary
         }
     }
 }

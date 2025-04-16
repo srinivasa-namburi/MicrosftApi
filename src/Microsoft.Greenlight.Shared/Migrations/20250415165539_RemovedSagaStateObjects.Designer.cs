@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Microsoft.Greenlight.Shared.Data.Sql;
 
@@ -11,9 +12,11 @@ using Microsoft.Greenlight.Shared.Data.Sql;
 namespace Microsoft.Greenlight.Shared.Migrations
 {
     [DbContext(typeof(DocGenerationDbContext))]
-    partial class DocGenerationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250415165539_RemovedSagaStateObjects")]
+    partial class RemovedSagaStateObjects
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -35,6 +38,85 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.HasIndex("DomainGroupMembershipsId");
 
                     b.ToTable("DomainGroupDynamicDocumentProcessDefinition");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.BoundingPolygon", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("BoundingRegionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsEmpty")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<decimal>("X")
+                        .HasPrecision(12, 6)
+                        .HasColumnType("decimal(12,6)");
+
+                    b.Property<decimal>("Y")
+                        .HasPrecision(12, 6)
+                        .HasColumnType("decimal(12,6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BoundingRegionId");
+
+                    b.HasIndex("X", "Y");
+
+                    b.ToTable("BoundingPolygons");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.BoundingRegion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ContentNodeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Page")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<Guid?>("TableId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ContentNodeId");
+
+                    b.HasIndex("Page");
+
+                    b.HasIndex("TableId");
+
+                    b.ToTable("BoundingRegions");
                 });
 
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.ChatConversation", b =>
@@ -293,6 +375,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<int?>("GenerationState")
                         .HasColumnType("int");
 
+                    b.Property<Guid?>("IngestedDocumentId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime>("ModifiedUtc")
                         .HasColumnType("datetime2");
 
@@ -325,6 +410,8 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.HasIndex("ContentNodeVersionTrackerId");
 
                     b.HasIndex("GeneratedDocumentId");
+
+                    b.HasIndex("IngestedDocumentId");
 
                     b.HasIndex("ParentId");
 
@@ -1073,6 +1160,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<string>("ClassificationShortCode")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int?>("ClassificationType")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
 
@@ -1439,6 +1529,84 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.HasDiscriminator().HasValue("SourceReferenceItem");
 
                     b.UseTphMappingStrategy();
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Table", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ColumnCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("IngestedDocumentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RowCount")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IngestedDocumentId");
+
+                    b.ToTable("Tables");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.TableCell", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ColumnIndex")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ColumnSpan")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RowIndex")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("RowSpan")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<Guid>("TableId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TableId");
+
+                    b.ToTable("TableCells");
                 });
 
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.UserInformation", b =>
@@ -1813,6 +1981,34 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.BoundingPolygon", b =>
+                {
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.BoundingRegion", "BoundingRegion")
+                        .WithMany("BoundingPolygons")
+                        .HasForeignKey("BoundingRegionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("BoundingRegion");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.BoundingRegion", b =>
+                {
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.ContentNode", "ContentNode")
+                        .WithMany("BoundingRegions")
+                        .HasForeignKey("ContentNodeId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.Table", "Table")
+                        .WithMany("BoundingRegions")
+                        .HasForeignKey("TableId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("ContentNode");
+
+                    b.Navigation("Table");
+                });
+
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.ChatMessage", b =>
                 {
                     b.HasOne("Microsoft.Greenlight.Shared.Models.UserInformation", "AuthorUserInformation")
@@ -1881,6 +2077,11 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .HasForeignKey("GeneratedDocumentId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.IngestedDocument", "IngestedDocument")
+                        .WithMany("ContentNodes")
+                        .HasForeignKey("IngestedDocumentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Microsoft.Greenlight.Shared.Models.ContentNode", "Parent")
                         .WithMany("Children")
                         .HasForeignKey("ParentId")
@@ -1891,6 +2092,8 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Navigation("ContentNodeVersionTracker");
 
                     b.Navigation("GeneratedDocument");
+
+                    b.Navigation("IngestedDocument");
 
                     b.Navigation("Parent");
                 });
@@ -2119,6 +2322,27 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Navigation("ContentNodeSystemItem");
                 });
 
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Table", b =>
+                {
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.IngestedDocument", "IngestedDocument")
+                        .WithMany("Tables")
+                        .HasForeignKey("IngestedDocumentId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("IngestedDocument");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.TableCell", b =>
+                {
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.Table", "Table")
+                        .WithMany("Cells")
+                        .HasForeignKey("TableId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Table");
+                });
+
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Validation.DocumentProcessValidationPipelineStep", b =>
                 {
                     b.HasOne("Microsoft.Greenlight.Shared.Models.Validation.DocumentProcessValidationPipeline", "DocumentProcessValidationPipeline")
@@ -2212,6 +2436,11 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Navigation("PromptDefinition");
                 });
 
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.BoundingRegion", b =>
+                {
+                    b.Navigation("BoundingPolygons");
+                });
+
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.ChatConversation", b =>
                 {
                     b.Navigation("ChatMessages");
@@ -2219,6 +2448,8 @@ namespace Microsoft.Greenlight.Shared.Migrations
 
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.ContentNode", b =>
                 {
+                    b.Navigation("BoundingRegions");
+
                     b.Navigation("Children");
 
                     b.Navigation("ContentNodeSystemItem");
@@ -2291,6 +2522,13 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Navigation("ValidationPipelineExecutions");
                 });
 
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.IngestedDocument", b =>
+                {
+                    b.Navigation("ContentNodes");
+
+                    b.Navigation("Tables");
+                });
+
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Plugins.DynamicPlugin", b =>
                 {
                     b.Navigation("DocumentProcesses");
@@ -2308,6 +2546,13 @@ namespace Microsoft.Greenlight.Shared.Migrations
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Review.ReviewInstance", b =>
                 {
                     b.Navigation("ReviewQuestionAnswers");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Table", b =>
+                {
+                    b.Navigation("BoundingRegions");
+
+                    b.Navigation("Cells");
                 });
 
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Validation.DocumentProcessValidationPipeline", b =>

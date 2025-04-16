@@ -1,7 +1,7 @@
 // File: Microsoft.Greenlight.API.Main/Controllers/PluginController.cs
 
 using AutoMapper;
-using MassTransit;
+
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Greenlight.Shared.Contracts.DTO.Plugins;
@@ -23,8 +23,7 @@ public class PluginsController : BaseController
     private readonly DocGenerationDbContext _dbContext;
     private readonly IMapper _mapper;
     private readonly AzureFileHelper _fileHelper;
-    private readonly IPublishEndpoint _publishEndpoint;
-
+    
     /// <summary>
     /// Initializes a new instance of the <see cref="PluginsController"/> class.
     /// </summary>
@@ -32,20 +31,17 @@ public class PluginsController : BaseController
     /// <param name="dbContext">The database context.</param>
     /// <param name="mapper">The mapper.</param>
     /// <param name="fileHelper">The file helper.</param>
-    /// <param name="publishEndpoint">The publish endpoint.</param>
     public PluginsController(
         IPluginService pluginService,
         DocGenerationDbContext dbContext,
         IMapper mapper,
-        AzureFileHelper fileHelper,
-        IPublishEndpoint publishEndpoint
+        AzureFileHelper fileHelper
     )
     {
         _pluginService = pluginService;
         _dbContext = dbContext;
         _mapper = mapper;
         _fileHelper = fileHelper;
-        _publishEndpoint = publishEndpoint;
     }
 
     /// <summary>
@@ -248,11 +244,6 @@ public class PluginsController : BaseController
         await _dbContext.SaveChangesAsync();
 
         var pluginInfo = _mapper.Map<DynamicPluginInfo>(plugin);
-
-        if (AdminHelper.IsRunningInProduction())
-        {
-            await _publishEndpoint.Publish(new RestartWorker(Guid.NewGuid()));
-        }
 
         return Ok(pluginInfo);
     }

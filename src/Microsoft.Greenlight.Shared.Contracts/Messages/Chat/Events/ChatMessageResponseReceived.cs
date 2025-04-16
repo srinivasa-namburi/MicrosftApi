@@ -1,4 +1,3 @@
-using MassTransit;
 using Microsoft.Greenlight.Shared.Contracts.Chat;
 
 namespace Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Events;
@@ -7,4 +6,4 @@ namespace Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Events;
 /// <param name="CorrelationId">The correlation ID of the event.</param>
 /// <param name="ChatMessageDto">The chat message received.</param>
 /// <param name="LastContentUpdate">The last content update.</param>
-public record ChatMessageResponseReceived(Guid CorrelationId, ChatMessageDTO ChatMessageDto, string LastContentUpdate) : CorrelatedBy<Guid>;
+public record ChatMessageResponseReceived(Guid CorrelationId, ChatMessageDTO ChatMessageDto, string LastContentUpdate);

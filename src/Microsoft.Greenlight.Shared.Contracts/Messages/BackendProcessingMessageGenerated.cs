@@ -1,4 +1,3 @@
-using MassTransit;
 using Orleans;
 
 namespace Microsoft.Greenlight.Shared.Contracts.Messages;
@@ -11,7 +10,7 @@ namespace Microsoft.Greenlight.Shared.Contracts.Messages;
 /// <param name="CorrelationId"></param>
 /// <param name="Message"></param>
 [GenerateSerializer(GenerateFieldIds = GenerateFieldIds.PublicProperties)]
-public record BackendProcessingMessageGenerated (Guid CorrelationId, string Message) : CorrelatedBy<Guid>
+public record BackendProcessingMessageGenerated (Guid CorrelationId, string Message)
 {
     
 }

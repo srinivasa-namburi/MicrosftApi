@@ -7,7 +7,6 @@ using Microsoft.Greenlight.Shared.Contracts.Messages.DocumentGeneration.Events;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Review.Events;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Validation.Events;
 using Microsoft.Greenlight.Shared.Hubs;
-using Microsoft.Greenlight.Shared.Notifiers;
 using Orleans.Concurrency;
 
 namespace Microsoft.Greenlight.Grains.ApiSpecific

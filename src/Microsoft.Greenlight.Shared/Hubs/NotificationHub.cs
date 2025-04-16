@@ -6,9 +6,8 @@ using Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Events;
 using Microsoft.Greenlight.Shared.Contracts.Messages.DocumentGeneration.Events;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Review.Events;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Validation.Events;
-using Microsoft.Greenlight.Shared.Hubs;
 
-namespace Microsoft.Greenlight.Shared.Notifiers;
+namespace Microsoft.Greenlight.Shared.Hubs;
 
 /// <summary>
 /// Hub for sending various notifications to clients.

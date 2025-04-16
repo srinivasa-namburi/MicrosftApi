@@ -2,6 +2,7 @@
 {
     /// <summary>
     /// Responsible for initializing a plugin after the final ServiceProvider is built.
+    /// This is where you can resolve dependencies needed for the plugin. 
     /// </summary>
     public interface IPluginInitializer
     {

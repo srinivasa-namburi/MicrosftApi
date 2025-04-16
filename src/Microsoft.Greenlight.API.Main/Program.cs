@@ -1,7 +1,5 @@
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
-using Humanizer;
-using MassTransit;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Greenlight.ServiceDefaults;
@@ -11,8 +9,8 @@ using Microsoft.Greenlight.Shared.Core;
 using Microsoft.Greenlight.Shared.DocumentProcess.Shared;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Helpers;
+using Microsoft.Greenlight.Shared.Hubs;
 using Microsoft.Greenlight.Shared.Models;
-using Microsoft.Greenlight.Shared.Notifiers;
 using Microsoft.Identity.Web;
 using Microsoft.OpenApi.Any;
 using Microsoft.OpenApi.Interfaces;
@@ -47,7 +45,6 @@ builder.AddGreenlightServices(credentialHelper, serviceConfigurationOptions);
 
 builder.RegisterStaticPlugins(serviceConfigurationOptions);
 builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
-builder.AddSemanticKernelServices(serviceConfigurationOptions);
 
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
@@ -255,27 +252,6 @@ builder.UseOrleans(siloBuilder =>
                 assemblyName.StartsWith("Microsoft.Greenlight.Shared"));
     }
 });
-
-var serviceBusConnectionString = builder.Configuration.GetConnectionString("sbus");
-serviceBusConnectionString = serviceBusConnectionString?.Replace("https://", "sb://").Replace(":443/", "/");
-
-builder.Services.AddMassTransit(x =>
-{
-    x.SetKebabCaseEndpointNameFormatter();
-    x.AddConsumers(typeof(Program).Assembly);
-    x.AddFanOutConsumersForNonWorkerNode();
-    x.UsingAzureServiceBus((context, cfg) =>
-    {
-        cfg.Host(serviceBusConnectionString, configure: config =>
-        {
-            config.TokenCredential = credentialHelper.GetAzureCredential();
-        });
-        cfg.ConfigureEndpoints(context);
-        cfg.AddFanOutSubscriptionEndpointsForNonWorkerNode(context);
-
-    });
-});
-
 
 // Bind the ServiceConfigurationOptions to configuration
 builder.Services.AddOptions<ServiceConfigurationOptions>()

@@ -233,6 +233,12 @@ namespace Microsoft.Greenlight.Shared.Services
                     promptExecutionSettings.ReasoningEffort = additionalSettings.ReasoningEffort.Value;
                 }
             }
+
+            if (aiModelDeployment.DeploymentName == "gpt-4.1") // hardcoded for now
+            {
+                promptExecutionSettings.SetNewMaxCompletionTokensEnabled = true;
+            }
+
             // For non-reasoning models, set temperature and frequency penalty (not supported for reasoning models)
             else
             {

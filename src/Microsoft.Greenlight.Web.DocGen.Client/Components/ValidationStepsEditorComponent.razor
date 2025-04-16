@@ -73,7 +73,7 @@
     [Parameter] public List<DocumentProcessValidationPipelineStepInfo> Steps { get; set; } = [];
     [Parameter] public EventCallback<List<DocumentProcessValidationPipelineStepInfo>> StepsChanged { get; set; }
 
-    [Parameter] public bool RunValidationAutomatically { get; set; } = true;
+    [Parameter] public bool RunValidationAutomatically { get; set; } = false;
     [Parameter] public EventCallback<bool> RunValidationAutomaticallyChanged { get; set; }
 
     private List<DocumentProcessValidationPipelineStepInfo> _steps = [];

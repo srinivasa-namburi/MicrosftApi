@@ -1,5 +1,3 @@
-using MassTransit.Logging;
-using MassTransit.Monitoring;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Routing;
@@ -91,7 +89,6 @@ public static class Extensions
                 metrics.AddMeter("Microsoft.SemanticKernel*",
                                  "Microsoft.AspNetCore.Hosting",
                                  "Microsoft.AspNetCore.Server.Kestrel",
-                                 InstrumentationOptions.MeterName, // MassTransit Meter
                                  "System.Net.Http",
                                  "Microsoft.Orleans")
                        .AddRuntimeInstrumentation()
@@ -108,7 +105,6 @@ public static class Extensions
                 }
 
                 tracing.AddSource("Microsoft.SemanticKernel*",
-                                  DiagnosticHeaders.DefaultListenerName,// MassTransit ActivitySource
                                   "Microsoft.Orleans.Runtime",
                                   "Microsoft.Orleans.Application"
                                   )

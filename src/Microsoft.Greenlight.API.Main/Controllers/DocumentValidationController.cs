@@ -92,7 +92,7 @@ public class DocumentValidationController : BaseController
         {
             // Use the validation starter grain instead of sending a message directly
             var validationStarterGrain = _clusterClient.GetGrain<IValidationStarterGrain>(documentId);
-            var validationExecutionId = await validationStarterGrain.StartValidationForDocumentAsync(documentId);
+            _ = validationStarterGrain.StartValidationForDocumentAsync(documentId);
 
             _logger.LogInformation("Published validation request for document {DocumentId}", documentId);
             return Accepted();

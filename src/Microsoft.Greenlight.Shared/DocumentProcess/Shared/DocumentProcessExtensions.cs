@@ -9,7 +9,6 @@ using Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.Shared.Services.Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.Shared.Services.Search;
 using System.Reflection;
-using TableHelper = Microsoft.Greenlight.Shared.Helpers.TableHelper;
 
 namespace Microsoft.Greenlight.Shared.DocumentProcess.Shared;
 
@@ -37,9 +36,6 @@ public static class DocumentProcessExtensions
     private static IHostApplicationBuilder AddCommonDocumentProcessServices(this IHostApplicationBuilder builder,
         ServiceConfigurationOptions options)
     {
-        // Ingestion specific custom dependencies
-        builder.Services.AddScoped<TableHelper>();
-
         // Default Prompt Catalog Types that will resolve all prompts if they haven't been defined
         // in a DP-specific IPromptCatalogTypes implementation
         // They're also the source of new prompts in the database.

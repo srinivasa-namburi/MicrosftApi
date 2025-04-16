@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Microsoft.Greenlight.Shared.Data.Sql;
 
@@ -11,9 +12,11 @@ using Microsoft.Greenlight.Shared.Data.Sql;
 namespace Microsoft.Greenlight.Shared.Migrations
 {
     [DbContext(typeof(DocGenerationDbContext))]
-    partial class DocGenerationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250415203536_DeleteTablePolygonBoundingPolygonAndUpdateMappings")]
+    partial class DeleteTablePolygonBoundingPolygonAndUpdateMappings
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

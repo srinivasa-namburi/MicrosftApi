@@ -26,8 +26,6 @@
 		<_WebToolingArtifacts Remove="Properties\launchSettings.json" />
 	</ItemGroup>
 	<ItemGroup>
-		<PackageReference Include="MassTransit.Azure.ServiceBus.Core" Version="8.2.1" />
-		<PackageReference Include="MassTransit.RabbitMQ" Version="8.2.1" />
 		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.4" />
 		<PackageReference Include="Microsoft.Extensions.ServiceDiscovery.Yarp" Version="9.1.0" />
 		<PackageReference Include="Microsoft.Identity.Web" Version="2.21.1" />

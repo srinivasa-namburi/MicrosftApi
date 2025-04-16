@@ -15,4 +15,7 @@
     <ProjectReference Include="..\Microsoft.Greenlight.Shared.Contracts\Microsoft.Greenlight.Shared.Contracts.csproj" />
     <ProjectReference Include="..\Microsoft.Greenlight.Shared.Enums\Microsoft.Greenlight.Shared.Enums.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Classification\" />
+  </ItemGroup>
 </Project>

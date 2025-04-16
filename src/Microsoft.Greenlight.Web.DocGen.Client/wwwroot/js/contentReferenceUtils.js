@@ -47,11 +47,11 @@ function findInputElement(inputRef) {
     return null;
 }
 
-window.setupKeyboardInterceptor = function(elementId, dotNetRef) {
+window.setupKeyboardInterceptor = function (elementId, dotNetRef) {
     const element = document.getElementById(elementId);
     if (!element) return;
-    
-    element.addEventListener("keydown", function(event) {
+
+    element.addEventListener("keydown", function (event) {
         // Only intercept events when the selector is shown
         if (dotNetRef.invokeMethod("ShouldInterceptKeyEvent", event.key)) {
             if (event.key === "ArrowDown" || event.key === "ArrowUp" || 
@@ -61,7 +61,7 @@ window.setupKeyboardInterceptor = function(elementId, dotNetRef) {
                 return false;
             }
         }
-        
+
         // Handle Enter key for message sending
         if (event.key === "Enter" && !event.shiftKey) {
             const selectorVisible = dotNetRef.invokeMethod("IsReferenceSelectorVisible");
@@ -70,6 +70,14 @@ window.setupKeyboardInterceptor = function(elementId, dotNetRef) {
                 dotNetRef.invokeMethod("SendMessageFromJS");
                 return false;
             }
+        }
+    });
+};
+
+window.preventDefaultForKey = function (key) {
+    document.addEventListener("keydown", function (event) {
+        if (event.key === key) {
+            event.preventDefault();
         }
     });
 };

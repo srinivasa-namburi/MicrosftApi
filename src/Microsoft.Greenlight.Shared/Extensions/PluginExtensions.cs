@@ -123,49 +123,6 @@ namespace Microsoft.Greenlight.Shared.Extensions
         }
 
         /// <summary>
-        /// Adds shared and document process plugins to the kernel plugin collection.
-        /// </summary>
-        /// <param name="kernelPlugins">The kernel plugin collection.</param>
-        /// <param name="serviceProvider">The service provider.</param>
-        /// <param name="documentProcessOptions">The document process options.</param>
-        /// <param name="excludedPluginTypes">An optional list of plugin types to exclude.</param>
-        public static void AddSharedAndDocumentProcessPluginsToPluginCollection(
-            this KernelPluginCollection kernelPlugins,
-            IServiceProvider serviceProvider,
-            DocumentProcessOptions documentProcessOptions,
-            List<Type>? excludedPluginTypes = null)
-        {
-            AddSharedAndStaticDocumentProcessPluginsToPluginCollection(kernelPlugins, serviceProvider, documentProcessOptions.Name, excludedPluginTypes);
-        }
-
-        /// <summary>
-        /// Adds shared and document process plugins to the kernel plugin collection.
-        /// </summary>
-        /// <param name="kernelPlugins">The kernel plugin collection.</param>
-        /// <param name="serviceProvider">The service provider.</param>
-        /// <param name="documentProcess">The document process information.</param>
-        /// <param name="excludedPluginTypes">An optional list of plugin types to exclude.</param>
-        public static void AddSharedAndDocumentProcessPluginsToPluginCollection(
-            this KernelPluginCollection kernelPlugins,
-            IServiceProvider serviceProvider,
-            DocumentProcessInfo documentProcess,
-            List<Type>? excludedPluginTypes = null
-           )
-        {
-            if (documentProcess.Source == ProcessSource.Static)
-            {
-                AddSharedAndStaticDocumentProcessPluginsToPluginCollection(kernelPlugins, serviceProvider, documentProcess.ShortName, excludedPluginTypes);
-            }
-            else
-            {
-                // For dynamic plugins in a sync context, we'll have to use a blocking call
-                // This is not ideal and should be used cautiously
-                AddSharedAndDynamicDocumentProcessPluginsToPluginCollectionAsync(kernelPlugins, serviceProvider, documentProcess, excludedPluginTypes)
-                    .GetAwaiter().GetResult();
-            }
-        }
-
-        /// <summary>
         /// Adds shared and document process plugins to the kernel plugin collection asynchronously.
         /// </summary>
         /// <param name="kernelPlugins">The kernel plugin collection.</param>
@@ -180,14 +137,7 @@ namespace Microsoft.Greenlight.Shared.Extensions
             List<Type>? excludedPluginTypes = null
             )
         {
-            if (documentProcess.Source == ProcessSource.Static)
-            {
-                AddSharedAndStaticDocumentProcessPluginsToPluginCollection(kernelPlugins, serviceProvider, documentProcess.ShortName, excludedPluginTypes);
-            }
-            else
-            {
-                await AddSharedAndDynamicDocumentProcessPluginsToPluginCollectionAsync(kernelPlugins, serviceProvider, documentProcess, excludedPluginTypes);
-            }
+            await AddSharedAndDynamicDocumentProcessPluginsToPluginCollectionAsync(kernelPlugins, serviceProvider, documentProcess, excludedPluginTypes);
         }
 
         private static async Task AddSharedAndDynamicDocumentProcessPluginsToPluginCollectionAsync(
@@ -264,85 +214,24 @@ namespace Microsoft.Greenlight.Shared.Extensions
                 }
             }
         }
-
-
-
-        private static void AddSharedAndStaticDocumentProcessPluginsToPluginCollection(
-            this KernelPluginCollection kernelPlugins,
-            IServiceProvider serviceProvider,
-            string documentProcessName,
-            List<Type>? excludedPluginTypes = null)
+        
+        /// <summary>
+        /// Removes main repository plugin from plugin collection as it may interfere with generation, where
+        /// documents from the main repository are retrieved ahead of execution.
+        /// </summary>
+        /// <param name="kernel">The Semantic Kernel instance (must be instantiated).</param>
+        /// <param name="documentProcessName">Document Process to remove KmDocs plugin for. We want to keep other instances.</param>
+        public static void PrepareSemanticKernelInstanceForGeneration(this Kernel kernel, string documentProcessName)
         {
-            AddSharedPluginsToPluginCollection(kernelPlugins, serviceProvider, excludedPluginTypes);
-            var documentProcessPlugins = GetPluginsByAssemblyPrefix("Microsoft.Greenlight.DocumentProcess." + documentProcessName);
+            var kmDocsPlugins = kernel.Plugins.Where(x => x.Name.Contains("KmDocsPlugin")).ToList();
 
-            // We also need to look in the shared plugins because some plugins are scoped to document processes but stored in the Shared assembly
-            var sharedDocumentProcessPlugins = GetPluginsByAssemblyPrefix("Microsoft.Greenlight.DocumentProcess.Shared");
-            documentProcessPlugins = documentProcessPlugins.Concat(sharedDocumentProcessPlugins).ToList();
-
-            foreach (var pluginType in documentProcessPlugins)
+            foreach (var kmDocsPlugin in kmDocsPlugins
+                         .Where(kmDocsPlugin => kmDocsPlugin.Name.Contains(documentProcessName) ||
+                                                kmDocsPlugin.Name.Contains("native") ||
+                                                kmDocsPlugin.Name.ToLower() == "kmdocsplugin"))
             {
-                if (excludedPluginTypes != null && excludedPluginTypes.Contains(pluginType))
-                {
-                    continue;
-                }
-
-                try
-                {
-                    var pluginInstance =
-                        serviceProvider.GetService(pluginType) ??
-                        serviceProvider.GetRequiredKeyedService(pluginType,
-                            documentProcessName + "-" + pluginType.Name);
-
-                    kernelPlugins.AddFromObject(pluginInstance, "native_" + pluginType.Name);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Error loading assembly or registering plugins: {ex.Message}");
-                }
+                kernel.Plugins.Remove(kmDocsPlugin);
             }
-        }
-
-        private static void AddSharedPluginsToPluginCollection(
-            KernelPluginCollection kernelPlugins,
-            IServiceProvider serviceProvider,
-            List<Type>? excludedPluginTypes)
-        {
-            var basePlugins = GetPluginsByAssemblyPrefix("Microsoft.Greenlight.Plugins");
-            var sharedDocumentProcessPlugins = GetPluginsByAssemblyPrefix("Microsoft.Greenlight.DocumentProcess.Shared");
-
-            var allPlugins = basePlugins.Concat(sharedDocumentProcessPlugins).ToList();
-
-            foreach (var pluginType in allPlugins)
-            {
-                if (excludedPluginTypes != null && excludedPluginTypes.Contains(pluginType))
-                {
-                    continue;
-                }
-
-                try
-                {
-                    // Only gets non-document process scoped plugins
-                    var pluginInstance = serviceProvider.GetService(pluginType);
-                    if (pluginInstance != null)
-                    {
-                        kernelPlugins.AddFromObject(pluginInstance, "native_" + pluginType.Name);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Error loading assembly or registering plugins: {ex.Message}");
-                }
-            }
-        }
-
-        private static List<Type> GetPluginsByAssemblyPrefix(string assemblyPrefix)
-        {
-            return AppDomain.CurrentDomain.GetAssemblies()
-                .Where(x => x.FullName is not null && x.FullName.StartsWith(assemblyPrefix))
-                .SelectMany(a => a.GetTypes())
-                .Where(t => typeof(IPluginImplementation).IsAssignableFrom(t) && !t.IsAbstract && t.IsClass)
-                .ToList();
         }
     }
 }

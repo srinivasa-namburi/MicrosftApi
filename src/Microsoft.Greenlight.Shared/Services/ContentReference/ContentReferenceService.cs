@@ -242,7 +242,6 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
         }
 
         /// <inheritdoc />
-        /// <inheritdoc />
         public async Task<ContentReferenceItem> GetOrCreateContentReferenceItemAsync(Guid id, ContentReferenceType type)
         {
             // Always check the database first with better query optimization - include FileHash for ExternalFile type

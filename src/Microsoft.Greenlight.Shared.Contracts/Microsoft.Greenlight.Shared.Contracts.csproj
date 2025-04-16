@@ -8,7 +8,6 @@
     <CodeAnalysisTreatWarningsAsErrors>true</CodeAnalysisTreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="MassTransit.Abstractions" Version="8.2.1" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.4" />
     <PackageReference Include="Microsoft.KernelMemory.Abstractions" Version="0.78.241005.1" />
     <PackageReference Include="Microsoft.Orleans.Serialization.Abstractions" Version="9.1.2" />
@@ -18,6 +17,5 @@
   </ItemGroup>
   <ItemGroup>
     <Folder Include="DTO\Configuration\" />
-    <Folder Include="Messages\DocumentIngestion\Events\" />
   </ItemGroup>
 </Project>

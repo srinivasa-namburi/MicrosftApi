@@ -21,42 +21,6 @@ public static class KernelMemoryExtensions
     private const int MaxTokensPerLine = 100;
 
     /// <summary>
-    /// Adds keyed Kernel Memory for document processing given document process options.
-    /// </summary>
-    /// <param name="builder">The host application builder.</param>
-    /// <param name="serviceConfigurationOptions">The service configuration options.</param>
-    /// <param name="documentProcessOptions">The document process options.</param>
-    /// <param name="key">The optional key.</param>
-    /// <returns>The updated host application builder.</returns>
-    public static IHostApplicationBuilder AddKeyedKernelMemoryForDocumentProcess(
-        this IHostApplicationBuilder builder,
-        ServiceConfigurationOptions serviceConfigurationOptions,
-        DocumentProcessOptions documentProcessOptions,
-        string? key = null)
-    {
-        var documentProcessName = documentProcessOptions.Name;
-        return AddKeyedKernelMemoryForDocumentProcess(builder, serviceConfigurationOptions, documentProcessName, key);
-    }
-
-    /// <summary>
-    /// Adds keyed Kernel Memory for document processing given document process info.
-    /// </summary>
-    /// <param name="builder">The host application builder.</param>
-    /// <param name="serviceConfigurationOptions">The service configuration options.</param>
-    /// <param name="documentProcessInfo">The document process information.</param>
-    /// <param name="key">The optional key.</param>
-    /// <returns>The updated host application builder.</returns>
-    public static IHostApplicationBuilder AddKeyedKernelMemoryForDocumentProcess(
-        this IHostApplicationBuilder builder,
-        ServiceConfigurationOptions serviceConfigurationOptions,
-        DocumentProcessInfo documentProcessInfo,
-        string? key = null)
-    {
-        var documentProcessName = documentProcessInfo.ShortName;
-        return AddKeyedKernelMemoryForDocumentProcess(builder, serviceConfigurationOptions, documentProcessName, key);
-    }
-
-    /// <summary>
     /// Adds keyed Kernel Memory for document processing given a document process name.
     /// </summary>
     /// <param name="builder">The host application builder.</param>
@@ -150,7 +114,7 @@ public static class KernelMemoryExtensions
         return kernelMemory;
     }
 
-    public static IKernelMemory CreateKernelMemoryInstance(
+    private static IKernelMemory CreateKernelMemoryInstance(
         IServiceProvider serviceProvider,
         ServiceConfigurationOptions serviceConfigurationOptions,
         string blobContainerName,

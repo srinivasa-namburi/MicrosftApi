@@ -1,5 +1,4 @@
 using Microsoft.Greenlight.Shared.Enums;
-using Microsoft.Greenlight.Shared.Models.Classification;
 
 namespace Microsoft.Greenlight.Shared.Models;
 
@@ -49,22 +48,7 @@ public class IngestedDocument : EntityBase
     public string? ClassificationShortCode { get; set; }
 
     /// <summary>
-    /// Classification type of the document.
-    /// </summary>
-    public DocumentClassificationType? ClassificationType { get; set; }
-
-    /// <summary>
     /// Date when the document was ingested.
     /// </summary>
     public DateTime IngestedDate { get; set; }
-
-    /// <summary>
-    /// Content nodes of the document.
-    /// </summary>
-    public List<ContentNode> ContentNodes { get; set; } = [];
-
-    /// <summary>
-    /// Tables in the document.
-    /// </summary>
-    public List<Table> Tables { get; set; } = [];
 }

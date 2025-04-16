@@ -8,41 +8,46 @@
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
     <MudPaper Class="pa-4">
-        <MudTable Items="_documentProcesses" Hover="true" Striped="false">
-            <HeaderContent>
-                <MudTh>Short Name</MudTh>
-                <MudTh>Description</MudTh>
-                <MudTh>Logic Type</MudTh>
-                <MudTh>Actions</MudTh>
-            </HeaderContent>
-            <RowTemplate>
-                <MudTd>@context.ShortName</MudTd>
-                <MudTd>@context.Description</MudTd>
-                <MudTd>@context.LogicType</MudTd>
-                <MudTd>
-                    <MudStack Row="true" Spacing="3">
-                        <MudTooltip Delay="400" Text="Edit Document Process">
-                            <MudIconButton Disabled="@IsStaticProcess(context)" OnClick="() => EditProcess(context.Id)" Size="@Size.Small" Icon="@Icons.Material.Filled.StickyNote2"></MudIconButton>
-                        </MudTooltip>
-                        <MudTooltip Delay="400" Text="Delete Document Process (you will be asked to confirm)">
-                            <MudIconButton Disabled="@IsStaticProcess(context)" OnClick="() => ShowDeleteConfirmation(context.Id)" Size="@Size.Small" Icon="@Icons.Material.Filled.Delete"></MudIconButton>
-                        </MudTooltip>
-                        <MudTooltip Delay="400" Text="Export Document Process as Json (you will be asked to confirm)">
-                            <MudIconButton Disabled="@IsStaticProcess(context)" OnClick="() => ExportProcess(context.Id)" Size="@Size.Small" Icon="@Icons.Material.Filled.ArrowDownward"></MudIconButton>
-                        </MudTooltip>
-                    </MudStack>
-                </MudTd>
-            </RowTemplate>
-        </MudTable>
-
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddProcess">Add New Process</MudButton>
+        <MudDataGrid Items="_documentProcesses"
+                     T="DocumentProcessInfo"
+                     Hover="true"
+                     Filterable="false"
+                     SortMode="SortMode.Single"
+                     Groupable="false"
+                     RowClick="@RowClicked"
+                     Dense="true">
+            <ToolBarContent>
+                <MudText Typo="Typo.h6">Document Processes</MudText>
+                <MudSpacer />
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddProcess">Add New Process</MudButton>
+            </ToolBarContent>
+            <Columns>
+                <PropertyColumn Property="x => x.ShortName" Title="Short Name" />
+                <PropertyColumn Property="x => x.Description" Title="Description" />
+                <PropertyColumn Property="x => x.LogicType" Title="Logic Type" />
+                <TemplateColumn Title="Actions" CellClass="d-flex justify-end">
+                    <CellTemplate>
+                        <MudStack Row="true" Spacing="3">
+                            <MudTooltip Delay="400" Text="Edit Document Process">
+                                <MudIconButton Disabled="@IsStaticProcess(context.Item)" OnClick="() => EditProcess(context.Item.Id)" Size="@Size.Small" Icon="@Icons.Material.Filled.StickyNote2"></MudIconButton>
+                            </MudTooltip>
+                            <MudTooltip Delay="400" Text="Delete Document Process (you will be asked to confirm)">
+                                <MudIconButton Disabled="@IsStaticProcess(context.Item)" OnClick="() => ShowDeleteConfirmation(context.Item.Id)" Size="@Size.Small" Icon="@Icons.Material.Filled.Delete"></MudIconButton>
+                            </MudTooltip>
+                            <MudTooltip Delay="400" Text="Export Document Process as Json (you will be asked to confirm)">
+                                <MudIconButton Disabled="@IsStaticProcess(context.Item)" OnClick="() => ExportProcess(context.Item.Id)" Size="@Size.Small" Icon="@Icons.Material.Filled.ArrowDownward"></MudIconButton>
+                            </MudTooltip>
+                        </MudStack>
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
     </MudPaper>
 </MudContainer>
 
 @code {
     private List<DocumentProcessInfo> _documentProcesses = new();
     private Guid? SelectedProcessId;
-    private bool IsEditComponentVisible;
 
     protected override async Task OnInitializedAsync()
     {
@@ -62,21 +67,9 @@
     private async Task ExportProcess(Guid processId)
     {
         var documentProcess = await DocumentProcessApiClient.ExportDocumentProcessByIdAsync(processId);
-        var json = JsonSerializer.Serialize(documentProcess, new JsonSerializerOptions { WriteIndented = true });   
+        var json = JsonSerializer.Serialize(documentProcess, new JsonSerializerOptions { WriteIndented = true });
         //var fileName = $"{documentProcess.ShortName}.json";
         //await JSRuntime.InvokeVoidAsync("downloadFile", fileName, json);
-    }
-
-
-    private void CanEditProcess(DocumentProcessInfo process)
-    {
-        SelectedProcessId = process.Id;
-        IsEditComponentVisible = true;
-    }
-
-    private async Task CanToggleProcess(DocumentProcessInfo process)
-    {
-        Snackbar.Add("Toggle process functionality is not available yet.", Severity.Info);
     }
 
     private async Task ShowDeleteConfirmation(Guid contextId)
@@ -113,22 +106,15 @@
             {
                 Snackbar.Add("Document process NOT deleted due to an error", Severity.Error);
             }
-            
-            // Navigate to another page or update the UI as needed
         }
     }
 
-    private void RowClicked(TableRowClickEventArgs<DocumentProcessInfo> args)
+    private void RowClicked(DataGridRowClickEventArgs<DocumentProcessInfo> args)
     {
-        if (args.Item.Source == ProcessSource.Dynamic)
+        if (!IsStaticProcess(args.Item))
         {
-           EditProcess(args.Item.Id);
+            EditProcess(args.Item.Id);
         }
-    }
-
-    private void OnCancel()
-    {
-        IsEditComponentVisible = false;
     }
 
     private bool IsStaticProcess(DocumentProcessInfo process)
