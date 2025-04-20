@@ -27,9 +27,6 @@ IResourceBuilder<IResourceWithConnectionString> eventHub;
 IResourceBuilder<IResourceWithConnectionString> orleansClusteringTable;
 IResourceBuilder<IResourceWithConnectionString> orleansBlobStorage;
 IResourceBuilder<IResourceWithConnectionString> orleansCheckpointing;
-IResourceBuilder<IResourceWithConnectionString> openAiPlanner;
-
-OrleansService orleans;
 
 if (builder.ExecutionContext.IsRunMode) // For local development
 {
@@ -136,16 +133,11 @@ else // For production/Azure deployment
         .AddTables("checkpointing");
 }
 
-openAiPlanner = builder.Configuration.GetConnectionString("openai-planner") != null
-    ? builder.AddConnectionString("openai-planner")
-    : throw new InvalidOperationException("Connection string for 'openai-planner' is not configured.");
-
-orleans = builder.AddOrleans("default")
+OrleansService orleans = builder.AddOrleans("default")
     .WithClustering(orleansClusteringTable)
     .WithClusterId("greenlight-cluster")
     .WithServiceId("greenlight-main-silo")
-    .WithGrainStorage(orleansBlobStorage)
-    ;
+    .WithGrainStorage(orleansBlobStorage);
 
 var dbSetupManager = builder
     .AddProject<Projects.Microsoft_Greenlight_SetupManager_DB>("db-setupmanager")
@@ -178,7 +170,6 @@ var apiMain = builder
     .WithReference(orleansCheckpointing)
     .WithReference(orleansBlobStorage)
     .WithReference(orleansClusteringTable)
-    .WithReference(openAiPlanner)
     .WaitForCompletion(dbSetupManager);
 
 var silo = builder.AddProject<Projects.Microsoft_Greenlight_Silo>("silo")
@@ -197,7 +188,6 @@ var silo = builder.AddProject<Projects.Microsoft_Greenlight_Silo>("silo")
     .WithReference(orleansCheckpointing)
     .WithReference(orleansBlobStorage)
     .WithReference(orleansClusteringTable)
-    .WithReference(openAiPlanner)
     .WithReference(apiMain)
     .WaitForCompletion(dbSetupManager);
 
@@ -229,7 +219,6 @@ var docGenFrontend = builder
     .WithReference(orleansCheckpointing)
     .WithReference(orleansBlobStorage)
     .WithReference(orleansClusteringTable)
-    .WithReference(openAiPlanner)
     .WaitFor(apiMain)
     .WaitForCompletion(dbSetupManager);
 
