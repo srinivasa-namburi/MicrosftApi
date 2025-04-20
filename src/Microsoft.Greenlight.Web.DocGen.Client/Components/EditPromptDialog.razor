@@ -58,17 +58,7 @@
 
 
             </MudItem>
-            @*             <MudItem xs="12">
-                <MudTextField @ref="_promptEditor" @bind-Value="Prompt.Text" Label="Text" T="string"
-                              Immediate="true"
-                              DebounceInterval="100"
-                              Lines="8"
-                              MaxLines="25"
-                              AutoGrow="true"
-                              AutoFocus="true" FullWidth="true"
-                              OnKeyUp="CheckRequiredVariables" />
-            </MudItem> *@
-            @if (Prompt != null)
+                       @if (Prompt != null)
             {
                 <MudItem xs="12">
                     <EditorComponent @ref="_promptEditor"
@@ -181,16 +171,23 @@
 
     private async Task SavePrompt()
     {
-        if (IsEditMode)
+        // Ensure the latest changes from the editor are pushed into Prompt.Text
+        if (Prompt != null)
         {
-            await DocumentProcessApiClient.UpdatePromptAsync(Prompt);
-        }
-        else
-        {
-            await DocumentProcessApiClient.CreatePromptAsync(Prompt);
+            Prompt.Text = await _promptEditor.GetCurrentValueAsync();
+
+            if (IsEditMode)
+            {
+                await DocumentProcessApiClient.UpdatePromptAsync(Prompt);
+            }
+            else
+            {
+                await DocumentProcessApiClient.CreatePromptAsync(Prompt);
+            }
+
+            await OnPromptSaved.InvokeAsync((Guid)Prompt.Id!);
         }
 
-        await OnPromptSaved.InvokeAsync((Guid)Prompt.Id!);
         MudDialog.Close();
     }
 

@@ -1,59 +1,51 @@
-using Humanizer;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
+using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Models.DocumentProcess;
 using Microsoft.Greenlight.Shared.Prompts;
-using Microsoft.Greenlight.Shared.Repositories;
 
 namespace Microsoft.Greenlight.Shared.Services
 {
     /// <summary>
-    /// Service for managing prompt information.
+    /// Service for managing prompt information without caching.
     /// </summary>
     public class PromptInfoService : IPromptInfoService
     {
-        private readonly GenericRepository<PromptDefinition> _promptDefinitionRepository;
-        private readonly GenericRepository<PromptImplementation> _promptImplementationRepository;
+        private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
         private readonly IDocumentProcessInfoService _documentProcessInfoService;
         private readonly IServiceProvider _serviceProvider;
 
-        /// <summary>
-        /// Initializes a new instance of the <see cref="PromptInfoService"/> class.
-        /// </summary>
-        /// <param name="promptDefinitionRepository">The repository for prompt definitions.</param>
-        /// <param name="promptImplementationRepository">The repository for prompt implementations.</param>
-        /// <param name="documentProcessInfoService">The service for document process information.</param>
-        /// <param name="serviceProvider">The service provider.</param>
         public PromptInfoService(
-            GenericRepository<PromptDefinition> promptDefinitionRepository,
-            GenericRepository<PromptImplementation> promptImplementationRepository,
+            IDbContextFactory<DocGenerationDbContext> dbContextFactory,
             IDocumentProcessInfoService documentProcessInfoService,
             IServiceProvider serviceProvider)
         {
-            _promptDefinitionRepository = promptDefinitionRepository;
-            _promptDefinitionRepository.SetCacheDuration(60.Minutes());
-            _promptImplementationRepository = promptImplementationRepository;
-            _promptImplementationRepository.SetCacheDuration(60.Minutes());
+            _dbContextFactory = dbContextFactory;
             _documentProcessInfoService = documentProcessInfoService;
             _serviceProvider = serviceProvider;
         }
 
-        /// <inheritdoc/>
+        /// <inheritdoc />
         public async Task<PromptInfo?> GetPromptByIdAsync(Guid id)
         {
-            var implementation = await _promptImplementationRepository.AllRecords()
+            await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+            var implementation = await dbContext.PromptImplementations
                 .Include(pi => pi.PromptDefinition)
                 .Include(pi => pi.DocumentProcessDefinition)
                 .FirstOrDefaultAsync(pi => pi.Id == id);
 
-            if (implementation == null)
+            if (implementation?.PromptDefinition == null ||
+                implementation.DocumentProcessDefinition == null)
+            {
                 return null;
-
-            if(implementation.PromptDefinition == null || implementation.DocumentProcessDefinition == null)
-                return null;
+            }
 
             return new PromptInfo
             {
@@ -67,33 +59,36 @@ namespace Microsoft.Greenlight.Shared.Services
             };
         }
 
-        /// <inheritdoc/>
+        /// <inheritdoc />
         public async Task<PromptInfo?> GetPromptByShortCodeAndProcessNameAsync(string promptShortCode, string documentProcessName)
         {
             var prompts = await GetPromptsByDocumentProcessName(documentProcessName);
             return prompts.FirstOrDefault(p => p.ShortCode == promptShortCode);
         }
 
-        /// <inheritdoc/>
+        /// <inheritdoc />
         public async Task<string?> GetPromptTextByShortCodeAndProcessNameAsync(string promptShortCode, string documentProcessName)
         {
             var prompt = await GetPromptByShortCodeAndProcessNameAsync(promptShortCode, documentProcessName);
             return prompt?.Text ?? "";
         }
 
-        /// <inheritdoc/>
+        /// <inheritdoc />
         public async Task<List<PromptInfo>> GetPromptsByProcessIdAsync(Guid processId)
         {
-            var implementations = await _promptImplementationRepository.AllRecords()
+            await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+            var implementations = await dbContext.PromptImplementations
                 .Where(pi => pi.DocumentProcessDefinitionId == processId)
                 .Include(pi => pi.PromptDefinition)
                 .Include(pi => pi.DocumentProcessDefinition)
                 .ToListAsync();
 
-            if (implementations == null || implementations.Count == 0)
-                return new List<PromptInfo>();
+            if (implementations.Count == 0)
+                return [];
 
-            implementations = implementations.Where(pi => pi.PromptDefinition != null && pi.DocumentProcessDefinition != null).ToList();
+            implementations = implementations
+                .Where(pi => pi.PromptDefinition != null && pi.DocumentProcessDefinition != null)
+                .ToList();
 
             return implementations.Select(pi => new PromptInfo
             {
@@ -106,20 +101,18 @@ namespace Microsoft.Greenlight.Shared.Services
             }).ToList();
         }
 
-        /// <inheritdoc/>
+        /// <inheritdoc />
         public async Task<List<PromptInfo>> GetPromptsByDocumentProcessName(string documentProcessName)
         {
-            var documentProcess =
-                await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentProcessName);
-
+            var documentProcess = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentProcessName);
             if (documentProcess == null)
-                return new List<PromptInfo>();
+                return [];
 
+            // For static processes, retrieve from the prompt catalog.
             if (documentProcess.Source == ProcessSource.Static)
             {
-                var scope = _serviceProvider.CreateScope();
-                var promptCatalogTypes = scope.ServiceProvider.GetRequiredServiceForDocumentProcess<IPromptCatalogTypes>(documentProcess!);
-
+                using var scope = _serviceProvider.CreateScope();
+                var promptCatalogTypes = scope.ServiceProvider.GetRequiredServiceForDocumentProcess<IPromptCatalogTypes>(documentProcess);
                 var promptInfos = promptCatalogTypes.GetType().GetProperties()
                     .Select(prop => new PromptInfo
                     {
@@ -131,11 +124,11 @@ namespace Microsoft.Greenlight.Shared.Services
                         DocumentProcessName = documentProcess.ShortName
                     }).ToList();
 
+                await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+                var promptDefinitions = await dbContext.PromptDefinitions.ToListAsync();
                 foreach (var promptInfo in promptInfos)
                 {
-                    var promptDefinitions = await _promptDefinitionRepository.GetAllAsync(useCache: true);
                     var promptDefinition = promptDefinitions.FirstOrDefault(pd => pd.ShortCode == promptInfo.ShortCode);
-
                     if (promptDefinition != null)
                     {
                         promptInfo.Description = promptDefinition.Description;
@@ -150,9 +143,10 @@ namespace Microsoft.Greenlight.Shared.Services
             }
         }
 
-        /// <inheritdoc/>
+        /// <inheritdoc />
         public async Task<Guid> AddPromptAsync(PromptInfo promptInfo)
         {
+            await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
             var promptImplementation = new PromptImplementation
             {
                 Id = Guid.NewGuid(),
@@ -161,31 +155,35 @@ namespace Microsoft.Greenlight.Shared.Services
                 StaticDocumentProcessShortCode = promptInfo.DocumentProcessName,
                 Text = promptInfo.Text
             };
-            await _promptImplementationRepository.AddAsync(promptImplementation);
+            await dbContext.PromptImplementations.AddAsync(promptImplementation);
+            await dbContext.SaveChangesAsync();
             return promptImplementation.Id;
         }
 
-        /// <inheritdoc/>
+        /// <inheritdoc />
         public async Task UpdatePromptAsync(PromptInfo promptInfo)
         {
             if (promptInfo.Id != null)
             {
-                var promptImplementation = await _promptImplementationRepository.GetByIdAsync((Guid)promptInfo.Id);
+                await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+                var promptImplementation = await dbContext.PromptImplementations.FindAsync((Guid)promptInfo.Id);
                 if (promptImplementation != null)
                 {
                     promptImplementation.Text = promptInfo.Text;
-                    await _promptImplementationRepository.UpdateAsync(promptImplementation);
+                    await dbContext.SaveChangesAsync();
                 }
             }
         }
 
-        /// <inheritdoc/>
+        /// <inheritdoc />
         public async Task DeletePromptAsync(Guid promptId)
         {
-            var promptImplementation = await _promptImplementationRepository.GetByIdAsync(promptId);
+            await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+            var promptImplementation = await dbContext.PromptImplementations.FindAsync(promptId);
             if (promptImplementation != null)
             {
-                await _promptImplementationRepository.DeleteAsync(promptImplementation);
+                dbContext.PromptImplementations.Remove(promptImplementation);
+                await dbContext.SaveChangesAsync();
             }
         }
     }

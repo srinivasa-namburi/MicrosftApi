@@ -149,6 +149,32 @@
         }
     }
 
+    protected override void OnParametersSet()
+    {
+        // Only update editText when not editing, so that changes aren't overwritten
+        if (!IsEditing)
+        {
+            editText = Node.Text;
+            if (EditorMode == EditorComponentEditorMode.MultiValueDiffEditor)
+            {
+                // For a diff editor, ensure we set up both the original and suggested text
+                if (!string.IsNullOrEmpty(SecondValue))
+                {
+                    secondValueText = SecondValue;
+                    // Initialize lastUpdate variables to track if changes were made
+                    lastUpdateEditText = editText;
+                    lastUpdateSecondValueText = string.Empty; // Empty means no changes yet
+                }
+            }
+            else
+            {
+                // Single value editor
+                lastUpdateEditText = editText;
+            }
+        }
+    }
+
+
     public void Dispose()
     {
         ValidationEditorService.StateChanged -= HandleValidationEditorStateChanged;
@@ -185,27 +211,7 @@
         }
     }
 
-    protected override void OnParametersSet()
-    {
-        editText = Node.Text;
-
-        if (EditorMode == EditorComponentEditorMode.MultiValueDiffEditor)
-        {
-            // For a diff editor, ensure we set up both the original and suggested text
-            if (!string.IsNullOrEmpty(SecondValue))
-            {
-                secondValueText = SecondValue;
-                // Initialize lastUpdate variables to track if changes were made
-                lastUpdateEditText = editText;
-                lastUpdateSecondValueText = string.Empty; // Empty means no changes yet
-            }
-        }
-        else
-        {
-            // Single value editor
-            lastUpdateEditText = editText;
-        }
-    }
+    
 
     public async Task StartEdit()
     {
@@ -243,7 +249,9 @@
 
         if (EditorMode == EditorComponentEditorMode.SingleValue)
         {
-            finalText = lastUpdateEditText;
+            finalText = !string.IsNullOrEmpty(lastUpdateEditText)
+                ? lastUpdateEditText
+                : editText;
         }
         else
         {

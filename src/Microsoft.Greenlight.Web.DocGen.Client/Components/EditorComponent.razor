@@ -129,4 +129,16 @@
             await monacoEditor.SetPosition(new BlazorMonaco.Position() { Column = 1, LineNumber = 1 }, "initial-focus");
         }
     }
+
+
+    public async Task<string> GetCurrentValueAsync()
+    {
+        if (monacoEditor != null)
+        {
+            return await monacoEditor.GetValue(preserveBOM: true, lineEnding: "\n");
+        }
+        return Value;
+    }
+
+
 }

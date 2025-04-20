@@ -75,7 +75,10 @@
         }
 
         var index = Prompts.FindIndex(p => p.Id == updatedPrompt.Id);
-        Prompts[index] = updatedPrompt;
+        if (index != -1) // Check if the prompt exists in the list
+        {
+            Prompts[index] = updatedPrompt;
+        }
         await InvokeAsync(StateHasChanged);
     }
 }
