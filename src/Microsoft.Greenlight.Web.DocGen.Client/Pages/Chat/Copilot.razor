@@ -4,22 +4,42 @@
 @inject NavigationManager Navigation
 @inject IDocumentProcessApiClient DocumentProcessApiClient
 
-@if (_dpError)
-{
-    <div class="alert alert-danger" role="alert">
-        <strong>Loading</strong>
-        @if (string.IsNullOrEmpty(DocumentProcessName))
-        {
-            <span>Document Process not found</span>
-        }
-    </div>
-}
-else
-{
-    <CoPilotComponent ConversationId="@ConversationId"
-                      DocumentProcessName="@DocumentProcessName"
-                      InternalConversationIdCreate="false" />
-}
+<PageTitle>Copilot - @DocumentProcessName</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+    @if (_dpError)
+    {
+        <MudAlert Severity="Severity.Error">
+            <MudText>
+                @if (string.IsNullOrEmpty(DocumentProcessName))
+                {
+                    <span>Document Process not found</span>
+                }
+                else
+                {
+                    <span>Unable to find Document Process "@DocumentProcessName"</span>
+                }
+            </MudText>
+        </MudAlert>
+    }
+    else
+    {
+        <MudPaper Class="pa-0 my-4 standalone-copilot-container">
+            <CoPilotComponent ConversationId="@ConversationId"
+                              DocumentProcessName="@DocumentProcessName"
+                              InternalConversationIdCreate="false"
+                              FillContainer="true" />
+        </MudPaper>
+    }
+</MudContainer>
+
+<style>
+    .standalone-copilot-container {
+        height: calc(90vh - 100px);
+        overflow: hidden;
+    }
+</style>
+
 
 @code {
     [Parameter] public string? ConversationIdString { get; set; }

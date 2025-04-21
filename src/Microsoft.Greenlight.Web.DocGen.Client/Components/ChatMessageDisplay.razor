@@ -9,8 +9,20 @@
     [Parameter] public ChatMessageDTO ChatMessage { get; set; }
     [Parameter] public UserInfoDTO CurrentUser { get; set; }
     [Parameter] public List<ContentReferenceItemInfo> ConversationReferences { get; set; } = new();
-    [CascadingParameter] public bool IsDarkMode { get; set; }
+    [Parameter] public bool IsContextEditMode { get; set; } = false;
+    [Parameter] public EventCallback<string> OnContentSuggestionSelected { get; set; }
+
+    // Direct parameter for dark mode (used when component is in a dialog)
+    [Parameter] public bool IsDarkMode { get; set; }
+
+    // For use within normal component hierarchy
+    [CascadingParameter(Name = "IsDarkMode")]
+    public bool CascadingIsDarkMode { get; set; }
+
     [CascadingParameter] public HubConnection? HubConnection { get; set; }
+
+    // Use either direct or cascading parameter
+    private bool EffectiveIsDarkMode => IsDarkMode || CascadingIsDarkMode;
 
     private Timer? _timer;
     private bool _showTypingIndicator = true;
@@ -64,15 +76,15 @@
             _showStatusMessage = true;
             _statusProcessingComplete = notification.ProcessingComplete;
             _statusPersistent = notification.Persistent;
-            
+
             // For processing complete notifications, always treat as non-persistent regardless of the Persistent property
             if (notification.ProcessingComplete)
             {
                 _statusPersistent = false;
-                
+
                 // Reset timer for completed notifications - they should disappear after the default time
                 _statusTimer?.Dispose();
-                _statusTimer = new Timer(5000); // 5 seconds
+                _statusTimer = new Timer(2000); // 2 seconds
                 _statusTimer.Elapsed += HideStatusMessage;
                 _statusTimer.AutoReset = false;
                 _statusTimer.Start();
@@ -93,7 +105,7 @@
                 _statusTimer?.Dispose();
                 _statusTimer = null;
             }
-            
+
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -152,7 +164,20 @@
 
     private string GetFormattedMessageContent()
     {
-        var content = GetOriginalMessageContent();
+        var content = ChatMessage.Message ?? string.Empty;
+
+        // Check if this is a message with a content reference
+        bool hasContentReference = !string.IsNullOrEmpty(ChatMessage.ContentText) &&
+                                   content.Contains("Content included as reference");
+
+        if (hasContentReference)
+        {
+            // Remove the "Content included as reference" text
+            content = content.Replace("(Content included as reference)", "");
+
+            // Add a reference indicator
+            content = content.Trim() + "\n\n[Content reference attached]";
+        }
 
         // Replace references with numbered references
         foreach (var reference in _messageReferences)
@@ -162,6 +187,7 @@
 
         return content;
     }
+
 
     private string GetOriginalMessageContent()
     {
@@ -269,6 +295,14 @@
         };
     }
 
+    private async Task ApplySuggestion()
+    {
+        if (IsContextEditMode && !string.IsNullOrEmpty(ChatMessage.ContentText))
+        {
+            await OnContentSuggestionSelected.InvokeAsync(ChatMessage.ContentText);
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         _timer?.Dispose();
@@ -295,7 +329,7 @@
 }
 
 @{
-    var wrapperClass = GetMessageClass() + (IsDarkMode ? " dark-mode" : "");
+    var wrapperClass = GetMessageClass() + (EffectiveIsDarkMode ? " dark-mode" : "");
 }
 
 @if (IsCurrentUser)
@@ -334,11 +368,11 @@
                                 <MudText Typo="Typo.caption">@_statusMessage</MudText>
                                 @if (!_statusProcessingComplete)
                                 {
-                                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1"/>
+                                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1" />
                                 }
                                 else
                                 {
-                                    <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" Class="mr-1"/>
+                                    <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" Class="mr-1" />
                                 }
                             </MudStack>
                         </div>
@@ -396,6 +430,22 @@ else
                                 </div>
                             }
                         </div>
+                    }
+
+                    @if (IsContextEditMode && ChatMessage.Source == ChatMessageSource.Assistant && !string.IsNullOrEmpty(ChatMessage.ContentText))
+                    {
+                        <MudDivider Class="my-2" />
+                        <MudText Typo="Typo.subtitle2" Class="mt-2">Suggested Content:</MudText>
+                        <MudPaper Elevation="0" Class="pa-2 my-2" Style="background-color: var(--mud-palette-background-grey)">
+                            <MudText Typo="Typo.body2" Style="white-space: pre-wrap; max-height: 200px; overflow-y: auto;">@ChatMessage.ContentText</MudText>
+                        </MudPaper>
+                        <MudButton Color="Color.Primary"
+                                   Variant="Variant.Filled"
+                                   Size="Size.Small"
+                                   OnClick="ApplySuggestion"
+                                   Class="mt-1">
+                            Apply Suggestion
+                        </MudButton>
                     }
 
                     @if (_showStatusMessage && !string.IsNullOrEmpty(_statusMessage))

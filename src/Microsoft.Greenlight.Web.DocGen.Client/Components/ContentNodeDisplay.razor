@@ -297,29 +297,33 @@
         <MudCard Class="@($"{GetPanelClass(Node.Type)} body-text-card mb-3")">
             <MudCardContent>
                 <div class="position-relative">
-                    @if (HasVersions || Node.Type == ContentNodeType.BodyText)
-                    {
-                        <div class="content-node-actions">
-                            @if (HasVersions)
-                            {
-                                <MudTooltip Text="View version history">
-                                    <MudIconButton Icon="@Icons.Material.Filled.History"
-                                                   Size="Size.Small"
-                                                   Color="Color.Info"
-                                                   OnClick="@(() => BodyTextComponent?.ShowVersionHistory())" />
-                                </MudTooltip>
-                            }
-                            @if (Node.Type == ContentNodeType.BodyText)
-                            {
-                                <MudTooltip Text="Edit content">
-                                    <MudIconButton Icon="@Icons.Material.Filled.Edit"
-                                                   Size="Size.Small"
-                                                   Color="Color.Primary"
-                                                   OnClick="@(() => BodyTextComponent?.StartEdit())" />
-                                </MudTooltip>
-                            }
-                        </div>
-                    }
+                    <div class="content-node-actions">
+                        @if (HasVersions)
+                        {
+                            <MudTooltip Text="View version history">
+                                <MudIconButton Icon="@Icons.Material.Filled.History"
+                                               Size="Size.Small"
+                                               Color="Color.Info"
+                                               OnClick="@(() => BodyTextComponent?.ShowVersionHistory())" />
+                            </MudTooltip>
+                        }
+                        @if (Node.Type == ContentNodeType.BodyText)
+                        {
+                            <MudTooltip Text="Edit content">
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                               Size="Size.Small"
+                                               Color="Color.Primary"
+                                               OnClick="@(() => BodyTextComponent?.StartEdit())" />
+                            </MudTooltip>
+                    
+                            <MudTooltip Text="Get AI assistance">
+                                <MudIconButton Icon="@Icons.Material.Filled.SmartToy"
+                                               Size="Size.Small"
+                                               Color="Color.Secondary"
+                                               OnClick="@(() => BodyTextComponent?.OpenAiAssistant())" />
+                            </MudTooltip>
+                        }
+                    </div>
                     <ContentNodeBodyTextComponent @ref="BodyTextComponent"
                                                   Node="@Node"
                                                   OnNodeUpdated="@HandleNodeUpdated" />

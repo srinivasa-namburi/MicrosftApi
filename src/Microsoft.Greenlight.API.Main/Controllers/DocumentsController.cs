@@ -141,6 +141,35 @@ public partial class DocumentsController : BaseController
     }
 
     /// <summary>
+    /// Gets the header information of the generated document by its ID.
+    /// </summary>
+    /// <param name="documentId">The ID of the document to retrieve.</param>
+    /// <returns>The header information for the generated document.
+    /// Produces Status Codes:
+    ///     200 OK: When completed sucessfully
+    ///     404 Not Found: When no document can be found using the document id provided
+    /// </returns>
+    [HttpGet("{documentId}/header")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [Produces("application/json")]
+    [Produces<GeneratedDocumentInfo>]
+    public async Task<ActionResult<GeneratedDocumentInfo>> GetGeneratedDocumentHeader(string documentId)
+    {
+        var documentGuid = Guid.Parse(documentId);
+        // Load the GeneratedDocument
+        var document = await _dbContext.GeneratedDocuments
+            .AsNoTracking()
+            .FirstOrDefaultAsync(d => d.Id == documentGuid);
+        if (document == null)
+        {
+            return NotFound();
+        }
+        var documentInfo = _mapper.Map<GeneratedDocumentInfo>(document);
+        return Ok(documentInfo);
+    }
+
+    /// <summary>
     /// Assembles the full document including its content nodes.
     /// </summary>
     /// <param name="documentGuid">The GUID of the document to assemble.</param>

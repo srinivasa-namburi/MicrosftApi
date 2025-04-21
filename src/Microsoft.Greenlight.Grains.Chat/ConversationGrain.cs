@@ -287,15 +287,15 @@ public class ConversationGrain : Grain, IConversationGrain
         // Create a temporary kernel for the summary if needed
         var summaryKernel = await _kernelFactory.GetKernelForDocumentProcessAsync(_state.State.DocumentProcessName);
 
-        var openAiExecutionSettings = new OpenAIPromptExecutionSettings
-        {
-            MaxTokens = 200,
-            Temperature = 0.7
-        };
+        var executionSettings = await _kernelFactory.GetPromptExecutionSettingsForDocumentProcessAsync(
+            _state.State.DocumentProcessName,
+            AiTaskType.Summarization);
 
-        var kernelArguments = new KernelArguments(openAiExecutionSettings);
-
+        var kernelArguments = new KernelArguments(executionSettings);
+        
         var response = await summaryKernel.InvokePromptAsync(prompt, kernelArguments);
+
+        _logger.LogInformation("Generated summary: {Summary}", response.ToString());
 
         return response.ToString();
     }

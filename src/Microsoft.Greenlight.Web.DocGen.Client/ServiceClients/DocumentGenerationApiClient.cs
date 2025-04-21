@@ -35,6 +35,14 @@ public class DocumentGenerationApiClient : WebAssemblyBaseServiceClient<Document
                throw new IOException("No document!");
     }
 
+    public async Task<GeneratedDocumentInfo?> GetDocumentHeaderAsync(string documentId)
+    {
+        var response = await SendGetRequestMessage($"/api/documents/{documentId}/header");
+        response?.EnsureSuccessStatusCode();
+        return await response?.Content.ReadFromJsonAsync<GeneratedDocumentInfo>()! ??
+               throw new IOException("No document header!");
+    }
+
     public async Task<bool> DeleteGeneratedDocumentAsync(string documentId)
     {
         var response = await SendDeleteRequestMessage($"/api/documents/{documentId}");

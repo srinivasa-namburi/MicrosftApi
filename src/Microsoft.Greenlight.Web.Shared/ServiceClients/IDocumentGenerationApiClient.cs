@@ -13,5 +13,6 @@ public interface IDocumentGenerationApiClient : IServiceClient
     Task<string?> GenerateExportDocumentLinkAsync(string? documentId);
     Task<string> GetExportDocumentLinkAsync(string documentId);
     Task<bool> StartDocumentValidationAsync(string documentId);
+    Task<GeneratedDocumentInfo?> GetDocumentHeaderAsync(string documentId);
 }
 

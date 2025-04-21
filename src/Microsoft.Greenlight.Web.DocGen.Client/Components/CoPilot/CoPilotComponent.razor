@@ -4,7 +4,7 @@
 @inject IContentReferenceApiClient ContentReferenceApiClient
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IJSRuntime JSRuntime
-@inject ISnackbar Snackbar    
+@inject ISnackbar Snackbar
 
 @using Microsoft.AspNetCore.SignalR.Client
 @using Microsoft.Greenlight.Shared.Contracts.Chat
@@ -16,27 +16,34 @@
 
 @if (ConversationId.HasValue)
 {
-    var containerClass = IsDarkMode ? "chat-container dark-mode" : "chat-container";
+    var containerClass = EffectiveIsDarkMode ? "chat-container dark-mode" : "chat-container";
+    if (FillContainer)
+    {
+        containerClass += " fill-container";
+    }
 
     <MudPaper Class="@containerClass" Elevation="0">
-        <div class="chat-header">
-            <MudIcon Icon="@Icons.Material.Filled.Chat" Class="mr-2" />
-            <h2 class="chat-header-title">
-                @(string.IsNullOrEmpty(DocumentProcessName) ? "Conversation" : $"Conversation with {DocumentProcessName}")
-            </h2>
-            @if (ChatMessages.Any())
-            {
-                <MudTooltip Text="Scroll to bottom">
-                    <MudIconButton Icon="@Icons.Material.Filled.ArrowDownward"
-                                   Color="Color.Inherit"
-                                   OnClick="ScrollMessagesToBottom"
-                                   Size="Size.Small" />
-                </MudTooltip>
-            }
-        </div>
+        @if (!IsContextEditMode)
+        {
+            <div class="chat-header">
+                <MudIcon Icon="@Icons.Material.Filled.Chat" Class="mr-2" />
+                <h2 class="chat-header-title">
+                    @(string.IsNullOrEmpty(DocumentProcessName) ? "Conversation" : $"Conversation with {DocumentProcessName}")
+                </h2>
+                @if (ChatMessages.Any())
+                {
+                    <MudTooltip Text="Scroll to bottom">
+                        <MudIconButton Icon="@Icons.Material.Filled.ArrowDownward"
+                                       Color="Color.Inherit"
+                                       OnClick="ScrollMessagesToBottom"
+                                       Size="Size.Small" />
+                    </MudTooltip>
+                }
+            </div>
+        }
 
         @* Conversation References *@
-        @if (ConversationReferences.Any())
+        @if (ConversationReferences.Any() && !IsContextEditMode)
         {
             <div class="conversation-references mb-2">
                 <MudPaper Class="pa-2">
@@ -76,7 +83,16 @@
             {
                 <div class="empty-state">
                     <MudIcon Icon="@Icons.Material.Outlined.ChatBubbleOutline" Size="Size.Large" Class="mb-4" />
-                    <MudText Typo="Typo.body1">No messages yet. Start the conversation!</MudText>
+                    <MudText Typo="Typo.body1">
+                        @if (IsContextEditMode)
+                        {
+                            <text>Ask for suggestions to improve this content.</text>
+                        }
+                        else
+                        {
+                            <text>No messages yet. Start the conversation!</text>
+                        }
+                    </MudText>
                 </div>
             }
             else
@@ -84,9 +100,12 @@
                 <div>
                     @foreach (var chatMessage in ChatMessages.OrderBy(x => x.CreatedUtc))
                     {
-                        <ChatMessageDisplay ChatMessage="@chatMessage" 
+                        <ChatMessageDisplay ChatMessage="@chatMessage"
                                             CurrentUser="CurrentUser"
-                                            ConversationReferences="AllAvailableReferences" />
+                                            ConversationReferences="AllAvailableReferences"
+                                            OnContentSuggestionSelected="HandleContentSuggestionSelected"
+                                            IsContextEditMode="IsContextEditMode"
+                                            IsDarkMode="EffectiveIsDarkMode" />
                     }
                 </div>
             }
@@ -99,10 +118,10 @@
             }
             else
             {
-                <CoPilotInputComponent 
-                    AllReferences="AllAvailableReferences"
-                    OnMessageSubmit="HandleMessageSubmit"
-                    @ref="_inputComponent" />
+                <CoPilotInputComponent AllReferences="AllAvailableReferences"
+                                       OnMessageSubmit="HandleMessageSubmit"
+                                       @ref="_inputComponent"
+                                       DisableFileUpload="@IsContextEditMode" />
             }
         </div>
     </MudPaper>
@@ -114,15 +133,107 @@ else
     </MudAlert>
 }
 
+
+<style>
+    /* Base styles for both modes */
+    .chat-container {
+        display: flex;
+        flex-direction: column;
+        background-color: var(--mud-palette-background);
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    .dark-mode {
+        background-color: var(--mud-palette-background-dark);
+    }
+
+    /* Fill container mode - adapts to parent */
+    .fill-container {
+        height: 100%;
+        width: 100%;
+    }
+
+    /* Default mode - fixed size */
+    .chat-container:not(.fill-container) {
+        height: calc(90vh - 120px);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+    }
+
+    .messages-container {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1rem;
+        scroll-behavior: smooth;
+        background-color: var(--mud-palette-background-grey);
+        display: flex;
+        flex-direction: column;
+    }
+
+    .dark-mode .messages-container {
+        background-color: var(--mud-palette-background-grey-darken);
+    }
+
+    .messages-list {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .input-container {
+        padding: 0.75rem;
+        border-top: 1px solid var(--mud-palette-lines-default);
+        background-color: var(--mud-palette-surface);
+    }
+
+    .dark-mode .input-container {
+        background-color: var(--mud-palette-surface-dark);
+        border-color: var(--mud-palette-lines-dark);
+    }
+
+    /* Other inherited styles can be maintained from app.css */
+</style>
+
 @code {
+    // For use within normal component hierarchy
+    [CascadingParameter(Name = "IsDarkMode")]
+    public bool CascadingIsDarkMode { get; set; }
+
     [CascadingParameter] public AuthenticationState? AuthenticationState { get; set; }
     [CascadingParameter] public HubConnection? HubConnection { get; set; }
-    [CascadingParameter] public bool IsDarkMode { get; set; }
 
     [Parameter] public Guid? ConversationId { get; set; }
     [Parameter] public string? DocumentProcessName { get; set; }
     [Parameter] public Guid? ExternalReferenceId { get; set; }
     [Parameter] public bool InternalConversationIdCreate { get; set; } = false;
+
+    // Direct parameter for dark mode
+    [Parameter] public bool IsDarkMode { get; set; }
+
+    // Parameters for content editing mode
+    [Parameter] public bool IsContextEditMode { get; set; } = false;
+    [Parameter] public string? EditContextContent { get; set; }
+    [Parameter] public Guid? EditContextNodeId { get; set; }
+    [Parameter] public string? EditContextDisplayName { get; set; }
+    [Parameter] public EventCallback<string> OnContentSuggestionReceived { get; set; }
+
+    /// <summary>
+    /// Hide the initial content display in the CoPilot component
+    /// </summary>
+    [Parameter] public bool HideInitialContentDisplay { get; set; } = false;
+
+    /// <summary>
+    /// Start with a compact UI that shows only essential elements
+    /// </summary>
+    [Parameter] public bool StartWithCompactUI { get; set; } = false;
+
+    /// <summary>
+    /// When true, the component will adapt to fill its container instead of using fixed heights
+    /// </summary>
+    [Parameter] public bool FillContainer { get; set; } = false;
+
+    // Use either direct or cascading parameter
+    private bool EffectiveIsDarkMode => IsDarkMode || CascadingIsDarkMode;
 
     private ElementReference _messagesContainer;
     private CoPilotInputComponent? _inputComponent;
@@ -132,6 +243,7 @@ else
     private List<ContentReferenceItemInfo> AllAvailableReferences { get; set; } = [];
     private UserInfoDTO? CurrentUser { get; set; }
     private bool _isLoading = true;
+    private bool _initialContextMessageSent = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -155,6 +267,13 @@ else
                 AllAvailableReferences = await ContentReferenceApiClient.GetAllReferencesAsync();
 
                 await StartHubConnections();
+
+                // If we're in content edit mode and have content to edit, send a system message with the content
+                if (IsContextEditMode && !string.IsNullOrEmpty(EditContextContent) && !_initialContextMessageSent)
+                {
+                    await SendInitialContextMessage();
+                    _initialContextMessageSent = true;
+                }
             }
             finally
             {
@@ -162,6 +281,46 @@ else
             }
         }
     }
+
+    private async Task SendInitialContextMessage()
+    {
+        // Create a system message with the content being edited
+        var contextMessage = new ChatMessageDTO
+        {
+            Id = Guid.NewGuid(),
+            ConversationId = ConversationId!.Value,
+            Source = ChatMessageSource.System,
+            Message = $"I'm going to help you improve the content from \"{EditContextDisplayName}\". The content is included as a reference.",
+            ContentText = EditContextContent,
+            CreatedUtc = DateTime.UtcNow
+        };
+
+        // Send to API but don't wait for response (it won't generate one)
+        await ChatApiClient.SendChatMessageAsync(contextMessage);
+
+        // Add a visible guidance message for the user - but only if we're not hiding initial display
+
+        var guideMessage = new ChatMessageDTO
+        {
+            Id = Guid.NewGuid(),
+            ConversationId = ConversationId!.Value,
+            Source = ChatMessageSource.System,
+            Message = "I can help improve this content. You can ask me to:\n\n" +
+                      "• Make it more concise or detailed\n" +
+                      "• Improve clarity or technical accuracy\n" +
+                      "• Fix grammar and formatting\n" +
+                      "• Change the tone or style\n\n" +
+                      "When I provide suggestions, they will always include the complete content with the changes applied.",
+            CreatedUtc = DateTime.UtcNow.AddSeconds(1)
+        };
+
+        // Only add guide message to UI, don't send to backend
+        ChatMessages.Add(guideMessage);
+        await InvokeAsync(StateHasChanged);
+
+    }
+
+
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -264,14 +423,15 @@ else
 
     private async Task HubReceiveChatMessageResponseReceivedNotificationHandler(ChatMessageResponseReceived obj)
     {
+        if (obj.ChatMessageDto.ConversationId != ConversationId)
+            return;
+
         var existingMessage = ChatMessages.FirstOrDefault(x => x.Id == obj.ChatMessageDto.Id);
         if (existingMessage != null)
         {
             existingMessage.State = obj.ChatMessageDto.State;
-            if (existingMessage.Message.Length < obj.ChatMessageDto.Message.Length)
-            {
-                existingMessage.Message = obj.ChatMessageDto.Message;
-            }
+            existingMessage.Message = obj.ChatMessageDto.Message;
+            existingMessage.ContentText = obj.ChatMessageDto.ContentText;
         }
         else
         {
@@ -292,6 +452,13 @@ else
             {
                 ChatMessages.Add(obj.ChatMessageDto);
             }
+        }
+
+        // If we're in content edit mode and we received a ContentText suggestion
+        if (IsContextEditMode && !string.IsNullOrEmpty(obj.ChatMessageDto.ContentText))
+        {
+            // Notify parent component about the suggestion
+            await OnContentSuggestionReceived.InvokeAsync(obj.ChatMessageDto.ContentText);
         }
 
         await InvokeAsync(StateHasChanged);
@@ -316,7 +483,65 @@ else
             UserFullName = CurrentUser!.FullName
         };
 
+        // If in content edit mode, include the content being edited as a reference
+        // but don't display it in the message itself
+        if (IsContextEditMode && !string.IsNullOrEmpty(EditContextContent))
+        {
+            chatMessage.ContentText = EditContextContent;
+
+            // Modify the message to indicate that content is included as a reference
+            if (!message.Contains("content included as reference"))
+            {
+                chatMessage.Message = message + "\n\n(Content included as reference)";
+            }
+        }
+
         await ProcessMessage(chatMessage);
+    }
+
+    private void HandleContentSuggestionSelected(string suggestion)
+    {
+        if (!string.IsNullOrEmpty(suggestion) && IsContextEditMode)
+        {
+            OnContentSuggestionReceived.InvokeAsync(suggestion);
+        }
+    }
+
+    public async Task UpdateContextContent(string newContent)
+    {
+        // Update the content context
+        EditContextContent = newContent;
+
+        // Create a system message with the updated content being edited
+        var contextUpdateMessage = new ChatMessageDTO
+        {
+            Id = Guid.NewGuid(),
+            ConversationId = ConversationId!.Value,
+            Source = ChatMessageSource.System,
+            Message = $"The content has been updated. Here's the current content from \"{EditContextDisplayName}\":",
+            ContentText = newContent,
+            CreatedUtc = DateTime.UtcNow
+        };
+
+        // Send to API but don't wait for response (it won't generate one)
+        await ChatApiClient.SendChatMessageAsync(contextUpdateMessage);
+
+        // Add an informational message to the UI
+        var infoMessage = new ChatMessageDTO
+        {
+            Id = Guid.NewGuid(),
+            ConversationId = ConversationId!.Value,
+            Source = ChatMessageSource.System,
+            Message = "Content has been updated. You can continue making suggestions based on the current version.",
+            CreatedUtc = DateTime.UtcNow.AddSeconds(1)
+        };
+
+        // Only add message to UI, don't send to backend
+        ChatMessages.Add(infoMessage);
+        await InvokeAsync(StateHasChanged);
+
+        // Scroll to bottom to show the new message
+        await ScrollMessagesToBottom();
     }
 
     private async Task ProcessOtherUserMessage(ChatMessageDTO chatMessageDto)
@@ -358,7 +583,16 @@ else
 
     private async Task ScrollMessagesToBottom()
     {
-        await JSRuntime.InvokeVoidAsyncIgnoreErrors("scrollToBottom", _messagesContainer);
+        try
+        {
+            await Task.Delay(50); // Small delay to ensure DOM update
+            await JSRuntime.InvokeVoidAsync("scrollToBottom", _messagesContainer);
+        }
+        catch (Exception ex)
+        {
+            // Log error but don't throw - non-critical functionality
+            Console.Error.WriteLine($"Error scrolling messages: {ex.Message}");
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -369,3 +603,4 @@ else
         }
     }
 }
+

@@ -12,6 +12,7 @@ using Microsoft.Greenlight.Shared.Prompts;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.Shared.Services.ContentReference;
 using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.Connectors.OpenAI;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -94,7 +95,30 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
                 referenceItemIds.AddRange(result.ExtractedReferences.Select(item => item.Id));
             }
 
-            // Generate the assistant's response
+            // Handle system messages differently - they should be stored but not processed for response
+            if (userMessageDto.Source == ChatMessageSource.System)
+            {
+                // For system messages, especially with ContentText, we just store them without generating a response
+                _logger.LogInformation("Message {MessageId} is a system message, storing without generating response", userMessageDto.Id);
+
+                // Create an empty "completion" message to satisfy the processing flow but with Complete state
+                result.AssistantMessageEntity = new ChatMessage
+                {
+                    Id = Guid.NewGuid(),
+                    ConversationId = conversationId,
+                    CreatedUtc = DateTime.UtcNow,
+                    Source = ChatMessageSource.System,
+                    Message = "Context received", // Just a placeholder message
+                    ReplyToChatMessageId = userMessageDto.Id
+                };
+
+                // Call back to the ConversationGrain
+                var tempConversationGrain = GrainFactory.GetGrain<IConversationGrain>(conversationId);
+                await tempConversationGrain.OnMessageProcessingComplete(result);
+                return;
+            }
+
+            // Generate the assistant's response for non-system messages
             result.AssistantMessageDto = await GenerateAssistantResponseAsync(
                 userMessageDto,
                 documentProcessName,
@@ -117,6 +141,7 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
             throw;
         }
     }
+
 
 
     private async Task<List<ContentReferenceItem>> ExtractReferencesFromChatMessageAsync(ChatMessageDTO messageDto)
@@ -143,6 +168,7 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
 
         await SendStatusNotificationAsync(messageDto.Id, "Extracting references from message...", true);
         var contentReferences = new List<ContentReferenceItem>();
+        var processingTasks = new List<Task<(string MatchKey, ContentReferenceItem Reference)>>();
 
         foreach (Match match in matches)
         {
@@ -151,57 +177,89 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
                 var referenceId = Guid.Parse(match.Groups[2].Value);
                 string matchKey = match.Value;
 
-                try
+                // Check for duplicate in this message first (exact same reference)
+                if (processedReferences.ContainsKey(matchKey))
                 {
-                    // Check for duplicate in this message first (exact same reference)
-                    if (processedReferences.ContainsKey(matchKey))
-                    {
-                        contentReferences.Add(processedReferences[matchKey]);
-                        continue;
-                    }
-
-                    // For external files, notify user that analysis might take some time
-                    if (referenceType == ContentReferenceType.ExternalFile)
-                    {
-                        var referenceItem =
-                            await _contentReferenceService.GetCachedReferenceByIdAsync(referenceId,
-                                ContentReferenceType.ExternalFile);
-                        if (referenceItem != null)
-                        {
-                            await SendStatusNotificationAsync(messageDto.Id,
-                                $"Processing file reference {referenceItem.DisplayName}", true);
-                        }
-                    }
-
-                    // Get or create the reference
-                    var reference =
-                        await _contentReferenceService.GetOrCreateContentReferenceItemAsync(referenceId,
-                            referenceType);
-                    if (reference != null)
-                    {
-                        processedReferences[matchKey] = reference;
-                        contentReferences.Add(reference);
-                    }
+                    contentReferences.Add(processedReferences[matchKey]);
+                    continue;
                 }
-                catch (Exception ex)
-                {
-                    await SendStatusNotificationAsync(messageDto.Id, "Failed processing reference!", false);
-                    _logger.LogError(ex, "Error processing reference {Id} of type {Type}", referenceId,
-                        referenceType);
-                }
+
+                // Process each reference in parallel but with careful error handling
+                processingTasks.Add(ProcessSingleReferenceAsync(messageDto.Id, referenceId, referenceType, matchKey));
             }
         }
 
+        // Wait for all tasks to complete
+        var results = await Task.WhenAll(processingTasks);
+
+        // Process results
+        foreach (var result in results)
+        {
+            if (result.Reference != null)
+            {
+                processedReferences[result.MatchKey] = result.Reference;
+                contentReferences.Add(result.Reference);
+            }
+        }
+
+        await SendStatusNotificationAsync(messageDto.Id, "All references processed", false, true);
         return contentReferences;
     }
 
+    private async Task<(string MatchKey, ContentReferenceItem Reference)> ProcessSingleReferenceAsync(
+        Guid messageId,
+        Guid referenceId,
+        ContentReferenceType referenceType,
+        string matchKey)
+    {
+        try
+        {
+            // For external files, notify user that analysis might take some time
+            if (referenceType == ContentReferenceType.ExternalFile)
+            {
+                var referenceItem = await _contentReferenceService.GetCachedReferenceByIdAsync(referenceId, ContentReferenceType.ExternalFile);
+                if (referenceItem != null)
+                {
+                    await SendStatusNotificationAsync(messageId, $"Processing file reference {referenceItem.DisplayName}", true);
+                }
+            }
+
+            // Get or create the reference with timeout
+            var timeoutTask = Task.Delay(TimeSpan.FromMinutes(2)); // 2 minute timeout
+            var getReferenceTask = _contentReferenceService.GetOrCreateContentReferenceItemAsync(referenceId, referenceType);
+
+            var completedTask = await Task.WhenAny(getReferenceTask, timeoutTask);
+            if (completedTask == timeoutTask)
+            {
+                _logger.LogWarning("Timeout occurred while processing reference {ReferenceId} of type {ReferenceType}",
+                    referenceId, referenceType);
+                await SendStatusNotificationAsync(messageId, $"Reference processing timed out, continuing without it", false);
+                return (matchKey, null);
+            }
+
+            var reference = await getReferenceTask;
+
+            if (reference != null)
+            {
+                return (matchKey, reference);
+            }
+        }
+        catch (Exception ex)
+        {
+            await SendStatusNotificationAsync(messageId, "Failed processing reference!", false);
+            _logger.LogError(ex, "Error processing reference {Id} of type {Type}", referenceId, referenceType);
+        }
+
+        return (matchKey, null);
+    }
+
     private async Task<ChatMessageDTO> GenerateAssistantResponseAsync(
-        ChatMessageDTO userMessageDto,
-        string documentProcessName,
-        string systemPrompt,
-        List<Guid> referenceItemIds,
-        List<ChatMessage> conversationMessages,
-        List<ConversationSummary> conversationSummaries)
+    ChatMessageDTO userMessageDto,
+    string documentProcessName,
+    string systemPrompt,
+    List<Guid> referenceItemIds,
+    List<ChatMessage> conversationMessages,
+    List<ConversationSummary> conversationSummaries)
     {
         var assistantMessageDto = new ChatMessageDTO
         {
@@ -214,90 +272,257 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
             Message = ""
         };
 
-        if (string.IsNullOrEmpty(userMessageDto.Message))
+        try
         {
-            assistantMessageDto.State = ChatMessageCreationState.Complete;
-            return assistantMessageDto;
-        }
+            if (string.IsNullOrEmpty(userMessageDto.Message))
+            {
+                assistantMessageDto.State = ChatMessageCreationState.Complete;
+                return assistantMessageDto;
+            }
 
-        // Get references for context
-        var referenceItems = await _contentReferenceService.GetContentReferenceItemsFromIdsAsync(referenceItemIds);
+            // Get references for context
+            var referenceItems = await _contentReferenceService.GetContentReferenceItemsFromIdsAsync(referenceItemIds);
 
-        // Send notification with current set of references, if any
-        if (referenceItems.Any())
-        {
-            var referenceItemDtOs = _mapper.Map<List<ContentReferenceItemInfo>>(referenceItems);
-            await SendReferencesUpdatedNotificationAsync(userMessageDto.ConversationId, referenceItemDtOs);
-        }
+            // If ContentText is provided, create a special reference for content editing context
+            if (!string.IsNullOrEmpty(userMessageDto.ContentText))
+            {
+                var contentContextReference = new ContentReferenceItem
+                {
+                    Id = Guid.NewGuid(),
+                    DisplayName = "Content Being Edited",
+                    Description = "Current content node being edited",
+                    ReferenceType = ContentReferenceType.GeneratedSection,
+                    RagText = userMessageDto.ContentText
+                };
 
-        await SendStatusNotificationAsync(userMessageDto.Id, "Adjusting reference context and processing references. Might take a while.", true);
+                // Add this as the first reference for priority
+                referenceItems.Insert(0, contentContextReference);
+            }
 
-        // Build context with selected references
-        var contextString = await BuildContextWithSelectedReferencesAsync(userMessageDto.Message, referenceItems, 5);
+            // Send notification with current set of references, if any
+            if (referenceItems.Any())
+            {
+                var referenceItemDtOs = _mapper.Map<List<ContentReferenceItemInfo>>(referenceItems);
+                await SendReferencesUpdatedNotificationAsync(userMessageDto.ConversationId, referenceItemDtOs);
+            }
 
-        // Get document process info
-        var documentProcessInfo = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentProcessName);
-        if (documentProcessInfo == null)
-        {
-            throw new InvalidOperationException($"Document process with short name {documentProcessName} not found");
-        }
+            await SendStatusNotificationAsync(userMessageDto.Id, "Adjusting reference context and processing references. Might take a while.", true);
 
-        // Initialize the Semantic Kernel
-        var sk = await _kernelFactory.GetKernelForDocumentProcessAsync(documentProcessName);
-        var openAiSettings = await _kernelFactory.GetPromptExecutionSettingsForDocumentProcessAsync(
-            documentProcessInfo, AiTaskType.ChatReplies);
+            // Build context with selected references
+            var contextString = await BuildContextWithSelectedReferencesAsync(userMessageDto.Message, referenceItems, 5);
+
+            // Get document process info
+            DocumentProcessInfo documentProcessInfo = null;
+            try
+            {
+                documentProcessInfo = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentProcessName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to get document process with name {DocumentProcessName}, falling back to Default", documentProcessName);
+                documentProcessInfo = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync("Default");
+
+                if (documentProcessInfo == null)
+                {
+                    // Try to get any document process as a last resort
+                    var documentProcesses = await _documentProcessInfoService.GetCombinedDocumentProcessInfoListAsync();
+                    if (documentProcesses.Any())
+                    {
+                        documentProcessInfo = documentProcesses.First();
+                        documentProcessName = documentProcessInfo.ShortName;
+                    }
+                }
+            }
+
+            if (documentProcessInfo == null)
+            {
+                throw new InvalidOperationException($"No document process found. Tried {documentProcessName} and Default.");
+            }
+
+            // Initialize the Semantic Kernel
+            var sk = await _kernelFactory.GetKernelForDocumentProcessAsync(documentProcessName);
+            var openAiSettings = await _kernelFactory.GetPromptExecutionSettingsForDocumentProcessAsync(
+                documentProcessInfo, AiTaskType.ChatReplies);
 
 #pragma warning disable SKEXP0010
-        openAiSettings.ChatDeveloperPrompt = systemPrompt;
+            openAiSettings.ChatDeveloperPrompt = systemPrompt;
 #pragma warning restore SKEXP0010
 
-        // Prepare chat history and summaries
-        var chatHistoryString = CreateChatHistoryString(conversationMessages, 10);
-        var previousSummariesString = GetSummariesString(conversationSummaries);
+            // Prepare chat history and summaries
+            var chatHistoryString = CreateChatHistoryString(conversationMessages, 10);
+            var previousSummariesString = GetSummariesString(conversationSummaries);
 
-        // Build the user prompt
-        var userPrompt = await BuildUserPromptAsync(
-            chatHistoryString,
-            previousSummariesString,
-            userMessageDto.Message,
-            documentProcessName,
-            contextString);
+            // Build the user prompt
+            var userPrompt = await BuildUserPromptAsync(
+                chatHistoryString,
+                previousSummariesString,
+                userMessageDto.Message,
+                documentProcessName,
+                contextString);
 
-        var kernelArguments = new KernelArguments(openAiSettings);
+            var kernelArguments = new KernelArguments(openAiSettings);
 
-        var updateBlock = "";
-        var responseDateSet = false;
+            var updateBlock = "";
+            var responseDateSet = false;
 
-        await SendStatusNotificationAsync(userMessageDto.Id, "Responding...", false, true);
+            await SendStatusNotificationAsync(userMessageDto.Id, "Responding...", false, true);
 
-        // Stream the response
-        await foreach (var response in sk.InvokePromptStreamingAsync(userPrompt, kernelArguments))
-        {
-            updateBlock += response;
-            if (updateBlock.Length > 20)
+            // Stream the response
+            await foreach (var response in sk.InvokePromptStreamingAsync(userPrompt, kernelArguments))
             {
-                if (!responseDateSet)
+                updateBlock += response;
+                if (updateBlock.Length > 20)
                 {
-                    assistantMessageDto.CreatedUtc = DateTime.UtcNow;
-                    assistantMessageDto.State = ChatMessageCreationState.InProgress;
-                    responseDateSet = true;
-                }
+                    if (!responseDateSet)
+                    {
+                        assistantMessageDto.CreatedUtc = DateTime.UtcNow;
+                        assistantMessageDto.State = ChatMessageCreationState.InProgress;
+                        responseDateSet = true;
+                    }
 
+                    assistantMessageDto.Message += updateBlock;
+                    await SendResponseReceivedNotificationAsync(userMessageDto.ConversationId, assistantMessageDto, updateBlock);
+                    updateBlock = "";
+                }
+            }
+
+            if (updateBlock.Length > 0)
+            {
                 assistantMessageDto.Message += updateBlock;
-                await SendResponseReceivedNotificationAsync(userMessageDto.ConversationId, assistantMessageDto, updateBlock);
-                updateBlock = "";
+            }
+
+            assistantMessageDto.State = ChatMessageCreationState.Complete;
+
+            // If we received content editing context, extract suggested content from the response
+            if (!string.IsNullOrEmpty(userMessageDto.ContentText))
+            {
+                assistantMessageDto.ContentText = ExtractContentSuggestion(assistantMessageDto.Message);
+            }
+
+            await SendResponseReceivedNotificationAsync(userMessageDto.ConversationId, assistantMessageDto, updateBlock);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating assistant response");
+            assistantMessageDto.State = ChatMessageCreationState.Failed;
+            assistantMessageDto.Message = $"I'm sorry, I encountered an error while processing your message: {ex.Message}";
+            await SendResponseReceivedNotificationAsync(userMessageDto.ConversationId, assistantMessageDto, assistantMessageDto.Message);
+        }
+
+        return assistantMessageDto;
+    }
+
+
+
+    private string ExtractContentSuggestion(string responseMessage)
+    {
+        // First clean any common marker patterns that might appear at the start
+        string cleanedResponse = CleanMarkerPatterns(responseMessage);
+
+        // First check for code blocks which often contain complete content
+        var codeBlockRegex = new Regex(@"```(?:markdown|md|text|plaintext)?\s*\n([\s\S]*?)\n```", RegexOptions.Multiline);
+        var codeBlockMatch = codeBlockRegex.Match(cleanedResponse);
+
+        if (codeBlockMatch.Success && codeBlockMatch.Groups.Count > 1)
+        {
+            var extracted = codeBlockMatch.Groups[1].Value.Trim();
+            if (!string.IsNullOrEmpty(extracted))
+            {
+                return CleanMarkerPatterns(extracted);
             }
         }
 
-        if (updateBlock.Length > 0)
+        // If no code blocks, look for sections with common headers
+        var contentMarkers = new[]
         {
-            assistantMessageDto.Message += updateBlock;
+        ("SUGGESTED CONTENT:", ""),
+        ("REVISED CONTENT:", ""),
+        ("UPDATED CONTENT:", ""),
+        ("IMPROVED CONTENT:", ""),
+        ("Here's the revised content:", ""),
+        ("Here's my suggestion:", ""),
+        ("[SUGGESTED CONTENT UPDATE]", ""),
+        ("[SUGGESTED UPDATED CONTENT]", ""),
+        ("[SUGGESTED REVISED CONTENT]", ""),
+        ("[UPDATED CONTENT]", ""),
+        ("[CONTENT UPDATE]", "")
+    };
+
+        foreach (var (startMarker, endMarker) in contentMarkers)
+        {
+            int startIndex = cleanedResponse.IndexOf(startMarker, StringComparison.OrdinalIgnoreCase);
+            if (startIndex >= 0)
+            {
+                startIndex += startMarker.Length;
+                int endIndex = string.IsNullOrEmpty(endMarker)
+                    ? cleanedResponse.Length
+                    : cleanedResponse.IndexOf(endMarker, startIndex, StringComparison.OrdinalIgnoreCase);
+
+                if (endIndex == -1) endIndex = cleanedResponse.Length;
+
+                if (endIndex > startIndex)
+                {
+                    var extracted = cleanedResponse.Substring(startIndex, endIndex - startIndex).Trim();
+                    if (!string.IsNullOrEmpty(extracted))
+                    {
+                        return CleanMarkerPatterns(extracted);
+                    }
+                }
+            }
         }
 
-        assistantMessageDto.State = ChatMessageCreationState.Complete;
-        await SendResponseReceivedNotificationAsync(userMessageDto.ConversationId, assistantMessageDto, updateBlock);
+        // Extract full content if no explicit markers are found but the message isn't too long
+        // This is often the case when the AI responds with just the revised text
+        var plainTextResponse = cleanedResponse.Trim();
+        if (!string.IsNullOrEmpty(plainTextResponse) && plainTextResponse.Length < 256000)
+        {
+            return plainTextResponse;
+        }
 
-        return assistantMessageDto;
+        // If no structured content found or the message is extremely long, extract the first section
+        var lines = cleanedResponse.Split('\n');
+        var meaningfulLines = lines.Where(l => !string.IsNullOrWhiteSpace(l) &&
+            !l.StartsWith("I've reviewed") &&
+            !l.StartsWith("Here are my suggestions") &&
+            !l.StartsWith("Here's what I've") &&
+            !l.Contains("hope this helps")).ToList();
+
+        if (meaningfulLines.Count > 3)
+        {
+            return string.Join("\n", meaningfulLines);
+        }
+
+        // As a last resort, return the original message with markers cleaned
+        return cleanedResponse;
+    }
+
+    private string CleanMarkerPatterns(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return text;
+
+        // Remove common marker headers that might appear at the beginning
+        var markerPatterns = new[]
+        {
+        @"^\s*\[?SUGGESTED\s+(?:CONTENT|UPDATE|UPDATED|CONTENT\s+UPDATE)\]?\s*:?\s*\n?",
+        @"^\s*\[?REVISED\s+CONTENT\]?\s*:?\s*\n?",
+        @"^\s*\[?UPDATED\s+CONTENT\]?\s*:?\s*\n?",
+        @"^\s*\[?IMPROVED\s+CONTENT\]?\s*:?\s*\n?",
+        @"^\s*Here\'s\s+(?:my\s+)?(?:the\s+)?(?:revised|suggested|updated)\s+content\s*:?\s*\n?"
+    };
+
+        // Apply each pattern 
+        foreach (var pattern in markerPatterns)
+        {
+            text = Regex.Replace(text, pattern, "", RegexOptions.IgnoreCase | RegexOptions.Multiline);
+        }
+
+        // Special case for "[SUGGESTED UPDATED CONTENT]" and variations which could be anywhere in the text
+        text = Regex.Replace(text, @"\[SUGGESTED\s+(?:CONTENT|UPDATE|UPDATED|CONTENT\s+UPDATE)\]", "",
+            RegexOptions.IgnoreCase | RegexOptions.Multiline);
+
+        // Clean up any leftover whitespace from the removal
+        return text.Trim();
     }
 
     private async Task<string> BuildContextWithSelectedReferencesAsync(string userQuery, List<ContentReferenceItem> allReferences, int topN)
@@ -306,11 +531,25 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
         return await _ragContextBuilder.BuildContextWithSelectedReferencesAsync(userQuery, allReferences, topN);
     }
 
-    private async Task<string> BuildUserPromptAsync(string chatHistoryString, string previousSummariesForConversationString,
-        string userMessage, string documentProcessName, string contextString)
+    private async Task<string> BuildUserPromptAsync(
+        string chatHistoryString,
+        string previousSummariesForConversationString,
+        string userMessage,
+        string documentProcessName,
+        string contextString)
     {
         var initialUserPrompt = await _promptInfoService.GetPromptTextByShortCodeAndProcessNameAsync(
             PromptNames.ChatSinglePassUserPrompt, documentProcessName);
+
+        // Add special instruction for content editing when contextString contains CONTENT BEING EDITED
+        if (contextString.Contains("CONTENT BEING EDITED"))
+        {
+            initialUserPrompt += "\n\n" +
+                                 "When suggesting improvements to content, always provide the complete text with all changes applied. " +
+                                 "Do not just describe the changes or provide partial content. The user expects to receive the entire " +
+                                 "updated content that can be used as a direct replacement for the original. " +
+                                 "Format your response so the suggested content is clearly marked and can be easily extracted.";
+        }
 
         var template = Scriban.Template.Parse(initialUserPrompt);
 

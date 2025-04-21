@@ -1,0 +1,47 @@
+﻿@using Microsoft.Greenlight.Shared.Contracts.DTO.Document
+@inject IDialogService DialogService
+
+<MudTooltip Text="Get AI assistance for this content">
+    <MudIconButton Icon="@Icons.Material.Filled.SmartToy"
+                   Size="Size.Small"
+                   Color="Color.Secondary"
+                   OnClick="OpenCoPilotDialog" />
+</MudTooltip>
+
+@code {
+    [Parameter] public ContentNodeInfo Node { get; set; } = null!;
+    [Parameter] public EventCallback<string> OnSuggestedContentChanged { get; set; }
+    
+    private async Task OpenCoPilotDialog()
+    {
+        var parameters = new DialogParameters
+        {
+            ["ContentNodeId"] = Node.Id,
+            ["NodeContent"] = Node.Text,
+            ["NodeDisplayName"] = GetSectionName(),
+            ["OnSuggestedContentReceived"] = OnSuggestedContentChanged
+        };
+
+        var dialog = DialogService.Show<ContentNodeCoPilotDialog>("AI Content Assistant", parameters, new DialogOptions
+        {
+            MaxWidth = MaxWidth.ExtraLarge,
+            FullWidth = true,
+            CloseButton = true,
+            DisableBackdropClick = false,
+            Position = DialogPosition.Center
+        });
+
+        await dialog.Result;
+    }
+
+    private string GetSectionName()
+    {
+        // Try to find a meaningful name from the node hierarchy
+        if (Node.Type == ContentNodeType.BodyText && Node.ParentId.HasValue)
+        {
+            return "Content Section";
+        }
+        
+        return Node.Text ?? "Content Section";
+    }
+}

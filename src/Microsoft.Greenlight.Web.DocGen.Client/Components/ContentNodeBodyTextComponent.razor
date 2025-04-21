@@ -9,6 +9,7 @@
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
 @inject ValidationEditorService ValidationEditorService
+@inject IDialogService DialogService
 
 <div class="content-node-editor">
     @if (!IsEditing && !ShowVersions)
@@ -24,8 +25,7 @@
                            @bind-SecondValue="secondValueText"
                            EditorMode="@EditorMode"
                            HeightStyle="300px"
-                           OnContentChanged="HandleContentChanged"
-                           />
+                           OnContentChanged="HandleContentChanged" />
 
             <div class="mt-3 d-flex align-center">
                 <MudTextField @bind-Value="versionComment" Label="Comment (optional)" Variant="Variant.Outlined" Class="mr-2 flex-grow-1" />
@@ -211,8 +211,6 @@
         }
     }
 
-    
-
     public async Task StartEdit()
     {
         editText = Node.Text;
@@ -240,6 +238,61 @@
         // Store latest content
         lastUpdateEditText = editText;
         lastUpdateSecondValueText = secondValueText;
+    }
+
+    public async Task OpenAiAssistant()
+    {
+        var parameters = new DialogParameters
+        {
+            ["ContentNodeId"] = Node.Id,
+            ["NodeContent"] = Node.Text,
+            ["NodeDisplayName"] = GetSectionName(),
+            ["OnSuggestedContentReceived"] = EventCallback.Factory.Create<string>(this, HandleAiSuggestedContent),
+            ["AssociatedGeneratedDocumentId"] = Node.AssociatedGeneratedDocumentId,
+            // Pass the IsDarkMode value directly to the dialog
+            ["IsDarkMode"] = IsDarkMode
+        };
+
+        var dialog = DialogService.Show<ContentNodeCoPilotDialog>("AI Content Assistant", parameters, new DialogOptions
+        {
+            MaxWidth = MaxWidth.ExtraExtraLarge,
+            FullWidth = true,
+            CloseButton = true,
+            DisableBackdropClick = false,
+            Position = DialogPosition.Center
+        });
+
+        await dialog.Result;
+    }
+
+
+    private async Task HandleAiSuggestedContent(string suggestedContent)
+    {
+        if (string.IsNullOrEmpty(suggestedContent) || suggestedContent == Node.Text)
+            return;
+
+        // Switch to diff editor mode to show the changes
+        EditorMode = EditorComponentEditorMode.MultiValueDiffEditor;
+        editText = Node.Text;
+        secondValueText = suggestedContent;
+        versionReason = ContentNodeVersioningReason.AiEdit;
+        versionComment = "AI-assisted edit";
+
+        // Show the editor
+        IsEditing = true;
+        ShowVersions = false;
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private string GetSectionName()
+    {
+        // Try to find a meaningful name for this content node
+        if (Node.ParentId.HasValue)
+        {
+            return "Content Section";
+        }
+        return "Content";
     }
 
     private async Task SaveChanges()
@@ -317,8 +370,6 @@
         }
     }
 
-
-
     private void CancelEdit()
     {
         IsEditing = false;
@@ -349,7 +400,7 @@
 
             // Get the parent section ID for clearing validation data
             Guid? parentSectionId = CurrentValidationChange.ParentContentNodeId;
-        
+
             // Clear validation status for this node and its parent section
             ValidationEditorService.ClearValidationStatus(Node.Id, parentSectionId);
 
@@ -390,7 +441,7 @@
 
             // Get the parent section ID for clearing validation data
             Guid? parentSectionId = CurrentValidationChange.ParentContentNodeId;
-        
+
             // Clear validation status for this node and its parent section
             ValidationEditorService.ClearValidationStatus(Node.Id, parentSectionId);
 
@@ -407,8 +458,6 @@
             CurrentValidationChange = null; // Clear the current validation change
         }
     }
-
-
 
     public async Task ShowVersionHistory()
     {

@@ -1,0 +1,216 @@
+﻿@inject IDocumentGenerationApiClient DocumentGenerationApiClient
+@inject ISnackbar Snackbar
+
+<MudDialog Class="content-ai-dialog">
+    <TitleContent>
+        <MudText Typo="Typo.h6">AI Content Assistant - @NodeDisplayName</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_isLoading)
+        {
+            <MudContainer Class="d-flex justify-center align-center pa-4" Style="height: 300px;">
+                <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+            </MudContainer>
+        }
+        else if (_documentNotFound)
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4">
+                <MudText>Unable to initialize AI assistant. Could not find document information.</MudText>
+            </MudAlert>
+        }
+        else
+        {
+            <MudGrid Class="copilot-dialog-content ma-0">
+                <!-- Content Panel (Left Side) -->
+                <MudItem xs="12" md="6" Class="editor-panel-container pa-2">
+                    <MudCard Class="editor-panel">
+                        <MudCardHeader>
+                            <CardHeaderAvatar>
+                                <MudIcon Icon="@Icons.Material.Filled.Description" Color="Color.Primary" />
+                            </CardHeaderAvatar>
+                            <CardHeaderContent>
+                                <MudText Typo="Typo.h6">Content</MudText>
+                            </CardHeaderContent>
+                            <CardHeaderActions>
+                                @if (_isUpdating)
+                                {
+                                    <MudChip Color="Color.Warning" Size="Size.Small" Icon="@Icons.Material.Filled.Update" Label>Updating...</MudChip>
+                                }
+                                else if (_workingContent != NodeContent)
+                                {
+                                    <MudChip Color="Color.Info" Size="Size.Small" Icon="@Icons.Material.Filled.Edit" Label>Modified</MudChip>
+                                }
+                            </CardHeaderActions>
+                        </MudCardHeader>
+                        
+                        <MudCardContent Class="editor-content">
+                            <MudText Typo="Typo.subtitle2" Class="mb-2">Current Content:</MudText>
+                            <MudPaper Elevation="0" Class="content-preview">
+                                @_workingContent
+                            </MudPaper>
+                        </MudCardContent>
+                        
+                        <MudCardActions Class="editor-actions">
+                            <MudSpacer />
+                            <MudButton Variant="Variant.Outlined" Color="Color.Secondary"
+                                       OnClick="ResetContent" Size="Size.Small"
+                                       Disabled="@(_workingContent == NodeContent)" Class="mr-2">
+                                Reset
+                            </MudButton>
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                       OnClick="ApplyChanges" Size="Size.Small"
+                                       Disabled="@(_workingContent == NodeContent)">
+                                Apply Changes
+                            </MudButton>
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+
+                <!-- AI Assistant Panel (Right Side) -->
+                <MudItem xs="12" md="6" Class="assistant-panel-container pa-2">
+                    <MudCard Class="assistant-panel">
+                        <MudCardHeader>
+                            <CardHeaderAvatar>
+                                <MudIcon Icon="@Icons.Material.Filled.SmartToy" Color="Color.Secondary" />
+                            </CardHeaderAvatar>
+                            <CardHeaderContent>
+                                <MudText Typo="Typo.h6">AI Assistant</MudText>
+                            </CardHeaderContent>
+                        </MudCardHeader>
+                        
+                        <MudCardContent Class="assistant-content pa-0">
+                            <CoPilotComponent @ref="_copilotComponent"
+                                              ConversationId="_conversationId"
+                                              DocumentProcessName="@_documentProcessName"
+                                              InternalConversationIdCreate="true"
+                                              IsContextEditMode="true"
+                                              EditContextContent="@_workingContent"
+                                              EditContextNodeId="@ContentNodeId"
+                                              EditContextDisplayName="@NodeDisplayName"
+                                              OnContentSuggestionReceived="HandleContentSuggestion"
+                                              IsDarkMode="IsDarkMode"
+                                              HideInitialContentDisplay="true"
+                                              FillContainer="true" />
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            </MudGrid>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Color="Color.Default">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public Guid ContentNodeId { get; set; }
+    [Parameter] public string NodeContent { get; set; } = string.Empty;
+    [Parameter] public string NodeDisplayName { get; set; } = "Content Section";
+    [Parameter] public EventCallback<string> OnSuggestedContentReceived { get; set; }
+    [Parameter] public Guid? AssociatedGeneratedDocumentId { get; set; }
+    [Parameter] public bool IsDarkMode { get; set; }
+
+    private CoPilotComponent? _copilotComponent;
+    private readonly Guid _conversationId = Guid.NewGuid();
+    private bool _isLoading = true;
+    private bool _isUpdating = false;
+    private bool _documentNotFound = false;
+    private string _documentProcessName = "Default"; // Fallback document process name
+    private string _workingContent = string.Empty; // Current working content (can be changed by suggestions)
+
+    protected override void OnParametersSet()
+    {
+        if (_workingContent == string.Empty)
+        {
+            _workingContent = NodeContent; // Initialize working content with original content
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Set working content to initial content
+        _workingContent = NodeContent;
+
+        try
+        {
+            if (AssociatedGeneratedDocumentId.HasValue)
+            {
+                // Get the document header which contains the DocumentProcessName
+                var documentInfo = await DocumentGenerationApiClient.GetDocumentHeaderAsync(AssociatedGeneratedDocumentId.Value.ToString());
+                if (documentInfo != null && !string.IsNullOrEmpty(documentInfo.DocumentProcessName))
+                {
+                    _documentProcessName = documentInfo.DocumentProcessName;
+                }
+                else
+                {
+                    // Document found but no process name
+                    Snackbar.Add("Document found but no document process name specified", Severity.Warning);
+                }
+            }
+            else
+            {
+                // No associated document ID provided
+                _documentNotFound = true;
+                Snackbar.Add("No associated document ID provided", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            _documentNotFound = true;
+            Snackbar.Add($"Error retrieving document information: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task HandleContentSuggestion(string suggestedContent)
+    {
+        if (string.IsNullOrEmpty(suggestedContent))
+            return;
+
+        try
+        {
+            _isUpdating = true;
+            await InvokeAsync(StateHasChanged);
+
+            // Short delay to show the updating indicator
+            await Task.Delay(300);
+
+            // Update the working content with the suggestion
+            _workingContent = suggestedContent;
+
+            // When we get new content, update the context in the CoPilot component
+            if (_copilotComponent != null)
+            {
+                await _copilotComponent.UpdateContextContent(_workingContent);
+            }
+        }
+        finally
+        {
+            _isUpdating = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void ResetContent()
+    {
+        _workingContent = NodeContent;
+    }
+
+    private async Task ApplyChanges()
+    {
+        if (_workingContent != NodeContent)
+        {
+            await OnSuggestedContentReceived.InvokeAsync(_workingContent);
+            MudDialog.Close();
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

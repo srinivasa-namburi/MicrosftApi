@@ -36,11 +36,12 @@
                               OnClose="HandleReferenceSelectorClosed" />
 </div>
 
-<div class="mt-2">
-
-    <FileReferenceUploadComponent OnFileUploaded="HandleFileUploaded" />
-
-</div>
+@if (!DisableFileUpload)
+{
+    <div class="mt-2">
+        <FileReferenceUploadComponent OnFileUploaded="HandleFileUploaded" />
+    </div>
+}
 
 @* Reference list display *@
 @if (_referenceMap.Any())
@@ -81,6 +82,7 @@
     [Parameter] public EventCallback<string> OnMessageSubmit { get; set; }
     [Parameter] public EventCallback<bool> OnInputFocusChanged { get; set; }
     [Parameter] public List<ContentReferenceItemInfo>? AllReferences { get; set; }
+    [Parameter] public bool DisableFileUpload { get; set; } = false;
 
     private MudTextField<string>? _mudChatTextField;
     private CoPilotReferenceSelector? _referenceSelector;
@@ -364,12 +366,6 @@
             // Otherwise, send the message
             await SendMessage();
         }
-    }
-
-    private bool ShouldPreventDefault(KeyboardEventArgs e)
-    {
-        // Prevent default behavior for Enter key when the reference selector is not open
-        return e is { Key: "Enter", ShiftKey: false } && !_showReferenceSelector;
     }
 
     private async Task OnChatTextFieldUpdated(string newText)

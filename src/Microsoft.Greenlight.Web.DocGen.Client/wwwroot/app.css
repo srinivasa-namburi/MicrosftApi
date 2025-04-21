@@ -138,7 +138,7 @@ table:not(.mud-table-root) {
         position: relative;
         transition: box-shadow 0.3s ease;
         margin: 0.5rem 0;
-        border:none;
+        border: none;
     }
 
         .section-content .body-text-card:hover {
@@ -161,7 +161,7 @@ table:not(.mud-table-root) {
     }
 
     .section-content .editor-container {
-       /* border: 1px solid var(--mud-palette-lines-default);
+        /* border: 1px solid var(--mud-palette-lines-default);
         border-radius: 4px;*/
         padding: 8px;
         background-color: var(--mud-palette-background-grey);
@@ -238,6 +238,107 @@ table:not(.mud-table-root) {
     background-color: var(--mud-palette-secondary-darken);
 }
 
+/**************************************/
+/* Content AI Dialog (CoPilot Dialog) */
+/**************************************/
+/* Dialog container */
+.content-ai-dialog .mud-dialog-content {
+    padding: 0 !important;
+    overflow: hidden !important;
+}
+
+.content-ai-dialog .mud-dialog-container .mud-dialog {
+    height: 90vh;
+    max-height: 90vh;
+    width: 95vw;
+    max-width: 95vw;
+}
+
+/* Dialog grid layout */
+.copilot-dialog-content {
+    height: 75vh;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+/* Optimize space taken by dividers */
+.mud-divider {
+    margin: 0 !important;
+}
+
+/* Panel containers */
+.editor-panel-container,
+.assistant-panel-container {
+    height: 100%;
+    padding: 8px;
+}
+
+/* Content editor panel */
+.editor-panel,
+.assistant-panel {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Content area */
+.editor-content {
+    flex: 1;
+    overflow: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+/* Editor actions area */
+.editor-actions {
+    padding: 8px 12px;
+    min-height: 52px;
+    border-top: 1px solid var(--mud-palette-divider);
+}
+
+/* Content preview area */
+.content-preview {
+    white-space: pre-wrap;
+    padding: 16px;
+    min-height: 200px;
+    overflow-y: auto;
+    flex-grow: 1;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    max-width: 100%;
+}
+
+/* Assistant content area */
+.assistant-content {
+    flex: 1;
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+}
+
+/* Card headers - more compact */
+.editor-panel .mud-card-header,
+.assistant-panel .mud-card-header {
+    padding: 8px 16px;
+    min-height: 56px;
+    border-bottom: 1px solid var(--mud-palette-divider);
+}
+
+/* Ensure card content doesn't overflow */
+.mud-card-content {
+    overflow-x: hidden;
+}
+
+/* Text content wrapping */
+.content-ai-dialog .mud-typography {
+    word-break: break-word;
+    max-width: 100%;
+}
 
 /**************************************/
 /* Chat-specific container classes    */
@@ -256,16 +357,34 @@ table:not(.mud-table-root) {
     background-color: var(--mud-palette-background-dark);
 }
 
+/* Fill container mode - makes CoPilot fill its parent */
+.fill-container {
+    height: 100%;
+    width: 100%;
+    border-radius: 0;
+    box-shadow: none;
+}
+
 .messages-container {
     flex: 1;
-    padding: 1rem;
     overflow-y: auto;
+    padding: 1rem;
     scroll-behavior: smooth;
     background-color: var(--mud-palette-background-grey);
+    display: flex;
+    flex-direction: column;
 }
 
 .dark-mode .messages-container {
     background-color: var(--mud-palette-background-grey-darken);
+}
+
+/* Fix for ensuring messages display correctly */
+.messages-container > div {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 16px;
 }
 
 .chat-header {
@@ -276,6 +395,11 @@ table:not(.mud-table-root) {
     background-color: var(--mud-palette-primary);
     color: var(--mud-palette-primary-text);
     border-radius: 8px 8px 0 0;
+    flex-shrink: 0;
+}
+
+.fill-container .chat-header {
+    border-radius: 0;
 }
 
 .dark-mode .input-container {
@@ -296,6 +420,7 @@ table:not(.mud-table-root) {
     justify-content: center;
     height: 100%;
     color: var(--mud-palette-text-secondary);
+    flex-grow: 1;
 }
 
 .input-container {
@@ -306,6 +431,13 @@ table:not(.mud-table-root) {
     align-items: flex-end;
     gap: 0.5rem;
     border-radius: 0 0 8px 8px;
+    flex-shrink: 0;
+    width: 100%;
+    min-height: 70px;
+}
+
+.fill-container .input-container {
+    border-radius: 0;
 }
 
 /* Row for the textfield & send button in CopilotComponent */
@@ -314,6 +446,12 @@ table:not(.mud-table-root) {
     width: 100%;
     gap: 8px;
     align-items: flex-end;
+}
+
+/* Standalone CoPilot container class */
+.standalone-copilot-container {
+    height: calc(90vh - 100px);
+    overflow: hidden;
 }
 
 /**************************************/
@@ -741,3 +879,5 @@ table:not(.mud-table-root) {
     .sentiment-reasoning-tooltip .mud-tooltip-root {
         padding: 8px 12px;
     }
+
+

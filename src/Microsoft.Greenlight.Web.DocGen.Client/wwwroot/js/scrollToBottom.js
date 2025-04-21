@@ -16,6 +16,13 @@ window.scrollToBottom = (element) => {
     }
 };
 
+window.scrollChatToBottom = function(elementId) {
+    const element = document.querySelector("." + elementId + " .messages-list");
+    if (element) {
+        element.scrollTop = element.scrollHeight;
+    }
+}
+
 // Add this method to detect when a user has scrolled up and show a "scroll to bottom" button
 window.initializeScrollDetection = (element, dotNetReference) => {
     if (!element) return;
