@@ -371,7 +371,7 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
             await foreach (var response in sk.InvokePromptStreamingAsync(userPrompt, kernelArguments))
             {
                 updateBlock += response;
-                if (updateBlock.Length > 20)
+                if (updateBlock.Length > 80)
                 {
                     if (!responseDateSet)
                     {
