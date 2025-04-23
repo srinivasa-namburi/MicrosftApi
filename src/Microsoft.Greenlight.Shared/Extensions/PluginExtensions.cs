@@ -6,7 +6,6 @@ using Microsoft.Greenlight.Extensions.Plugins.Extensions;
 using Microsoft.SemanticKernel;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
-using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Plugins;
 
 namespace Microsoft.Greenlight.Shared.Extensions

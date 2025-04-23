@@ -51,6 +51,12 @@ resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2022-10
 
 resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2024-10-02-preview' = {
   name: 'cae-${resourceToken}'
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${managedIdentity.id}': {}
+    }
+  }
   location: location
   properties: {
     // Include vnet configuration only if deploymentModel is private.
@@ -75,13 +81,6 @@ resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2024-10-02-p
     }
   }
   tags: tags
-
-  // resource aspireDashboard 'dotNetComponents' = {
-  //   name: 'aspire-dashboard'
-  //   properties: {
-  //     componentType: 'AspireDashboard'
-  //   }
-  // }
 }
 
 resource explicitContributorUserRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {

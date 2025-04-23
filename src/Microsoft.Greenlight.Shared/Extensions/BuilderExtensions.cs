@@ -137,7 +137,7 @@ public static class BuilderExtensions
         {
             settings.Credential = credentialHelper.GetAzureCredential();
         });
-
+        
         builder.AddKeyedAzureTableClient("checkpointing", settings =>
         {
             settings.Credential = credentialHelper.GetAzureCredential();
