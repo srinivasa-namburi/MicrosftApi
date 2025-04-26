@@ -82,6 +82,13 @@ public interface INotificationHubClient
     Task ReceiveChatMessageStatusNotification(ChatMessageStatusNotification notification);
 
     /// <summary>
+    /// Receives a content chunk update notification.
+    /// </summary>
+    /// <param name="contentChunkUpdate">The content chunk update.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
+    Task ReceiveContentChunkUpdateNotification(ContentChunkUpdate contentChunkUpdate);
+
+    /// <summary>
     /// Sends a notification that a validation pipeline execution has reached a certain state for a document.
     /// </summary>
     /// <param name="notification"></param>

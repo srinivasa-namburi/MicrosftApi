@@ -6,10 +6,21 @@
         <MudText Typo="Typo.h6">AI Content Assistant - @NodeDisplayName</MudText>
     </TitleContent>
     <DialogContent>
+        
+        @if (_isChunkUpdating)
+        {
+            <MudOverlay Visible="true" DarkBackground="false" Absolute="true">
+                <MudStack AlignItems="AlignItems.Center" Justify="Justify.Center">
+                    <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Medium" />
+                    <MudText>Applying updates...</MudText>
+                </MudStack>
+            </MudOverlay>
+        }
+
         @if (_isLoading)
         {
             <MudContainer Class="d-flex justify-center align-center pa-4" Style="height: 300px;">
-                <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+                <MudProgressCircular Color="Color.Primary" Indeterminate="true"/>
             </MudContainer>
         }
         else if (_documentNotFound)
@@ -26,7 +37,7 @@
                     <MudCard Class="editor-panel">
                         <MudCardHeader>
                             <CardHeaderAvatar>
-                                <MudIcon Icon="@Icons.Material.Filled.Description" Color="Color.Primary" />
+                                <MudIcon Icon="@Icons.Material.Filled.Description" Color="Color.Primary"/>
                             </CardHeaderAvatar>
                             <CardHeaderContent>
                                 <MudText Typo="Typo.h6">Content</MudText>
@@ -42,16 +53,16 @@
                                 }
                             </CardHeaderActions>
                         </MudCardHeader>
-                        
+
                         <MudCardContent Class="editor-content">
                             <MudText Typo="Typo.subtitle2" Class="mb-2">Current Content:</MudText>
                             <MudPaper Elevation="0" Class="content-preview">
-                                @_workingContent
+                                <RenderMultilineText Value="@_workingContent" />
                             </MudPaper>
                         </MudCardContent>
-                        
+
                         <MudCardActions Class="editor-actions">
-                            <MudSpacer />
+                            <MudSpacer/>
                             <MudButton Variant="Variant.Outlined" Color="Color.Secondary"
                                        OnClick="ResetContent" Size="Size.Small"
                                        Disabled="@(_workingContent == NodeContent)" Class="mr-2">
@@ -71,13 +82,13 @@
                     <MudCard Class="assistant-panel">
                         <MudCardHeader>
                             <CardHeaderAvatar>
-                                <MudIcon Icon="@Icons.Material.Filled.SmartToy" Color="Color.Secondary" />
+                                <MudIcon Icon="@Icons.Material.Filled.SmartToy" Color="Color.Secondary"/>
                             </CardHeaderAvatar>
                             <CardHeaderContent>
                                 <MudText Typo="Typo.h6">AI Assistant</MudText>
                             </CardHeaderContent>
                         </MudCardHeader>
-                        
+
                         <MudCardContent Class="assistant-content pa-0">
                             <CoPilotComponent @ref="_copilotComponent"
                                               ConversationId="_conversationId"
@@ -87,7 +98,7 @@
                                               EditContextContent="@_workingContent"
                                               EditContextNodeId="@ContentNodeId"
                                               EditContextDisplayName="@NodeDisplayName"
-                                              OnContentSuggestionReceived="HandleContentSuggestion"
+                                              OnContentSuggestionReceived="HandleContentChunkUpdates"
                                               IsDarkMode="IsDarkMode"
                                               HideInitialContentDisplay="true"
                                               FillContainer="true" />
@@ -121,6 +132,7 @@
     private bool _documentNotFound = false;
     private string _documentProcessName = "Default"; // Fallback document process name
     private string _workingContent = string.Empty; // Current working content (can be changed by suggestions)
+    private bool _isChunkUpdating = false;
 
     protected override void OnParametersSet()
     {
@@ -169,18 +181,18 @@
         }
     }
 
-    private async Task HandleContentSuggestion(string suggestedContent)
+    private async Task HandleContentChunkUpdates(string suggestedContent)
     {
         if (string.IsNullOrEmpty(suggestedContent))
             return;
 
         try
         {
-            _isUpdating = true;
+            _isChunkUpdating = true;
             await InvokeAsync(StateHasChanged);
 
             // Short delay to show the updating indicator
-            await Task.Delay(300);
+            await Task.Delay(100);
 
             // Update the working content with the suggestion
             _workingContent = suggestedContent;
@@ -193,14 +205,32 @@
         }
         finally
         {
-            _isUpdating = false;
+            _isChunkUpdating = false;
             await InvokeAsync(StateHasChanged);
         }
     }
 
     private void ResetContent()
     {
-        _workingContent = NodeContent;
+        try
+        {
+            // Reset the working content to original
+            _workingContent = NodeContent;
+        
+            // When resetting content, we need to let the CoPilot component know
+            // to reset its internal state as well
+            if (_copilotComponent != null)
+            {
+                _ = _copilotComponent.UpdateContextContent(_workingContent);
+            }
+        
+            Snackbar.Add("Content has been reset to original", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error resetting content: {ex.Message}");
+            Snackbar.Add("Failed to reset content", Severity.Error);
+        }
     }
 
     private async Task ApplyChanges()
@@ -211,6 +241,6 @@
             MudDialog.Close();
         }
     }
-
+    
     private void Cancel() => MudDialog.Cancel();
 }

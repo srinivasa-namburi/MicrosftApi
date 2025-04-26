@@ -178,7 +178,6 @@ public static class KernelMemoryExtensions
         var textPartitioningOptions = new TextPartitioningOptions
         {
             MaxTokensPerParagraph = PartitionSize,
-            MaxTokensPerLine = MaxTokensPerLine,
             OverlappingTokens = 0
         };
 

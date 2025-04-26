@@ -153,6 +153,26 @@ namespace Microsoft.Greenlight.Grains.ApiSpecific
             }
         }
 
+        /// <inheritdoc />
+        public async Task NotifyContentChunkUpdateAsync(ContentChunkUpdate notification)
+        {
+            try
+            {
+                string groupId = notification.ConversationId.ToString();
+                await _hubContext.Clients
+                    .Group(groupId)
+                    .ReceiveContentChunkUpdateNotification(notification);
+
+                _logger.LogInformation("Sent content chunk update notification for conversation {ConversationId}, chunk count {ChunkCount}",
+                    notification.ConversationId, notification.Chunks.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending content chunk update notification for conversation {ConversationId}",
+                    notification.ConversationId);
+            }
+        }
+
         #endregion
 
         #region Validation Domain Notifications

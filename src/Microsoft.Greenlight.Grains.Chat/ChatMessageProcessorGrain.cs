@@ -12,11 +12,8 @@ using Microsoft.Greenlight.Shared.Prompts;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.Shared.Services.ContentReference;
 using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.Connectors.OpenAI;
 using System.Text;
 using System.Text.RegularExpressions;
-
-namespace Microsoft.Greenlight.Grains.Chat;
 
 /// <summary>
 /// Grain for processing individual chat messages without blocking the conversation grain
@@ -254,12 +251,12 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
     }
 
     private async Task<ChatMessageDTO> GenerateAssistantResponseAsync(
-    ChatMessageDTO userMessageDto,
-    string documentProcessName,
-    string systemPrompt,
-    List<Guid> referenceItemIds,
-    List<ChatMessage> conversationMessages,
-    List<ConversationSummary> conversationSummaries)
+        ChatMessageDTO userMessageDto,
+        string documentProcessName,
+        string systemPrompt,
+        List<Guid> referenceItemIds,
+        List<ChatMessage> conversationMessages,
+        List<ConversationSummary> conversationSummaries)
     {
         var assistantMessageDto = new ChatMessageDTO
         {
@@ -283,9 +280,10 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
             // Get references for context
             var referenceItems = await _contentReferenceService.GetContentReferenceItemsFromIdsAsync(referenceItemIds);
 
-            // If ContentText is provided, create a special reference for content editing context
+            // If ContentText is provided, we're in content editing mode
             if (!string.IsNullOrEmpty(userMessageDto.ContentText))
             {
+                // Create a special reference for content editing context
                 var contentContextReference = new ContentReferenceItem
                 {
                     Id = Guid.NewGuid(),
@@ -297,8 +295,51 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
 
                 // Add this as the first reference for priority
                 referenceItems.Insert(0, contentContextReference);
+
+                // Important: Store the current content text to prevent circular references
+                string contentForProcessing = userMessageDto.ContentText;
+
+                // Send a brief message acknowledging the request
+                assistantMessageDto.Message = "I'm analyzing your request and will provide specific updates to the content. Please wait while I process this...";
+                assistantMessageDto.State = ChatMessageCreationState.Complete;
+                
+                // Send the response message first
+                await SendResponseReceivedNotificationAsync(userMessageDto.ConversationId, assistantMessageDto, assistantMessageDto.Message);
+
+                // Then delegate to the ContentChunkProcessorGrain to handle content updates
+                try
+                {
+                    // Get the chunk processor grain
+                    var contentChunkProcessorGrain = GrainFactory.GetGrain<IContentChunkProcessorGrain>(userMessageDto.Id);
+                    
+                    // Start the content processing task (without await to avoid blocking)
+                    _ = Task.Run(async () => {
+                        try
+                        {
+                            await contentChunkProcessorGrain.ProcessContentUpdateAsync(
+                                userMessageDto.ConversationId,
+                                userMessageDto.Id,
+                                contentForProcessing,  // Use the stored content
+                                userMessageDto.Message,
+                                documentProcessName,
+                                systemPrompt);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Error in content chunk processing for message {MessageId}", userMessageDto.Id);
+                        }
+                    });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error delegating to ContentChunkProcessorGrain");
+                    // We'll still return the initial acknowledgment message
+                }
+
+                return assistantMessageDto;
             }
 
+            // Normal chat flow (non-content editing mode) continues here
             // Send notification with current set of references, if any
             if (referenceItems.Any())
             {
@@ -348,6 +389,7 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
             openAiSettings.ChatDeveloperPrompt = systemPrompt;
 #pragma warning restore SKEXP0010
 
+
             // Prepare chat history and summaries
             var chatHistoryString = CreateChatHistoryString(conversationMessages, 10);
             var previousSummariesString = GetSummariesString(conversationSummaries);
@@ -367,23 +409,32 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
 
             await SendStatusNotificationAsync(userMessageDto.Id, "Responding...", false, true);
 
-            // Stream the response
-            await foreach (var response in sk.InvokePromptStreamingAsync(userPrompt, kernelArguments))
+            // Stream the response with timeout protection
+            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(7));
+            try
             {
-                updateBlock += response;
-                if (updateBlock.Length > 80)
+                await foreach (var response in sk.InvokePromptStreamingAsync(userPrompt, kernelArguments, cancellationToken: cts.Token))
                 {
-                    if (!responseDateSet)
+                    updateBlock += response;
+                    if (updateBlock.Length > 80)
                     {
-                        assistantMessageDto.CreatedUtc = DateTime.UtcNow;
-                        assistantMessageDto.State = ChatMessageCreationState.InProgress;
-                        responseDateSet = true;
-                    }
+                        if (!responseDateSet)
+                        {
+                            assistantMessageDto.CreatedUtc = DateTime.UtcNow;
+                            assistantMessageDto.State = ChatMessageCreationState.InProgress;
+                            responseDateSet = true;
+                        }
 
-                    assistantMessageDto.Message += updateBlock;
-                    await SendResponseReceivedNotificationAsync(userMessageDto.ConversationId, assistantMessageDto, updateBlock);
-                    updateBlock = "";
+                        assistantMessageDto.Message += updateBlock;
+                        await SendResponseReceivedNotificationAsync(userMessageDto.ConversationId, assistantMessageDto, updateBlock);
+                        updateBlock = "";
+                    }
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogWarning("Response generation timed out for message {MessageId}", userMessageDto.Id);
+                assistantMessageDto.Message += "\n\n[The response generation timed out. This is what I was able to generate so far.]";
             }
 
             if (updateBlock.Length > 0)
@@ -392,13 +443,6 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
             }
 
             assistantMessageDto.State = ChatMessageCreationState.Complete;
-
-            // If we received content editing context, extract suggested content from the response
-            if (!string.IsNullOrEmpty(userMessageDto.ContentText))
-            {
-                assistantMessageDto.ContentText = ExtractContentSuggestion(assistantMessageDto.Message);
-            }
-
             await SendResponseReceivedNotificationAsync(userMessageDto.ConversationId, assistantMessageDto, updateBlock);
         }
         catch (Exception ex)
@@ -631,7 +675,6 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
         await notifierGrain.NotifyChatMessageStatusAsync(notification);
     }
 
-    // Replace SendResponseReceivedNotificationAsync with this:
     private async Task SendResponseReceivedNotificationAsync(Guid conversationId, ChatMessageDTO assistantMessageDto, string updateBlock)
     {
         var notification = new ChatMessageResponseReceived(conversationId, assistantMessageDto, updateBlock);
@@ -640,7 +683,6 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
         await notifierGrain.NotifyChatMessageResponseReceivedAsync(notification);
     }
 
-    // Replace SendReferencesUpdatedNotificationAsync with this:
     private async Task SendReferencesUpdatedNotificationAsync(Guid conversationId, List<ContentReferenceItemInfo> referenceItems)
     {
         var notification = new ConversationReferencesUpdatedNotification(conversationId, referenceItems);

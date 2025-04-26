@@ -245,6 +245,10 @@ else
     private bool _isLoading = true;
     private bool _initialContextMessageSent = false;
 
+    private string _originalEditContextContent;
+    private ContentChunkTracker _contentChunkTracker;
+    private bool _isProcessingContentChunks = false;
+
     protected override async Task OnInitializedAsync()
     {
         if (!ConversationId.HasValue && InternalConversationIdCreate)
@@ -269,10 +273,16 @@ else
                 await StartHubConnections();
 
                 // If we're in content edit mode and have content to edit, send a system message with the content
-                if (IsContextEditMode && !string.IsNullOrEmpty(EditContextContent) && !_initialContextMessageSent)
+                if (IsContextEditMode && !string.IsNullOrEmpty(EditContextContent))
                 {
-                    await SendInitialContextMessage();
-                    _initialContextMessageSent = true;
+                    _originalEditContextContent = EditContextContent;
+                    _contentChunkTracker = new ContentChunkTracker(EditContextContent);
+
+                    if (!_initialContextMessageSent)
+                    {
+                        await SendInitialContextMessage();
+                        _initialContextMessageSent = true;
+                    }
                 }
             }
             finally
@@ -299,25 +309,26 @@ else
         await ChatApiClient.SendChatMessageAsync(contextMessage);
 
         // Add a visible guidance message for the user - but only if we're not hiding initial display
-
-        var guideMessage = new ChatMessageDTO
+        if (!HideInitialContentDisplay)
         {
-            Id = Guid.NewGuid(),
-            ConversationId = ConversationId!.Value,
-            Source = ChatMessageSource.System,
-            Message = "I can help improve this content. You can ask me to:\n\n" +
-                      "• Make it more concise or detailed\n" +
-                      "• Improve clarity or technical accuracy\n" +
-                      "• Fix grammar and formatting\n" +
-                      "• Change the tone or style\n\n" +
-                      "When I provide suggestions, they will always include the complete content with the changes applied.",
-            CreatedUtc = DateTime.UtcNow.AddSeconds(1)
-        };
+            var guideMessage = new ChatMessageDTO
+            {
+                Id = Guid.NewGuid(),
+                ConversationId = ConversationId!.Value,
+                Source = ChatMessageSource.System,
+                Message = "I can help improve this content. You can ask me to:\n\n" +
+                          "• Make it more concise or detailed\n" +
+                          "• Improve clarity or technical accuracy\n" +
+                          "• Fix grammar and formatting\n" +
+                          "• Change the tone or style\n\n" +
+                          "When I provide suggestions, they will always include the complete content with the changes applied.",
+                CreatedUtc = DateTime.UtcNow.AddSeconds(1)
+            };
 
-        // Only add guide message to UI, don't send to backend
-        ChatMessages.Add(guideMessage);
-        await InvokeAsync(StateHasChanged);
-
+            // Only add guide message to UI, don't send to backend
+            ChatMessages.Add(guideMessage);
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
 
@@ -357,6 +368,10 @@ else
             "ReceiveConversationReferencesUpdatedNotification",
             HubReceiveConversationReferencesUpdatedNotificationHandler);
 
+        HubConnection.On<ContentChunkUpdate>(
+            "ReceiveContentChunkUpdateNotification",
+            HubReceiveContentChunkUpdateNotificationHandler);
+
         if (HubConnection.State == HubConnectionState.Disconnected)
         {
             await HubConnection.StartAsync();
@@ -372,8 +387,64 @@ else
         HubConnection.Remove("ReceiveChatMessageResponseReceivedNotification");
         HubConnection.Remove("ReceiveProcessChatMessageReceivedNotification");
         HubConnection.Remove("ReceiveConversationReferencesUpdatedNotification");
+        HubConnection.Remove("ReceiveContentChunkUpdateNotification");
 
         await HubConnection.SendAsync("RemoveFromGroup", ConversationId);
+    }
+
+    private async Task HubReceiveContentChunkUpdateNotificationHandler(ContentChunkUpdate update)
+    {
+        if (update.ConversationId != ConversationId || !IsContextEditMode)
+            return;
+
+        _isProcessingContentChunks = !update.IsComplete;
+
+        if (update.Chunks?.Any() == true)
+        {
+            try
+            {
+                // Apply chunks to the tracker
+                var beforeContent = _contentChunkTracker.GetCurrentContent();
+                var updatedContent = _contentChunkTracker.ApplyChunks(update.Chunks);
+                
+                // Detect if any changes were actually applied by comparing content
+                bool changesApplied = beforeContent != updatedContent;
+                
+                // Update UI with the new content
+                if (changesApplied)
+                {
+                    await OnContentSuggestionReceived.InvokeAsync(updatedContent);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error processing content chunks: {ex}");
+
+                // Add error message to the chat only if we don't have a specific error message already
+                var existingError = ChatMessages.LastOrDefault(m => m.Source == ChatMessageSource.System &&
+                                                     m.Message.Contains("Error applying content changes"));
+                if (existingError == null)
+                {
+                    var errorMessage = new ChatMessageDTO
+                    {
+                        Id = Guid.NewGuid(),
+                        ConversationId = ConversationId!.Value, 
+                        Source = ChatMessageSource.System,
+                        Message = "Error applying content changes. Please try again.",
+                        CreatedUtc = DateTime.UtcNow
+                    };
+
+                    ChatMessages.Add(errorMessage);
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+        }
+
+        // We don't need to add status messages for updates anymore since the assistant message handles this
+        if (update.IsComplete)
+        {
+            _isProcessingContentChunks = false;
+        }
     }
 
     private async Task HubReceiveConversationReferencesUpdatedNotificationHandler(ConversationReferencesUpdatedNotification obj)
@@ -431,7 +502,13 @@ else
         {
             existingMessage.State = obj.ChatMessageDto.State;
             existingMessage.Message = obj.ChatMessageDto.Message;
-            existingMessage.ContentText = obj.ChatMessageDto.ContentText;
+            
+            // Only set ContentText for non-content-editing mode, since content-editing
+            // mode handles updates through chunks
+            if (!IsContextEditMode)
+            {
+                existingMessage.ContentText = obj.ChatMessageDto.ContentText;
+            }
         }
         else
         {
@@ -454,10 +531,11 @@ else
             }
         }
 
-        // If we're in content edit mode and we received a ContentText suggestion
-        if (IsContextEditMode && !string.IsNullOrEmpty(obj.ChatMessageDto.ContentText))
+        // For content editing mode, don't call OnContentSuggestionReceived since
+        // we're handling that through chunks
+        if (IsContextEditMode && !string.IsNullOrEmpty(obj.ChatMessageDto.ContentText) && !_isProcessingContentChunks)
         {
-            // Notify parent component about the suggestion
+            // Only update if we're not currently processing chunks (avoid conflict)
             await OnContentSuggestionReceived.InvokeAsync(obj.ChatMessageDto.ContentText);
         }
 
@@ -512,7 +590,11 @@ else
         // Update the content context
         EditContextContent = newContent;
 
-        // Create a system message with the updated content being edited
+        // Also update the original content reference for chunk positioning
+        _originalEditContextContent = newContent;
+        _contentChunkTracker = new ContentChunkTracker(newContent);
+
+        // Create a system message with the updated content being edited - send to backend only
         var contextUpdateMessage = new ChatMessageDTO
         {
             Id = Guid.NewGuid(),
@@ -523,25 +605,11 @@ else
             CreatedUtc = DateTime.UtcNow
         };
 
-        // Send to API but don't wait for response (it won't generate one)
+        // Send to API to update backend context, but don't display in UI
         await ChatApiClient.SendChatMessageAsync(contextUpdateMessage);
 
-        // Add an informational message to the UI
-        var infoMessage = new ChatMessageDTO
-        {
-            Id = Guid.NewGuid(),
-            ConversationId = ConversationId!.Value,
-            Source = ChatMessageSource.System,
-            Message = "Content has been updated. You can continue making suggestions based on the current version.",
-            CreatedUtc = DateTime.UtcNow.AddSeconds(1)
-        };
-
-        // Only add message to UI, don't send to backend
-        ChatMessages.Add(infoMessage);
-        await InvokeAsync(StateHasChanged);
-
-        // Scroll to bottom to show the new message
-        await ScrollMessagesToBottom();
+        // No longer adding a local UI message about content updates
+        // This keeps the conversation cleaner and lets the assistant's message updates remain visible
     }
 
     private async Task ProcessOtherUserMessage(ChatMessageDTO chatMessageDto)
@@ -602,5 +670,322 @@ else
             await StopHubConnections();
         }
     }
-}
 
+    private class ContentChunkTracker
+    {
+        private string _originalContent;
+        private string _currentContent;
+        private readonly object _lock = new object();
+        private readonly ILogger _logger;
+
+        public ContentChunkTracker(string initialContent = null, ILogger logger = null)
+        {
+            _originalContent = initialContent ?? string.Empty;
+            _currentContent = initialContent ?? string.Empty;
+            _logger = logger;
+        }
+
+        public string ApplyChunks(List<ContentChunk> chunks)
+        {
+            if (chunks == null || !chunks.Any())
+                return _currentContent;
+
+            lock (_lock)
+            {
+                try
+                {
+                    // Create a working copy to build up changes
+                    string workingContent = _currentContent;
+                    
+                    // Always process chunks in order from first position to last
+                    // This prevents later changes from invalidating earlier ones
+                    var orderedChunks = chunks.OrderBy(c => c.StartPosition).ToList();
+                    
+                    foreach (var chunk in orderedChunks)
+                    {
+                        switch (chunk.ChunkType)
+                        {
+                            case ContentChunkType.Replace:
+                                workingContent = ApplyReplaceChunk(workingContent, chunk);
+                                break;
+                                
+                            case ContentChunkType.Insert:
+                                workingContent = ApplyInsertChunk(workingContent, chunk);
+                                break;
+                                
+                            case ContentChunkType.Delete:
+                                workingContent = ApplyDeleteChunk(workingContent, chunk);
+                                break;
+                        }
+                    }
+                    
+                    // Update current content with all changes applied
+                    _currentContent = workingContent;
+                    return _currentContent;
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "Error applying content chunks");
+                    return _currentContent; // Return unchanged content on error
+                }
+            }
+        }
+
+        private string ApplyReplaceChunk(string content, ContentChunk chunk)
+        {
+            if (string.IsNullOrEmpty(chunk.OriginalText))
+                return content;
+                
+            // First try to find the exact text
+            int index = content.IndexOf(chunk.OriginalText);
+            
+            // If not found directly, try using context
+            if (index < 0 && !string.IsNullOrEmpty(chunk.Context))
+            {
+                // Try to parse context parts
+                string beforeContext = string.Empty;
+                string afterContext = string.Empty;
+                
+                if (chunk.Context.Contains("..."))
+                {
+                    var parts = chunk.Context.Split(new[] { "..." }, StringSplitOptions.None);
+                    if (parts.Length >= 1) beforeContext = parts[0].Trim();
+                    if (parts.Length >= 2) afterContext = parts[1].Trim();
+                    
+                    // Look for a section that matches [before][original][after]
+                    if (!string.IsNullOrEmpty(beforeContext) && !string.IsNullOrEmpty(afterContext))
+                    {
+                        // Find where this context appears in the content
+                        int contextStart = content.IndexOf(beforeContext);
+                        if (contextStart >= 0)
+                        {
+                            int searchStart = contextStart + beforeContext.Length;
+                            int potentialEnd = content.IndexOf(afterContext, searchStart);
+                            
+                            if (potentialEnd > searchStart)
+                            {
+                                // Extract what's in between and verify it matches or is similar
+                                string textBetween = content.Substring(
+                                    searchStart, potentialEnd - searchStart);
+                                    
+                                if (TextSimilarity(textBetween, chunk.OriginalText) > 0.7)
+                                {
+                                    // Replace this specific occurrence
+                                    return content.Substring(0, searchStart) + 
+                                           chunk.NewText + 
+                                           content.Substring(potentialEnd);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // If we found the text directly, replace it
+            if (index >= 0)
+            {
+                return content.Substring(0, index) + 
+                       chunk.NewText + 
+                       content.Substring(index + chunk.OriginalText.Length);
+            }
+            
+            // If we couldn't find it, return unchanged
+            return content;
+        }
+
+        private string ApplyInsertChunk(string content, ContentChunk chunk)
+        {
+            // For inserts, we need to identify the exact insertion point
+            if (!string.IsNullOrEmpty(chunk.Context) && chunk.Context.Contains("..."))
+            {
+                var parts = chunk.Context.Split(new[] { "..." }, StringSplitOptions.None);
+                string beforeContext = parts.Length >= 1 ? parts[0].Trim() : string.Empty;
+                string afterContext = parts.Length >= 2 ? parts[1].Trim() : string.Empty;
+                
+                // Try to insert between before and after context
+                if (!string.IsNullOrEmpty(beforeContext) && !string.IsNullOrEmpty(afterContext))
+                {
+                    int beforePos = content.IndexOf(beforeContext);
+                    if (beforePos >= 0)
+                    {
+                        int afterPos = content.IndexOf(afterContext, beforePos + beforeContext.Length);
+                        if (afterPos > beforePos)
+                        {
+                            // Insert between the context markers
+                            return content.Substring(0, beforePos + beforeContext.Length) +
+                                   chunk.NewText +
+                                   content.Substring(beforePos + beforeContext.Length);
+                        }
+                    }
+                }
+                // If we have only before context
+                else if (!string.IsNullOrEmpty(beforeContext))
+                {
+                    int beforePos = content.IndexOf(beforeContext);
+                    if (beforePos >= 0)
+                    {
+                        return content.Substring(0, beforePos + beforeContext.Length) +
+                               chunk.NewText +
+                               content.Substring(beforePos + beforeContext.Length);
+                    }
+                }
+                // If we have only after context
+                else if (!string.IsNullOrEmpty(afterContext))
+                {
+                    int afterPos = content.IndexOf(afterContext);
+                    if (afterPos >= 0)
+                    {
+                        return content.Substring(0, afterPos) +
+                               chunk.NewText +
+                               content.Substring(afterPos);
+                    }
+                }
+            }
+            
+            // Fall back to position-based insert using surrounding context from original
+            if (chunk.StartPosition >= 0 && chunk.StartPosition < _originalContent.Length)
+            {
+                // Get context from original content around the insertion point
+                int contextLength = 25;
+                int startContext = Math.Max(0, chunk.StartPosition - contextLength);
+                int endContext = Math.Min(_originalContent.Length, chunk.StartPosition + contextLength);
+                
+                string beforeText = startContext < chunk.StartPosition 
+                    ? _originalContent.Substring(startContext, chunk.StartPosition - startContext)
+                    : string.Empty;
+                    
+                string afterText = chunk.StartPosition < endContext
+                    ? _originalContent.Substring(chunk.StartPosition, endContext - chunk.StartPosition)
+                    : string.Empty;
+                    
+                // Try to locate this context in the current content
+                if (!string.IsNullOrEmpty(beforeText) && !string.IsNullOrEmpty(afterText))
+                {
+                    int beforePos = content.IndexOf(beforeText);
+                    if (beforePos >= 0 && beforePos + beforeText.Length < content.Length)
+                    {
+                        int afterPos = content.IndexOf(afterText, beforePos + beforeText.Length);
+                        if (afterPos == beforePos + beforeText.Length)
+                        {
+                            return content.Substring(0, beforePos + beforeText.Length) +
+                                   chunk.NewText +
+                                   content.Substring(beforePos + beforeText.Length);
+                        }
+                    }
+                }
+                else if (!string.IsNullOrEmpty(beforeText))
+                {
+                    int beforePos = content.IndexOf(beforeText);
+                    if (beforePos >= 0)
+                    {
+                        return content.Substring(0, beforePos + beforeText.Length) +
+                               chunk.NewText +
+                               content.Substring(beforePos + beforeText.Length);
+                    }
+                }
+                else if (!string.IsNullOrEmpty(afterText))
+                {
+                    int afterPos = content.IndexOf(afterText);
+                    if (afterPos >= 0)
+                    {
+                        return content.Substring(0, afterPos) +
+                               chunk.NewText +
+                               content.Substring(afterPos);
+                    }
+                }
+            }
+            
+            // Could not reliably insert, return unchanged
+            return content;
+        }
+
+        private string ApplyDeleteChunk(string content, ContentChunk chunk)
+        {
+            if (string.IsNullOrEmpty(chunk.OriginalText))
+                return content;
+                
+            // Try to find the exact text to delete
+            int index = content.IndexOf(chunk.OriginalText);
+            
+            // If not found directly, try using context
+            if (index < 0 && !string.IsNullOrEmpty(chunk.Context))
+            {
+                // Parse context
+                string beforeContext = string.Empty;
+                string afterContext = string.Empty;
+                
+                if (chunk.Context.Contains("..."))
+                {
+                    var parts = chunk.Context.Split(new[] { "..." }, StringSplitOptions.None);
+                    if (parts.Length >= 1) beforeContext = parts[0].Trim();
+                    if (parts.Length >= 2) afterContext = parts[1].Trim();
+                    
+                    // Look for a section that matches [before][original][after]
+                    if (!string.IsNullOrEmpty(beforeContext) && !string.IsNullOrEmpty(afterContext))
+                    {
+                        int contextStart = content.IndexOf(beforeContext);
+                        if (contextStart >= 0)
+                        {
+                            int searchStart = contextStart + beforeContext.Length;
+                            int potentialEnd = content.IndexOf(afterContext, searchStart);
+                            
+                            if (potentialEnd > searchStart)
+                            {
+                                string textBetween = content.Substring(
+                                    searchStart, potentialEnd - searchStart);
+                                    
+                                if (TextSimilarity(textBetween, chunk.OriginalText) > 0.7)
+                                {
+                                    // Delete this specific occurrence
+                                    return content.Substring(0, searchStart) + content.Substring(potentialEnd);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // If found directly, delete it
+            if (index >= 0)
+            {
+                return content.Substring(0, index) + content.Substring(index + chunk.OriginalText.Length);
+            }
+            
+            // If not found, return unchanged
+            return content;
+        }
+
+        // Simple text similarity function to help with fuzzy matching
+        private double TextSimilarity(string s1, string s2)
+        {
+            if (string.IsNullOrEmpty(s1) || string.IsNullOrEmpty(s2))
+                return 0;
+                
+            // Simple Jaccard similarity on character 2-grams
+            var set1 = new HashSet<string>();
+            var set2 = new HashSet<string>();
+            
+            for (int i = 0; i < s1.Length - 1; i++)
+                set1.Add(s1.Substring(i, 2));
+                
+            for (int i = 0; i < s2.Length - 1; i++)
+                set2.Add(s2.Substring(i, 2));
+                
+            int intersectionCount = set1.Intersect(set2).Count();
+            int unionCount = set1.Union(set2).Count();
+            
+            return unionCount == 0 ? 0 : (double)intersectionCount / unionCount;
+        }
+
+        public string GetCurrentContent() => _currentContent;
+
+        public void Reset(string content)
+        {
+            lock (_lock)
+            {
+                _originalContent = content ?? string.Empty;
+                _currentContent = content ?? string.Empty;
+            }
+        }
+    }
+}

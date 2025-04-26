@@ -49,6 +49,7 @@ public class ChatMessage : EntityBase
     /// <summary>
     /// Chat message summarized by a conversation summary.
     /// </summary>
+    [JsonIgnore]
     public ConversationSummary? SummarizedByConversationSummary { get; set; }
 
     /// <summary>
