@@ -270,6 +270,10 @@ namespace Microsoft.Greenlight.Shared.Plugins
                                 LoadCommandOnlyMcpPlugin(plugin, version, loggerFactory);
                                 break;
 
+                            case McpPluginSourceType.SSE:
+                                LoadSseMcpPlugin(plugin, version, loggerFactory);
+                                break;
+
                             default:
                                 _logger?.LogWarning("Skipping plugin '{PluginName}' with unsupported source type: {SourceType}",
                                     plugin.Name, plugin.SourceType);
@@ -346,6 +350,10 @@ namespace Microsoft.Greenlight.Shared.Plugins
                                 LoadCommandOnlyMcpPlugin(plugin, version, loggerFactory);
                                 break;
 
+                            case McpPluginSourceType.SSE:
+                                LoadSseMcpPlugin(plugin, version, loggerFactory);
+                                break;
+
                             default:
                                 _logger?.LogWarning("Skipping plugin '{PluginName}' with unsupported source type: {SourceType}",
                                     plugin.Name, plugin.SourceType);
@@ -400,6 +408,10 @@ namespace Microsoft.Greenlight.Shared.Plugins
 
                     case McpPluginSourceType.CommandOnly:
                         LoadCommandOnlyMcpPlugin(plugin, version, loggerFactory);
+                        break;
+
+                    case McpPluginSourceType.SSE:
+                        LoadSseMcpPlugin(plugin, version, loggerFactory);
                         break;
 
                     default:
@@ -587,6 +599,46 @@ namespace Microsoft.Greenlight.Shared.Plugins
             catch (Exception ex)
             {
                 _logger?.LogError(ex, "Error loading CommandOnly MCP plugin {PluginName}, version {Version}",
+                    plugin.Name, version);
+                return null;
+            }
+        }
+
+        private IMcpPlugin? LoadSseMcpPlugin(
+            McpPlugin plugin,
+            McpPluginVersion version,
+            ILoggerFactory? loggerFactory)
+        {
+            try
+            {
+                // Create a temporary working directory for this plugin instance
+                var workingDirectory = GetPluginWorkingDirectory(plugin, version);
+                Directory.CreateDirectory(workingDirectory);
+
+                // Create a manifest for the SSE plugin
+                var manifest = new McpPluginManifest
+                {
+                    Name = plugin.Name,
+                    Description = plugin.Description ?? $"{plugin.Name} plugin",
+                    Url = version.Url,
+                    AuthenticationType = version.AuthenticationType
+                };
+
+                // Create the plugin instance
+                var logger = loggerFactory?.CreateLogger<SseMcpPlugin>();
+                var mcpPlugin = new SseMcpPlugin(manifest, version.ToString(), logger);
+
+                // Add the plugin to the container
+                _pluginContainer.AddPlugin(plugin.Name, version.ToString(), mcpPlugin);
+
+                _logger?.LogInformation("Successfully loaded SSE MCP plugin: {PluginName}, version: {Version}",
+                    plugin.Name, version);
+
+                return mcpPlugin;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error loading SSE MCP plugin {PluginName}, version {Version}",
                     plugin.Name, version);
                 return null;
             }

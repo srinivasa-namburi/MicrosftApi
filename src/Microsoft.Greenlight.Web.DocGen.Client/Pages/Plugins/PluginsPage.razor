@@ -1,6 +1,7 @@
 @page "/plugins"
 @using Microsoft.Greenlight.Shared.Contracts.DTO.Plugins
 @using Microsoft.Greenlight.Web.Shared.ServiceClients
+@using Microsoft.Greenlight.Web.DocGen.Client.Components
 
 @inject IPluginApiClient PluginApiClient
 @inject ISnackbar Snackbar
@@ -19,9 +20,9 @@
                 </MudButton>
             </MudItem>
             <MudItem xs="6" sm="4" md="3">
-                <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="ShowCreateCommandOnlyPluginDialog" 
+                <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="ShowCreatePluginDialog" 
                          StartIcon="@Icons.Material.Filled.Add" FullWidth="true">
-                    Create Command-Only Plugin
+                    Create Plugin
                 </MudButton>
             </MudItem>
         </MudGrid>
@@ -127,6 +128,7 @@
         {
             "CommandOnly" => Color.Secondary,
             "AzureBlobStorage" => Color.Primary,
+            "SSE" => Color.Tertiary,
             _ => Color.Default
         };
     }
@@ -146,15 +148,10 @@
         });
     }
     
-    private void ShowCreateCommandOnlyPluginDialog()
+    private void ShowCreatePluginDialog()
     {
-        var parameters = new DialogParameters
-        {
-            { "IsNewPlugin", true }
-        };
-        
         var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
-        var dialog = DialogService.Show<EditMcpPluginDialog>("Create Command-Only Plugin", parameters, options);
+        var dialog = DialogService.Show<CreateMcpPluginDialog>("Create Plugin", options);
         
         dialog.Result.ContinueWith(async result =>
         {

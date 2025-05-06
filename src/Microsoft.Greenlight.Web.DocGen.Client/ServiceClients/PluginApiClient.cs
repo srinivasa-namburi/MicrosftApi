@@ -175,6 +175,25 @@ internal sealed class PluginApiClient : WebAssemblyBaseServiceClient<PluginApiCl
         return await response!.Content.ReadFromJsonAsync<McpPluginInfo>();
     }
     
+    public async Task<McpPluginInfo> CreateSseMcpPluginAsync(SseMcpPluginCreateModel createModel)
+    {
+        var url = "/api/mcp-plugins/sse";
+        var response = await SendPostRequestMessage(url, createModel);
+        
+        if (response?.StatusCode == HttpStatusCode.NotFound)
+        {
+            throw new HttpRequestException($"API endpoint not found: {url}");
+        }
+        
+        if (response?.StatusCode == HttpStatusCode.BadRequest)
+        {
+            throw new HttpRequestException($"{await response.Content.ReadAsStringAsync()}");
+        }
+        
+        response?.EnsureSuccessStatusCode();
+        return await response!.Content.ReadFromJsonAsync<McpPluginInfo>();
+    }
+
     public async Task<McpPluginInfo> UpdateMcpPluginAsync(McpPluginUpdateModel updateModel)
     {
         var url = "/api/mcp-plugins/update";

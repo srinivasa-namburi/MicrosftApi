@@ -30,5 +30,15 @@ namespace Microsoft.Greenlight.Shared.Plugins
         /// Key is the environment variable name, value is the environment variable value.
         /// </summary>
         public Dictionary<string, string> EnvironmentVariables { get; set; } = new Dictionary<string, string>();
+
+        /// <summary>
+        /// Gets or sets the URL for SSE/HTTP plugins. Null for non-SSE plugins.
+        /// </summary>
+        public string? Url { get; set; }
+
+        /// <summary>
+        /// Gets or sets the authentication type for the plugin. Null for non-SSE plugins.
+        /// </summary>
+        public Microsoft.Greenlight.Shared.Enums.McpPluginAuthenticationType? AuthenticationType { get; set; }
     }
 }

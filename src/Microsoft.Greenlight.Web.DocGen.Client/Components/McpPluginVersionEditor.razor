@@ -1,7 +1,4 @@
 @using Microsoft.Extensions.Logging
-@using System.ComponentModel.DataAnnotations
-@using Microsoft.Greenlight.Web.Shared.ServiceClients
-@using Microsoft.Greenlight.Shared.Contracts.DTO.Plugins
 
 @inject IPluginApiClient PluginApiClient
 @inject ISnackbar Snackbar
@@ -32,51 +29,78 @@
             }
         </MudItem>
 
-        <MudItem xs="12">
-            <MudTextField @bind-Value="_model.Command" Label="Command" Required="true"
-                          Validation="@(new Func<string, string>(ValidateCommand))"
-                          Placeholder="npx" />
-        </MudItem>
-
-        @{
-            var placeHolderText = "-y,@upstash/context7-mcp@latest}";
+        @if (IsSsePlugin)
+        {
+            <!-- SSE Plugin Fields -->
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_sseUrl" Label="Endpoint URL" Required="true"
+                             Validation="@(new Func<string, string>(ValidateUrl))"
+                             Placeholder="https://example.com/sse-endpoint" />
+            </MudItem>
+            
+            <MudItem xs="12">
+                <MudSelect @bind-Value="_sseAuthType" Label="Authentication Type">
+                    <MudSelectItem Value="@McpPluginAuthenticationType.None">None</MudSelectItem>
+                    <MudSelectItem Value="@McpPluginAuthenticationType.GreenlightManagedIdentity">Greenlight Managed Identity</MudSelectItem>
+                </MudSelect>
+                @if (_sseAuthType == McpPluginAuthenticationType.GreenlightManagedIdentity)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Info" Class="my-2">
+                        Using Greenlight's managed identity for authentication
+                    </MudText>
+                }
+            </MudItem>
         }
+        else
+        {
+            var placeHolderText = "-y,@upstash/context7-mcp@latest";
 
-        <MudItem xs="12">
-            <MudTextField @bind-Value="_argumentsString" Label="Arguments (comma-separated)"
-                          Placeholder="@placeHolderText"
-                          HelperText="Separate arguments with commas"
-                          Lines="3" />
-        </MudItem>
+            <!-- Command-Only Plugin Fields -->
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_model.Command" Label="Command" Required="true"
+                            Validation="@(new Func<string, string>(ValidateCommand))"
+                            Placeholder="npx" />
+            </MudItem>
 
-        <MudItem xs="12">
-            <MudText Typo="Typo.h6">Environment Variables</MudText>
-            <MudTable Items="_environmentVariables" Hover="true" Striped="true">
-                <HeaderContent>
-                    <MudTh>Key</MudTh>
-                    <MudTh>Value</MudTh>
-                    <MudTh>Actions</MudTh>
-                </HeaderContent>
-                <RowTemplate>
-                    <MudTd>@context.Key</MudTd>
-                    <MudTd>@context.Value</MudTd>
-                    <MudTd>
-                        <MudIconButton Size="@Size.Small" Icon="@Icons.Material.Filled.Delete"
-                                       Color="Color.Error"
-                                       OnClick="() => RemoveVariable(context.Key)" />
-                    </MudTd>
-                </RowTemplate>
-                <NoRecordsContent>
-                    <MudText>No environment variables defined</MudText>
-                </NoRecordsContent>
-            </MudTable>
-            <div class="d-flex gap-2 mt-2">
-                <MudTextField @bind-Value="_newKey" Placeholder="Key" Class="flex-1" />
-                <MudTextField @bind-Value="_newValue" Placeholder="Value" Class="flex-1" />
-                <MudButton Variant="Variant.Filled" Color="Color.Secondary"
-                           OnClick="AddVariable">Add Variable</MudButton>
-            </div>
-        </MudItem>
+           
+             
+        
+             <MudItem xs="12">
+                <MudTextField @bind-Value="_argumentsString" Label="Arguments (comma-separated)"
+                            Placeholder="@placeHolderText"
+                            HelperText="Separate arguments with commas"
+                            Lines="3" />
+            </MudItem>
+
+            <MudItem xs="12">
+                <MudText Typo="Typo.h6">Environment Variables</MudText>
+                <MudTable Items="_environmentVariables" Hover="true" Striped="true">
+                    <HeaderContent>
+                        <MudTh>Key</MudTh>
+                        <MudTh>Value</MudTh>
+                        <MudTh>Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.Key</MudTd>
+                        <MudTd>@context.Value</MudTd>
+                        <MudTd>
+                            <MudIconButton Size="@Size.Small" Icon="@Icons.Material.Filled.Delete"
+                                        Color="Color.Error"
+                                        OnClick="() => RemoveVariable(context.Key)" />
+                        </MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <MudText>No environment variables defined</MudText>
+                    </NoRecordsContent>
+                </MudTable>
+                <div class="d-flex gap-2 mt-2">
+                    <MudTextField @bind-Value="_newKey" Placeholder="Key" Class="flex-1" />
+                    <MudTextField @bind-Value="_newValue" Placeholder="Value" Class="flex-1" />
+                    <MudButton Variant="Variant.Filled" Color="Color.Secondary"
+                            OnClick="AddVariable">Add Variable</MudButton>
+                </div>
+            </MudItem>
+        }
     </MudGrid>
 </MudForm>
 
@@ -92,8 +116,12 @@
     private string _argumentsString = string.Empty;
     private string _newKey = string.Empty;
     private string _newValue = string.Empty;
+    private string _sseUrl = string.Empty;
+    private McpPluginAuthenticationType _sseAuthType = McpPluginAuthenticationType.None;
     private Dictionary<string, string> _environmentVariables = new();
     private CommandOnlyMcpPluginCreateModel _model = new();
+
+    private bool IsSsePlugin => PluginInfo?.SourceType?.Equals("SSE", StringComparison.OrdinalIgnoreCase) == true;
 
     protected override void OnInitialized()
     {
@@ -111,6 +139,8 @@
             _model.Description = PluginInfo?.Description;
             _model.Command = Version.Command ?? string.Empty;
             _model.Version = Version.ToString();
+            _sseUrl = Version.Url ?? string.Empty;
+            _sseAuthType = Version.AuthenticationType ?? McpPluginAuthenticationType.None;
 
             _environmentVariables = new Dictionary<string, string>(
                 Version.EnvironmentVariables ?? new Dictionary<string, string>());
@@ -124,8 +154,19 @@
 
     private string ValidateCommand(string command)
     {
-        if (string.IsNullOrWhiteSpace(command))
+        if (!IsSsePlugin && string.IsNullOrWhiteSpace(command))
             return "Command is required";
+
+        return string.Empty;
+    }
+
+    private string ValidateUrl(string url)
+    {
+        if (IsSsePlugin && string.IsNullOrWhiteSpace(url))
+            return "Endpoint URL is required";
+
+        if (IsSsePlugin && !Uri.TryCreate(url, UriKind.Absolute, out _))
+            return "Please enter a valid URL";
 
         return string.Empty;
     }
@@ -214,11 +255,21 @@
                     Name = PluginInfo.Name,
                     Description = PluginInfo.Description,
                     SourceType = PluginInfo.SourceType,
-                    Version = version,
-                    Command = _model.Command,
-                    Arguments = arguments,
-                    EnvironmentVariables = new Dictionary<string, string>(_environmentVariables)
+                    Version = version
                 };
+
+                // Set properties based on plugin type
+                if (IsSsePlugin)
+                {
+                    updateModel.Url = _sseUrl;
+                    updateModel.AuthenticationType = _sseAuthType;
+                }
+                else
+                {
+                    updateModel.Command = _model.Command;
+                    updateModel.Arguments = arguments;
+                    updateModel.EnvironmentVariables = _environmentVariables;
+                }
 
                 // Update the plugin
                 updatedPlugin = await PluginApiClient.UpdateMcpPluginAsync(updateModel);
@@ -228,7 +279,7 @@
                 // Fallback to command-only update if we don't have plugin context
                 _model.Version = version;
                 _model.Arguments = arguments;
-                _model.EnvironmentVariables = new Dictionary<string, string>(_environmentVariables);
+                _model.EnvironmentVariables = _environmentVariables;
 
                 // Update the plugin
                 updatedPlugin = await PluginApiClient.CreateCommandOnlyMcpPluginAsync(_model);

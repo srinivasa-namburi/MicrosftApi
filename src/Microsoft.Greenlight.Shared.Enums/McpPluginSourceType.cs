@@ -11,9 +11,9 @@ namespace Microsoft.Greenlight.Shared.Enums
         AzureBlobStorage = 0,
         
         /// <summary>
-        /// Plugin is accessed via HTTP.
+        /// Plugin is accessed via SSE/HTTP.
         /// </summary>
-        Http = 1,
+        SSE = 1,
         
         /// <summary>
         /// Plugin is loaded from the local filesystem.

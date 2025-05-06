@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using Microsoft.Greenlight.Shared.Enums;
 
 namespace Microsoft.Greenlight.Shared.Contracts.DTO.Plugins
 {
@@ -52,5 +53,15 @@ namespace Microsoft.Greenlight.Shared.Contracts.DTO.Plugins
         /// Gets or sets the environment variables to apply when running the command.
         /// </summary>
         public Dictionary<string, string>? EnvironmentVariables { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the URL for SSE/HTTP plugins. Null for non-SSE plugins.
+        /// </summary>
+        public string? Url { get; set; }
+
+        /// <summary>
+        /// Gets or sets the authentication type for the plugin. Null for non-SSE plugins.
+        /// </summary>
+        public McpPluginAuthenticationType? AuthenticationType { get; set; }
     }
 }

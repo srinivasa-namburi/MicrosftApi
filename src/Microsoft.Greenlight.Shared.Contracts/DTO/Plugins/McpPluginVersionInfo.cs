@@ -44,6 +44,16 @@ namespace Microsoft.Greenlight.Shared.Contracts.DTO.Plugins
         public Dictionary<string, string> EnvironmentVariables { get; set; } = new Dictionary<string, string>();
 
         /// <summary>
+        /// Gets or sets the URL for SSE/HTTP plugins. Null for non-SSE plugins.
+        /// </summary>
+        public string? Url { get; set; }
+
+        /// <summary>
+        /// Gets or sets the authentication type for the plugin. Null for non-SSE plugins.
+        /// </summary>
+        public Microsoft.Greenlight.Shared.Enums.McpPluginAuthenticationType? AuthenticationType { get; set; }
+
+        /// <summary>
         /// Returns a string representation of the plugin version.
         /// </summary>
         /// <returns>A string in the format "Major.Minor.Patch".</returns>

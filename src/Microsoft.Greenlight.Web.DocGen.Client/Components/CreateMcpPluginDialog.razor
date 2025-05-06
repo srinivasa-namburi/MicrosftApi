@@ -1,0 +1,239 @@
+@using Microsoft.Extensions.Logging
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Plugins
+@using Microsoft.Greenlight.Shared.Enums
+
+@inject IPluginApiClient PluginApiClient
+@inject ISnackbar Snackbar
+@inject ILogger<CreateMcpPluginDialog> Logger
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Create New Plugin</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form">
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_name" Label="Plugin Name" Required="true" 
+                                  Validation="@(new Func<string, string>(ValidateName))" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_description" Label="Description" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudSelect @bind-Value="_selectedPluginType" Label="Plugin Type" Required="true">
+                        <MudSelectItem Value="@McpPluginSourceType.CommandOnly">Command-Only</MudSelectItem>
+                        <MudSelectItem Value="@McpPluginSourceType.SSE">SSE/HTTP</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_version" Label="Version" Required="true" 
+                                  Validation="@(new Func<string, string>(ValidateVersion))"
+                                  Placeholder="1.0.0" />
+                </MudItem>
+                
+                @if (_selectedPluginType == McpPluginSourceType.CommandOnly)
+                {
+                    var argumentsPlaceHolder = "-y,@upstash/context7-mcp@latest";
+                    <!-- Command-Only fields -->
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_command" Label="Command" Required="true" 
+                                    Validation="@(new Func<string, string>(ValidateCommand))"
+                                    Placeholder="npx" />
+                    </MudItem>
+
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_argumentsString" Label="Arguments (comma-separated)" 
+                                        Placeholder="@argumentsPlaceHolder"
+                                        HelperText="Separate arguments with commas"
+                                        Lines="3" />
+                    </MudItem>
+                }
+                else if (_selectedPluginType == McpPluginSourceType.SSE)
+                {
+                    <!-- SSE fields -->
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_sseUrl" Label="Endpoint URL" Required="true" 
+                                    Validation="@(new Func<string, string>(ValidateUrl))"
+                                    Placeholder="https://example.com/sse-endpoint" />
+                    </MudItem>
+                    
+                    <MudItem xs="12">
+                        <MudSelect @bind-Value="_sseAuthType" Label="Authentication Type">
+                            <MudSelectItem Value="@McpPluginAuthenticationType.None">None</MudSelectItem>
+                            <MudSelectItem Value="@McpPluginAuthenticationType.GreenlightManagedIdentity">Greenlight Managed Identity</MudSelectItem>
+                        </MudSelect>
+                        @if (_sseAuthType == McpPluginAuthenticationType.GreenlightManagedIdentity)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Info" Class="my-2">
+                                Using Greenlight's managed identity for authentication
+                            </MudText>
+                        }
+                    </MudItem>
+                }
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Submit" Disabled="@_processing">
+            @if (_processing)
+            {
+                <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                <span class="ms-2">Creating...</span>
+            }
+            else
+            {
+                <span>Create</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+
+    private MudForm? _form;
+    private bool _processing;
+    
+    // Common fields
+    private string _name = string.Empty;
+    private string _description = string.Empty;
+    private string _version = "1.0.0";
+    private McpPluginSourceType _selectedPluginType = McpPluginSourceType.CommandOnly;
+    
+    // Command-only fields
+    private string _command = string.Empty;
+    private string _argumentsString = string.Empty;
+    
+    // SSE fields
+    private string _sseUrl = string.Empty;
+    private McpPluginAuthenticationType _sseAuthType = McpPluginAuthenticationType.None;
+    
+    private string ValidateName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return "Plugin name is required";
+            
+        if (name.Length < 3)
+            return "Plugin name must be at least 3 characters";
+            
+        if (name.Contains(" "))
+            return "Plugin name cannot contain spaces";
+            
+        return string.Empty;
+    }
+    
+    private string ValidateVersion(string version)
+    {
+        if (string.IsNullOrWhiteSpace(version))
+            return "Version is required";
+            
+        var parts = version.Split('.');
+        if (parts.Length != 3)
+            return "Version must be in the format: Major.Minor.Patch";
+            
+        foreach (var part in parts)
+        {
+            if (!int.TryParse(part, out _))
+                return "Version components must be integers";
+        }
+        
+        return string.Empty;
+    }
+    
+    private string ValidateCommand(string command)
+    {
+        if (_selectedPluginType == McpPluginSourceType.CommandOnly && string.IsNullOrWhiteSpace(command))
+            return "Command is required for Command-Only plugins";
+            
+        return string.Empty;
+    }
+    
+    private string ValidateUrl(string url)
+    {
+        if (_selectedPluginType == McpPluginSourceType.SSE && string.IsNullOrWhiteSpace(url))
+            return "Endpoint URL is required for SSE plugins";
+        
+        if (_selectedPluginType == McpPluginSourceType.SSE && !Uri.TryCreate(url, UriKind.Absolute, out _))
+            return "Please enter a valid URL";
+            
+        return string.Empty;
+    }
+    
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+    
+    private async Task Submit()
+    {
+        _processing = true;
+        
+        try
+        {
+            // Validate form
+            await _form?.Validate()!;
+            if (_form?.IsValid != true)
+            {
+                _processing = false;
+                return;
+            }
+            
+            McpPluginInfo createdPlugin;
+            
+            if (_selectedPluginType == McpPluginSourceType.CommandOnly)
+            {
+                // Create command-only plugin
+                var commandOnlyModel = new CommandOnlyMcpPluginCreateModel
+                {
+                    Name = _name,
+                    Description = _description,
+                    Version = _version,
+                    Command = _command
+                };
+                
+                // Parse arguments
+                if (!string.IsNullOrWhiteSpace(_argumentsString))
+                {
+                    commandOnlyModel.Arguments = _argumentsString.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                        .Select(a => a.Trim())
+                        .ToList();
+                }
+                
+                createdPlugin = await PluginApiClient.CreateCommandOnlyMcpPluginAsync(commandOnlyModel);
+                Snackbar.Add($"Command-only plugin '{_name}' created successfully.", Severity.Success);
+            }
+            else // SSE
+            {
+                // Create SSE plugin
+                var sseModel = new SseMcpPluginCreateModel
+                {
+                    Name = _name,
+                    Description = _description,
+                    Version = _version,
+                    Url = _sseUrl,
+                    AuthenticationType = _sseAuthType
+                };
+                
+                createdPlugin = await PluginApiClient.CreateSseMcpPluginAsync(sseModel);
+                Snackbar.Add($"SSE plugin '{_name}' created successfully.", Severity.Success);
+            }
+            
+            MudDialog.Close(DialogResult.Ok(createdPlugin));
+        }
+        catch (Exception ex)
+        {
+            var pluginType = _selectedPluginType == McpPluginSourceType.CommandOnly ? "command-only" : "SSE";
+            Logger.LogError(ex, $"Error creating {pluginType} MCP plugin");
+            Snackbar.Add($"Error creating plugin: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _processing = false;
+            StateHasChanged();
+        }
+    }
+}

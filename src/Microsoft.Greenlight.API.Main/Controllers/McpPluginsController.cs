@@ -569,6 +569,121 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         }
 
         /// <summary>
+        /// Creates an SSE/HTTP plugin that connects to a remote endpoint.
+        /// </summary>
+        /// <param name="createModel">Information for creating the plugin.</param>
+        /// <returns>The created plugin information.
+        /// Produces Status Codes:
+        ///     200 OK: When completed successfully
+        ///     400 Bad Request: When parameters are invalid
+        /// </returns>
+        [HttpPost("sse")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [Produces("application/json")]
+        [Produces<McpPluginInfo>]
+        public async Task<ActionResult<McpPluginInfo>> CreateSseMcpPlugin([FromBody] SseMcpPluginCreateModel createModel)
+        {
+            if (createModel == null)
+            {
+                return BadRequest("No plugin information provided.");
+            }
+
+            if (string.IsNullOrWhiteSpace(createModel.Name))
+            {
+                return BadRequest("Plugin name is required.");
+            }
+
+            if (string.IsNullOrWhiteSpace(createModel.Url))
+            {
+                return BadRequest("Endpoint URL is required.");
+            }
+
+            if (!McpPluginVersion.TryParse(createModel.Version, out var pluginVersion))
+            {
+                return BadRequest("Invalid version format. Expected format: Major.Minor.Patch");
+            }
+
+            // Save or update plugin information in the database
+            var plugin = await _dbContext.McpPlugins
+                .FirstOrDefaultAsync(p => p.Name == createModel.Name);
+
+            if (plugin == null)
+            {
+                // Create a new plugin entry
+                plugin = new McpPlugin
+                {
+                    Name = createModel.Name,
+                    Description = createModel.Description,
+                    SourceType = McpPluginSourceType.SSE,
+                    Versions = new List<McpPluginVersion>(),
+                    DocumentProcesses = new List<McpPluginDocumentProcess>()
+                };
+
+                _dbContext.McpPlugins.Add(plugin);
+            }
+            else if (plugin.SourceType != McpPluginSourceType.SSE)
+            {
+                return BadRequest($"Plugin '{createModel.Name}' already exists with a different source type: {plugin.SourceType}");
+            }
+
+            // Check if this version already exists
+            var existingVersion = await _dbContext.McpPluginVersions
+                .FirstOrDefaultAsync(v =>
+                    v.McpPluginId == plugin.Id &&
+                    v.Major == pluginVersion.Major &&
+                    v.Minor == pluginVersion.Minor &&
+                    v.Patch == pluginVersion.Patch);
+
+            if (existingVersion != null)
+            {
+                // Update the existing version
+                existingVersion.Url = createModel.Url;
+                existingVersion.AuthenticationType = createModel.AuthenticationType;
+
+                _dbContext.McpPluginVersions.Update(existingVersion);
+            }
+            else
+            {
+                // Add the new version
+                var newVersion = new McpPluginVersion
+                {
+                    Major = pluginVersion.Major,
+                    Minor = pluginVersion.Minor,
+                    Patch = pluginVersion.Patch,
+                    Url = createModel.Url,
+                    AuthenticationType = createModel.AuthenticationType,
+                    McpPluginId = plugin.Id,
+                    // Initialize empty collections for consistency
+                    Arguments = new List<string>(),
+                    EnvironmentVariables = new Dictionary<string, string>()
+                };
+
+                _dbContext.McpPluginVersions.Add(newVersion);
+            }
+
+            await _dbContext.SaveChangesAsync();
+
+            // Try to load the plugin to verify it can be instantiated
+            try
+            {
+                await _pluginManager.LoadPluginByIdAsync(plugin.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to verify SSE plugin functionality. Plugin was created but may not work correctly.");
+            }
+
+            // Reload the plugin with its versions to get the complete data
+            var updatedPlugin = await _dbContext.McpPlugins
+                .Include(p => p.Versions)
+                .FirstAsync(p => p.Id == plugin.Id);
+
+            var pluginInfo = _mapper.Map<McpPluginInfo>(updatedPlugin);
+            return Ok(pluginInfo);
+        }
+
+        /// <summary>
         /// Updates an MCP plugin of any source type.
         /// </summary>
         /// <param name="updateModel">Information for updating the plugin.</param>
@@ -619,37 +734,58 @@ namespace Microsoft.Greenlight.API.Main.Controllers
 
             if (existingVersion != null)
             {
-                // Update existing version
-                if (!string.IsNullOrEmpty(updateModel.Command))
+                // Update existing version based on plugin type
+                if (plugin.SourceType == McpPluginSourceType.SSE)
                 {
-                    existingVersion.Command = updateModel.Command;
+                    // Update SSE-specific properties
+                    existingVersion.Url = updateModel.Url;
+                    existingVersion.AuthenticationType = updateModel.AuthenticationType;
                 }
-
-                if (updateModel.Arguments != null)
+                else
                 {
-                    existingVersion.Arguments = updateModel.Arguments;
-                }
+                    // Update Command-based properties
+                    if (!string.IsNullOrEmpty(updateModel.Command))
+                    {
+                        existingVersion.Command = updateModel.Command;
+                    }
 
-                if (updateModel.EnvironmentVariables != null)
-                {
-                    existingVersion.EnvironmentVariables = updateModel.EnvironmentVariables;
+                    if (updateModel.Arguments != null)
+                    {
+                        existingVersion.Arguments = updateModel.Arguments;
+                    }
+
+                    if (updateModel.EnvironmentVariables != null)
+                    {
+                        existingVersion.EnvironmentVariables = updateModel.EnvironmentVariables;
+                    }
                 }
 
                 _dbContext.McpPluginVersions.Update(existingVersion);
             }
-            else if (!string.IsNullOrEmpty(updateModel.Command))
+            else
             {
-                // Add new version
+                // Add new version based on plugin type
                 var newVersion = new McpPluginVersion
                 {
                     Major = pluginVersion.Major,
                     Minor = pluginVersion.Minor,
                     Patch = pluginVersion.Patch,
-                    Command = updateModel.Command,
-                    Arguments = updateModel.Arguments ?? new List<string>(),
-                    EnvironmentVariables = updateModel.EnvironmentVariables ?? new Dictionary<string, string>(),
                     McpPluginId = plugin.Id
                 };
+
+                if (plugin.SourceType == McpPluginSourceType.SSE)
+                {
+                    // Set SSE-specific properties
+                    newVersion.Url = updateModel.Url;
+                    newVersion.AuthenticationType = updateModel.AuthenticationType;
+                }
+                else
+                {
+                    // Set Command-based properties
+                    newVersion.Command = updateModel.Command;
+                    newVersion.Arguments = updateModel.Arguments ?? new List<string>();
+                    newVersion.EnvironmentVariables = updateModel.EnvironmentVariables ?? new Dictionary<string, string>();
+                }
 
                 _dbContext.McpPluginVersions.Add(newVersion);
             }

@@ -16,6 +16,7 @@ public interface IPluginApiClient : IServiceClient
     Task<(McpPluginInfo PluginInfo, bool NeedsOverride)> UploadMcpPluginAsyncWithOverrideCheck(IBrowserFile pluginFile);
     Task UpdateMcpPluginVersionAsync(Guid documentProcessId, Guid pluginId, McpPluginVersionInfo version);
     Task<McpPluginInfo> CreateCommandOnlyMcpPluginAsync(CommandOnlyMcpPluginCreateModel createModel);
+    Task<McpPluginInfo> CreateSseMcpPluginAsync(SseMcpPluginCreateModel createModel);
     Task<McpPluginInfo> UpdateMcpPluginAsync(McpPluginUpdateModel updateModel);
     Task DeleteMcpPluginAsync(Guid pluginId);
 }

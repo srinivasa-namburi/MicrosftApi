@@ -1,4 +1,5 @@
 using Microsoft.Greenlight.Shared.Contracts.DTO;
+using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.SemanticKernel;
 using ModelContextProtocol.Client;
 
@@ -64,31 +65,5 @@ namespace Microsoft.Greenlight.Shared.Plugins
         /// </summary>
         /// <returns>A task that represents the asynchronous operation.</returns>
         Task DisposeAsync();
-    }
-
-    /// <summary>
-    /// Represents the type of MCP plugin.
-    /// </summary>
-    public enum McpPluginType
-    {
-        /// <summary>
-        /// Standard input/output MCP plugin.
-        /// </summary>
-        Stdio = 0,
-
-        /// <summary>
-        /// HTTP-based MCP plugin.
-        /// </summary>
-        Http = 1,
-
-        /// <summary>
-        /// GitHub-hosted MCP plugin.
-        /// </summary>
-        GitHub = 2,
-
-        /// <summary>
-        /// NPX-executed MCP plugin.
-        /// </summary>
-        Npx = 3
     }
 }

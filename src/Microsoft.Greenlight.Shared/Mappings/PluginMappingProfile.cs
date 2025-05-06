@@ -26,7 +26,11 @@ namespace Microsoft.Greenlight.Shared.Mappings
                     opt.MapFrom(src => Enum.Parse<McpPluginSourceType>(src.SourceType)));
 
             CreateMap<McpPluginVersion, McpPluginVersionInfo>()
-                .ReverseMap();
+                .ForMember(dest => dest.Url, opt => opt.MapFrom(src => src.Url))
+                .ForMember(dest => dest.AuthenticationType, opt => opt.MapFrom(src => src.AuthenticationType))
+                .ReverseMap()
+                .ForMember(dest => dest.Url, opt => opt.MapFrom(src => src.Url))
+                .ForMember(dest => dest.AuthenticationType, opt => opt.MapFrom(src => src.AuthenticationType));
 
             CreateMap<McpPluginDocumentProcess, McpPluginDocumentProcessInfo>()
                 .ForMember(dest => dest.DocumentProcess, opt => opt.MapFrom(src => src.DynamicDocumentProcessDefinition))

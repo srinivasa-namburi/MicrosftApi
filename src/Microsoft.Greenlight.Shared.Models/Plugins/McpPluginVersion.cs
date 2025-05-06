@@ -1,3 +1,4 @@
+using Microsoft.Greenlight.Shared.Enums;
 using System.ComponentModel.DataAnnotations;
 using System.Net.NetworkInformation;
 
@@ -51,6 +52,16 @@ namespace Microsoft.Greenlight.Shared.Models.Plugins
         /// These will be applied to the process when the plugin runs.
         /// </summary>
         public Dictionary<string, string> EnvironmentVariables { get; set; } = new Dictionary<string, string>();
+
+        /// <summary>
+        /// Gets or sets the URL for SSE/HTTP plugins. Null for non-SSE plugins.
+        /// </summary>
+        public string? Url { get; set; }
+
+        /// <summary>
+        /// Gets or sets the authentication type for the plugin. Null for non-SSE plugins.
+        /// </summary>
+        public McpPluginAuthenticationType? AuthenticationType { get; set; }
 
         /// <summary>
         /// Compares this instance with another McpPluginVersion.
