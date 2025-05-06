@@ -1,0 +1,10 @@
+@page "/mcp-plugins"
+@inject NavigationManager NavigationManager
+
+@code {
+    protected override void OnInitialized()
+    {
+        // Redirect to the new unified plugins page
+        NavigationManager.NavigateTo("/plugins", true);
+    }
+}

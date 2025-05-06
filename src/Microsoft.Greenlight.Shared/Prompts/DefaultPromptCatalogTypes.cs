@@ -1,7 +1,108 @@
 namespace Microsoft.Greenlight.Shared.Prompts;
 
+/// <summary>
+/// Definition of the default prompt types used by the system. This forms the basis for the prompt catalog stored in the database
+/// and is read on startup to define prompt types required by each document process.
+/// </summary>
 public class DefaultPromptCatalogTypes : IPromptCatalogTypes
 {
+    /// <inheritdoc />
+    public string ReviewSentimentReasoningPrompt =>
+        """
+         Given the following question:
+         [Question] 
+         {{ question }}
+         [/Question]
+
+         And the following answer:
+         [Answer]
+         {{ aiAnswer }}
+         [/Answer]
+
+         You provided the following sentiment of the answer in relation to the question asked:
+         {{ sentimentDecisionString }}
+
+         Provide a reasoning for the sentiment you provided in plain English. 
+         Be brief, but provide enough context to justify your sentiment.
+         """;
+
+    /// <inheritdoc />
+    public string ReviewSentimentAnalysisScorePrompt =>
+        """
+         Given the following question:
+         [Question] 
+         {{ question }}
+         [/Question]
+
+         And the following answer:
+         [Answer]
+         {{ aiAnswer }}
+         [/Answer]
+
+         Provide a sentiment on whether the answer is positive, negative, or neutral. Use the following score numeric values:
+         Positive = 100,
+         Negative = 800,
+         Neutral = 999
+
+         Determined your score of the answer in these ways:
+
+         * NEGATIVE: the answer is negative or irrelevant to the question asked. Also mark
+         the answer as negative if the Answer specifies that details are missing or certain parts of the
+         question have not been satisfied.
+
+         * POSITIVE: the answer is good and relevant to the question asked. You do not need to 
+         look for opinions, just a confirmation that the question has been answered correctly.
+
+         * NEUTRAL: the answer is neither positive nor negative and you cannot determine
+         the sentiment using the two bullets above this one.
+
+         "INFO NOT FOUND" means the sentiment should be negative. This also applies if the Answer
+         points out that information is not present in the context.
+
+         Provide ONLY this number, no introduction, no explanation, no context, just the number.
+         """;
+
+
+    /// <inheritdoc />
+    public string ReviewQuestionAnswerPrompt => 
+        """
+        You are analyzing a document and answering a specific question about its content.
+
+        {{ context }}
+
+        Now, I need you to answer the following question based solely on the provided context:
+
+        Question: {{ question }}
+
+        Provide a detailed and accurate answer based only on the information in the context above. 
+        If the context doesn't contain enough information to answer the question completely, say so and explain what's missing.
+
+        Utilize external tools and specifically DocumentLibraryPlugin to check correctness against requirements in the question if necessary.
+
+        Answer:
+        """;
+
+    /// <inheritdoc />
+    public string ReviewRequirementAnswerPrompt =>
+        """
+        You are analyzing a document against a specific requirement.
+        
+        {{ context }}
+        
+        Now, I need you to check if the document meets the following requirement:
+        
+        Requirement: {{ question }}
+        
+        First, rephrase the requirement as a question that would help assess if the document meets this requirement.
+        Then, provide a detailed assessment based only on the information in the context above.
+        If the context doesn't contain enough information to evaluate the requirement completely, say so and explain what's missing.
+        
+        Utilize external tools and specifically DocumentLibraryPlugin to check correctness against requirements in the question if necessary.
+        
+        Answer:
+        """;
+
+    /// <inheritdoc />
     public string ChatSystemPrompt => 
         """
         This is a chat between an intelligent AI bot specializing in assisting with producing 
@@ -16,6 +117,7 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
         'Sure, I can do that', etc.
         """;
 
+    /// <inheritdoc />
     public string ChatSinglePassUserPrompt =>
         """
         This is a conversation for the Document Process Named: {{ documentProcessName }}.
@@ -70,6 +172,7 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
         [/Context]
         """;
 
+    /// <inheritdoc />
     public string SectionGenerationSystemPrompt =>
         """
         [SYSTEM]: This is a chat between an intelligent AI bot specializing in creating certain reports and one or more participants. 
@@ -78,6 +181,7 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
         Provide responses that can be copied directly into a report or document.
         """;
 
+    /// <inheritdoc />
     public string SectionGenerationMainPrompt =>
         """
         This is the first pass in a multi-step document generation process for the project identified by **{{ documentProcessName }}**. 
@@ -153,6 +257,7 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
         {{ exampleString }}
         """;
 
+    /// <inheritdoc />
     public string SectionGenerationSummaryPrompt =>
         """
         When responding, do not include ASSISTANT: or initial greetings/information about the reply. 
@@ -161,6 +266,8 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
 
         {{ originalContent }}
         """;
+
+    /// <inheritdoc />
     public string SectionGenerationMultiPassContinuationPrompt =>
         """
         This is a continuation of the multi-pass document generation process.

@@ -31,4 +31,14 @@ public record ReviewInstanceInfo
     /// Status of the review instance.
     /// </summary>
     public ReviewInstanceStatus Status { get; set; } = ReviewInstanceStatus.Pending;
+
+    /// <summary>
+    /// Short name of the document process associated with this review instance.
+    /// </summary>
+    public string? DocumentProcessShortName { get; set; }
+
+    /// <summary>
+    /// Unique identifier of the document process definition linked to this review instance.
+    /// </summary>
+    public Guid? DocumentProcessDefinitionId { get; set; }
 }

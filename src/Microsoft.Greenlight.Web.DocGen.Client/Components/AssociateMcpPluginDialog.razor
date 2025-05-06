@@ -1,0 +1,61 @@
+@inject IPluginApiClient PluginApiClient
+@inject ISnackbar Snackbar
+@inject IDocumentProcessApiClient DocumentProcessApiClient
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @bind-Form="form" OnValidSubmit="HandleValidSubmit">
+            <MudSelect T="Guid" @bind-Value="selectedDocumentProcessId" Label="Select Document Process" Required="true">
+                @foreach (var process in _documentProcesses)
+                {
+                    <MudSelectItem Value="@process.Id">@process.ShortName</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudSelect T="McpPluginVersionInfo" @bind-Value="selectedPluginVersion" Label="Select Plugin Version" Required="true">
+                @foreach (var version in Plugin?.Versions?.OrderByDescending(v => v) ?? Enumerable.Empty<McpPluginVersionInfo>())
+                {
+                    <MudSelectItem Value="@version">@version.ToString()</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudButton Class="mt-4" Type="Submit" Variant="Variant.Filled" Color="Color.Primary">Associate</MudButton>
+        </MudForm>
+    </DialogContent>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public McpPluginInfo Plugin { get; set; } = new();
+    private List<DocumentProcessInfo> _documentProcesses = new();
+    private Guid selectedDocumentProcessId;
+    private McpPluginVersionInfo? selectedPluginVersion;
+    private MudForm form;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _documentProcesses = await DocumentProcessApiClient.GetAllDocumentProcessInfoAsync();
+        selectedPluginVersion = Plugin.LatestVersion;
+    }
+
+    private async Task HandleValidSubmit()
+    {
+        // If no version has been selected, show an error message
+        if (selectedPluginVersion == null)
+        {
+            Snackbar.Add("Please select a plugin version.", Severity.Error);
+            return;
+        }
+
+        try
+        {
+            await PluginApiClient.AssociateMcpPluginWithDocumentProcessAsync(Plugin.Id, selectedDocumentProcessId, selectedPluginVersion);
+            Snackbar.Add("MCP plugin associated successfully.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error associating MCP plugin: {ex.Message}", Severity.Error);
+        }
+    }
+}

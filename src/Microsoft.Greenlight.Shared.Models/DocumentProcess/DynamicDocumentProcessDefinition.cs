@@ -3,8 +3,8 @@ using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Models.Configuration;
 using Microsoft.Greenlight.Shared.Models.DocumentLibrary;
 using Microsoft.Greenlight.Shared.Models.DomainGroups;
-using Microsoft.Greenlight.Shared.Models.Plugins;
 using Microsoft.Greenlight.Shared.Models.Validation;
+using Microsoft.Greenlight.Shared.Models.Plugins;
 using System.Text.Json.Serialization;
 
 namespace Microsoft.Greenlight.Shared.Models.DocumentProcess;
@@ -101,11 +101,6 @@ public class DynamicDocumentProcessDefinition : EntityBase, IDocumentProcessInfo
     public List<PromptImplementation> Prompts { get; set; } = [];
 
     /// <summary>
-    /// List of plugins associated with the document process.
-    /// </summary>
-    public List<DynamicPluginDocumentProcess>? Plugins { get; set; } = [];
-
-    /// <summary>
     /// List of additional document libraries associated with the document process.
     /// </summary>
     public List<DocumentLibraryDocumentProcessAssociation>? AdditionalDocumentLibraries { get; set; } = [];
@@ -119,6 +114,12 @@ public class DynamicDocumentProcessDefinition : EntityBase, IDocumentProcessInfo
     /// Domain Groups that this document process is associated with. Managed from the Domain Group side.
     /// </summary>
     public List<DomainGroup> DomainGroupMemberships { get; set; } = [];
+
+    /// <summary>
+    /// MCP plugins associated with the document process.
+    /// </summary>
+    [JsonIgnore]
+    public List<McpPluginDocumentProcess>? McpServerAssociations { get; set; } = [];
 
     /// <summary>
     /// Validation pipeline ID associated with the document process.

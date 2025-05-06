@@ -34,4 +34,24 @@ public interface IPromptCatalogTypes
     /// Gets the system prompt for section generation.
     /// </summary>
     string SectionGenerationSystemPrompt { get; }
+
+    /// <summary>
+    /// Gets the prompt used to answer review questions - in question format.
+    /// </summary>
+    string ReviewQuestionAnswerPrompt { get; }
+
+    /// <summary>
+    /// Gets the prompt used to answer review questions - in requirement format.
+    /// </summary>
+    string ReviewRequirementAnswerPrompt { get; }
+
+    /// <summary>
+    /// Gets the prompt used to provide a reasoning for the review sentiment.
+    /// </summary>
+    string ReviewSentimentReasoningPrompt { get; }
+
+    /// <summary>
+    /// Gets the prompt used to provide a sentiment score for the review answer.
+    /// </summary>
+    string ReviewSentimentAnalysisScorePrompt { get; }
 }

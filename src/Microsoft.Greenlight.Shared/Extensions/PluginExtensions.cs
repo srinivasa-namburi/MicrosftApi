@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -7,6 +8,10 @@ using Microsoft.SemanticKernel;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Plugins;
+using Microsoft.Extensions.Logging;
+using Microsoft.Greenlight.Shared.Services;
+using ModelContextProtocol.Client;
+using System.Text.RegularExpressions;
 
 namespace Microsoft.Greenlight.Shared.Extensions
 {
@@ -34,7 +39,6 @@ namespace Microsoft.Greenlight.Shared.Extensions
 
             // Use Scrutor assembly scanning to scan these assemblies for types implementing IPluginInitializer
             // These will all be added to the DI container as singleton for later execution using the PluginInitializerHostedService.
-
             builder.Services.Scan(scan => scan
                 .FromAssemblies(assemblies)
                 .AddClasses(classes => classes.AssignableTo<IPluginInitializer>())
@@ -44,12 +48,14 @@ namespace Microsoft.Greenlight.Shared.Extensions
             // Register plugins from the specified assembly paths.
             builder.RegisterPluginsForAssemblies(allAssemblyPaths);
 
-            // Optionally, if your plugins need to perform deferred initialization, register a hosted service.
+            // Register the plugin initializer hosted service
             builder.Services.AddHostedService<PluginInitializerHostedService>();
+            
+            // Register MCP plugin services - this now uses the AddMcpPluginServices extension method
+            builder.AddMcpPluginServices();
 
             return builder;
         }
-
 
         /// <summary>
         /// Registers plugins from the specified assembly paths.
@@ -60,7 +66,6 @@ namespace Microsoft.Greenlight.Shared.Extensions
         private static IHostApplicationBuilder RegisterPluginsForAssemblies(this IHostApplicationBuilder builder,
             IEnumerable<string> assemblyPaths)
         {
-
             foreach (var path in assemblyPaths)
             {
                 try
@@ -128,7 +133,7 @@ namespace Microsoft.Greenlight.Shared.Extensions
         /// <param name="serviceProvider">The service provider.</param>
         /// <param name="documentProcess">The document process information.</param>
         /// <param name="excludedPluginTypes">An optional list of plugin types to exclude.</param>
-        /// <returns></returns>
+        /// <returns>A task that represents the asynchronous operation.</returns>
         public static async Task AddSharedAndDocumentProcessPluginsToPluginCollectionAsync(
             this KernelPluginCollection kernelPlugins,
             IServiceProvider serviceProvider,
@@ -136,10 +141,14 @@ namespace Microsoft.Greenlight.Shared.Extensions
             List<Type>? excludedPluginTypes = null
             )
         {
-            await AddSharedAndDynamicDocumentProcessPluginsToPluginCollectionAsync(kernelPlugins, serviceProvider, documentProcess, excludedPluginTypes);
+            // Add standard plugins
+            await AddSharedAndStaticPluginsToPluginCollectionAsync(kernelPlugins, serviceProvider, documentProcess, excludedPluginTypes);
+            
+            // Add MCP plugins for the document process
+            await AddMcpPluginsToPluginCollectionAsync(kernelPlugins, serviceProvider, documentProcess);
         }
 
-        private static async Task AddSharedAndDynamicDocumentProcessPluginsToPluginCollectionAsync(
+        private static async Task AddSharedAndStaticPluginsToPluginCollectionAsync(
             this KernelPluginCollection kernelPlugins,
             IServiceProvider serviceProvider,
             DocumentProcessInfo documentProcess,
@@ -150,29 +159,10 @@ namespace Microsoft.Greenlight.Shared.Extensions
             // Get all plugins from the registry
             var allPlugins = pluginRegistry.AllPlugins;
 
-            // Separate shared/static plugins and dynamic plugins
+            // We only care about shared/static plugins now, not dynamic plugins
             var sharedStaticPlugins = allPlugins.Where(p => !p.IsDynamic).ToList();
-            var dynamicPlugins = allPlugins.Where(p => p.IsDynamic).ToList();
 
-            // Filter dynamic plugins based on the document process
-            var dynamicPluginManager = serviceProvider.GetService<DynamicPluginManager>();
-            var assignedDynamicPlugins = new List<PluginRegistryEntry>();
-
-            // Get the dynamic plugins that are assigned to the document process - if the 
-            // dynamic plugin manager is available
-
-            if (dynamicPlugins.Any() && dynamicPluginManager != null)
-            {
-                var dynamicPluginTypes = await dynamicPluginManager.GetPluginTypesAsync(documentProcess);
-                assignedDynamicPlugins = dynamicPlugins
-                    .Where(p => dynamicPluginTypes.Contains(p.PluginInstance.GetType()))
-                    .ToList();
-            }
-
-            // Combine shared/static plugins and assigned dynamic plugins
-            var combinedPlugins = sharedStaticPlugins.Concat(assignedDynamicPlugins);
-
-            foreach (var pluginEntry in combinedPlugins)
+            foreach (var pluginEntry in sharedStaticPlugins)
             {
                 if (excludedPluginTypes != null &&
                     excludedPluginTypes.Contains(pluginEntry.PluginInstance.GetType()))
@@ -196,12 +186,10 @@ namespace Microsoft.Greenlight.Shared.Extensions
                     string? pluginRegistrationKey =
                         pluginEntry.PluginInstance.GetType().GetServiceKeyForPluginType();
 
-                    if (sharedStaticPlugins.Contains(pluginEntry))
+                    if (string.IsNullOrEmpty(pluginRegistrationKey))
                     {
-                        // This is a shared, static plugin and not a dynamic one
-                        pluginRegistrationKey =
-                            //documentProcess.ShortName.Replace(".", "_").Replace("-", "_").Replace(" ", "_") + "__" +
-                            pluginEntry.PluginInstance.GetType().Name;
+                        // Use a more reliable key
+                        pluginRegistrationKey = pluginEntry.PluginInstance.GetType().ShortDisplayName();
                     }
 
                     kernelPlugins.AddFromObject(pluginEntry.PluginInstance, pluginRegistrationKey);
@@ -211,6 +199,93 @@ namespace Microsoft.Greenlight.Shared.Extensions
                     Console.WriteLine(
                         $"Error loading or registering plugin {pluginEntry.PluginInstance.GetType().FullName}: {ex.Message}");
                 }
+            }
+            
+            await Task.CompletedTask;
+        }
+        
+        /// <summary>
+        /// Adds MCP plugins to the kernel plugin collection asynchronously.
+        /// </summary>
+        /// <param name="kernelPlugins">The kernel plugin collection.</param>
+        /// <param name="serviceProvider">The service provider.</param>
+        /// <param name="documentProcess">The document process information.</param>
+        /// <returns>A task that represents the asynchronous operation.</returns>
+        private static async Task AddMcpPluginsToPluginCollectionAsync(
+            this KernelPluginCollection kernelPlugins,
+            IServiceProvider serviceProvider,
+            DocumentProcessInfo documentProcess)
+        {
+            // Get the MCP plugin manager
+            var mcpPluginManager = serviceProvider.GetService<McpPluginManager>();
+            if (mcpPluginManager == null)
+            {
+                // MCP plugin manager is not available
+                return;
+            }
+            
+            var logger = serviceProvider.GetService<ILogger<McpPluginManager>>();
+            
+            try
+            {
+                // Ensure MCP plugins are loaded
+                await mcpPluginManager.EnsurePluginsLoadedAsync();
+                
+                // Get MCP plugins for the document process
+                var mcpPlugins = await mcpPluginManager.GetPluginsForDocumentProcessAsync(documentProcess);
+                if (!mcpPlugins.Any())
+                {
+                    logger?.LogDebug("No MCP plugins found for document process: {ProcessName}", documentProcess.ShortName);
+                    return;
+                }
+                
+                logger?.LogInformation("Found {Count} MCP plugins for document process {ProcessName}", 
+                    mcpPlugins.Count(), documentProcess.ShortName);
+                
+                int addedPluginCount = 0;
+                
+                // Process each plugin
+                foreach (var plugin in mcpPlugins)
+                {
+                    try
+                    {
+                        // Get kernel functions directly from the plugin
+                        var kernelFunctions = await plugin.GetKernelFunctionsAsync(documentProcess);
+                        
+                        if (kernelFunctions.Any())
+                        {
+                            // Construct a plugin name that includes the document process short name for proper context
+
+                            // Use a regex replace to remove any invalid characters from the plugin name. Turn them into underscores.
+                            // The plugin name can only contain letters, numbers, and underscores.
+                            var sanitizedPluginName = Regex.Replace(plugin.Name, @"[^a-zA-Z0-9_]", "_");
+                            var pluginName = $"mcp_{sanitizedPluginName}";
+                            
+                            // Add the functions to the kernel plugin collection
+                            kernelPlugins.AddFromFunctions(pluginName, kernelFunctions);
+                            addedPluginCount++;
+                            
+                            logger?.LogInformation("Added MCP plugin {PluginName} with {FunctionCount} functions to kernel", 
+                                pluginName, kernelFunctions.Count);
+                        }
+                        else
+                        {
+                            logger?.LogWarning("MCP plugin {PluginName} returned no kernel functions", plugin.Name);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogError(ex, "Error adding MCP plugin {PluginName} to kernel", plugin.Name);
+                    }
+                }
+                
+                logger?.LogInformation("Added {Count} MCP plugins to the kernel for document process {ProcessName}", 
+                    addedPluginCount, documentProcess.ShortName);
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError(ex, "Error adding MCP plugins to the kernel for document process {ProcessName}", 
+                    documentProcess.ShortName);
             }
         }
         

@@ -1,12 +1,16 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using DocumentFormat.OpenXml.Office.SpreadSheetML.Y2023.MsForms;
+using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Grains.Review.Contracts;
 using Microsoft.Greenlight.Grains.Shared.Contracts.Models;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
+using Microsoft.Greenlight.Shared.Prompts;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.SemanticKernel;
 using Orleans.Concurrency;
+using Scriban;
 
 namespace Microsoft.Greenlight.Grains.Review
 {
@@ -16,15 +20,18 @@ namespace Microsoft.Greenlight.Grains.Review
         private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
         private readonly ILogger<ReviewAnswerSentimentAnalyzerGrain> _logger;
         private readonly IKernelFactory _kernelFactory;
+        private readonly IPromptInfoService _promptInfoService;
 
         public ReviewAnswerSentimentAnalyzerGrain(
             IDbContextFactory<DocGenerationDbContext> dbContextFactory,
             ILogger<ReviewAnswerSentimentAnalyzerGrain> logger,
-            IKernelFactory kernelFactory)
+            IKernelFactory kernelFactory,
+            IPromptInfoService promptInfoService)
         {
             _dbContextFactory = dbContextFactory;
             _logger = logger;
             _kernelFactory = kernelFactory;
+            _promptInfoService = promptInfoService;
         }
 
         public async Task<GenericResult> AnalyzeSentimentAsync()
@@ -38,7 +45,13 @@ namespace Microsoft.Greenlight.Grains.Review
                 await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
                 // Get the review question answer
-                var reviewQuestionAnswer = await dbContext.ReviewQuestionAnswers.FindAsync(answerId);
+                var reviewQuestionAnswer = await dbContext.ReviewQuestionAnswers
+                    .Where(x => x.Id == answerId)
+                    .Include(x => x.ReviewInstance)
+                    .FirstOrDefaultAsync();
+
+                // Gets the document process name associated with the review instance
+                var documentProcessName = reviewQuestionAnswer?.ReviewInstance?.DocumentProcessShortName;
 
                 if (reviewQuestionAnswer == null)
                 {
@@ -48,34 +61,18 @@ namespace Microsoft.Greenlight.Grains.Review
                 // Get kernel for sentiment analysis
                 var kernel = await _kernelFactory.GetGenericKernelAsync("gpt-4o");
 
-                // Analyze sentiment
-                var sentimentScorePrompt = $"""
-                      Given the following question:
-                      [Question] 
-                      {reviewQuestionAnswer.OriginalReviewQuestionText}
-                      [/Question]
-                      
-                      And the following answer:
-                      [Answer]
-                      {reviewQuestionAnswer.FullAiAnswer}
-                      [/Answer]
-                      
-                      Provide a sentiment on whether the answer is positive, negative, or neutral. Use the following score numeric values:
-                      Positive = 100,
-                      Negative = 800,
-                      Neutral = 999
+                var sentimentScorePromptText = await _promptInfoService.GetPromptTextByShortCodeAndProcessNameAsync(
+                    PromptNames.ReviewSentimentAnalysisScorePrompt,
+                    documentProcessName);
 
-                      A positive sentiment means the answer is good and relevant to the question asked. You do not need to 
-                      look for opinions, just a confirmation that the question has been answered correctly. 
-                      
-                      A negative sentiment means the answer is negative or irrelevant to the question asked.
 
-                      A neutral sentiment means the answer is neither positive nor negative.
-
-                      "INFO NOT FOUND" means the sentiment should be negative.
-                      
-                      Provide ONLY this number, no introduction, no explanation, no context, just the number.
-                      """;
+                // Render the prompt using Scriban
+                var template = Template.Parse(sentimentScorePromptText);
+                var sentimentScorePrompt = await template.RenderAsync(new
+                {
+                    question = reviewQuestionAnswer.OriginalReviewQuestionText,
+                    aiAnswer = reviewQuestionAnswer.FullAiAnswer
+                }, member => member.Name);
 
                 var kernelResult = await kernel.InvokePromptAsync(sentimentScorePrompt);
                 var sentiment = kernelResult.GetValue<string>();
@@ -86,28 +83,24 @@ namespace Microsoft.Greenlight.Grains.Review
                     _logger.LogWarning(
                         "Invalid sentiment value {Sentiment} for review question answer {AnswerId}",
                         sentiment, answerId);
-                    
+
                     return GenericResult.Failure($"Invalid sentiment value: {sentiment}");
                 }
 
-                // Get reasoning for the sentiment
-                var sentimentReasoningPrompt = $"""
-                      Given the following question:
-                      [Question] 
-                      {reviewQuestionAnswer.OriginalReviewQuestionText}
-                      [/Question]
-                      
-                      And the following answer:
-                      [Answer]
-                      {reviewQuestionAnswer.FullAiAnswer}
-                      [/Answer]
-                      
-                      You provided the following sentiment of the answer in relation to the question asked:
-                      {sentimentEnum.ToString()}
-                      
-                      Provide a reasoning for the sentiment you provided in plain English. 
-                      Be brief, but provide enough context to justify your sentiment.
-                      """;
+                var sentimentReasoningPromptText = await _promptInfoService.GetPromptTextByShortCodeAndProcessNameAsync(
+                    PromptNames.ReviewSentimentReasoningPrompt,
+                    documentProcessName);
+
+                var sentimentDecisionString = sentimentEnum.ToString();
+
+                var sentimentReasoningPromptTemplate = Template.Parse(sentimentReasoningPromptText);
+                var sentimentReasoningPrompt = await sentimentReasoningPromptTemplate.RenderAsync(new
+                {
+                    question = reviewQuestionAnswer.OriginalReviewQuestionText,
+                    aiAnswer = reviewQuestionAnswer.FullAiAnswer,
+                    sentimentDecisionString = sentimentDecisionString
+                }, member => member.Name);
+
 
                 var sentimentReasoningKernelResult = await kernel.InvokePromptAsync(sentimentReasoningPrompt);
                 var sentimentReasoning = sentimentReasoningKernelResult.GetValue<string>();

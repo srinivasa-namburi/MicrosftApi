@@ -5,6 +5,7 @@
 @using Microsoft.Greenlight.Shared.Contracts.Messages.Review.Events
 
 @inject IReviewApiClient ReviewApiClient
+@inject IDocumentProcessApiClient DocumentProcessApiClient
 @inject IAuthorizationApiClient AuthorizationApiClient
 @inject IConfigurationApiClient ConfigurationApiClient
 @inject NavigationManager Navigation
@@ -53,10 +54,16 @@
         {
             <MudGrid>
                 <MudItem xs="12" md="6">
-                    @if (AvailableReviewDefinitions != null && AvailableReviewDefinitions.Count != 0)
-                    {
-                        <MudPaper Class="pa-4 mb-4" Elevation="0" Outlined="true">
-                            <MudText Typo="Typo.subtitle1" Class="mb-2">1. Select Review Definition</MudText>
+                    <MudPaper Class="pa-4 mb-4" Elevation="0" Outlined="true">
+                        <MudText Typo="Typo.subtitle1" Class="mb-2">1. Review Definition</MudText>
+                        @if (SelectedReviewDefinition != null && ReviewDefinitionIdString != null)
+                        {
+                            <MudAlert Severity="Severity.Info" Class="mb-2" Dense="true">
+                                Using review definition: @SelectedReviewDefinition.Title
+                            </MudAlert>
+                        }
+                        else if (AvailableReviewDefinitions != null && AvailableReviewDefinitions.Count != 0)
+                        {
                             <MudSelect T="ReviewDefinitionInfo"
                                        @bind-Value="SelectedReviewDefinition"
                                        Label="Review Definition"
@@ -70,13 +77,57 @@
                                     </MudSelectItem>
                                 }
                             </MudSelect>
-                        </MudPaper>
-                    }
+                        }
+                    </MudPaper>
                 </MudItem>
 
                 <MudItem xs="12" md="6">
                     <MudPaper Class="pa-4 mb-4" Elevation="0" Outlined="true">
-                        <MudText Typo="Typo.subtitle1" Class="mb-2">2. Upload Document</MudText>
+                        <MudText Typo="Typo.subtitle1" Class="mb-2">2. Select Document Process</MudText>
+                        @if (AvailableDocumentProcesses != null && AvailableDocumentProcesses.Count > 0)
+                        {
+                            @if (AvailableDocumentProcesses.Count == 1)
+                            {
+                                <MudAlert Severity="Severity.Info" Class="mb-2" Dense="true">
+                                    Using document process: @AvailableDocumentProcesses.First().ShortName
+                                </MudAlert>
+                            }
+                            else
+                            {
+                                <MudSelect T="DocumentProcessInfo"
+                                           @bind-Value="SelectedDocumentProcess"
+                                           Label="Document Process"
+                                           SelectedValuesChanged="DocumentProcessSelectionChanged"
+                                           MultiSelection="false"
+                                           AnchorOrigin="Origin.BottomCenter">
+                                    @foreach (var documentProcess in AvailableDocumentProcesses)
+                                    {
+                                        <MudSelectItem T="DocumentProcessInfo" Value="documentProcess">
+                                            @documentProcess.ShortName
+                                        </MudSelectItem>
+                                    }
+                                </MudSelect>
+                            }
+                        }
+                        else if (SelectedReviewDefinition != null)
+                        {
+                            <MudAlert Severity="Severity.Warning" Class="mb-2" Dense="true">
+                                No document processes are associated with this review definition.
+                                Please contact an administrator to set up document processes for this review.
+                            </MudAlert>
+                        }
+                        else
+                        {
+                            <MudAlert Severity="Severity.Info" Class="mb-2" Dense="true">
+                                Please select a review definition first.
+                            </MudAlert>
+                        }
+                    </MudPaper>
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4 mb-4" Elevation="0" Outlined="true">
+                        <MudText Typo="Typo.subtitle1" Class="mb-2">3. Upload Document</MudText>
                         <MudFileUpload T="IBrowserFile" OnFilesChanged="DocumentFileUploaded">
                             <ButtonTemplate>
                                 <MudButton HtmlTag="label"
@@ -102,16 +153,23 @@
                 <MudDivider Class="my-4" />
 
                 <MudPaper Class="pa-4" Elevation="0" Outlined="true">
-                    <MudText Typo="Typo.subtitle1" Class="mb-2">3. Execute Review</MudText>
+                    <MudText Typo="Typo.subtitle1" Class="mb-2">4. Execute Review</MudText>
                     <MudText Typo="Typo.body2" Class="mb-4">
                         Review will analyze @(SelectedReviewDefinition.ReviewQuestions.Count) questions/requirements against your document.
                     </MudText>
+
+                    @if (SelectedDocumentProcess == null)
+                    {
+                        <MudAlert Severity="Severity.Warning" Class="mb-2">
+                            Please select a document process before executing the review.
+                        </MudAlert>
+                    }
 
                     <MudButton OnClick="ExecuteReview"
                                Color="Color.Primary"
                                Variant="Variant.Filled"
                                Size="Size.Large"
-                               Disabled="@IsExecuting">
+                               Disabled="@(IsExecuting || SelectedDocumentProcess == null)">
 
                         @if (IsExecuting)
                         {
@@ -147,13 +205,25 @@
 
 @if (ReviewQuestionAnswers.Count > 0)
 {
+    var orderedAnswers = ReviewQuestionAnswers;
+    if (ReviewQuestionAnswers.All(a => a.Order == 0))
+    {
+        orderedAnswers = ReviewQuestionAnswers.OrderBy(a => a.CreatedUtc).ToList();
+        for (int i = 0; i < orderedAnswers.Count; i++)
+            orderedAnswers[i].Order = i + 1;
+    }
+    else
+    {
+        orderedAnswers = ReviewQuestionAnswers.OrderBy(a => a.Order).ToList();
+    }
+
     <MudText Typo="Typo.h5" Class="mb-3">Review Results</MudText>
 
     <MudGrid Spacing="2">
-        @for (int i = 0; i < ReviewQuestionAnswers.Count(); i++)
+        @for (int i = 0; i < orderedAnswers.Count(); i++)
         {
             var questionCount = i;
-            ReviewQuestionAnswerInfo reviewQuestionAnswerInfo = ReviewQuestionAnswers[i];
+            ReviewQuestionAnswerInfo reviewQuestionAnswerInfo = orderedAnswers[i];
 
             <MudItem xs="12" sm="6">
                 <MudCard Elevation="3" Class="rounded-lg" Style="height: 100%;">
@@ -224,6 +294,8 @@
     private ReviewDefinitionInfo? SelectedReviewDefinition { get; set; }
     private ExportedDocumentLinkInfo? UploadFileExportDocumentLinkInfo { get; set; }
     private List<ReviewDefinitionInfo>? AvailableReviewDefinitions { get; set; }
+    private List<DocumentProcessInfo>? AvailableDocumentProcesses { get; set; } = [];
+    private DocumentProcessInfo? SelectedDocumentProcess { get; set; }
     private List<ReviewQuestionAnswerInfo> ReviewQuestionAnswers { get; set; } = [];
     private List<ReviewQuestionInfo> AllReviewQuestions { get; set; } = [];
     private MudList? ReviewQuestionAnswersMudList { get; set; }
@@ -337,6 +409,17 @@
                 if (SelectedReviewDefinition is not null)
                 {
                     ReviewInstance.ReviewDefinitionId = SelectedReviewDefinition.Id;
+
+                    // Load document processes for the selected review definition
+                    AvailableDocumentProcesses = await ReviewApiClient.GetDocumentProcessesByReviewDefinitionId(SelectedReviewDefinition.Id);
+
+                    // If there's only one document process, select it automatically
+                    if (AvailableDocumentProcesses.Count == 1)
+                    {
+                        SelectedDocumentProcess = AvailableDocumentProcesses.First();
+                        ReviewInstance.DocumentProcessDefinitionId = SelectedDocumentProcess.Id;
+                        ReviewInstance.DocumentProcessShortName = SelectedDocumentProcess.ShortName;
+                    }
                 }
             }
 
@@ -349,6 +432,15 @@
             {
                 SelectedReviewDefinition = await ReviewApiClient.GetReviewById(ReviewInstance.ReviewDefinitionId);
                 ReviewQuestionAnswers = await ReviewApiClient.GetReviewQuestionAnswersByReviewInstanceId(ReviewInstance.Id);
+
+                // Load document processes for the review definition
+                AvailableDocumentProcesses = await ReviewApiClient.GetDocumentProcessesByReviewDefinitionId(ReviewInstance.ReviewDefinitionId);
+
+                // Set the selected document process if it exists
+                if (ReviewInstance.DocumentProcessDefinitionId.HasValue)
+                {
+                    SelectedDocumentProcess = AvailableDocumentProcesses.FirstOrDefault(dp => dp.Id == ReviewInstance.DocumentProcessDefinitionId);
+                }
             }
         }
 
@@ -423,6 +515,12 @@
             return;
         }
 
+        if (SelectedDocumentProcess == null || !ReviewInstance.DocumentProcessDefinitionId.HasValue)
+        {
+            await DialogService.ShowMessageBox("Error", "Please select a document process before executing the review.");
+            return;
+        }
+
         IsExecuting = true;
         StateHasChanged();
 
@@ -452,13 +550,38 @@
         StateHasChanged();
     }
 
-    private void ReviewDefinitionSelectionChanged(IEnumerable<ReviewDefinitionInfo> obj)
+    private async Task ReviewDefinitionSelectionChanged(IEnumerable<ReviewDefinitionInfo> obj)
     {
         SelectedReviewDefinition = obj.FirstOrDefault();
         if (SelectedReviewDefinition != null && ReviewInstance != null)
         {
             ReviewInstance.ReviewDefinitionId = SelectedReviewDefinition.Id;
+
+            // Load document processes for the selected review definition
+            AvailableDocumentProcesses = await ReviewApiClient.GetDocumentProcessesByReviewDefinitionId(SelectedReviewDefinition.Id);
+
+            // If there's only one document process, select it automatically
+            if (AvailableDocumentProcesses.Count == 1)
+            {
+                SelectedDocumentProcess = AvailableDocumentProcesses.First();
+                if (ReviewInstance != null)
+                {
+                    ReviewInstance.DocumentProcessDefinitionId = SelectedDocumentProcess.Id;
+                    ReviewInstance.DocumentProcessShortName = SelectedDocumentProcess.ShortName;
+                }
+            }
+            else
+            {
+                // Reset selection if there are multiple options
+                SelectedDocumentProcess = null;
+                if (ReviewInstance != null)
+                {
+                    ReviewInstance.DocumentProcessDefinitionId = null;
+                    ReviewInstance.DocumentProcessShortName = null;
+                }
+            }
         }
+
         StateHasChanged();
     }
 
@@ -485,6 +608,17 @@
 
             StateHasChanged();
         }
+    }
+
+    private void DocumentProcessSelectionChanged(IEnumerable<DocumentProcessInfo> obj)
+    {
+        SelectedDocumentProcess = obj.FirstOrDefault();
+        if (SelectedDocumentProcess != null && ReviewInstance != null)
+        {
+            ReviewInstance.DocumentProcessDefinitionId = SelectedDocumentProcess.Id;
+            ReviewInstance.DocumentProcessShortName = SelectedDocumentProcess.ShortName;
+        }
+        StateHasChanged();
     }
 
     public async ValueTask DisposeAsync()

@@ -3,9 +3,7 @@ using AutoMapper;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
-using Microsoft.Greenlight.Shared.Contracts.Messages;
 using Microsoft.Greenlight.Shared.Data.Sql;
-using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Models.DocumentProcess;
 using Microsoft.Greenlight.Shared.Models.Validation;
 using Microsoft.Greenlight.Shared.Services;
@@ -22,10 +20,9 @@ public class DocumentProcessController : BaseController
 {
     private readonly DocGenerationDbContext _dbContext;
     private readonly IDocumentProcessInfoService _documentProcessInfoService;
-    private readonly IPluginService _pluginService;
     private readonly IDocumentLibraryInfoService _documentLibraryInfoService;
     private readonly IMapper _mapper;
-    
+
     /// <summary>
     /// Initializes a new instance of the <see cref="DocumentProcessController"/> class.
     /// </summary>
@@ -38,13 +35,11 @@ public class DocumentProcessController : BaseController
     public DocumentProcessController(
         DocGenerationDbContext dbContext,
         IDocumentProcessInfoService documentProcessInfoService,
-        IPluginService pluginService,
         IDocumentLibraryInfoService documentLibraryInfoService,
         IMapper mapper)
     {
         _dbContext = dbContext;
         _documentProcessInfoService = documentProcessInfoService;
-        _pluginService = pluginService;
         _documentLibraryInfoService = documentLibraryInfoService;
         _mapper = mapper;
     }
@@ -219,12 +214,21 @@ public class DocumentProcessController : BaseController
     {
         try
         {
-            // Use the Plugin Service to delete all plugin associations for this document process, if any exist
-            var plugins = await _pluginService.GetPluginsByDocumentProcessIdAsync(id);
-            foreach (var plugin in plugins)
+            // Use the McpPluginsController to delete all plugin associations for this document process
+            var mcpPlugins = await _dbContext.McpPlugins
+                .Include(p => p.DocumentProcesses)
+                .Where(p => p.DocumentProcesses != null && p.DocumentProcesses.Any(dp => dp.DynamicDocumentProcessDefinitionId == id))
+                .ToListAsync();
+
+            foreach (var plugin in mcpPlugins)
             {
-                await _pluginService.DisassociatePluginFromDocumentProcessAsync(plugin.Id, id);
+                var association = plugin.DocumentProcesses?.FirstOrDefault(dp => dp.DynamicDocumentProcessDefinitionId == id);
+                if (association != null)
+                {
+                    _dbContext.McpPluginDocumentProcesses.Remove(association);
+                }
             }
+            await _dbContext.SaveChangesAsync();
 
             var documentLibraries = await _documentLibraryInfoService.GetDocumentLibrariesByProcessIdAsync(id);
             foreach (var library in documentLibraries)
@@ -274,7 +278,6 @@ public class DocumentProcessController : BaseController
                 _dbContext.DocumentProcessValidationPipelines.RemoveRange(validationPipelines);
                 await _dbContext.SaveChangesAsync();
             }
-
 
             // Remove the document process
             await _documentProcessInfoService.DeleteDocumentProcessInfoAsync(id);

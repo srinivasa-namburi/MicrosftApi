@@ -58,23 +58,64 @@ namespace Microsoft.Greenlight.Grains.Review
 
                 // Store initial state
                 _state.State.ReviewInstanceId = this.GetPrimaryKey();
-                _state.State.Status = ReviewExecutionStatus.Ingesting;
+                _state.State.Status = ReviewExecutionStatus.Started;
                 _state.State.TotalNumberOfQuestions = 0;
                 _state.State.NumberOfQuestionsAnswered = 0;
                 _state.State.NumberOfQuestionsAnalyzed = 0;
                 await SafeWriteStateAsync();
 
-                // Get document ingestor grain and start the process
-                var ingestorGrain = GrainFactory.GetGrain<IReviewDocumentIngestorGrain>(this.GetPrimaryKey());
-                var ingestResult = await ingestorGrain.IngestDocumentAsync();
+                // First, check if the review has a document to ingest
+                await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+                var reviewInstance = await dbContext.ReviewInstances
+                    .Include(x => x.ExportedDocumentLink)
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(x => x.Id == this.GetPrimaryKey());
 
-                if (!ingestResult.IsSuccess)
+                if (reviewInstance == null)
                 {
-                    await HandleFailureAsync("Failed to ingest review document", ingestResult.ErrorMessage ?? "Unknown error");
+                    await HandleFailureAsync("Failed to find review instance", "Review instance not found in database");
                     return;
                 }
 
-                await OnDocumentIngestedAsync(ingestResult.Data);
+                // Document ingestion step is only necessary if the review has a document
+                if (reviewInstance.ExportedDocumentLink != null)
+                {
+                    _state.State.Status = ReviewExecutionStatus.Ingesting;
+                    await SafeWriteStateAsync();
+                    
+                    // Get document ingestor grain and start the process
+                    var ingestorGrain = GrainFactory.GetGrain<IReviewDocumentIngestorGrain>(this.GetPrimaryKey());
+                    var ingestResult = await ingestorGrain.IngestDocumentAsync();
+
+                    if (!ingestResult.IsSuccess)
+                    {
+                        await HandleFailureAsync("Failed to ingest review document", ingestResult.ErrorMessage ?? "Unknown error");
+                        return;
+                    }
+
+                    await OnDocumentIngestedAsync(ingestResult.Data);
+                }
+                else
+                {
+                    // Skip document ingestion if there's no document, but still need to distribute questions
+                    _logger.LogInformation("No document to ingest for review instance {Id}, skipping to question distribution", this.GetPrimaryKey());
+                    
+                    _state.State.Status = ReviewExecutionStatus.DistributingQuestions;
+                    await SafeWriteStateAsync();
+
+                    // Start distributing questions
+                    await SendProcessingMessageAsync($"SYSTEM:NoDocumentToIngest");
+                    var questionsDistributorGrain = GrainFactory.GetGrain<IReviewQuestionsDistributorGrain>(this.GetPrimaryKey());
+                    var distributionResult = await questionsDistributorGrain.DistributeQuestionsAsync();
+
+                    if (!distributionResult.IsSuccess)
+                    {
+                        await HandleFailureAsync("Failed to distribute review questions", distributionResult.ErrorMessage ?? "Unknown error");
+                        return;
+                    }
+
+                    await OnQuestionsDistributedAsync();
+                }
             }
             catch (Exception ex)
             {
@@ -94,10 +135,12 @@ namespace Microsoft.Greenlight.Grains.Review
                 _state.State.ExportedDocumentLinkId = ingestionResult.ExportedDocumentLinkId;
                 _state.State.TotalNumberOfQuestions = ingestionResult.TotalNumberOfQuestions;
                 _state.State.Status = ReviewExecutionStatus.DistributingQuestions;
+                _state.State.ContentType = ingestionResult.ContentType.ToString();
                 await SafeWriteStateAsync();
 
                 // Send processing notification
                 await SendProcessingMessageAsync($"SYSTEM:TotalNumberOfQuestions={ingestionResult.TotalNumberOfQuestions}");
+                await SendProcessingMessageAsync($"SYSTEM:ContentType={ingestionResult.ContentType}");
 
                 // Start distributing questions
                 var questionsDistributorGrain = GrainFactory.GetGrain<IReviewQuestionsDistributorGrain>(this.GetPrimaryKey());

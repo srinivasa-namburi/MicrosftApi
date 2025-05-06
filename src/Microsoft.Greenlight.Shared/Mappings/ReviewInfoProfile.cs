@@ -19,7 +19,9 @@ public class ReviewInfoProfile : Profile
         CreateMap<ReviewDefinition, ReviewDefinitionInfo>();
         CreateMap<ReviewDefinitionInfo, ReviewDefinition>();
 
-        CreateMap<ReviewQuestion, ReviewQuestionInfo>();
-        CreateMap<ReviewQuestionInfo, ReviewQuestion>();
+        CreateMap<ReviewQuestion, ReviewQuestionInfo>()
+            .ForMember(dest => dest.CreatedUtc, opt => opt.MapFrom(src => src.CreatedUtc));
+        CreateMap<ReviewQuestionInfo, ReviewQuestion>()
+            .ForMember(dest => dest.CreatedUtc, opt => opt.MapFrom(src => src.CreatedUtc));
     }
 }

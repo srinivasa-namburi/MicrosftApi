@@ -1,0 +1,210 @@
+@using Microsoft.Extensions.Logging
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Plugins
+
+@inject IPluginApiClient PluginApiClient
+@inject ISnackbar Snackbar
+@inject ILogger<EditMcpPluginDialog> Logger
+@inject IDialogService DialogService
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(IsNewPlugin ? "Create Plugin" : "Edit Plugin")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form" Model="@_model">
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_model.Name" Label="Plugin Name" Required="true" 
+                                 Disabled="!IsNewPlugin" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_model.Description" Label="Description" />
+                </MudItem>
+                
+                @if (!IsNewPlugin && Plugin.Versions.Count > 0)
+                {
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.h6">Plugin Versions</MudText>
+                        <MudTable Items="Plugin.Versions" Hover="true" Dense="true">
+                            <HeaderContent>
+                                <MudTh>Version</MudTh>
+                                <MudTh>Actions</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd>@context.ToString()</MudTd>
+                                <MudTd>
+                                    <MudIconButton Size="@Size.Small" Icon="@Icons.Material.Filled.Edit" 
+                                                 Color="Color.Primary" 
+                                                 OnClick="() => EditVersion(context)" />
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" 
+                                  OnClick="() => ManageVersions()" Class="mt-2">
+                            Manage Versions
+                        </MudButton>
+                    </MudItem>
+                }
+                else if (IsNewPlugin)
+                {
+                    <MudItem xs="12">
+                        <MudAlert Severity="Severity.Info">
+                            You'll be able to add versions after creating the plugin.
+                        </MudAlert>
+                    </MudItem>
+                }
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Submit" Disabled="@_processing">
+            @if (_processing)
+            {
+                <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                <span class="ms-2">@(IsNewPlugin ? "Creating..." : "Updating...")</span>
+            }
+            else
+            {
+                <span>@(IsNewPlugin ? "Create" : "Update")</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public McpPluginInfo? Plugin { get; set; }
+    [Parameter] public bool IsNewPlugin { get; set; } = false;
+
+    private MudForm? _form;
+    private bool _processing;
+    private CommandOnlyMcpPluginCreateModel _model = new();
+    private McpPluginVersionInfo? _selectedVersion;
+    
+    protected override void OnInitialized()
+    {
+        if (!IsNewPlugin && Plugin != null)
+        {
+            _model.Name = Plugin.Name;
+            _model.Description = Plugin.Description;
+            
+            // For existing plugins, we set a default version
+            // but this won't actually be used when editing just plugin metadata
+            if (Plugin.LatestVersion != null)
+            {
+                _model.Version = Plugin.LatestVersion.ToString();
+                _selectedVersion = Plugin.LatestVersion;
+            }
+            else
+            {
+                _model.Version = "1.0.0";
+            }
+        }
+        else
+        {
+            // New plugin defaults
+            _model.Version = "1.0.0";
+        }
+    }
+    
+    private void EditVersion(McpPluginVersionInfo version)
+    {
+        var parameters = new DialogParameters 
+        { 
+            { "Version", version },
+            { "PluginInfo", Plugin },
+            { "IsNewVersion", false }
+        };
+        
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = DialogService.Show<EditMcpPluginVersionDialog>($"Edit Version - {version}", parameters, options);
+    }
+
+    private void ManageVersions()
+    {
+        if (Plugin == null) return;
+        
+        var parameters = new DialogParameters { { "Plugin", Plugin } };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = DialogService.Show<ManagePluginVersionsDialog>($"Manage Versions - {Plugin.Name}", parameters, options);
+    }
+    
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+    
+    private async Task Submit()
+    {
+        _processing = true;
+        
+        try
+        {
+            // Validate form
+            await _form?.Validate()!;
+            if (_form?.IsValid != true)
+            {
+                _processing = false;
+                return;
+            }
+            
+            McpPluginInfo updatedPlugin;
+            
+            if (IsNewPlugin)
+            {
+                // For new plugins, we still use the command-only endpoint
+                // When creating a new plugin, set default values
+                _model.Command = "npx"; // Default command
+                _model.Arguments = new List<string>();
+                _model.EnvironmentVariables = new Dictionary<string, string>();
+                
+                // Create the plugin
+                updatedPlugin = await PluginApiClient.CreateCommandOnlyMcpPluginAsync(_model);
+            }
+            else
+            {
+                // For existing plugins, use the universal update endpoint
+                var updateModel = new McpPluginUpdateModel
+                {
+                    Id = Plugin!.Id,
+                    Name = _model.Name,
+                    Description = _model.Description,
+                    SourceType = Plugin.SourceType,
+                    Version = _selectedVersion?.ToString() ?? _model.Version
+                };
+                
+                // If this is the command-only type, we need to include command information
+                if (Plugin.SourceType == "CommandOnly")
+                {
+                    if (_selectedVersion != null)
+                    {
+                        updateModel.Command = _selectedVersion.Command;
+                        updateModel.Arguments = _selectedVersion.Arguments?.ToList();
+                        updateModel.EnvironmentVariables = _selectedVersion.EnvironmentVariables != null
+                            ? new Dictionary<string, string>(_selectedVersion.EnvironmentVariables)
+                            : new Dictionary<string, string>();
+                    }
+                }
+                
+                // Update the plugin
+                updatedPlugin = await PluginApiClient.UpdateMcpPluginAsync(updateModel);
+            }
+            
+            Snackbar.Add($"Plugin '{_model.Name}' {(IsNewPlugin ? "created" : "updated")} successfully.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(updatedPlugin));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error updating MCP plugin");
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _processing = false;
+            StateHasChanged();
+        }
+    }
+}

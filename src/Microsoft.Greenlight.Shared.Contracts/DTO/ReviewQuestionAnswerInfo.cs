@@ -46,4 +46,14 @@ public record ReviewQuestionAnswerInfo
     /// Type of the review question.
     /// </summary>
     public ReviewQuestionType QuestionType { get; set; }
+    
+    /// <summary>
+    /// Order of the question in the review. Used for consistent sorting.
+    /// </summary>
+    public int Order { get; set; }
+
+    /// <summary>
+    /// UTC date and time when the answer was created (fallback for ordering).
+    /// </summary>
+    public DateTime CreatedUtc { get; set; }
 }

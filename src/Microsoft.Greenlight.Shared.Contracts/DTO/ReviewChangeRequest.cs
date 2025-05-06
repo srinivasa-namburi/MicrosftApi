@@ -19,4 +19,14 @@ public class ReviewChangeRequest
     /// List of deleted review questions.
     /// </summary>
     public List<ReviewQuestionInfo> DeletedQuestions { get; set; } = [];
+
+    /// <summary>
+    /// List of changed or added document processes.
+    /// </summary>
+    public List<ReviewDefinitionDocumentProcessInfo> ChangedOrAddedDocumentProcesses { get; set; } = [];
+
+    /// <summary>
+    /// List of deleted document processes.
+    /// </summary>
+    public List<ReviewDefinitionDocumentProcessInfo> DeletedDocumentProcesses { get; set; } = [];
 }

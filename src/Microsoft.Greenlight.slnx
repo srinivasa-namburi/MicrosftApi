@@ -12,7 +12,7 @@
       <BuildType Solution="Publish|*" Project="Release" />
     </Project>
   </Folder>
-  <Folder Name="/0. Aspire Infrastructure/Tests/" Id="bcd57aa8-ec63-331d-66e2-27c682ef2b60">
+  <Folder Name="/0. Aspire Infrastructure/Tests/">
     <Project Path="Microsoft.Greenlight.AppHost.Tests/Microsoft.Greenlight.AppHost.Tests.csproj">
       <BuildType Solution="Publish|*" Project="Debug" />
     </Project>
@@ -20,7 +20,7 @@
   <Folder Name="/00. Misc/">
     <File Path=".gitignore" />
   </Folder>
-  <Folder Name="/00. Misc/Build/" Id="d2c7549b-8317-97e8-3f64-d24f4423c93c">
+  <Folder Name="/00. Misc/Build/">
     <File Path="../.github/workflows/load-trainingdata.yml" />
     <File Path="../.github/workflows/provision-deploy.yml" />
     <File Path="../build/build-ci.yml" />
@@ -32,7 +32,7 @@
       <BuildType Solution="Publish|*" Project="Debug" />
     </Project>
   </Folder>
-  <Folder Name="/000.Setup Managers/Tests/" Id="53c64582-5975-0901-fcb5-21fba8a54070" />
+  <Folder Name="/000.Setup Managers/Tests/" />
   <Folder Name="/10. Frontends/">
     <Project Path="Microsoft.Greenlight.Web.DocGen.Client/Microsoft.Greenlight.Web.DocGen.Client.csproj">
       <BuildType Solution="Publish|*" Project="Debug" />
@@ -44,7 +44,7 @@
       <BuildType Solution="Publish|*" Project="Release" />
     </Project>
   </Folder>
-  <Folder Name="/10. Frontends/UI Assemblies/" Id="2144f4a2-2052-4578-1227-106eb7c0bf73">
+  <Folder Name="/10. Frontends/UI Assemblies/">
     <Project Path="Microsoft.Greenlight.UI.Default/Microsoft.Greenlight.UI.Default.csproj">
       <BuildType Solution="Publish|*" Project="Debug" />
     </Project>
@@ -66,7 +66,7 @@
       <BuildType Solution="Publish|*" Project="Release" />
     </Project>
   </Folder>
-  <Folder Name="/30. Orleans Framework/Base/" Id="c22e3fbb-d9c6-1000-4c9f-63644d99aa2b">
+  <Folder Name="/30. Orleans Framework/Base/">
     <Project Path="Microsoft.Greenlight.Grains.Contracts/Microsoft.Greenlight.Grains.Contracts.csproj">
       <BuildType Solution="Publish|*" Project="Release" />
     </Project>
@@ -74,7 +74,7 @@
       <BuildType Solution="Publish|*" Project="Release" />
     </Project>
   </Folder>
-  <Folder Name="/30. Orleans Framework/Chat/" Id="cabf088e-c5fb-ed9d-fd34-654f6354579f">
+  <Folder Name="/30. Orleans Framework/Chat/">
     <Project Path="Microsoft.Greenlight.Grains.Chat.Contracts/Microsoft.Greenlight.Grains.Chat.Contracts.csproj">
       <BuildType Solution="Publish|*" Project="Release" />
     </Project>
@@ -82,7 +82,7 @@
       <BuildType Solution="Publish|*" Project="Release" />
     </Project>
   </Folder>
-  <Folder Name="/30. Orleans Framework/Document/" Id="c6535800-fa84-b501-7b1d-3c621ff13576">
+  <Folder Name="/30. Orleans Framework/Document/">
     <Project Path="Microsoft.Greenlight.Grains.Document.Contracts/Microsoft.Greenlight.Grains.Document.Contracts.csproj">
       <BuildType Solution="Publish|*" Project="Release" />
     </Project>
@@ -135,14 +135,11 @@
     <Project Path="Microsoft.Greenlight.Shared.Models/Microsoft.Greenlight.Shared.Models.csproj">
       <BuildType Solution="Publish|*" Project="Debug" />
     </Project>
-    <Project Path="Microsoft.Greenlight.Shared.Testing/Microsoft.Greenlight.Shared.Testing.csproj">
-      <BuildType Solution="Publish|*" Project="Debug" />
-    </Project>
     <Project Path="Microsoft.Greenlight.Shared/Microsoft.Greenlight.Shared.csproj">
       <BuildType Solution="Publish|*" Project="Release" />
     </Project>
   </Folder>
-  <Folder Name="/35. Shared/Tests/" Id="687ca724-e044-d39a-3c0a-8c305b47e845">
+  <Folder Name="/35. Shared/Tests/">
     <Project Path="Microsoft.Greenlight.Shared.Configuration.Tests/Microsoft.Greenlight.Shared.Configuration.Tests.csproj">
       <BuildType Solution="Publish|*" Project="Debug" />
     </Project>
@@ -150,6 +147,9 @@
       <BuildType Solution="Publish|*" Project="Debug" />
     </Project>
     <Project Path="Microsoft.Greenlight.Shared.Models.Tests/Microsoft.Greenlight.Shared.Models.Tests.csproj">
+      <BuildType Solution="Publish|*" Project="Debug" />
+    </Project>
+    <Project Path="Microsoft.Greenlight.Shared.Testing/Microsoft.Greenlight.Shared.Testing.csproj">
       <BuildType Solution="Publish|*" Project="Debug" />
     </Project>
     <Project Path="Microsoft.Greenlight.Shared.Tests/Microsoft.Greenlight.Shared.Tests.csproj">
@@ -166,11 +166,6 @@
       <BuildType Solution="Publish|*" Project="Debug" />
     </Project>
     <Project Path="Extensibility/Microsoft.Greenlight.Extensions.Plugins/Microsoft.Greenlight.Extensions.Plugins.csproj">
-      <BuildType Solution="Publish|*" Project="Debug" />
-    </Project>
-  </Folder>
-  <Folder Name="/99. Temporary packages/Tests/" Id="d0271e6c-2ad7-c4d2-2061-7668aefe34eb">
-    <Project Path="Microsoft.Greenlight.Extensions.Plugins.Tests/Microsoft.Greenlight.Extensions.Plugins.Tests.csproj">
       <BuildType Solution="Publish|*" Project="Debug" />
     </Project>
   </Folder>

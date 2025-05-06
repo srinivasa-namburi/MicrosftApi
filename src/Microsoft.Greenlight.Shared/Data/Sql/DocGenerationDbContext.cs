@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
@@ -123,6 +123,16 @@ public class DocGenerationDbContext : DbContext
             (c1, c2) => c1!.SequenceEqual(c2!),
             c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
             c => c.ToList());
+
+        // ValueConverter for Dictionary<string, string> to JSON string for storage in a single column
+        var dictionaryToJsonConverter = new ValueConverter<Dictionary<string, string>, string>(
+            v => JsonSerializer.Serialize(v ?? new Dictionary<string, string>(), (JsonSerializerOptions)null!),
+            v => string.IsNullOrEmpty(v) ? new Dictionary<string, string>() : JsonSerializer.Deserialize<Dictionary<string, string>>(v, (JsonSerializerOptions)null!) ?? new Dictionary<string, string>());
+
+        var dictionaryComparer = new ValueComparer<Dictionary<string, string>>(
+            (c1, c2) => (c1 ?? new Dictionary<string, string>()).SequenceEqual(c2 ?? new Dictionary<string, string>()),
+            c => (c ?? new Dictionary<string, string>()).Aggregate(0, (a, v) => HashCode.Combine(a, v.Key.GetHashCode(), v.Value.GetHashCode())),
+            c => (c ?? new Dictionary<string, string>()).ToDictionary(entry => entry.Key, entry => entry.Value));
 
         modelBuilder.Entity<ExportedDocumentLink>()
             .ToTable("ExportedDocumentLinks");
@@ -469,21 +479,6 @@ public class DocGenerationDbContext : DbContext
             .HasIndex(nameof(DocumentLibraryDocumentProcessAssociation.DynamicDocumentProcessDefinitionId))
             .IsUnique(false);
 
-        modelBuilder.Entity<DynamicPlugin>()
-            .ToTable("DynamicPlugins");
-
-        modelBuilder.Entity<DynamicPlugin>()
-            .Property(dp => dp.Versions)
-            .HasConversion(
-                v => string.Join(";", v.Select(x => x.ToString())),
-                v => v.Split(";", StringSplitOptions.RemoveEmptyEntries).Select(DynamicPluginVersion.Parse).ToList(),
-                new ValueComparer<List<DynamicPluginVersion>>(
-                    (c1, c2) => c1!.SequenceEqual(c2!),
-                    c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
-                    c => c.ToList()
-                )
-            );
-
         modelBuilder.Entity<ReviewQuestionAnswer>()
             .ToTable("ReviewQuestionAnswers");
 
@@ -673,57 +668,6 @@ public class DocGenerationDbContext : DbContext
             .Property(x => x.OrderIndex)
             .IsRequired(false);
 
-        modelBuilder.Entity<DynamicPluginDocumentProcess>()
-            .ToTable("DynamicPluginDocumentProcesses")
-            .HasKey(dp => new { dp.DynamicPluginId, dp.DynamicDocumentProcessDefinitionId });
-
-        modelBuilder.Entity<DynamicPluginDocumentProcess>()
-            .HasOne(dp => dp.DynamicPlugin)
-            .WithMany(p => p.DocumentProcesses)
-            .HasForeignKey(dp => dp.DynamicPluginId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<DynamicPluginDocumentProcess>()
-            .HasOne(dp => dp.DynamicDocumentProcessDefinition)
-            .WithMany(d => d.Plugins)
-            .HasForeignKey(dp => dp.DynamicDocumentProcessDefinitionId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<DynamicPluginDocumentProcess>()
-            .Property(dp => dp.Version)
-            .HasConversion(
-                v => v!.ToString(),
-                v => DynamicPluginVersion.Parse(v),
-                new ValueComparer<DynamicPluginVersion>(
-                    (c1, c2) => c1!.CompareTo(c2!) == 0,
-                    c => c.GetHashCode(),
-                    c => c
-                )
-            );
-
-        modelBuilder.Entity<DynamicDocumentProcessMetaDataField>()
-            .ToTable("DynamicDocumentProcessMetaDataFields");
-
-        modelBuilder.Entity<DynamicDocumentProcessMetaDataField>()
-            .HasIndex(nameof(DynamicDocumentProcessMetaDataField.DynamicDocumentProcessDefinitionId))
-            .IsUnique(false);
-
-        modelBuilder.Entity<DynamicDocumentProcessMetaDataField>()
-            .HasIndex(nameof(DynamicDocumentProcessMetaDataField.DynamicDocumentProcessDefinitionId), nameof(DynamicDocumentProcessMetaDataField.Name))
-            .IsUnique();
-
-        modelBuilder.Entity<DynamicDocumentProcessMetaDataField>()
-            .HasOne(x => x.DynamicDocumentProcessDefinition)
-            .WithMany(x => x.MetaDataFields)
-            .HasForeignKey(x => x.DynamicDocumentProcessDefinitionId)
-            .IsRequired(false)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<DynamicDocumentProcessMetaDataField>()
-            .Property(e => e.PossibleValues)
-            .HasConversion(stringListToJsonConverter)
-            .Metadata.SetValueComparer(stringListComparer);
-        
         modelBuilder.Entity<DynamicDocumentProcessDefinition>()
             .ToTable("DynamicDocumentProcessDefinitions");
 
@@ -762,7 +706,7 @@ public class DocGenerationDbContext : DbContext
             .Metadata.SetValueComparer(stringListComparer);
 
         modelBuilder.Entity<DynamicDocumentProcessDefinition>()
-            .HasMany(x=>x.MetaDataFields)
+            .HasMany(x => x.MetaDataFields)
             .WithOne(x => x.DynamicDocumentProcessDefinition)
             .HasForeignKey(x => x.DynamicDocumentProcessDefinitionId)
             .IsRequired(false)
@@ -776,9 +720,16 @@ public class DocGenerationDbContext : DbContext
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<DynamicDocumentProcessDefinition>()
-            .HasOne(x=>x.ValidationPipeline)
-            .WithOne(x=>x.DocumentProcess)
+            .HasOne(x => x.ValidationPipeline)
+            .WithOne(x => x.DocumentProcess)
             .HasForeignKey<DynamicDocumentProcessDefinition>(x => x.ValidationPipelineId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<DynamicDocumentProcessDefinition>()
+            .HasMany(x => x.McpServerAssociations)
+            .WithOne(x => x.DynamicDocumentProcessDefinition)
+            .HasForeignKey(x => x.DynamicDocumentProcessDefinitionId)
             .IsRequired(false)
             .OnDelete(DeleteBehavior.Cascade);
 
@@ -970,7 +921,89 @@ public class DocGenerationDbContext : DbContext
             .IsRequired(false)
             .OnDelete(DeleteBehavior.Restrict);
 
-        
+        modelBuilder.Entity<McpPlugin>(entity =>
+        {
+            entity.ToTable("McpPlugins");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired();
+            entity.HasIndex(e => e.Name).IsUnique();
+
+            entity.Property(e => e.SourceType)
+                .HasConversion<string>()
+                .IsRequired();
+
+            entity.Property(e => e.BlobContainerName)
+                .IsRequired(false);
+
+            entity.HasMany(e => e.Versions)
+                .WithOne(e => e.McpPlugin)
+                .HasForeignKey(e => e.McpPluginId)
+                .IsRequired()
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<McpPluginVersion>(entity =>
+        {
+            entity.ToTable("McpPluginVersions");
+            entity.HasKey(e => e.Id);
+
+            entity.HasOne(e => e.McpPlugin)
+                .WithMany(e => e.Versions)
+                .HasForeignKey(e => e.McpPluginId)
+                .IsRequired()
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.Property(e => e.Major).IsRequired();
+            entity.Property(e => e.Minor).IsRequired();
+            entity.Property(e => e.Patch).IsRequired();
+
+            // Configure Arguments to store as semicolon-separated string
+            entity.Property(e => e.Arguments)
+                .HasConversion(
+                    v => string.Join(";", v),
+                    v => v.Split(';', StringSplitOptions.RemoveEmptyEntries).ToList(),
+                    new ValueComparer<List<string>>(
+                        (c1, c2) => c1!.SequenceEqual(c2!),
+                        c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
+                        c => c.ToList()
+                    )
+                );
+
+            // Configure EnvironmentVariables to store as JSON string
+            entity.Property(e => e.EnvironmentVariables)
+                .HasConversion(dictionaryToJsonConverter)
+                .Metadata.SetValueComparer(dictionaryComparer);
+
+            entity.HasIndex(e => new { e.McpPluginId, e.Major, e.Minor, e.Patch })
+                .IsUnique();
+        });
+
+        modelBuilder.Entity<McpPluginDocumentProcess>(entity =>
+        {
+            entity.ToTable("McpPluginDocumentProcesses");
+            entity.HasKey(e => e.Id);
+
+            entity.HasOne(e => e.McpPlugin)
+                .WithMany(e => e.DocumentProcesses)
+                .HasForeignKey(e => e.McpPluginId)
+                .IsRequired()
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.DynamicDocumentProcessDefinition)
+                .WithMany()
+                .HasForeignKey(e => e.DynamicDocumentProcessDefinitionId)
+                .IsRequired()
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Version)
+                .WithMany()
+                .HasForeignKey(e => e.VersionId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(e => new { e.McpPluginId, DocumentProcessId = e.DynamicDocumentProcessDefinitionId })
+                .IsUnique(false);
+        });
     }
     
     /// <summary>
@@ -1094,16 +1127,6 @@ public class DocGenerationDbContext : DbContext
     public DbSet<ReviewQuestionAnswer> ReviewQuestionAnswers { get; set; }
 
     /// <summary>
-    /// Gets or sets the dynamic plugins.
-    /// </summary>
-    public DbSet<DynamicPlugin> DynamicPlugins { get; set; }
-
-    /// <summary>
-    /// Gets or sets the dynamic plugin document processes.
-    /// </summary>
-    public DbSet<DynamicPluginDocumentProcess> DynamicPluginDocumentProcesses { get; set; }
-
-    /// <summary>
     /// Gets or sets the document libraries.
     /// </summary>
     public DbSet<DocumentLibrary> DocumentLibraries { get; set; }
@@ -1170,4 +1193,20 @@ public class DocGenerationDbContext : DbContext
     /// Embeddings generated from content reference item
     /// </summary>
     public DbSet<ContentEmbedding> ContentEmbeddings { get; set; }
+
+    /// <summary>
+    /// Gets or sets the MCP plugins.
+    /// </summary>
+    public DbSet<McpPlugin> McpPlugins { get; set; }
+
+    /// <summary>
+    /// Gets or sets the MCP plugin versions.
+    /// </summary>
+    public DbSet<McpPluginVersion> McpPluginVersions { get; set; }
+
+    /// <summary>
+    /// Gets or sets the associations between MCP plugins and document processes.
+    /// </summary>
+    public DbSet<McpPluginDocumentProcess> McpPluginDocumentProcesses { get; set; }
 }
+

@@ -829,12 +829,12 @@ namespace Microsoft.Greenlight.Shared.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("nvarchar(450)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("Order")
                         .HasColumnType("int");
 
-                    b.Property<string>("PossibleValues")
+                    b.PrimitiveCollection<string>("PossibleValues")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
@@ -848,10 +848,7 @@ namespace Microsoft.Greenlight.Shared.Migrations
 
                     b.HasIndex("DynamicDocumentProcessDefinitionId");
 
-                    b.HasIndex("DynamicDocumentProcessDefinitionId", "Name")
-                        .IsUnique();
-
-                    b.ToTable("DynamicDocumentProcessMetaDataFields", (string)null);
+                    b.ToTable("DynamicDocumentProcessMetaDataFields");
                 });
 
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.DocumentProcess.PromptDefinition", b =>
@@ -1120,25 +1117,27 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.ToTable("IngestedDocuments");
                 });
 
-            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Plugins.DynamicPlugin", b =>
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Plugins.McpPlugin", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("BlobContainerName")
-                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("ModifiedUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -1146,31 +1145,86 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
 
-                    b.Property<string>("Versions")
+                    b.Property<string>("SourceType")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
 
-                    b.ToTable("DynamicPlugins", (string)null);
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("McpPlugins", (string)null);
                 });
 
-            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Plugins.DynamicPluginDocumentProcess", b =>
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Plugins.McpPluginDocumentProcess", b =>
                 {
-                    b.Property<Guid>("DynamicPluginId")
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("DynamicDocumentProcessDefinitionId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("DynamicDocumentProcessDefinitionId1")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("McpPluginId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("VersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DynamicDocumentProcessDefinitionId");
+
+                    b.HasIndex("DynamicDocumentProcessDefinitionId1");
+
+                    b.HasIndex("VersionId");
+
+                    b.HasIndex("McpPluginId", "DynamicDocumentProcessDefinitionId");
+
+                    b.ToTable("McpPluginDocumentProcesses", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Plugins.McpPluginVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Arguments")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Command")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
 
-                    b.Property<Guid>("Id")
+                    b.Property<string>("EnvironmentVariables")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Major")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("McpPluginId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Minor")
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("ModifiedUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<int>("Patch")
+                        .HasColumnType("int");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -1178,14 +1232,12 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
 
-                    b.Property<string>("Version")
-                        .HasColumnType("nvarchar(max)");
+                    b.HasKey("Id");
 
-                    b.HasKey("DynamicPluginId", "DynamicDocumentProcessDefinitionId");
+                    b.HasIndex("McpPluginId", "Major", "Minor", "Patch")
+                        .IsUnique();
 
-                    b.HasIndex("DynamicDocumentProcessDefinitionId");
-
-                    b.ToTable("DynamicPluginDocumentProcesses", (string)null);
+                    b.ToTable("McpPluginVersions", (string)null);
                 });
 
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Review.ReviewDefinition", b =>
@@ -1268,6 +1320,12 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid?>("DocumentProcessDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("DocumentProcessShortName")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<Guid>("ExportedLinkId")
                         .HasColumnType("uniqueidentifier");
 
@@ -1313,6 +1371,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
 
                     b.Property<DateTime>("ModifiedUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("int");
 
                     b.Property<string>("Question")
                         .IsRequired()
@@ -1360,6 +1421,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
 
                     b.Property<DateTime>("ModifiedUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("int");
 
                     b.Property<Guid?>("OriginalReviewQuestionId")
                         .HasColumnType("uniqueidentifier");
@@ -2024,23 +2088,45 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Navigation("GeneratedDocument");
                 });
 
-            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Plugins.DynamicPluginDocumentProcess", b =>
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Plugins.McpPluginDocumentProcess", b =>
                 {
                     b.HasOne("Microsoft.Greenlight.Shared.Models.DocumentProcess.DynamicDocumentProcessDefinition", "DynamicDocumentProcessDefinition")
-                        .WithMany("Plugins")
+                        .WithMany()
                         .HasForeignKey("DynamicDocumentProcessDefinitionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Microsoft.Greenlight.Shared.Models.Plugins.DynamicPlugin", "DynamicPlugin")
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.DocumentProcess.DynamicDocumentProcessDefinition", null)
+                        .WithMany("McpServerAssociations")
+                        .HasForeignKey("DynamicDocumentProcessDefinitionId1");
+
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.Plugins.McpPlugin", "McpPlugin")
                         .WithMany("DocumentProcesses")
-                        .HasForeignKey("DynamicPluginId")
+                        .HasForeignKey("McpPluginId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.Plugins.McpPluginVersion", "Version")
+                        .WithMany()
+                        .HasForeignKey("VersionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("DynamicDocumentProcessDefinition");
 
-                    b.Navigation("DynamicPlugin");
+                    b.Navigation("McpPlugin");
+
+                    b.Navigation("Version");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Plugins.McpPluginVersion", b =>
+                {
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.Plugins.McpPlugin", "McpPlugin")
+                        .WithMany("Versions")
+                        .HasForeignKey("McpPluginId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("McpPlugin");
                 });
 
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Review.ReviewDefinitionDocumentProcessDefinition", b =>
@@ -2266,9 +2352,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
 
                     b.Navigation("DocumentOutline");
 
-                    b.Navigation("MetaDataFields");
+                    b.Navigation("McpServerAssociations");
 
-                    b.Navigation("Plugins");
+                    b.Navigation("MetaDataFields");
 
                     b.Navigation("Prompts");
                 });
@@ -2291,9 +2377,11 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Navigation("ValidationPipelineExecutions");
                 });
 
-            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Plugins.DynamicPlugin", b =>
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Plugins.McpPlugin", b =>
                 {
                     b.Navigation("DocumentProcesses");
+
+                    b.Navigation("Versions");
                 });
 
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Review.ReviewDefinition", b =>

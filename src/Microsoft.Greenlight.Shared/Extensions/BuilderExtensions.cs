@@ -9,6 +9,7 @@ using Humanizer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -26,6 +27,7 @@ using Microsoft.Greenlight.Shared.Management;
 using Microsoft.Greenlight.Shared.Management.Configuration;
 using Microsoft.Greenlight.Shared.Mappings;
 using Microsoft.Greenlight.Shared.Models;
+using Microsoft.Greenlight.Shared.Models.Review;
 using Microsoft.Greenlight.Shared.Plugins;
 using Microsoft.Greenlight.Shared.Repositories;
 using Microsoft.Greenlight.Shared.Services;
@@ -203,8 +205,15 @@ public static class BuilderExtensions
 
         builder.Services.AddTransient<IDocumentProcessInfoService, DocumentProcessInfoService>();
         builder.Services.AddTransient<IPromptInfoService, PromptInfoService>();
-        builder.Services.AddTransient<IPluginService, PluginService>();
         builder.Services.AddTransient<IDocumentLibraryInfoService, DocumentLibraryInfoService>();
+
+        // Register the Kernel Memory Instance Factory for Document Libraries and text extraction
+        builder.Services.AddSingleton<KernelMemoryInstanceContainer>();
+        // This can be scoped because it relies on the singleton KernelMemoryInstanceContainer to keep track of the instances
+        builder.Services.AddTransient<IKernelMemoryInstanceFactory, KernelMemoryInstanceFactory>();
+
+        // Text extraction service for content references using kernel memory
+        builder.Services.AddTransient<IKernelMemoryTextExtractionService, KernelMemoryTextExtractionService>();
 
         builder.Services.AddKeyedTransient<IDocumentExporter, WordDocumentExporter>("IDocumentExporter-Word");
 
@@ -250,6 +259,9 @@ public static class BuilderExtensions
         builder.Services
             .AddTransient<IContentReferenceGenerationService<ExportedDocumentLink>,
                 UploadedDocumentReferenceGenerationService>();
+        builder.Services
+            .AddTransient<IContentReferenceGenerationService<ReviewInstance>,
+                ReviewContentReferenceGenerationService>();
 
         // Context Builder that uses embeddings generation to build rag contexts from content references for user queries
         builder.Services.AddTransient<IRagContextBuilder, RagContextBuilder>();
@@ -258,6 +270,10 @@ public static class BuilderExtensions
         builder.Services.AddKeyedTransient<IDocumentOutlineService, DynamicDocumentOutlineService>(
             "Dynamic-IDocumentOutlineService");
         builder.Services.AddTransient<IDocumentOutlineService, DynamicDocumentOutlineService>();
+
+        // Register the ReviewKernelMemoryRepository
+        builder.Services.AddKeyedTransient<IKernelMemoryRepository, KernelMemoryRepository>("Reviews-IKernelMemoryRepository");
+        builder.Services.AddTransient<IReviewKernelMemoryRepository, ReviewKernelMemoryRepository>();
 
         // Review services
         builder.Services.AddTransient<IReviewService, ReviewService>();
@@ -657,5 +673,32 @@ public static class BuilderExtensions
         }
 
         return service;
+    }
+
+    /// <summary>
+    /// Registers MCP plugin services with the host application builder.
+    /// </summary>
+    /// <param name="builder">The host application builder.</param>
+    /// <returns>The updated host application builder.</returns>
+    public static IHostApplicationBuilder AddMcpPluginServices(this IHostApplicationBuilder builder)
+    {
+        // Register the MCP plugin container as a singleton
+        builder.Services.TryAddSingleton<MCPServerContainer>();
+        
+        // Register the MCP plugin manager as a singleton with factory pattern
+        builder.Services.TryAddSingleton<McpPluginManager>((serviceProvider) =>
+        {
+            var pluginContainer = serviceProvider.GetRequiredService<MCPServerContainer>();
+            var serviceScopeFactory = serviceProvider.GetRequiredService<IServiceScopeFactory>();
+            var loggerFactory = serviceProvider.GetService<ILoggerFactory>();
+            
+            var logger = loggerFactory?.CreateLogger<McpPluginManager>();
+            return new McpPluginManager(serviceScopeFactory, pluginContainer, logger);
+        });
+        
+        // Register the MCP plugin background service
+        builder.Services.AddHostedService<McpPluginBackgroundService>();
+        
+        return builder;
     }
 }

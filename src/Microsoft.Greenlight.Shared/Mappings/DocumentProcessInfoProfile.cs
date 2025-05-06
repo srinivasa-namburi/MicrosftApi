@@ -44,7 +44,7 @@ public class DocumentProcessInfoProfile : Profile
             .ForMember(x => x.CompletionServiceType, y => y.MapFrom(
                 source => source.CompletionServiceType ?? DocumentProcessCompletionServiceType.GenericAiCompletionService))
             .ForMember(dest => dest.Repositories, opt => opt.MapFrom(src => src.Repositories))
-            .ForMember(x => x.Plugins, y => y.DoNotUseDestinationValue());
+            .ForMember(x => x.McpServerAssociations, y => y.DoNotUseDestinationValue());
 
         CreateMap<DynamicDocumentProcessDefinition, DocumentProcessInfo>()
             .ForMember(dest => dest.Repositories, opt => opt.MapFrom(src => src.Repositories))

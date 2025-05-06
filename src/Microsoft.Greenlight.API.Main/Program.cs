@@ -5,7 +5,6 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Greenlight.ServiceDefaults;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.Chat;
-using Microsoft.Greenlight.Shared.Core;
 using Microsoft.Greenlight.Shared.DocumentProcess.Shared;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Helpers;
@@ -20,8 +19,9 @@ using Orleans.Serialization;
 using Scalar.AspNetCore;
 using System.Reflection;
 
-//var builder = WebApplication.CreateBuilder(args);
-var builder = new GreenlightDynamicWebApplicationBuilder(args);
+// Use standard WebApplicationBuilder instead of the custom class
+var builder = WebApplication.CreateBuilder(args);
+
 builder.Services.AddSingleton<AzureCredentialHelper>();
 var credentialHelper = new AzureCredentialHelper(builder.Configuration);
 

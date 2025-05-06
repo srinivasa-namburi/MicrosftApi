@@ -1,0 +1,164 @@
+@using Microsoft.Extensions.Logging
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Plugins
+
+@inject IPluginApiClient PluginApiClient
+@inject ISnackbar Snackbar
+@inject ILogger<EditCommandOnlyMcpPluginDialog> Logger
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" Model="@_model">
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_model.Name" Label="Plugin Name" Required="true" Disabled="true" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_model.Description" Label="Description" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudSelect T="McpPluginVersionInfo" Label="Version" Value="@_selectedVersion" 
+                               ValueChanged="@VersionChanged" Required="true">
+                        @foreach (var version in Plugin.Versions)
+                        {
+                            <MudSelectItem Value="@version">@version.ToString()</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_model.Command" Label="Command" Required="true" 
+                                  Validation="@(new Func<string, string>(ValidateCommand))"
+                                  Placeholder="npx" />
+                </MudItem>
+                @{
+                    var argumentTemplate = "-y,@upstash/context7-mcp@latest";
+                    var separateDescription = $"Separate arguments with commas, e.g.: {argumentTemplate}";
+                }
+
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_argumentsString" Label="Arguments (comma-separated)" 
+                                      Placeholder="@argumentTemplate"
+                                  HelperText="@separateDescription"
+                                  Lines="3" />
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Submit" Disabled="@_processing">
+            @if (_processing)
+            {
+                <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                <span class="ms-2">Updating...</span>
+            }
+            else
+            {
+                <span>Update</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public McpPluginInfo Plugin { get; set; } = null!;
+
+    private MudForm? _form;
+    private bool _processing;
+    private string _argumentsString = string.Empty;
+    private CommandOnlyMcpPluginCreateModel _model = new();
+    private McpPluginVersionInfo _selectedVersion = null!;
+    
+    protected override void OnInitialized()
+    {
+        if (Plugin == null || Plugin.LatestVersion == null)
+        {
+            return;
+        }
+
+        _selectedVersion = Plugin.LatestVersion;
+        
+        _model.Name = Plugin.Name;
+        _model.Description = Plugin.Description;
+        _model.Command = _selectedVersion.Command ?? string.Empty;
+        _model.Version = _selectedVersion.ToString();
+        
+        if (_selectedVersion.Arguments != null && _selectedVersion.Arguments.Any())
+        {
+            _argumentsString = string.Join(",", _selectedVersion.Arguments);
+        }
+    }
+
+    private void VersionChanged(McpPluginVersionInfo version)
+    {
+        if (version == null) return;
+        
+        _selectedVersion = version;
+        _model.Command = version.Command ?? string.Empty;
+        _model.Version = version.ToString();
+        
+        if (version.Arguments != null && version.Arguments.Any())
+        {
+            _argumentsString = string.Join(",", version.Arguments);
+        }
+        else
+        {
+            _argumentsString = string.Empty;
+        }
+    }
+    
+    private string ValidateCommand(string command)
+    {
+        if (string.IsNullOrWhiteSpace(command))
+            return "Command is required";
+            
+        return string.Empty;
+    }
+    
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+    
+    private async Task Submit()
+    {
+        _processing = true;
+        
+        try
+        {
+            // Validate form
+            await _form?.Validate()!;
+            if (_form?.IsValid != true)
+            {
+                _processing = false;
+                return;
+            }
+            
+            // Parse arguments
+            if (!string.IsNullOrWhiteSpace(_argumentsString))
+            {
+                _model.Arguments = _argumentsString.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(a => a.Trim())
+                    .ToList();
+            }
+            
+            // Update the plugin
+            var updatedPlugin = await PluginApiClient.CreateCommandOnlyMcpPluginAsync(_model);
+            
+            Snackbar.Add($"Command-only plugin '{_model.Name}' updated successfully.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(updatedPlugin));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error updating command-only MCP plugin");
+            Snackbar.Add($"Error updating command-only plugin: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _processing = false;
+            StateHasChanged();
+        }
+    }
+}

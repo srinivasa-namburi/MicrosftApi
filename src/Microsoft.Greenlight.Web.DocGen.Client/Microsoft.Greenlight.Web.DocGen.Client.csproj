@@ -35,7 +35,6 @@
   <ItemGroup>
     <Folder Include="Enums\" />
     <Folder Include="Pages\DomainGroups\" />
-    <Folder Include="Pages\Plugins\" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Microsoft.Greenlight.UI.Default\Microsoft.Greenlight.UI.Default.csproj" />

@@ -182,31 +182,11 @@
                 </MudTabPanel>
 
                 <MudTabPanel Text="Plugins">
-                    <MudText Typo="Typo.h6">Associated Plugins</MudText>
-
-                    <MudTable Items="_associatedPlugins" Hover="true">
-                        <HeaderContent>
-                            <MudTh>Plugin Name</MudTh>
-                            <MudTh>Version</MudTh>
-                            <MudTh>Actions</MudTh>
-                        </HeaderContent>
-                        <RowTemplate>
-                            <MudTd>@context.Plugin.Name</MudTd>
-                            <MudTd>
-                                <MudSelect T="string" @bind-Value="context.Version" Dense="true" OnBlur="() => UpdatePluginVersion(context)">
-                                    @foreach (var version in context.Plugin.Versions.Select(v => v.ToString()).OrderByDescending(v => v))
-                                    {
-                                        <MudSelectItem Value="@version">@version</MudSelectItem>
-                                    }
-                                </MudSelect>
-                            </MudTd>
-                            <MudTd>
-                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="() => ConfirmRemovePluginAssociation(context.Plugin.Id)" />
-                            </MudTd>
-                        </RowTemplate>
-                    </MudTable>
-
-                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ShowAssociatePluginDialog" Class="mt-4">Associate Plugin</MudButton>
+                    <PluginDocumentProcessAssociationManager DocumentProcessId="@ProcessId"
+                                                          PluginCentric="false"
+                                                          Title="Associated Plugins"
+                                                          SelectionColumnLabel="Plugin"
+                                                          OnAssociationChanged="HandleAssociationChanged" />
                 </MudTabPanel>
 
                 <MudTabPanel Text="Prompts">
@@ -240,7 +220,7 @@
     private bool _runValidationAutomatically = true;
 
     // Plugin-related fields
-    private List<DynamicPluginInfo> _availablePlugins = new();
+    private List<McpPluginInfo> _availablePlugins = new();
     private List<PluginAssociationViewModel> _associatedPlugins = new();
 
     // Document Library-related fields
@@ -289,23 +269,57 @@
                     _indexName = string.Empty;
                 }
 
-                // Load associated plugins
-                await LoadAssociatedPlugins();
+                // Load associated plugins - use try/catch to avoid failures if the plugin API returns errors
+                try
+                {
+                    await LoadAssociatedPlugins();
 
-                // Load available plugins
-                _availablePlugins = await PluginApiClient.GetAllPluginsAsync();
+                    // Load available plugins
+                    _availablePlugins = await PluginApiClient.GetAllMcpPluginsAsync() ?? new List<McpPluginInfo>();
+                }
+                catch (Exception ex)
+                {
+                    _availablePlugins = new List<McpPluginInfo>();
+                    _associatedPlugins = new List<PluginAssociationViewModel>();
+                    Console.WriteLine($"Error loading plugins: {ex.Message}");
+                    Snackbar.Add($"Error loading plugins: {ex.Message}", Severity.Warning);
+                }
 
-                // Load associated document libraries
-                await LoadAssociatedLibraries();
+                try
+                {
+                    // Load associated document libraries
+                    await LoadAssociatedLibraries();
 
-                // Load available document libraries
-                await LoadAvailableLibraries();
+                    // Load available document libraries
+                    await LoadAvailableLibraries();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error loading document libraries: {ex.Message}");
+                    Snackbar.Add($"Error loading document libraries: {ex.Message}", Severity.Warning);
+                }
 
-                // Load prompts
-                await LoadPrompts();
+                try
+                {
+                    // Load prompts
+                    await LoadPrompts();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error loading prompts: {ex.Message}");
+                    Snackbar.Add($"Error loading prompts: {ex.Message}", Severity.Warning);
+                }
 
-                // Load validation pipeline
-                await LoadValidationPipelines();
+                try
+                {
+                    // Load validation pipeline
+                    await LoadValidationPipelines();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error loading validation pipeline: {ex.Message}");
+                    Snackbar.Add($"Error loading validation pipeline: {ex.Message}", Severity.Warning);
+                }
             }
             else
             {
@@ -313,6 +327,11 @@
                 SelectedDeployment = _aiModelDeployments.FirstOrDefault(x => x.DeploymentName == "gpt-4o");
                 SelectedValidationDeployment = _aiModelDeployments.FirstOrDefault(x => x.DeploymentName == "gpt-4o");
             }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error initializing document process edit component: {ex.Message}");
+            Snackbar.Add($"Error loading document process: {ex.Message}", Severity.Error);
         }
         finally
         {
@@ -432,23 +451,35 @@
 
     private async Task LoadAssociatedPlugins()
     {
-        // Get associated plugins from the API
-        var associatedPluginInfos = await PluginApiClient.GetPluginsByDocumentProcessIdAsync(_process.Id);
-
-        // Map to PluginAssociation objects
-        _associatedPlugins = associatedPluginInfos.Select(p =>
+        try
         {
-            var docProcess = p.DocumentProcesses.FirstOrDefault(dp => dp.DynamicDocumentProcessDefinitionId == _process.Id);
-
-            return new PluginAssociationViewModel
+            // Get associated plugins from the API
+            var associatedPluginInfos = await PluginApiClient.GetMcpPluginsByDocumentProcessIdAsync(_process.Id);
+            
+            // Map to PluginAssociation objects
+            _associatedPlugins = (associatedPluginInfos ?? new List<McpPluginInfo>()).Select(p =>
             {
-                Plugin = p,
-                Version = docProcess?.Version.ToString() ?? p.LatestVersion.ToString()
-            };
+                var docProcess = p.DocumentProcesses?.FirstOrDefault(dp => dp.DocumentProcessId == _process.Id);
+                var version = docProcess?.Version;
+                var versionString = version != null ? $"{version.Major}.{version.Minor}.{version.Patch}" : 
+                    p.LatestVersion != null ? $"{p.LatestVersion.Major}.{p.LatestVersion.Minor}.{p.LatestVersion.Patch}" : "1.0.0";
 
-        }).ToList();
+                return new PluginAssociationViewModel
+                {
+                    Plugin = p,
+                    Version = versionString
+                };
+
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            // Log the error, but don't crash
+            Console.WriteLine($"Error loading associated plugins: {ex.Message}");
+            _associatedPlugins = new List<PluginAssociationViewModel>();
+            Snackbar.Add($"Error loading plugins: {ex.Message}", Severity.Warning);
+        }
     }
-
 
     private async Task SaveProcess()
     {
@@ -662,108 +693,17 @@
     }
 
     // Plugin-related methods
-    private void ShowAssociatePluginDialog()
+    private async Task HandleAssociationChanged()
     {
-        var parameters = new DialogParameters
-        {
-            { "AvailablePlugins", _availablePlugins },
-            { "ProcessId", _process.Id }
-        };
-
-        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
-        var dialog = DialogService.Show<AssociatePluginWithSpecificProcessDialog>("Associate Plugin", parameters, options);
-
-        dialog.Result.ContinueWith(async result =>
-        {
-            if (!result.Result.Cancelled)
-            {
-                await LoadAssociatedPlugins();
-                StateHasChanged();
-            }
-        });
-    }
-
-    private void ConfirmRemovePluginAssociation(Guid pluginId)
-    {
-        var parameters = new DialogParameters
-        {
-            { "ContentText", "Are you sure you want to disassociate this plugin?" },
-            { "ButtonText", "Disassociate" },
-            { "DialogColor", Color.Error }
-        };
-
-        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
-        var dialog = DialogService.Show<ConfirmationDialog>("Disassociate Plugin", parameters, options);
-
-        dialog.Result.ContinueWith(async result =>
-        {
-            if (!result.Result.Cancelled)
-            {
-                await RemovePluginAssociation(pluginId);
-                StateHasChanged();
-            }
-        });
-    }
-
-    private async Task UpdatePluginVersion(PluginAssociationViewModel association)
-    {
-        try
-        {
-            string version = association.Version;
-
-            // Find the version object from the plugin
-            var versionObject = association.Plugin.Versions.FirstOrDefault(v => v.ToString() == version);
-
-            if (versionObject == null)
-            {
-                Snackbar.Add("Invalid version selected.", Severity.Error);
-                return;
-            }
-
-            if (_process == null)
-            {
-                Snackbar.Add("Invalid plugin selected.", Severity.Error);
-                return;
-            }
-
-            await PluginApiClient.AssociatePluginWithDocumentProcessAsync(association.Plugin.Id, _process.Id, versionObject);
-            Snackbar.Add($"Plugin '{association.Plugin.Name}' updated to version '{version}'.", Severity.Success);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Failed to update plugin version: {ex.Message}", Severity.Error);
-        }
-    }
-    private async Task RemovePluginAssociation(Guid pluginId)
-    {
-        try
-        {
-            if (_process == null)
-            {
-                Snackbar.Add(
-                    "Invalid document process selected for disassociation - please reload the page",
-                    Severity.Error
-                    );
-                return;
-            }
-
-            await PluginApiClient.DisassociatePluginFromDocumentProcessAsync(pluginId, _process.Id);
-            await LoadAssociatedPlugins();
-
-            Snackbar.Add("Plugin disassociated successfully.", Severity.Success);
-            await InvokeAsync(StateHasChanged);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Error disassociating plugin: {ex.Message}", Severity.Error);
-        }
+        // Refresh associated plugins
+        await LoadAssociatedPlugins();
+        StateHasChanged();
     }
 
     // Helper class for plugin associations
     private class PluginAssociationViewModel
     {
-        public DynamicPluginInfo Plugin { get; set; }
+        public McpPluginInfo Plugin { get; set; }
         public string Version { get; set; }
     }
-
 }

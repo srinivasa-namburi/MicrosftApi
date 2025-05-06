@@ -1,0 +1,229 @@
+@page "/plugins"
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Plugins
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+
+@inject IPluginApiClient PluginApiClient
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager NavigationManager
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudText Typo="Typo.h4">MCP Plugins</MudText>
+    
+    <MudPaper Class="pa-4 my-4">
+        <MudGrid>
+            <MudItem xs="6" sm="4" md="3">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ShowUploadPluginDialog" 
+                         StartIcon="@Icons.Material.Filled.CloudUpload" FullWidth="true">
+                    Upload MCP Plugin
+                </MudButton>
+            </MudItem>
+            <MudItem xs="6" sm="4" md="3">
+                <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="ShowCreateCommandOnlyPluginDialog" 
+                         StartIcon="@Icons.Material.Filled.Add" FullWidth="true">
+                    Create Command-Only Plugin
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+    
+    <MudText Class="mb-3">Manage MCP Plugins</MudText>
+    
+    @if (_isLoading)
+    {
+        <MudProgressCircular Indeterminate="true" Size="Size.Large" Class="ma-4" />
+    }
+    else
+    {
+        <MudTable Items="_plugins" Hover="true" Striped="true" Dense="true" 
+                 Filter="new Func<McpPluginInfo, bool>(FilterPlugin)" 
+                 @bind-RowsPerPage="_rowsPerPage">
+            <ToolBarContent>
+                <MudTextField @bind-Value="_searchString" Placeholder="Search" Adornment="Adornment.Start" 
+                             AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" 
+                             Class="mt-0" Immediate="true" />
+            </ToolBarContent>
+            <HeaderContent>
+                <MudTh>Plugin Name</MudTh>
+                <MudTh>Description</MudTh>
+                <MudTh>Latest Version</MudTh>
+                <MudTh>Source Type</MudTh>
+                <MudTh>Versions</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Plugin Name">
+                    <MudLink Href="@($"plugins/{context.Id}")">@context.Name</MudLink>
+                </MudTd>
+                <MudTd DataLabel="Description">@(context.Description ?? "No description")</MudTd>
+                <MudTd DataLabel="Latest Version">@(context.LatestVersion?.ToString() ?? "N/A")</MudTd>
+                <MudTd DataLabel="Source Type">
+                    <MudChip Size="Size.Small" Color="@GetSourceTypeColor(context.SourceType)">@context.SourceType</MudChip>
+                </MudTd>
+                <MudTd DataLabel="Versions">
+                    <MudChip Size="Size.Small">@context.Versions.Count</MudChip>
+                </MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" 
+                                 OnClick="() => EditPlugin(context)" Size="Size.Small" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" 
+                                 OnClick="() => ConfirmDeletePlugin(context)" Size="Size.Small" />
+                    <MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Color="Color.Default" 
+                                 OnClick="() => ViewPluginDetails(context)" Size="Size.Small" />
+                </MudTd>
+            </RowTemplate>
+            <PagerContent>
+                <MudTablePager />
+            </PagerContent>
+            <NoRecordsContent>
+                <MudText>No plugins found</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    }
+</MudContainer>
+
+@code {
+    private List<McpPluginInfo> _plugins = new();
+    private bool _isLoading = true;
+    private string _searchString = "";
+    private int _rowsPerPage = 10;
+    
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPlugins();
+    }
+    
+    private async Task LoadPlugins()
+    {
+        _isLoading = true;
+        try
+        {
+            _plugins = await PluginApiClient.GetAllMcpPluginsAsync() ?? new List<McpPluginInfo>();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading plugins: {ex.Message}", Severity.Error);
+            _plugins = new List<McpPluginInfo>();
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+    
+    private bool FilterPlugin(McpPluginInfo plugin)
+    {
+        if (string.IsNullOrWhiteSpace(_searchString))
+            return true;
+            
+        return plugin.Name.Contains(_searchString, StringComparison.OrdinalIgnoreCase)
+            || (plugin.Description?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+    
+    private Color GetSourceTypeColor(string sourceType)
+    {
+        return sourceType switch
+        {
+            "CommandOnly" => Color.Secondary,
+            "AzureBlobStorage" => Color.Primary,
+            _ => Color.Default
+        };
+    }
+    
+    private void ShowUploadPluginDialog()
+    {
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = DialogService.Show<UnifiedPluginDialog>("Upload MCP Plugin", options);
+        
+        dialog.Result.ContinueWith(async result =>
+        {
+            if (!result.Result.Cancelled)
+            {
+                await LoadPlugins();
+                StateHasChanged();
+            }
+        });
+    }
+    
+    private void ShowCreateCommandOnlyPluginDialog()
+    {
+        var parameters = new DialogParameters
+        {
+            { "IsNewPlugin", true }
+        };
+        
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = DialogService.Show<EditMcpPluginDialog>("Create Command-Only Plugin", parameters, options);
+        
+        dialog.Result.ContinueWith(async result =>
+        {
+            if (!result.Result.Cancelled)
+            {
+                await LoadPlugins();
+                StateHasChanged();
+            }
+        });
+    }
+    
+    private void EditPlugin(McpPluginInfo plugin)
+    {
+        var parameters = new DialogParameters
+        {
+            { "Plugin", plugin },
+            { "IsNewPlugin", false }
+        };
+        
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = DialogService.Show<EditMcpPluginDialog>("Edit Plugin", parameters, options);
+        
+        dialog.Result.ContinueWith(async result =>
+        {
+            if (!result.Result.Cancelled)
+            {
+                await LoadPlugins();
+                StateHasChanged();
+            }
+        });
+    }
+    
+    private void ConfirmDeletePlugin(McpPluginInfo plugin)
+    {
+        var parameters = new DialogParameters
+        {
+            { "ContentText", $"Are you sure you want to delete the plugin '{plugin.Name}'? This action cannot be undone." },
+            { "ButtonText", "Delete" },
+            { "DialogColor", Color.Error }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = DialogService.Show<ConfirmationDialog>("Delete Plugin", parameters, options);
+
+        dialog.Result.ContinueWith(async result =>
+        {
+            if (!result.Result.Cancelled)
+            {
+                await DeletePlugin(plugin);
+            }
+        });
+    }
+    
+    private async Task DeletePlugin(McpPluginInfo plugin)
+    {
+        try
+        {
+            await PluginApiClient.DeleteMcpPluginAsync(plugin.Id);
+            Snackbar.Add($"Plugin '{plugin.Name}' deleted successfully.", Severity.Success);
+            await LoadPlugins();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error deleting plugin: {ex.Message}", Severity.Error);
+        }
+    }
+    
+    private void ViewPluginDetails(McpPluginInfo plugin)
+    {
+        NavigationManager.NavigateTo($"/plugins/{plugin.Id}");
+    }
+}

@@ -1,0 +1,79 @@
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Environment Variables</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudTable Items="_environmentVariables" Hover="true" Striped="true">
+            <HeaderContent>
+                <MudTh>Key</MudTh>
+                <MudTh>Value</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Key</MudTd>
+                <MudTd>@context.Value</MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="() => RemoveVariable(context.Key)" />
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+        <MudTextField @bind-Value="_newKey" Placeholder="Key" Class="mt-2" />
+        <MudTextField @bind-Value="_newValue" Placeholder="Value" Class="mt-2" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddVariable" Class="mt-2">Add Variable</MudButton>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public McpPluginVersionInfo Version { get; set; } = null!;
+
+    private Dictionary<string, string> _environmentVariables = new();
+    private string _newKey = string.Empty;
+    private string _newValue = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        _environmentVariables = new Dictionary<string, string>(Version.EnvironmentVariables);
+    }
+
+    private void AddVariable()
+    {
+        if (string.IsNullOrWhiteSpace(_newKey) || string.IsNullOrWhiteSpace(_newValue))
+        {
+            Snackbar.Add("Key and Value cannot be empty.", Severity.Warning);
+            return;
+        }
+
+        if (_environmentVariables.ContainsKey(_newKey))
+        {
+            Snackbar.Add("Key already exists.", Severity.Warning);
+            return;
+        }
+
+        _environmentVariables[_newKey] = _newValue;
+        _newKey = string.Empty;
+        _newValue = string.Empty;
+    }
+
+    private void RemoveVariable(string key)
+    {
+        _environmentVariables.Remove(key);
+    }
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+
+    private void Save()
+    {
+        Version.EnvironmentVariables = new Dictionary<string, string>(_environmentVariables);
+        MudDialog.Close(DialogResult.Ok(Version));
+    }
+}

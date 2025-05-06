@@ -391,8 +391,6 @@ public class FileController : BaseController
         }
     }
 
-
-
     /// <summary>
     /// Uploads a file to the specified container and returns file information.
     /// </summary>
@@ -433,16 +431,36 @@ public class FileController : BaseController
             return BadRequest("Invalid file name.");
         }
 
-        // Read the file stream
         await using var stream = file.OpenReadStream();
-        // Generate a random file name for the backend in blob storage
         var blobFileName = Guid.NewGuid() + Path.GetExtension(fileName);
-        // Upload the file to the blob storage
         var blobUrl = await _fileHelper.UploadFileToBlobAsync(stream, blobFileName, containerName, true);
-        // Save the file information in the database
         var exportedDocumentLink = await _fileHelper.SaveFileInfoAsync(blobUrl, containerName, fileName);
-        var fileInfo = _mapper.Map<ExportedDocumentLinkInfo>(exportedDocumentLink);
 
+        // Deduplication logic for 'reviews' container
+        if (containerName == "reviews" && !string.IsNullOrEmpty(exportedDocumentLink.FileHash))
+        {
+            var existingLink = await _dbContext.ExportedDocumentLinks
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.FileHash == exportedDocumentLink.FileHash && x.Type == FileDocumentType.Review && x.Id != exportedDocumentLink.Id);
+            if (existingLink != null)
+            {
+                // Clean up the newly uploaded file and document link
+                try
+                {
+                    await _fileHelper.DeleteBlobAsync(containerName, blobFileName);
+                    _dbContext.ExportedDocumentLinks.Remove(exportedDocumentLink);
+                    await _dbContext.SaveChangesAsync();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error cleaning up duplicate review file, but will still use existing link");
+                }
+                var existingInfo = _mapper.Map<ExportedDocumentLinkInfo>(existingLink);
+                return Ok(existingInfo);
+            }
+        }
+
+        var fileInfo = _mapper.Map<ExportedDocumentLinkInfo>(exportedDocumentLink);
         return Ok(fileInfo);
     }
 

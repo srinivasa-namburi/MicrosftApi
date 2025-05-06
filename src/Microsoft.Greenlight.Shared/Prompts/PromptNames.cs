@@ -34,4 +34,24 @@ public static class PromptNames
     /// The prompt name for the section generation system.
     /// </summary>
     public const string SectionGenerationSystemPrompt = "SectionGenerationSystemPrompt";
+
+    /// <summary>
+    /// Gets the prompt used to answer review questions - in question format.
+    /// </summary>
+    public const string ReviewQuestionAnswerPrompt = "ReviewQuestionAnswerPrompt";
+
+    /// <summary>
+    /// Gets the prompt used to answer review questions - in requirement format.
+    /// </summary>
+    public const string ReviewRequirementAnswerPrompt = "ReviewRequirementAnswerPrompt";
+
+    /// <summary>
+    /// Gets the prompt used to provide a reasoning for the review sentiment.
+    /// </summary>
+    public const string ReviewSentimentReasoningPrompt = "ReviewSentimentReasoningPrompt";
+
+    /// <summary>
+    /// Gets the prompt used to provide a sentiment score for the review answer.
+    /// </summary>
+    public const string ReviewSentimentAnalysisScorePrompt = "ReviewSentimentAnalysisScorePrompt";
 }

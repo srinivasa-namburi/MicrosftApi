@@ -1,0 +1,256 @@
+@using Microsoft.Extensions.Logging
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Plugins
+
+@inject IPluginApiClient PluginApiClient
+@inject ISnackbar Snackbar
+@inject ILogger<McpPluginVersionEditor> Logger
+
+<MudForm @ref="_form" Model="@_model">
+    <MudGrid>
+        @if (PluginInfo != null)
+        {
+            <MudItem xs="12">
+                <MudTextField Value="@PluginInfo.Name" Label="Plugin Name" Disabled="true" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField Value="@(PluginInfo.Description ?? "No description")" Label="Description" Disabled="true" />
+            </MudItem>
+        }
+
+        <MudItem xs="12">
+            @if (IsNewVersion)
+            {
+                <MudTextField @bind-Value="_versionString" Label="Version" Required="true"
+                              Placeholder="1.0.0"
+                              Validation="@(new Func<string, string>(ValidateVersion))" />
+            }
+            else if (Version != null)
+            {
+                <MudTextField Value="@Version.ToString()" Label="Version" Disabled="true" />
+            }
+        </MudItem>
+
+        <MudItem xs="12">
+            <MudTextField @bind-Value="_model.Command" Label="Command" Required="true"
+                          Validation="@(new Func<string, string>(ValidateCommand))"
+                          Placeholder="npx" />
+        </MudItem>
+
+        @{
+            var placeHolderText = "-y,@upstash/context7-mcp@latest}";
+        }
+
+        <MudItem xs="12">
+            <MudTextField @bind-Value="_argumentsString" Label="Arguments (comma-separated)"
+                          Placeholder="@placeHolderText"
+                          HelperText="Separate arguments with commas"
+                          Lines="3" />
+        </MudItem>
+
+        <MudItem xs="12">
+            <MudText Typo="Typo.h6">Environment Variables</MudText>
+            <MudTable Items="_environmentVariables" Hover="true" Striped="true">
+                <HeaderContent>
+                    <MudTh>Key</MudTh>
+                    <MudTh>Value</MudTh>
+                    <MudTh>Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Key</MudTd>
+                    <MudTd>@context.Value</MudTd>
+                    <MudTd>
+                        <MudIconButton Size="@Size.Small" Icon="@Icons.Material.Filled.Delete"
+                                       Color="Color.Error"
+                                       OnClick="() => RemoveVariable(context.Key)" />
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText>No environment variables defined</MudText>
+                </NoRecordsContent>
+            </MudTable>
+            <div class="d-flex gap-2 mt-2">
+                <MudTextField @bind-Value="_newKey" Placeholder="Key" Class="flex-1" />
+                <MudTextField @bind-Value="_newValue" Placeholder="Value" Class="flex-1" />
+                <MudButton Variant="Variant.Filled" Color="Color.Secondary"
+                           OnClick="AddVariable">Add Variable</MudButton>
+            </div>
+        </MudItem>
+    </MudGrid>
+</MudForm>
+
+@code {
+    [Parameter] public McpPluginVersionInfo? Version { get; set; }
+    [Parameter] public McpPluginInfo? PluginInfo { get; set; }
+    [Parameter] public bool IsNewVersion { get; set; } = false;
+    [Parameter] public EventCallback<McpPluginInfo> OnSaved { get; set; }
+
+    private MudForm? _form;
+    private bool _processing;
+    private string _versionString = "1.0.0";
+    private string _argumentsString = string.Empty;
+    private string _newKey = string.Empty;
+    private string _newValue = string.Empty;
+    private Dictionary<string, string> _environmentVariables = new();
+    private CommandOnlyMcpPluginCreateModel _model = new();
+
+    protected override void OnInitialized()
+    {
+        if (IsNewVersion && PluginInfo != null)
+        {
+            // Setting up for a new version
+            _model.Name = PluginInfo.Name;
+            _model.Description = PluginInfo.Description;
+            _environmentVariables = new Dictionary<string, string>();
+        }
+        else if (!IsNewVersion && Version != null)
+        {
+            // Editing an existing version
+            _model.Name = PluginInfo?.Name ?? "Unknown Plugin";
+            _model.Description = PluginInfo?.Description;
+            _model.Command = Version.Command ?? string.Empty;
+            _model.Version = Version.ToString();
+
+            _environmentVariables = new Dictionary<string, string>(
+                Version.EnvironmentVariables ?? new Dictionary<string, string>());
+
+            if (Version.Arguments != null && Version.Arguments.Any())
+            {
+                _argumentsString = string.Join(",", Version.Arguments);
+            }
+        }
+    }
+
+    private string ValidateCommand(string command)
+    {
+        if (string.IsNullOrWhiteSpace(command))
+            return "Command is required";
+
+        return string.Empty;
+    }
+
+    private string ValidateVersion(string version)
+    {
+        if (string.IsNullOrWhiteSpace(version))
+            return "Version is required";
+
+        if (!version.Contains('.') || version.Split('.').Length != 3)
+            return "Version must be in format: Major.Minor.Patch";
+
+        foreach (var part in version.Split('.'))
+        {
+            if (!int.TryParse(part, out _))
+                return "Version parts must be numbers";
+        }
+
+        return string.Empty;
+    }
+
+    private void AddVariable()
+    {
+        if (string.IsNullOrWhiteSpace(_newKey))
+        {
+            Snackbar.Add("Key cannot be empty", Severity.Warning);
+            return;
+        }
+
+        if (_environmentVariables.ContainsKey(_newKey))
+        {
+            Snackbar.Add($"Environment variable '{_newKey}' already exists", Severity.Warning);
+            return;
+        }
+
+        _environmentVariables[_newKey] = _newValue;
+        _newKey = string.Empty;
+        _newValue = string.Empty;
+    }
+
+    private void RemoveVariable(string key)
+    {
+        if (_environmentVariables.ContainsKey(key))
+        {
+            _environmentVariables.Remove(key);
+        }
+    }
+
+    public async Task<bool> Validate()
+    {
+        await _form?.Validate()!;
+        return _form?.IsValid == true;
+    }
+
+    public async Task<McpPluginInfo> SaveChanges()
+    {
+        _processing = true;
+
+        try
+        {
+            // Ensure the form is valid
+            if (!await Validate())
+            {
+                throw new InvalidOperationException("Form validation failed");
+            }
+
+            // If creating a new version, use the version string input
+            string version = IsNewVersion ? _versionString : Version?.ToString() ?? _versionString;
+
+            // Parse arguments
+            var arguments = !string.IsNullOrWhiteSpace(_argumentsString)
+                ? _argumentsString.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(a => a.Trim())
+                    .ToList()
+                : new List<string>();
+
+            McpPluginInfo updatedPlugin;
+
+            // Check if we have the plugin context
+            if (PluginInfo != null)
+            {
+                // Use the universal update endpoint
+                var updateModel = new McpPluginUpdateModel
+                {
+                    Id = PluginInfo.Id,
+                    Name = PluginInfo.Name,
+                    Description = PluginInfo.Description,
+                    SourceType = PluginInfo.SourceType,
+                    Version = version,
+                    Command = _model.Command,
+                    Arguments = arguments,
+                    EnvironmentVariables = new Dictionary<string, string>(_environmentVariables)
+                };
+
+                // Update the plugin
+                updatedPlugin = await PluginApiClient.UpdateMcpPluginAsync(updateModel);
+            }
+            else
+            {
+                // Fallback to command-only update if we don't have plugin context
+                _model.Version = version;
+                _model.Arguments = arguments;
+                _model.EnvironmentVariables = new Dictionary<string, string>(_environmentVariables);
+
+                // Update the plugin
+                updatedPlugin = await PluginApiClient.CreateCommandOnlyMcpPluginAsync(_model);
+            }
+
+            // Notify of successful save
+            Snackbar.Add($"Version {version} {(IsNewVersion ? "added" : "updated")} successfully", Severity.Success);
+
+            // Invoke the callback
+            await OnSaved.InvokeAsync(updatedPlugin);
+
+            return updatedPlugin;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error updating plugin version");
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+            throw; // Rethrow for the caller to handle
+        }
+        finally
+        {
+            _processing = false;
+        }
+    }
+}

@@ -348,6 +348,7 @@ namespace Microsoft.Greenlight.Shared.Services
                 AiTaskType.ContentGeneration => true,
                 AiTaskType.ChatReplies => true,
                 AiTaskType.Validation => true,
+                AiTaskType.QuestionAnswering => true,
                 _ => false
             };
 

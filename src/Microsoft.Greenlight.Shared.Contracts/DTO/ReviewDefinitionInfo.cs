@@ -16,6 +16,11 @@ public class ReviewDefinitionInfo
     public List<ReviewQuestionInfo> ReviewQuestions { get; set; } = [];
 
     /// <summary>
+    /// List of document processes associated with this review definition.
+    /// </summary>
+    public List<ReviewDefinitionDocumentProcessInfo> DocumentProcesses { get; set; } = [];
+
+    /// <summary>
     /// Title of the review definition.
     /// </summary>
     public required string Title { get; set; }

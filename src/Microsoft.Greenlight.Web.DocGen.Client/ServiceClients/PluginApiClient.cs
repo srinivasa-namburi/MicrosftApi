@@ -1,9 +1,10 @@
 ﻿using Microsoft.AspNetCore.Components.Authorization;
-using Microsoft.Greenlight.Web.Shared.ServiceClients;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Components.Forms;
-using Microsoft.Greenlight.Shared.Contracts.DTO.Plugins;
+using Microsoft.Greenlight.Shared.Contracts.DTO;
 using System.Net;
+using Microsoft.Greenlight.Shared.Contracts.DTO.Plugins;
+using Microsoft.Greenlight.Web.Shared.ServiceClients;
 
 namespace Microsoft.Greenlight.Web.DocGen.Client.ServiceClients;
 
@@ -14,59 +15,218 @@ internal sealed class PluginApiClient : WebAssemblyBaseServiceClient<PluginApiCl
     {
     }
 
-    public async Task<List<DynamicPluginInfo>> GetAllPluginsAsync()
+    public async Task<List<McpPluginInfo>> GetAllMcpPluginsAsync()
     {
-        var url = "/api/plugins";
-        var response = await SendGetRequestMessage(url);
-        response?.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<List<DynamicPluginInfo>>();
+        try
+        {
+            var url = "/api/mcp-plugins";
+            var response = await SendGetRequestMessage(url);
+
+            // If not found, just return an empty list rather than throwing
+            if (response?.StatusCode == HttpStatusCode.NotFound)
+            {
+                return new List<McpPluginInfo>();
+            }
+
+            response?.EnsureSuccessStatusCode();
+            return await response!.Content.ReadFromJsonAsync<List<McpPluginInfo>>() ?? new List<McpPluginInfo>();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error getting all MCP plugins");
+            return new List<McpPluginInfo>();
+        }
     }
 
-    public async Task<DynamicPluginInfo> GetPluginByIdAsync(Guid pluginId)
+    public async Task<McpPluginInfo> GetMcpPluginByIdAsync(Guid pluginId)
     {
-        var url = $"/api/plugins/{pluginId}";
-        var response = await SendGetRequestMessage(url);
-        response?.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<DynamicPluginInfo>();
-    }
-    public async Task<List<DynamicPluginInfo>> GetPluginsByDocumentProcessIdAsync(Guid documentProcessId)
-    {
-        var url = $"/api/document-processes/{documentProcessId}/plugins";
-        var response = await SendGetRequestMessage(url);
-        response?.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<List<DynamicPluginInfo>>();
+        try
+        {
+            // First fetch the plugin without full document process details to avoid circular references
+            var url = $"/api/mcp-plugins/{pluginId}";
+            var response = await SendGetRequestMessage(url);
+            response?.EnsureSuccessStatusCode();
+            
+            var plugin = await response!.Content.ReadFromJsonAsync<McpPluginInfo>();
+            
+            if (plugin == null)
+            {
+                throw new InvalidOperationException($"Failed to deserialize plugin with ID: {pluginId}");
+            }
+            
+            // Now separately fetch document processes associated with this plugin
+            if (plugin.DocumentProcesses != null)
+            {
+                var documentProcesses = await GetDocumentProcessesByPluginIdAsync(pluginId);
+                
+                // Update just the necessary DocumentProcess information without creating circular references
+                foreach (var association in plugin.DocumentProcesses)
+                {
+                    var documentProcess = documentProcesses.FirstOrDefault(dp => dp.Id == association.DocumentProcessId);
+                    if (documentProcess != null)
+                    {
+                        association.DocumentProcess = documentProcess;
+                        // Important: Do not set DocumentProcess.Plugin to avoid circular references
+                    }
+                }
+            }
+            
+            return plugin;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Error getting MCP plugin by ID {pluginId}");
+            throw;
+        }
     }
 
-    public async Task AssociatePluginWithDocumentProcessAsync(Guid pluginId, Guid documentProcessId, DynamicPluginVersionInfo version)
+    public async Task<List<McpPluginInfo>> GetMcpPluginsByDocumentProcessIdAsync(Guid documentProcessId)
     {
-        var url = $"/api/plugins/{pluginId}/{version.ToString()}/associate/{documentProcessId}";
+        try
+        {
+            var url = $"/api/document-processes/{documentProcessId}/mcp-plugins";
+            var response = await SendGetRequestMessage(url);
+
+            // If not found, just return an empty list rather than throwing
+            if (response?.StatusCode == HttpStatusCode.NotFound)
+            {
+                return new List<McpPluginInfo>();
+            }
+
+            response?.EnsureSuccessStatusCode();
+            return await response!.Content.ReadFromJsonAsync<List<McpPluginInfo>>() ?? new List<McpPluginInfo>();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Error getting MCP plugins for document process {documentProcessId}");
+            return new List<McpPluginInfo>();
+        }
+    }
+
+    public async Task AssociateMcpPluginWithDocumentProcessAsync(Guid pluginId, Guid documentProcessId, McpPluginVersionInfo version)
+    {
+        var url = $"/api/mcp-plugins/{pluginId}/{version.Major}.{version.Minor}.{version.Patch}/associate/{documentProcessId}";
         var response = await SendPostRequestMessage(url, payload: null);
         response?.EnsureSuccessStatusCode();
     }
 
-    public async Task DisassociatePluginFromDocumentProcessAsync(Guid pluginId, Guid documentProcessId)
+    public async Task DisassociateMcpPluginFromDocumentProcessAsync(Guid pluginId, Guid documentProcessId)
     {
-        var url = $"/api/plugins/{pluginId}/disassociate/{documentProcessId}";
+        var url = $"/api/mcp-plugins/{pluginId}/disassociate/{documentProcessId}";
         var response = await SendPostRequestMessage(url, payload: null);
         response?.EnsureSuccessStatusCode();
     }
 
-    public async Task<DynamicPluginInfo> UploadPluginAsync(IBrowserFile pluginFile)
+    /// <summary>
+    /// Uploads an MCP plugin and checks if overrides are needed.
+    /// </summary>
+    /// <param name="pluginFile">The plugin file to upload.</param>
+    /// <returns>A tuple containing the plugin info and a flag indicating if overrides are needed.</returns>
+    public async Task<(McpPluginInfo PluginInfo, bool NeedsOverride)> UploadMcpPluginAsyncWithOverrideCheck(IBrowserFile pluginFile)
     {
-        var url = "/api/plugins/upload";
+        var url = "/api/mcp-plugins/upload";
         var response = await SendPostRequestMessage(url, pluginFile);
 
-        // Ensure the helpful information provided by the API as to why it's a bad request
-        // is available in the exception being thrown
-        if(response!.StatusCode == HttpStatusCode.BadRequest)
+        if (response!.StatusCode == HttpStatusCode.BadRequest)
         {
-            throw new HttpRequestException($"{await response!.Content.ReadAsStringAsync()}");
+            throw new HttpRequestException(await response.Content.ReadAsStringAsync());
         }
 
-        // Make sure any other failure type is trapped and thrown as a HttpRequestException before trying
-        // to deserialize the response
         response?.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<McpPluginUploadResponse>();
 
-        return await response.Content.ReadFromJsonAsync<DynamicPluginInfo>();
+        if (result == null)
+        {
+            throw new InvalidOperationException("Failed to deserialize the response from the server.");
+        }
+
+        return (result.PluginInfo, result.NeedsOverride);
+    }
+
+    public async Task UpdateMcpPluginVersionAsync(Guid documentProcessId, Guid pluginId, McpPluginVersionInfo version)
+    {
+        var url = $"/api/document-processes/{documentProcessId}/mcp-plugins/{pluginId}/version";
+        var response = await SendPutRequestMessage(url, version);
+        
+        if (response?.StatusCode == HttpStatusCode.NotFound)
+        {
+            throw new InvalidOperationException("Association not found between plugin and document process.");
+        }
+        
+        response?.EnsureSuccessStatusCode();
+    }
+
+    public async Task<McpPluginInfo> CreateCommandOnlyMcpPluginAsync(CommandOnlyMcpPluginCreateModel createModel)
+    {
+        var url = "/api/mcp-plugins/command-only";
+        var response = await SendPostRequestMessage(url, createModel);
+        
+        if (response?.StatusCode == HttpStatusCode.NotFound)
+        {
+            throw new HttpRequestException($"API endpoint not found: {url}");
+        }
+        
+        if (response?.StatusCode == HttpStatusCode.BadRequest)
+        {
+            throw new HttpRequestException($"{await response.Content.ReadAsStringAsync()}");
+        }
+        
+        response?.EnsureSuccessStatusCode();
+        return await response!.Content.ReadFromJsonAsync<McpPluginInfo>();
+    }
+    
+    public async Task<McpPluginInfo> UpdateMcpPluginAsync(McpPluginUpdateModel updateModel)
+    {
+        var url = "/api/mcp-plugins/update";
+        var response = await SendPutRequestMessage(url, updateModel);
+        
+        if (response?.StatusCode == HttpStatusCode.NotFound)
+        {
+            throw new HttpRequestException($"Plugin not found with ID: {updateModel.Id}");
+        }
+        
+        if (response?.StatusCode == HttpStatusCode.BadRequest)
+        {
+            throw new HttpRequestException($"{await response.Content.ReadAsStringAsync()}");
+        }
+        
+        response?.EnsureSuccessStatusCode();
+        return await response!.Content.ReadFromJsonAsync<McpPluginInfo>();
+    }
+
+    public async Task DeleteMcpPluginAsync(Guid pluginId)
+    {
+        var url = $"/api/mcp-plugins/{pluginId}";
+        var response = await SendDeleteRequestMessage(url);
+        
+        if (response?.StatusCode == HttpStatusCode.NotFound)
+        {
+            throw new HttpRequestException($"Plugin not found with ID: {pluginId}");
+        }
+        
+        response?.EnsureSuccessStatusCode();
+    }
+
+    public async Task<List<DocumentProcessInfo>> GetDocumentProcessesByPluginIdAsync(Guid pluginId)
+    {
+        try
+        {
+            var url = $"/api/mcp-plugins/{pluginId}/document-processes";
+            var response = await SendGetRequestMessage(url);
+
+            // If not found, just return an empty list rather than throwing
+            if (response?.StatusCode == HttpStatusCode.NotFound)
+            {
+                return new List<DocumentProcessInfo>();
+            }
+
+            response?.EnsureSuccessStatusCode();
+            return await response!.Content.ReadFromJsonAsync<List<DocumentProcessInfo>>() ?? new List<DocumentProcessInfo>();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Error getting document processes for plugin {pluginId}");
+            return new List<DocumentProcessInfo>();
+        }
     }
 }

@@ -1,0 +1,10 @@
+@code {
+    [Parameter] public McpPluginInfo Plugin { get; set; } = null!;
+    [Parameter] public EventCallback<McpPluginInfo> OnSave { get; set; }
+
+    private async Task Save()
+    {
+        // Logic to save plugin details
+        await OnSave.InvokeAsync(Plugin);
+    }
+}

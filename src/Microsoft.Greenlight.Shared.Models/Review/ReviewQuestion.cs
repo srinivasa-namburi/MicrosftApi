@@ -24,6 +24,11 @@ public class ReviewQuestion : EntityBase
     public ReviewQuestionType QuestionType { get; set; }
 
     /// <summary>
+    /// Order of the question within the review. Lower values appear first.
+    /// </summary>
+    public int Order { get; set; }
+
+    /// <summary>
     /// Unique identifier of the associated review.
     /// </summary>
     public Guid ReviewId { get; set; }

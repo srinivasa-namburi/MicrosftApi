@@ -1,0 +1,72 @@
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Plugins
+
+@inject IPluginApiClient PluginApiClient
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Delete Plugin</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText>Are you sure you want to delete the MCP plugin <b>@Plugin.Name</b>?</MudText>
+        <MudText Class="mt-2">This action cannot be undone and will remove all versions of this plugin.</MudText>
+        
+        @if (Plugin.DocumentProcesses is { Count: > 0 })
+        {
+            <MudAlert Severity="Severity.Warning" Class="mt-3">
+                This plugin is currently associated with @Plugin.DocumentProcesses.Count document process(es).
+                Deleting it will remove these associations.
+            </MudAlert>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="ConfirmDelete" Disabled="@_processing">
+            @if (_processing)
+            {
+                <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                <span class="ms-2">Deleting...</span>
+            }
+            else
+            {
+                <span>Delete</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public McpPluginInfo Plugin { get; set; } = null!;
+
+    private bool _processing;
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+
+    private async Task ConfirmDelete()
+    {
+        _processing = true;
+
+        try
+        {
+            // Call the API to delete the plugin
+            await PluginApiClient.DeleteMcpPluginAsync(Plugin.Id);
+            
+            Snackbar.Add($"Plugin '{Plugin.Name}' deleted successfully.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error deleting plugin: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _processing = false;
+            StateHasChanged();
+        }
+    }
+}

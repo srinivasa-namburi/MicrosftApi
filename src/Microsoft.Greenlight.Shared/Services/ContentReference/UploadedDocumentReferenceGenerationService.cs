@@ -67,7 +67,7 @@ public class UploadedDocumentReferenceGenerationService : IContentReferenceGener
         try
         {
             var uploadedFile = await _dbContext.ExportedDocumentLinks
-                .Where(x => x.Type == FileDocumentType.TemporaryReferenceFile)
+                .Where(x => x.Type == FileDocumentType.TemporaryReferenceFile || x.Type == FileDocumentType.Review)
                 .AsNoTracking()
                 .FirstOrDefaultAsync(f => f.Id == uploadedFileId);
 

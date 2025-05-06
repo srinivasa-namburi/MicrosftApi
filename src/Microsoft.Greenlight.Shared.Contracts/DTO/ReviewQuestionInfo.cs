@@ -35,6 +35,16 @@ public class ReviewQuestionInfo
     public ReviewQuestionType QuestionType { get; set; }
 
     /// <summary>
+    /// Order of the question within the review. Lower values appear first.
+    /// </summary>
+    public int Order { get; set; }
+
+    /// <summary>
+    /// UTC date and time when the question was created.
+    /// </summary>
+    public DateTime CreatedUtc { get; set; }
+
+    /// <summary>
     /// Determines whether the specified object is equal to the current <see cref="ReviewQuestionInfo"/> object by
     /// using the properties of <see cref="ReviewQuestionInfo"/>.
     /// </summary>
@@ -49,7 +59,9 @@ public class ReviewQuestionInfo
                Question == other.Question &&
                Rationale == other.Rationale &&
                ReviewId == other.ReviewId &&
-               QuestionType == other.QuestionType;
+               QuestionType == other.QuestionType &&
+               Order == other.Order &&
+               CreatedUtc == other.CreatedUtc;
     }
 
     /// <summary>
@@ -58,6 +70,6 @@ public class ReviewQuestionInfo
     /// <returns>A hash code for the current object.</returns>
     public override int GetHashCode()
     {
-        return HashCode.Combine(Id, Question, Rationale, ReviewId, QuestionType);
+        return HashCode.Combine(Id, Question, Rationale, ReviewId, QuestionType, Order, CreatedUtc);
     }
 }

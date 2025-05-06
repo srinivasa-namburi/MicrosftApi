@@ -94,9 +94,6 @@ public class ReviewKernelMemoryRepository : IReviewKernelMemoryRepository
         var searchOptions = await _searchOptionsFactory.CreateSearchOptionsForReviewsAsync(searchTags);
         var searchResults = await _kernelMemoryRepository.SearchAsync("Reviews", searchText, searchOptions);
 
-        //var searchResults = await _kernelMemoryRepository.SearchAsync("Reviews", "index-reviews", searchTags, searchText, top, minRelevance, 
-        //    precedingPartitionCount:0, followingPartitionCount:0);
-
         _logger.LogInformation("Search completed for ReviewRequestId: {ReviewRequestId}. Number of results: {ResultsCount}", reviewRequestId, searchResults.Count);
 
         return searchResults;

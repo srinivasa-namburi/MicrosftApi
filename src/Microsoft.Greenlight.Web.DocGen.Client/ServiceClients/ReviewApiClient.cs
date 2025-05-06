@@ -10,8 +10,8 @@ namespace Microsoft.Greenlight.Web.DocGen.Client.ServiceClients;
 public class ReviewApiClient : WebAssemblyBaseServiceClient<ReviewApiClient>, IReviewApiClient
 {
     public ReviewApiClient(
-        HttpClient httpClient, 
-        ILogger<ReviewApiClient> logger, 
+        HttpClient httpClient,
+        ILogger<ReviewApiClient> logger,
         AuthenticationStateProvider authStateProvider) : base(httpClient, logger, authStateProvider)
     {
     }
@@ -108,7 +108,7 @@ public class ReviewApiClient : WebAssemblyBaseServiceClient<ReviewApiClient>, IR
 
         if (response?.StatusCode == HttpStatusCode.NotFound)
         {
-            // If we get a 404, the review instance does not exist, so we can't execute it directly. 
+            // If we get a 404, the review instance does not exist, so we can't execute it directly.
             // Create a review instance and then re-call this method.
 
             url = "/api/review-instance";
@@ -146,17 +146,17 @@ public class ReviewApiClient : WebAssemblyBaseServiceClient<ReviewApiClient>, IR
 
     public async Task<List<ReviewInstanceInfo>> GetRecentReviewInstances(int count = 0)
     {
-        string url = count > 0 
-            ? $"/api/review/recent-instances?count={count}" 
+        string url = count > 0
+            ? $"/api/review/recent-instances?count={count}"
             : "/api/review/recent-instances";
-        
+
         var response = await SendGetRequestMessage(url);
-    
+
         if (response?.StatusCode == HttpStatusCode.NotFound)
         {
             return [];
         }
-    
+
         try
         {
             response?.EnsureSuccessStatusCode();
@@ -166,7 +166,7 @@ public class ReviewApiClient : WebAssemblyBaseServiceClient<ReviewApiClient>, IR
             Logger.LogError(e, "Error retrieving recent review instances");
             return [];
         }
-    
+
         return await response.Content.ReadFromJsonAsync<List<ReviewInstanceInfo>>() ?? [];
     }
 
@@ -174,7 +174,7 @@ public class ReviewApiClient : WebAssemblyBaseServiceClient<ReviewApiClient>, IR
     {
         var url = $"/api/review-instance/{id}";
         var response = await SendGetRequestMessage(url);
-        
+
         if (response?.StatusCode == HttpStatusCode.NotFound)
         {
             return null;
@@ -210,7 +210,7 @@ public class ReviewApiClient : WebAssemblyBaseServiceClient<ReviewApiClient>, IR
         {
             return [];
         }
-        
+
         return await response.Content.ReadFromJsonAsync<List<ReviewQuestionAnswerInfo>>();
     }
 
@@ -234,6 +234,28 @@ public class ReviewApiClient : WebAssemblyBaseServiceClient<ReviewApiClient>, IR
         response?.EnsureSuccessStatusCode();
         var fileInfo = await response?.Content.ReadFromJsonAsync<ExportedDocumentLinkInfo>()!;
         return fileInfo;
-        
+    }
+
+    public async Task<List<DocumentProcessInfo>> GetDocumentProcessesByReviewDefinitionId(Guid reviewDefinitionId)
+    {
+        var url = $"/api/review/{reviewDefinitionId}/document-processes";
+        var response = await SendGetRequestMessage(url);
+
+        if (response?.StatusCode == HttpStatusCode.NotFound)
+        {
+            return [];
+        }
+
+        try
+        {
+            response?.EnsureSuccessStatusCode();
+        }
+        catch (Exception e)
+        {
+            Logger.LogError(e, "Error retrieving document processes for review definition");
+            return [];
+        }
+
+        return await response.Content.ReadFromJsonAsync<List<DocumentProcessInfo>>() ?? [];
     }
 }

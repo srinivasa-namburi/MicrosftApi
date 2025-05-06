@@ -6,7 +6,7 @@
         <MudText Typo="Typo.h6">Associate Plugin with Document Process</MudText>
     </TitleContent>
     <DialogContent>
-        <MudSelect T="DynamicPluginInfo" @bind-Value="SelectedPlugin" Label="Select Plugin" Required="true">
+        <MudSelect T="McpPluginInfo" @bind-Value="SelectedPlugin" Label="Select Plugin" Required="true">
             @foreach (var plugin in AvailablePlugins)
             {
                 <MudSelectItem Value="plugin">@plugin.Name</MudSelectItem>
@@ -16,9 +16,9 @@
         @if (SelectedPlugin != null)
         {
             <MudSelect T="string" @bind-Value="SelectedVersion" Label="Select Version" Required="true">
-                @foreach (var version in SelectedPlugin.Versions.Select(v => v.ToString()).OrderByDescending(v => v))
+                @foreach (var version in SelectedPlugin.Versions.OrderByDescending(v => $"{v.Major}.{v.Minor}.{v.Patch}"))
                 {
-                    <MudSelectItem Value="@version">@version</MudSelectItem>
+                    <MudSelectItem Value="@($"{version.Major}.{version.Minor}.{version.Patch}")">@($"{version.Major}.{version.Minor}.{version.Patch}")</MudSelectItem>
                 }
             </MudSelect>
         }
@@ -30,11 +30,11 @@
 
 @code {
     [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
-    [Parameter] public List<DynamicPluginInfo> AvailablePlugins { get; set; }
+    [Parameter] public List<McpPluginInfo> AvailablePlugins { get; set; }
     [Parameter] public Guid ProcessId { get; set; }
 
     private MudForm form;
-    private DynamicPluginInfo? SelectedPlugin;
+    private McpPluginInfo? SelectedPlugin;
     private string? SelectedVersion;
 
     private async Task AssociatePlugin()
@@ -47,13 +47,26 @@
 
         try
         {
-            var dynamicPluginVersionObj = SelectedPlugin.Versions.FirstOrDefault(v => v.ToString() == SelectedVersion);
-            if (dynamicPluginVersionObj == null)
+            var versionParts = SelectedVersion.Split('.');
+            if (versionParts.Length != 3 || 
+                !int.TryParse(versionParts[0], out int major) ||
+                !int.TryParse(versionParts[1], out int minor) ||
+                !int.TryParse(versionParts[2], out int patch))
+            {
+                Snackbar.Add("Invalid version format. Expected format: Major.Minor.Patch", Severity.Error);
+                return;
+            }
+            
+            var versionInfo = SelectedPlugin.Versions.FirstOrDefault(v => 
+                v.Major == major && v.Minor == minor && v.Patch == patch);
+                
+            if (versionInfo == null)
             {
                 Snackbar.Add("Invalid plugin version selected.", Severity.Error);
                 return;
             }
-            await PluginApiClient.AssociatePluginWithDocumentProcessAsync(SelectedPlugin.Id, ProcessId, dynamicPluginVersionObj);
+            
+            await PluginApiClient.AssociateMcpPluginWithDocumentProcessAsync(SelectedPlugin.Id, ProcessId, versionInfo);
             Snackbar.Add($"Plugin '{SelectedPlugin.Name}' version '{SelectedVersion}' associated successfully.", Severity.Success);
             MudDialog.Close(DialogResult.Ok(true));
         }

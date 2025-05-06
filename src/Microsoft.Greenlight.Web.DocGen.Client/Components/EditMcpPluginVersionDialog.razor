@@ -1,0 +1,84 @@
+@using Microsoft.Extensions.Logging
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Plugins
+
+@inject ILogger<EditMcpPluginVersionDialog> Logger
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(IsNewVersion ? "Add New Version" : "Edit Version")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <McpPluginVersionEditor @ref="_editor" 
+                               Version="Version" 
+                               PluginInfo="PluginInfo" 
+                               IsNewVersion="IsNewVersion" 
+                               OnSaved="HandleSaved" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Submit" Disabled="@_processing">
+            @if (_processing)
+            {
+                <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                <span class="ms-2">@(IsNewVersion ? "Adding..." : "Updating...")</span>
+            }
+            else
+            {
+                <span>@(IsNewVersion ? "Add" : "Update")</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    
+    [Parameter] public McpPluginVersionInfo? Version { get; set; }
+    [Parameter] public McpPluginInfo? PluginInfo { get; set; }
+    [Parameter] public bool IsNewVersion { get; set; } = false;
+    
+    private McpPluginVersionEditor? _editor;
+    private bool _processing;
+    
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+    
+    private void HandleSaved(McpPluginInfo updatedPlugin)
+    {
+        MudDialog.Close(DialogResult.Ok(updatedPlugin));
+    }
+    
+    // Public method to be called from parent components
+    public async Task Submit()
+    {
+        await SubmitInternal();
+    }
+    
+    private async Task SubmitInternal()
+    {
+        if (_editor == null) return;
+        
+        _processing = true;
+        
+        try
+        {
+            // Let the editor validate and save changes
+            var updatedPlugin = await _editor.SaveChanges();
+            
+            // Dialog will close via the OnSaved callback
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error in dialog when saving plugin version");
+            // Error handling is done in the editor component
+        }
+        finally
+        {
+            _processing = false;
+            StateHasChanged();
+        }
+    }
+}

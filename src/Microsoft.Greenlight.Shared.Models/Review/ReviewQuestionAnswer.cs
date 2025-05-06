@@ -58,6 +58,11 @@ public class ReviewQuestionAnswer : EntityBase
     public ReviewQuestionType OriginalReviewQuestionType { get; set; }
 
     /// <summary>
+    /// Order of the question in the review. Matches the order from the original review question.
+    /// </summary>
+    public int Order { get; set; }
+
+    /// <summary>
     /// Full AI-generated answer.
     /// </summary>
     public string? FullAiAnswer { get; set; }
@@ -83,5 +88,6 @@ public class ReviewQuestionAnswer : EntityBase
         OriginalReviewQuestionId = question.Id;
         OriginalReviewQuestionText = question.Question;
         OriginalReviewQuestionType = question.QuestionType;
+        Order = question.Order;
     }
 }

@@ -1,0 +1,42 @@
+@using Microsoft.Greenlight.Shared.Contracts.DTO
+
+<MudDialog>
+    <DialogContent>
+        <MudText>@ContentText</MudText>
+        <MudSelect T="DocumentProcessInfo"
+                   @bind-Value="SelectedDocumentProcess"
+                   Label="Document Process"
+                   Class="mt-3">
+            @foreach (var process in DocumentProcesses)
+            {
+                <MudSelectItem T="DocumentProcessInfo" Value="process">
+                    @process.ShortName - @process.Description
+                </MudSelectItem>
+            }
+        </MudSelect>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="@Color" Variant="Variant.Filled" OnClick="Submit" Disabled="@(SelectedDocumentProcess == null)">@ButtonText</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public string ContentText { get; set; } = "";
+    [Parameter] public string ButtonText { get; set; } = "Ok";
+    [Parameter] public Color Color { get; set; } = Color.Primary;
+    [Parameter] public List<DocumentProcessInfo> DocumentProcesses { get; set; } = [];
+    
+    private DocumentProcessInfo? SelectedDocumentProcess { get; set; }
+
+    private void Submit()
+    {
+        MudDialog.Close(DialogResult.Ok(SelectedDocumentProcess));
+    }
+    
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+}

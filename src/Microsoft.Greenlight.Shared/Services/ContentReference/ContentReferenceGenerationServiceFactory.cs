@@ -1,7 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Models;
-
+using Microsoft.Greenlight.Shared.Models.Review;
 
 namespace Microsoft.Greenlight.Shared.Services.ContentReference
 {
@@ -29,6 +29,7 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                 ContentReferenceType.GeneratedDocument => _serviceProvider.GetService<IContentReferenceGenerationService<GeneratedDocument>>(),
                 ContentReferenceType.GeneratedSection => _serviceProvider.GetService<IContentReferenceGenerationService<ContentNode>>(),
                 ContentReferenceType.ExternalFile => _serviceProvider.GetService<IContentReferenceGenerationService<ExportedDocumentLink>>(),
+                ContentReferenceType.ReviewItem => _serviceProvider.GetService<IContentReferenceGenerationService<ReviewInstance>>(),
                 // Add other content types as they are implemented
                 _ => null
             };
@@ -40,21 +41,5 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
             var service = GetGenerationService(referenceType);
             return service as IContentReferenceGenerationService<T>;
         }
-
-        // Testing with simpler implementation above.
-        //public IContentReferenceGenerationService<T>? GetGenerationService<T>(ContentReferenceType referenceType) where T : EntityBase
-        //{
-        //    if (typeof(T) == typeof(GeneratedDocument) && referenceType == ContentReferenceType.GeneratedDocument)
-        //    {
-        //        return (IContentReferenceGenerationService<T>)_serviceProvider.GetService<IContentReferenceGenerationService<GeneratedDocument>>()!;
-        //    }
-        //    else if (typeof(T) == typeof(ContentNode) && referenceType == ContentReferenceType.GeneratedSection)
-        //    {
-        //        return (IContentReferenceGenerationService<T>)_serviceProvider.GetService<IContentReferenceGenerationService<ContentNode>>()!;
-        //    }
-            
-        //    // Add other content types as they are implemented
-        //    return null;
-        //}
     }
-}
+}        //{

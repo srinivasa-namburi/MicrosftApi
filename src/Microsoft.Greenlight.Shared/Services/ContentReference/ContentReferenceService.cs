@@ -6,6 +6,7 @@ using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Models;
+using Microsoft.Greenlight.Shared.Models.Review;
 using System.Text;
 using System.Text.Json;
 
@@ -200,11 +201,23 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                         ragText = await fileService?.GenerateContentTextForRagAsync(reference.ContentReferenceSourceId.Value);
                         break;
 
+                    case ContentReferenceType.ReviewItem:
+                        // ContentReferenceSourceId is a ReviewInstanceId; get the ExportedLinkId from the ReviewInstance
+                        var reviewInstance = await _dbContext.Set<ReviewInstance>().FirstOrDefaultAsync(r => r.Id == reference.ContentReferenceSourceId.Value);
+                        if (reviewInstance != null && reviewInstance.ExportedLinkId != Guid.Empty)
+                        {
+                            var exportedDocLink = await _dbContext.ExportedDocumentLinks.FindAsync(reviewInstance.ExportedLinkId);
+                            if (exportedDocLink != null)
+                            {
+                                var fileService2 = _generationServiceFactory.GetGenerationService<ExportedDocumentLink>(ContentReferenceType.ExternalFile);
+                                ragText = await fileService2?.GenerateContentTextForRagAsync(exportedDocLink.Id);
+                            }
+                        }
+                        break;
+
                     default:
                         _logger.LogWarning("No content reference generation service found for type {Type}", reference.ReferenceType);
                         return null;
-
-
                 }
 
                 if (!string.IsNullOrEmpty(ragText))
@@ -316,8 +329,35 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                 _dbContext.ContentReferenceItems.Add(reference);
             }
 
-            // If needed, generate RAG text - but only if it doesn't already exist
-            if (string.IsNullOrEmpty(reference.RagText) && reference.ContentReferenceSourceId != null)
+            // --- Custom logic for ReviewItem: treat as ExternalFile for RAG/embedding if needed ---
+            if (reference.ReferenceType == ContentReferenceType.ReviewItem && string.IsNullOrEmpty(reference.RagText) && reference.ContentReferenceSourceId != null)
+            {
+                // ContentReferenceSourceId is a ReviewInstanceId; get the ExportedLinkId from the ReviewInstance
+                var reviewInstance = await _dbContext.Set<ReviewInstance>().FirstOrDefaultAsync(r => r.Id == reference.ContentReferenceSourceId.Value);
+                if (reviewInstance != null && reviewInstance.ExportedLinkId != Guid.Empty)
+                {
+                    var exportedDocLink = await _dbContext.ExportedDocumentLinks.FindAsync(reviewInstance.ExportedLinkId);
+                    if (exportedDocLink != null)
+                    {
+                        try
+                        {
+                            // Use the ExternalFile logic for RAG text generation
+                            var fileService = _generationServiceFactory.GetGenerationService<ExportedDocumentLink>(ContentReferenceType.ExternalFile);
+                            var ragText = await fileService?.GenerateContentTextForRagAsync(exportedDocLink.Id);
+                            if (!string.IsNullOrEmpty(ragText))
+                            {
+                                reference.RagText = ragText;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Error generating RAG text for review item (file) {Id}", id);
+                        }
+                    }
+                }
+            }
+            // --- End custom logic ---
+            else if (string.IsNullOrEmpty(reference.RagText) && reference.ContentReferenceSourceId != null)
             {
                 try
                 {
@@ -583,6 +623,19 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                         var fileService = _generationServiceFactory.GetGenerationService<ExportedDocumentLink>(reference.ReferenceType);
                         return await fileService?.GenerateEmbeddingsAsync(reference.ContentReferenceSourceId.Value);
 
+                    case ContentReferenceType.ReviewItem:
+                        // ContentReferenceSourceId is a ReviewInstanceId; get the ExportedLinkId from the ReviewInstance
+                        var reviewInstance = await _dbContext.ReviewInstances.FirstOrDefaultAsync(r => r.Id == reference.ContentReferenceSourceId.Value);
+                        if (reviewInstance != null && reviewInstance.ExportedLinkId != Guid.Empty)
+                        {
+                            var exportedDocLink = await _dbContext.ExportedDocumentLinks.FindAsync(reviewInstance.ExportedLinkId);
+                            if (exportedDocLink != null)
+                            {
+                                var fileServiceForReviewFiles = _generationServiceFactory.GetGenerationService<ExportedDocumentLink>(ContentReferenceType.ExternalFile);
+                                return await fileServiceForReviewFiles?.GenerateEmbeddingsAsync(exportedDocLink.Id);
+                            }
+                        }
+                        return null;
 
                     default:
                         _logger.LogWarning("No content reference generation service found for type {Type}", reference.ReferenceType);

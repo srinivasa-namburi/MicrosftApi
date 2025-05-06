@@ -1,0 +1,166 @@
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Plugins
+
+@inject IPluginApiClient PluginApiClient
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_isOverride ? "Plugin Override Required" : "Upload MCP Plugin")</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (!_isOverride)
+        {
+            <MudFileUpload T="IBrowserFile" OnFilesChanged="HandleFileUpload">
+                <ButtonTemplate>
+                    <MudButton HtmlTag="label" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CloudUpload" for="@context">
+                        Upload MCP Plugin
+                    </MudButton>
+                </ButtonTemplate>
+            </MudFileUpload>
+            <MudText Typo="Typo.body2" Class="mt-2">Expected format: PluginName_version.zip (e.g., Microsoft.Greenlight.Demos.MCPDemo_1.0.0.zip)</MudText>
+        }
+        else if (_plugin != null)
+        {
+            <MudAlert Severity="Severity.Info" Class="mb-4">
+                The plugin has no manifest.json file or it's incomplete. 
+                Please provide the details on how to execute this plugin.
+            </MudAlert>
+
+            @* Use the editor component directly instead of trying to nest dialogs *@
+            <McpPluginVersionEditor @ref="_versionEditor" 
+                                  Version="_plugin.LatestVersion" 
+                                  PluginInfo="_plugin" 
+                                  IsNewVersion="false" 
+                                  OnSaved="HandleVersionSaved" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="Cancel">Cancel</MudButton>
+        @if (_isOverride)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CompleteOverride" Disabled="@_processing">
+                @if (_processing)
+                {
+                    <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                    <span class="ms-2">Saving...</span>
+                }
+                else
+                {
+                    <span>Save Plugin Details</span>
+                }
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+
+    private bool _isOverride = false;
+    private bool _processing = false;
+    private McpPluginInfo? _plugin;
+    private McpPluginVersionEditor? _versionEditor;
+
+    private async Task HandleFileUpload(InputFileChangeEventArgs e)
+    {
+        if (e.File == null)
+        {
+            Snackbar.Add("No file selected.", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            Snackbar.Add("Uploading plugin...", Severity.Info);
+            var result = await PluginApiClient.UploadMcpPluginAsyncWithOverrideCheck(e.File);
+            _plugin = result.PluginInfo;
+            _isOverride = result.NeedsOverride;
+
+            if (_isOverride)
+            {
+                // Make sure the plugin has a LatestVersion to edit
+                if (_plugin.LatestVersion == null)
+                {
+                    // Create a default version to edit
+                    _plugin.LatestVersion = new McpPluginVersionInfo
+                    {
+                        Major = 1,
+                        Minor = 0,
+                        Patch = 0,
+                        Command = "npx", // Default command
+                        Arguments = new List<string>(),
+                        EnvironmentVariables = new Dictionary<string, string>(),
+                    };
+                    
+                    if (_plugin.Versions == null)
+                    {
+                        _plugin.Versions = new List<McpPluginVersionInfo>();
+                    }
+                    
+                    _plugin.Versions.Add(_plugin.LatestVersion);
+                }
+                
+                Snackbar.Add("Plugin manifest is missing or incomplete. Please provide additional details.", Severity.Warning);
+                StateHasChanged();
+            }
+            else
+            {
+                Snackbar.Add("Plugin uploaded successfully.", Severity.Success);
+                MudDialog.Close(DialogResult.Ok(_plugin));
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error uploading plugin: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task CompleteOverride()
+    {
+        if (_versionEditor == null || _plugin == null)
+        {
+            Snackbar.Add("Could not save plugin details.", Severity.Error);
+            return;
+        }
+        
+        _processing = true;
+        
+        try
+        {
+            // Validate the form first
+            if (!await _versionEditor.Validate())
+            {
+                Snackbar.Add("Please fill in all required fields.", Severity.Warning);
+                _processing = false;
+                return;
+            }
+            
+            // Save the changes
+            var updatedPlugin = await _versionEditor.SaveChanges();
+            
+            // Close our dialog with the updated plugin
+            MudDialog.Close(DialogResult.Ok(updatedPlugin));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving plugin details: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _processing = false;
+            StateHasChanged();
+        }
+    }
+    
+    private void HandleVersionSaved(McpPluginInfo updatedPlugin)
+    {
+        // This could be used for real-time updates if needed
+        _plugin = updatedPlugin;
+    }
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+}

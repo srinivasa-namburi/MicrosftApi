@@ -7,7 +7,7 @@ public interface IReviewApiClient : IServiceClient
 {
     Task<List<ReviewDefinitionInfo>> GetAllReviews();
     Task<ReviewDefinitionInfo?> GetReviewById(Guid id);
-    
+
     Task<ReviewDefinitionInfo?> CreateReview(ReviewDefinitionInfo reviewDefinitionInfo);
     Task<ReviewDefinitionInfo?> UpdateReview(Guid id, ReviewChangeRequest reviewDefinitionInfo);
     Task<bool?> DeleteReview(Guid id);
@@ -17,4 +17,6 @@ public interface IReviewApiClient : IServiceClient
     Task<ExportedDocumentLinkInfo> UploadDocumentForReviewInstanceAsync(IBrowserFile file);
     Task<ReviewInstanceInfo?> ExecuteReview(ReviewInstanceInfo id);
     Task<List<ReviewInstanceInfo>> GetRecentReviewInstances(int count = 0);
+
+    Task<List<DocumentProcessInfo>> GetDocumentProcessesByReviewDefinitionId(Guid reviewDefinitionId);
 }

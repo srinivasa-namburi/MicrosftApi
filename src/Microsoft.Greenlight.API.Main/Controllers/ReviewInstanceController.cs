@@ -115,10 +115,15 @@ public class ReviewInstanceController : BaseController
         var reviewInstanceAnswers = await _dbContext.ReviewQuestionAnswers
             .Include(x => x.OriginalReviewQuestion)
             .Where(x => x.ReviewInstanceId == reviewInstanceId)
+            .OrderBy(x => x.Order) // Order by the Order property
             .AsNoTracking()
             .ToListAsync();
 
         var reviewQuestionAnswerList = _mapper.Map<List<ReviewQuestionAnswerInfo>>(reviewInstanceAnswers);
+        
+        // Ensure the answers are properly ordered in the DTO list as well
+        reviewQuestionAnswerList = reviewQuestionAnswerList.OrderBy(x => x.Order).ToList();
+        
         return Ok(reviewQuestionAnswerList);
     }
 

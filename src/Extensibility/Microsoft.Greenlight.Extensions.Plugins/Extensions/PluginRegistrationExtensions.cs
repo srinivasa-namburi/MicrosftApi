@@ -48,7 +48,7 @@ public static class PluginRegistrationExtensions
         }
         else
         {
-            return $"DP__{pluginType.FullName?.Replace(".", "_")}";
+            return $"DP__{pluginType.Name?.Replace(".", "_")}";
         }
     }
 }

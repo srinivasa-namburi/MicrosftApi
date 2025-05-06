@@ -31,6 +31,17 @@ public class ReviewInstance : EntityBase
     public ExportedDocumentLink? ExportedDocumentLink { get; set; }
 
     /// <summary>
+    /// Short name of the document process associated with this review instance.
+    /// This is used to create the appropriate Semantic Kernel instance.
+    /// </summary>
+    public string? DocumentProcessShortName { get; set; }
+
+    /// <summary>
+    /// Unique identifier of the document process definition linked to this review instance.
+    /// </summary>
+    public Guid? DocumentProcessDefinitionId { get; set; }
+
+    /// <summary>
     /// State of the review definition when it was submitted.
     /// </summary>
     public string? ReviewDefinitionStateWhenSubmitted { get; set; }

@@ -66,7 +66,9 @@ public class ReviewController : BaseController
     public async Task<ActionResult<ReviewDefinitionInfo>> GetReviewById(Guid id)
     {
         var review = await _dbContext.ReviewDefinitions
-            .Include(x => x.ReviewQuestions)
+            .Include(x => x.ReviewQuestions.OrderBy(q => q.Order))
+            .Include(x => x.DocumentProcessDefinitionConnections)
+                .ThenInclude(x => x.DocumentProcessDefinition)
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.Id == id);
 
@@ -76,6 +78,24 @@ public class ReviewController : BaseController
         }
 
         var reviewInfo = _mapper.Map<ReviewDefinitionInfo>(review);
+
+        // Map document processes
+        if (review.DocumentProcessDefinitionConnections != null)
+        {
+            reviewInfo.DocumentProcesses = review.DocumentProcessDefinitionConnections
+                .Select(connection => new ReviewDefinitionDocumentProcessInfo
+                {
+                    Id = connection.Id,
+                    ReviewDefinitionId = connection.ReviewId,
+                    DocumentProcessDefinitionId = connection.DocumentProcessDefinitionId,
+                    DocumentProcess = _mapper.Map<DocumentProcessInfo>(connection.DocumentProcessDefinition),
+                    IsActive = connection.IsActive
+                })
+                .ToList();
+        }
+        
+        // Ensure questions are ordered
+        reviewInfo.ReviewQuestions = reviewInfo.ReviewQuestions.OrderBy(q => q.Order).ToList();
 
         return Ok(reviewInfo);
     }
@@ -124,6 +144,7 @@ public class ReviewController : BaseController
             .FirstOrDefaultAsync(x => x.Id == id);
 
         var originalReviewQuestions = _dbContext.ReviewQuestions.Where(x => x.ReviewId == id);
+        var originalDocumentProcesses = _dbContext.Set<ReviewDefinitionDocumentProcessDefinition>().Where(x => x.ReviewId == id);
 
         if (changeRequest.ReviewDefinition != null)
         {
@@ -132,14 +153,44 @@ public class ReviewController : BaseController
             _dbContext.Update(existingReview!);
         }
 
+        // Calculate the next order value for new questions
+        int nextOrderValue = await originalReviewQuestions.MaxAsync(q => (int?)q.Order) ?? 0;
+        nextOrderValue++;
+
+        // --- Process deletions first ---
+        if (changeRequest.DeletedQuestions.Count > 0)
+        {
+            var deletedIds = changeRequest.DeletedQuestions.Select(q => q.Id).ToHashSet();
+            var questionsToRemove = await _dbContext.ReviewQuestions
+                .Where(x => x.ReviewId == id && deletedIds.Contains(x.Id))
+                .ToListAsync();
+            foreach (var questionToRemove in questionsToRemove)
+            {
+                _dbContext.Entry(questionToRemove).State = EntityState.Deleted;
+                _dbContext.ReviewQuestions.Remove(questionToRemove);
+            }
+            await _dbContext.SaveChangesAsync(); // Commit deletions before proceeding
+        }
+
+        // --- Now process adds/updates, but skip any that were deleted ---
+        var deletedQuestionIds = changeRequest.DeletedQuestions.Select(q => q.Id).ToHashSet();
         if (changeRequest.ChangedOrAddedQuestions.Count > 0)
         {
             foreach (var questionInfo in changeRequest.ChangedOrAddedQuestions)
             {
+                if (deletedQuestionIds.Contains(questionInfo.Id))
+                    continue; // Don't re-add a deleted question
                 if (questionInfo.Id == Guid.Empty)
                 {
                     // New Question because there is no ID
                     var questionModel = _mapper.Map<ReviewQuestion>(questionInfo);
+                    
+                    // If no order is specified, assign the next available order
+                    if (questionModel.Order <= 0)
+                    {
+                        questionModel.Order = nextOrderValue++;
+                    }
+                    
                     _dbContext.Entry(questionModel).State = EntityState.Added;
                     await _dbContext.ReviewQuestions.AddAsync(questionModel);
                 }
@@ -150,6 +201,17 @@ public class ReviewController : BaseController
                     if (existingQuestion != null)
                     {
                         var questionModel = _mapper.Map<ReviewQuestion>(questionInfo);
+                        
+                        // Preserve order if not explicitly changed
+                        if (questionModel.Order <= 0 && existingQuestion.Order > 0)
+                        {
+                            questionModel.Order = existingQuestion.Order;
+                        }
+                        else if (questionModel.Order <= 0)
+                        {
+                            questionModel.Order = nextOrderValue++;
+                        }
+                        
                         _dbContext.Entry(existingQuestion).CurrentValues.SetValues(questionModel);
                         _dbContext.Entry(existingQuestion).State = EntityState.Modified;
                         _dbContext.Update(existingQuestion);
@@ -157,8 +219,14 @@ public class ReviewController : BaseController
                     else
                     {
                         // This is for the case when we have a new question with an ID
-                        // We only come here after checking if the question with the ID already exists
                         var questionModel = _mapper.Map<ReviewQuestion>(questionInfo);
+                        
+                        // Assign order if not specified
+                        if (questionModel.Order <= 0)
+                        {
+                            questionModel.Order = nextOrderValue++;
+                        }
+                        
                         _dbContext.Entry(questionModel).State = EntityState.Added;
                         await _dbContext.ReviewQuestions.AddAsync(questionModel);
                     }
@@ -166,17 +234,65 @@ public class ReviewController : BaseController
             }
         }
 
-        if (changeRequest.DeletedQuestions.Count > 0)
+        // --- Reorder remaining questions after deletions/adds/updates ---
+        var remainingQuestions = await _dbContext.ReviewQuestions
+            .Where(q => q.ReviewId == id)
+            .ToListAsync();
+        if (remainingQuestions.All(q => q.Order == 0))
         {
-            var mappedDeletedQuestions = _mapper.Map<List<ReviewQuestion>>(changeRequest.DeletedQuestions);
+            remainingQuestions = remainingQuestions.OrderBy(q => q.CreatedUtc).ToList();
+        }
+        else
+        {
+            remainingQuestions = remainingQuestions.OrderBy(q => q.Order).ToList();
+        }
+        for (int i = 0; i < remainingQuestions.Count; i++)
+        {
+            remainingQuestions[i].Order = i + 1;
+            _dbContext.Entry(remainingQuestions[i]).State = EntityState.Modified;
+        }
 
-            foreach (var question in mappedDeletedQuestions)
+        // Handle document process changes
+        if (changeRequest.ChangedOrAddedDocumentProcesses.Count > 0)
+        {
+            foreach (var processInfo in changeRequest.ChangedOrAddedDocumentProcesses)
             {
-                var questionToRemove = await originalReviewQuestions.FirstOrDefaultAsync(x => x.Id == question.Id);
-                if (questionToRemove != null)
+                if (processInfo.Id == Guid.Empty)
                 {
-                    _dbContext.Entry(questionToRemove).State = EntityState.Deleted;
-                    _dbContext.ReviewQuestions.Remove(questionToRemove);
+                    // New document process association
+                    var processModel = new ReviewDefinitionDocumentProcessDefinition
+                    {
+                        ReviewId = id,
+                        DocumentProcessDefinitionId = processInfo.DocumentProcessDefinitionId,
+                        IsActive = processInfo.IsActive
+                    };
+
+                    _dbContext.Entry(processModel).State = EntityState.Added;
+                    await _dbContext.Set<ReviewDefinitionDocumentProcessDefinition>().AddAsync(processModel);
+                }
+                else
+                {
+                    // Existing document process association with updates
+                    var existingProcess = await originalDocumentProcesses.FirstOrDefaultAsync(x => x.Id == processInfo.Id);
+                    if (existingProcess != null)
+                    {
+                        existingProcess.IsActive = processInfo.IsActive;
+                        _dbContext.Entry(existingProcess).State = EntityState.Modified;
+                        _dbContext.Update(existingProcess);
+                    }
+                }
+            }
+        }
+
+        if (changeRequest.DeletedDocumentProcesses.Count > 0)
+        {
+            foreach (var processInfo in changeRequest.DeletedDocumentProcesses)
+            {
+                var processToRemove = await originalDocumentProcesses.FirstOrDefaultAsync(x => x.Id == processInfo.Id);
+                if (processToRemove != null)
+                {
+                    _dbContext.Entry(processToRemove).State = EntityState.Deleted;
+                    _dbContext.Set<ReviewDefinitionDocumentProcessDefinition>().Remove(processToRemove);
                 }
             }
         }
@@ -184,11 +300,33 @@ public class ReviewController : BaseController
         await _dbContext.SaveChangesAsync();
 
         // reload with changes
-        existingReview = _dbContext.ReviewDefinitions.Include(x => x.ReviewQuestions)
+        existingReview = _dbContext.ReviewDefinitions
+            .Include(x => x.ReviewQuestions.OrderBy(q => q.Order))
+            .Include(x => x.DocumentProcessDefinitionConnections)
+                .ThenInclude(x => x.DocumentProcessDefinition)
             .AsNoTracking()
             .FirstOrDefault(x => x.Id == id);
 
         var reviewInfo = _mapper.Map<ReviewDefinitionInfo>(existingReview);
+
+        // Map document processes
+        if (existingReview?.DocumentProcessDefinitionConnections != null)
+        {
+            reviewInfo.DocumentProcesses = existingReview.DocumentProcessDefinitionConnections
+                .Select(connection => new ReviewDefinitionDocumentProcessInfo
+                {
+                    Id = connection.Id,
+                    ReviewDefinitionId = connection.ReviewId,
+                    DocumentProcessDefinitionId = connection.DocumentProcessDefinitionId,
+                    DocumentProcess = _mapper.Map<DocumentProcessInfo>(connection.DocumentProcessDefinition),
+                    IsActive = connection.IsActive
+                })
+                .ToList();
+        }
+        
+        // Ensure questions are ordered
+        reviewInfo.ReviewQuestions = reviewInfo.ReviewQuestions.OrderBy(q => q.Order).ToList();
+
         return Ok(reviewInfo);
     }
 
@@ -240,21 +378,58 @@ public class ReviewController : BaseController
         IQueryable<ReviewInstance> query = _dbContext.ReviewInstances
             .Include(ri => ri.ReviewDefinition)
             .OrderByDescending(ri => ri.CreatedUtc);
-    
+
         if (count > 0)
         {
             query = query.Take(count);
         }
-    
+
         var reviewInstances = await query.ToListAsync();
-    
+
         if (reviewInstances.Count < 1)
         {
             return NotFound();
         }
-    
+
         var reviewInstanceDtos = _mapper.Map<List<ReviewInstanceInfo>>(reviewInstances);
         return Ok(reviewInstanceDtos);
+    }
+
+    /// <summary>
+    /// Gets document processes associated with a review definition.
+    /// </summary>
+    /// <param name="id">The review definition identifier.</param>
+    /// <returns>A list of <see cref="DocumentProcessInfo"/> associated with the review definition.
+    /// Produces Status Codes:
+    ///     200 Ok: When completed successfully
+    ///     404 Not Found: When the review definition could not be found using the id provided
+    /// </returns>
+    [HttpGet("{id:guid}/document-processes")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [Produces("application/json")]
+    [Produces<List<DocumentProcessInfo>>]
+    public async Task<ActionResult<List<DocumentProcessInfo>>> GetDocumentProcessesByReviewDefinitionId(Guid id)
+    {
+        var reviewDefinition = await _dbContext.ReviewDefinitions
+            .Include(r => r.DocumentProcessDefinitionConnections)
+                .ThenInclude(c => c.DocumentProcessDefinition)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.Id == id);
+
+        if (reviewDefinition == null)
+        {
+            return NotFound();
+        }
+
+        var documentProcesses = reviewDefinition.DocumentProcessDefinitionConnections
+            .Where(c => c.IsActive)
+            .Select(c => c.DocumentProcessDefinition)
+            .Where(dp => dp != null)
+            .ToList();
+
+        var documentProcessInfos = _mapper.Map<List<DocumentProcessInfo>>(documentProcesses);
+        return Ok(documentProcessInfos);
     }
 }
 

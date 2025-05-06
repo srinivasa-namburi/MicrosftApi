@@ -56,6 +56,18 @@ public class ReviewQuestionsDistributorGrain : Grain, IReviewQuestionsDistributo
 
             var reviewQuestions = _mapper.Map<List<ReviewQuestionInfo>>(reviewInstance.ReviewDefinition.ReviewQuestions);
 
+            // Ensure ordering: by Order if set, otherwise by CreatedUtc
+            if (reviewQuestions.All(q => q.Order == 0))
+            {
+                reviewQuestions = reviewQuestions.OrderBy(q => q.CreatedUtc).ToList();
+                for (int i = 0; i < reviewQuestions.Count; i++)
+                    reviewQuestions[i].Order = i + 1;
+            }
+            else
+            {
+                reviewQuestions = reviewQuestions.OrderBy(q => q.Order).ToList();
+            }
+
             // Get max parallel workers from config or use default of 5
             var maxParallelWorkers = _config.GetValue<int>(
                 "ServiceConfiguration:GreenlightServices:Scalability:NumberOfReviewWorkers");

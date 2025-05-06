@@ -1,0 +1,157 @@
+@using Microsoft.Extensions.Logging
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Plugins
+
+@inject IPluginApiClient PluginApiClient
+@inject ISnackbar Snackbar
+@inject ILogger<CreateCommandOnlyMcpPluginDialog> Logger
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" Model="@_model">
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_model.Name" Label="Plugin Name" Required="true" 
+                                  Validation="@(new Func<string, string>(ValidateName))" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_model.Description" Label="Description" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_model.Version" Label="Version" Required="true" 
+                                  Validation="@(new Func<string, string>(ValidateVersion))"
+                                  Placeholder="1.0.0" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_model.Command" Label="Command" Required="true" 
+                                  Validation="@(new Func<string, string>(ValidateCommand))"
+                                  Placeholder="npx" />
+                </MudItem>
+                @{
+                    var argumentTemplate = "-y,@upstash/context7-mcp@latest";
+                    var separateDescription = $"Separate arguments with commas, e.g.: {argumentTemplate}";
+                }
+
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_argumentsString" Label="Arguments (comma-separated)" 
+                                      Placeholder="@argumentTemplate"
+                                  HelperText="@separateDescription"
+                                  Lines="3" />
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Submit" Disabled="@_processing">
+            @if (_processing)
+            {
+                <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                <span class="ms-2">Creating...</span>
+            }
+            else
+            {
+                <span>Create</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+
+    private MudForm? _form;
+    private bool _processing;
+    private string _argumentsString = string.Empty;
+    
+    private CommandOnlyMcpPluginCreateModel _model = new()
+    {
+        Version = "1.0.0"
+    };
+    
+    private string ValidateName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return "Plugin name is required";
+            
+        if (name.Length < 3)
+            return "Plugin name must be at least 3 characters";
+            
+        if (name.Contains(" "))
+            return "Plugin name cannot contain spaces";
+            
+        return string.Empty;
+    }
+    
+    private string ValidateVersion(string version)
+    {
+        if (string.IsNullOrWhiteSpace(version))
+            return "Version is required";
+            
+        var parts = version.Split('.');
+        if (parts.Length != 3)
+            return "Version must be in the format: Major.Minor.Patch";
+            
+        foreach (var part in parts)
+        {
+            if (!int.TryParse(part, out _))
+                return "Version components must be integers";
+        }
+        
+        return string.Empty;
+    }
+    
+    private string ValidateCommand(string command)
+    {
+        if (string.IsNullOrWhiteSpace(command))
+            return "Command is required";
+            
+        return string.Empty;
+    }
+    
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+    
+    private async Task Submit()
+    {
+        _processing = true;
+        
+        try
+        {
+            // Validate form
+            await _form?.Validate()!;
+            if (_form?.IsValid != true)
+            {
+                _processing = false;
+                return;
+            }
+            
+            // Parse arguments
+            if (!string.IsNullOrWhiteSpace(_argumentsString))
+            {
+                _model.Arguments = _argumentsString.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(a => a.Trim())
+                    .ToList();
+            }
+            
+            // Create the plugin
+            var createdPlugin = await PluginApiClient.CreateCommandOnlyMcpPluginAsync(_model);
+            
+            Snackbar.Add($"Command-only plugin '{_model.Name}' created successfully.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(createdPlugin));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error creating command-only MCP plugin");
+            Snackbar.Add($"Error creating command-only plugin: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _processing = false;
+            StateHasChanged();
+        }
+    }
+}

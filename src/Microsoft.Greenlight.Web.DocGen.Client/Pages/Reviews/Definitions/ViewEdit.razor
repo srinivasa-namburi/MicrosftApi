@@ -5,6 +5,7 @@
 
 @using System.Text.Json
 @inject IReviewApiClient ReviewApiClient
+@inject IDocumentProcessApiClient DocumentProcessApiClient
 @inject NavigationManager Navigation
 @inject IDialogService DialogService
 
@@ -35,16 +36,83 @@
 
     <MudDivider Class="mb-4" />
 
-    @if (CurrentReviewDefinitionInfo?.ReviewQuestions.Count > 0)
-    {
-        <MudText Typo="Typo.h6" Class="mb-3">@(EditMode ? "Edit Review Items" : "Review Items")</MudText>
+    <!-- Document Processes Section -->
+    <MudText Typo="Typo.h6" Class="mb-3">@(EditMode ? "Document Processes" : "Associated Document Processes")</MudText>
 
+    @if (CurrentReviewDefinitionInfo?.DocumentProcesses.Count > 0)
+    {
+        <MudList Dense="true" Class="mb-4">
+            @foreach (var processInfo in CurrentReviewDefinitionInfo.DocumentProcesses)
+            {
+                <MudPaper Class="pa-3 mb-2" Outlined="true">
+                    <div class="d-flex align-center">
+                        <MudIcon Icon="@Icons.Material.Filled.Description" Color="Color.Primary" Size="Size.Small" Class="mr-2" />
+                        <MudText>@(processInfo.DocumentProcess?.ShortName ?? "Unknown Process")</MudText>
+
+                        @if (EditMode)
+                        {
+                            <MudSpacer />
+                            <MudSwitch @bind-Value="processInfo.IsActive" Color="Color.Primary" Label="Active" />
+                            <MudTooltip Text="Remove Document Process">
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                               Size="Size.Small"
+                                               Color="Color.Error"
+                                               OnClick="() => RemoveDocumentProcess(processInfo)" />
+                            </MudTooltip>
+                        }
+                        else
+                        {
+                            <MudSpacer />
+                            <MudChip Color="@(processInfo.IsActive ? Color.Success : Color.Error)" Size="Size.Small">
+                                @(processInfo.IsActive ? "Active" : "Inactive")
+                            </MudChip>
+                        }
+                    </div>
+                    @if (!string.IsNullOrEmpty(processInfo.DocumentProcess?.Description))
+                    {
+                        <MudText Typo="Typo.body2" Class="mud-text-secondary">@processInfo.DocumentProcess.Description</MudText>
+                    }
+                </MudPaper>
+            }
+        </MudList>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-4">
+            No document processes are associated with this review definition.
+            @if (EditMode)
+            {
+                <span>Use the button below to add document processes.</span>
+            }
+            else
+            {
+                <span>Document processes are required to execute reviews.</span>
+            }
+        </MudAlert>
+    }
+
+    @if (EditMode)
+    {
+        <MudButton StartIcon="@Icons.Material.Filled.Add"
+                   Variant="Variant.Outlined"
+                   Color="Color.Primary"
+                   OnClick="OpenAddDocumentProcessDialog"
+                   Class="mb-4">Add Document Process</MudButton>
+
+        <MudDivider Class="my-4" />
+    }
+
+    <!-- Review Questions Section -->
+    <MudText Typo="Typo.h6" Class="mb-3">@(EditMode ? "Edit Review Items" : "Review Items")</MudText>
+
+    @if (GetOrderedQuestions().Count > 0)
+    {
         <MudList Dense="true" Clickable="@EditMode">
-            @for (int i = 0; i < CurrentReviewDefinitionInfo?.ReviewQuestions.Count(); i++)
+            @for (int i = 0; i < GetOrderedQuestions().Count; i++)
             {
                 var questionIndex = i;
-                var reviewQuestionInfo = CurrentReviewDefinitionInfo?.ReviewQuestions[i];
-                var itemNumber = questionIndex + 1;
+                var reviewQuestionInfo = GetOrderedQuestions()[i];
+                var itemNumber = i + 1;
 
                 <MudPaper Class="pa-3 mb-3" Outlined="true">
                     <div class="d-flex align-center mb-1">
@@ -57,6 +125,8 @@
                         @if (EditMode)
                         {
                             <MudSpacer />
+                            <MudIconButton Icon="@Icons.Material.Filled.ArrowUpward" Disabled="@(questionIndex == 0)" OnClick="() => MoveQuestionUp(questionIndex)" />
+                            <MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Disabled="@(questionIndex == GetOrderedQuestions().Count - 1)" OnClick="() => MoveQuestionDown(questionIndex)" />
                             <MudTooltip Text="Delete Review Item">
                                 <MudIconButton Icon="@Icons.Material.Filled.Delete"
                                                Size="Size.Small"
@@ -129,6 +199,43 @@
     [Parameter] public bool EditMode { get; set; } = false;
     private ReviewDefinitionInfo? OriginalReviewDefinitionInfo { get; set; }
     private ReviewDefinitionInfo? CurrentReviewDefinitionInfo { get; set; }
+    private List<DocumentProcessInfo>? AllDocumentProcesses { get; set; }
+    private DocumentProcessInfo? SelectedDocumentProcess { get; set; }
+
+    // Helper to get ordered questions (by Order, fallback to CreatedUtc)
+    private List<ReviewQuestionInfo> GetOrderedQuestions()
+    {
+        if (CurrentReviewDefinitionInfo?.ReviewQuestions == null)
+            return new List<ReviewQuestionInfo>();
+        var questions = CurrentReviewDefinitionInfo.ReviewQuestions;
+        if (questions.All(q => q.Order == 0))
+        {
+            // Assign order based on CreatedUtc if all orders are 0
+            var ordered = questions.OrderBy(q => q.CreatedUtc).ToList();
+            for (int i = 0; i < ordered.Count; i++)
+                ordered[i].Order = i + 1;
+            return ordered;
+        }
+        return questions.OrderBy(q => q.Order).ToList();
+    }
+
+    // Move question up
+    private void MoveQuestionUp(int index)
+    {
+        var questions = GetOrderedQuestions();
+        if (index <= 0 || index >= questions.Count) return;
+        (questions[index - 1].Order, questions[index].Order) = (questions[index].Order, questions[index - 1].Order);
+        CurrentReviewDefinitionInfo.ReviewQuestions = questions.OrderBy(q => q.Order).ToList();
+    }
+
+    // Move question down
+    private void MoveQuestionDown(int index)
+    {
+        var questions = GetOrderedQuestions();
+        if (index < 0 || index >= questions.Count - 1) return;
+        (questions[index + 1].Order, questions[index].Order) = (questions[index].Order, questions[index + 1].Order);
+        CurrentReviewDefinitionInfo.ReviewQuestions = questions.OrderBy(q => q.Order).ToList();
+    }
 
     protected override async Task OnParametersSetAsync()
     {
@@ -141,6 +248,9 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Load all document processes for selection
+        AllDocumentProcesses = await DocumentProcessApiClient.GetAllDocumentProcessInfoAsync();
+
         // Add new review definition set up
         if (Navigation.Uri.Contains("/reviews/add"))
         {
@@ -149,7 +259,8 @@
             {
                 Id = reviewId,
                 Title = "",
-                ReviewQuestions = new List<ReviewQuestionInfo>()
+                ReviewQuestions = new List<ReviewQuestionInfo>(),
+                DocumentProcesses = new List<ReviewDefinitionDocumentProcessInfo>()
             };
             AddNewReviewItem();
             EditMode = true;
@@ -170,6 +281,70 @@
         }
     }
 
+    private async Task OpenAddDocumentProcessDialog()
+    {
+        if (AllDocumentProcesses == null || !AllDocumentProcesses.Any())
+        {
+            await DialogService.ShowMessageBox("No Document Processes", "There are no document processes available to add.");
+            return;
+        }
+
+        // Filter out document processes that are already associated with this review definition
+        var availableProcesses = AllDocumentProcesses
+            .Where(dp => CurrentReviewDefinitionInfo?.DocumentProcesses == null ||
+                         !CurrentReviewDefinitionInfo.DocumentProcesses.Any(rdp => rdp.DocumentProcessDefinitionId == dp.Id))
+            .ToList();
+
+        if (!availableProcesses.Any())
+        {
+            await DialogService.ShowMessageBox("All Processes Added", "All available document processes have already been added to this review definition.");
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            { "ContentText", "Select a document process to add to this review definition:" },
+            { "ButtonText", "Add" },
+            { "Color", Color.Primary },
+            { "DocumentProcesses", availableProcesses }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<DocumentProcessSelectionDialog>("Add Document Process", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled && result.Data is DocumentProcessInfo selectedProcess)
+        {
+            AddDocumentProcess(selectedProcess);
+        }
+    }
+
+    private void AddDocumentProcess(DocumentProcessInfo process)
+    {
+        if (CurrentReviewDefinitionInfo == null) return;
+
+        // Create a new association
+        var association = new ReviewDefinitionDocumentProcessInfo
+        {
+            Id = Guid.Empty, // Will be assigned by the server
+            ReviewDefinitionId = CurrentReviewDefinitionInfo.Id,
+            DocumentProcessDefinitionId = process.Id,
+            DocumentProcess = process,
+            IsActive = true
+        };
+
+        CurrentReviewDefinitionInfo.DocumentProcesses.Add(association);
+        StateHasChanged();
+    }
+
+    private void RemoveDocumentProcess(ReviewDefinitionDocumentProcessInfo processInfo)
+    {
+        if (CurrentReviewDefinitionInfo == null) return;
+
+        CurrentReviewDefinitionInfo.DocumentProcesses.Remove(processInfo);
+        StateHasChanged();
+    }
+
     private ReviewDefinitionInfo? CloneReviewDefinition(ReviewDefinitionInfo? reviewDefinition)
     {
         return reviewDefinition != null ? JsonSerializer.Deserialize<ReviewDefinitionInfo>(JsonSerializer.Serialize(reviewDefinition)) : null;
@@ -184,18 +359,29 @@
 
     private void AddNewReviewItem()
     {
+        var questions = GetOrderedQuestions();
+        int nextOrder = questions.Count > 0 ? questions.Max(q => q.Order) + 1 : 1;
         CurrentReviewDefinitionInfo!.ReviewQuestions.Add(new ReviewQuestionInfo()
         {
             Id = Guid.NewGuid(),
             Question = "",
             ReviewId = CurrentReviewDefinitionInfo.Id,
-            QuestionType = ReviewQuestionType.Requirement
+            QuestionType = ReviewQuestionType.Requirement,
+            Order = nextOrder,
+            CreatedUtc = DateTime.UtcNow
         });
     }
 
     private void DeleteReviewItem(ReviewQuestionInfo item)
     {
-        CurrentReviewDefinitionInfo!.ReviewQuestions.Remove(item);
+        if (CurrentReviewDefinitionInfo?.ReviewQuestions == null) return;
+        CurrentReviewDefinitionInfo.ReviewQuestions.Remove(item);
+        // Reorder remaining questions
+        var ordered = GetOrderedQuestions();
+        for (int i = 0; i < ordered.Count; i++)
+            ordered[i].Order = i + 1;
+        CurrentReviewDefinitionInfo.ReviewQuestions = ordered;
+        StateHasChanged();
     }
 
     private async Task SaveReviewDefinition()
@@ -235,7 +421,9 @@
     {
         var changeRequest = new ReviewChangeRequest
         {
-            ReviewDefinition = currentReviewDefinitionInfo!
+            ReviewDefinition = currentReviewDefinitionInfo!,
+            ChangedOrAddedDocumentProcesses = [],
+            DeletedDocumentProcesses = []
         };
 
         if (originalReviewDefinitionInfo == null || currentReviewDefinitionInfo == null)
@@ -256,6 +444,37 @@
 
         changeRequest.ChangedOrAddedQuestions = changedItems;
         changeRequest.DeletedQuestions = deletedItems;
+
+        // Handle document process changes
+        var changedProcesses = new List<ReviewDefinitionDocumentProcessInfo>();
+        var deletedProcesses = new List<ReviewDefinitionDocumentProcessInfo>();
+
+        // Identify changed or added document processes
+        foreach (var currentProcess in currentReviewDefinitionInfo.DocumentProcesses)
+        {
+            var originalProcess = originalReviewDefinitionInfo.DocumentProcesses
+                .FirstOrDefault(p => p.Id == currentProcess.Id);
+
+            if (originalProcess == null || originalProcess.IsActive != currentProcess.IsActive)
+            {
+                changedProcesses.Add(currentProcess);
+            }
+        }
+
+        // Identify deleted document processes
+        foreach (var originalProcess in originalReviewDefinitionInfo.DocumentProcesses)
+        {
+            var currentProcess = currentReviewDefinitionInfo.DocumentProcesses
+                .FirstOrDefault(p => p.Id == originalProcess.Id);
+
+            if (currentProcess == null)
+            {
+                deletedProcesses.Add(originalProcess);
+            }
+        }
+
+        changeRequest.ChangedOrAddedDocumentProcesses = changedProcesses;
+        changeRequest.DeletedDocumentProcesses = deletedProcesses;
 
         return changeRequest;
     }

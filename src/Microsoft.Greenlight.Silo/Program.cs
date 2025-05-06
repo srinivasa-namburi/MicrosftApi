@@ -1,15 +1,13 @@
 using Microsoft.Greenlight.Grains.Shared.Scheduling;
 using Microsoft.Greenlight.ServiceDefaults;
 using Microsoft.Greenlight.Shared.Configuration;
-using Microsoft.Greenlight.Shared.Core;
 using Microsoft.Greenlight.Shared.DocumentProcess.Shared;
 using Microsoft.Greenlight.Shared.DocumentProcess.Shared.Generation;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Helpers;
 
-var builder = new GreenlightDynamicApplicationBuilder(args);
-
-//var builder = Host.CreateApplicationBuilder();
+// Use the standard HostApplicationBuilder instead of the custom class
+var builder = Host.CreateApplicationBuilder(args);
 
 builder.AddServiceDefaults();
 builder.Services.AddSingleton<AzureCredentialHelper>();
@@ -51,7 +49,6 @@ builder.Services.Configure<ServiceConfigurationOptions>(
 builder.Services.AddGreenlightHostedServices();
 
 // Run the scheduler initialization service
-
 builder.Services.AddHostedService<SchedulerStartupService>();
 
 var host = builder.Build();

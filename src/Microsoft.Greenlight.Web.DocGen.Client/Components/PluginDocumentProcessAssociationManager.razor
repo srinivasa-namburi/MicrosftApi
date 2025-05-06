@@ -1,0 +1,380 @@
+@using Microsoft.Extensions.Logging
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Plugins
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Configuration
+
+@inject IPluginApiClient PluginApiClient
+@inject IDocumentProcessApiClient DocumentProcessApiClient
+@inject ISnackbar Snackbar
+@inject ILogger<PluginDocumentProcessAssociationManager> Logger
+@inject IDialogService DialogService
+
+<MudPaper Class="pa-4">
+    <MudGrid>
+        <MudItem xs="12">
+            <MudText Typo="Typo.h6">@Title</MudText>
+            
+            <MudTable Items="AssociatedItems" Hover="true" Striped="true" Dense="true">
+                <HeaderContent>
+                    <MudTh>@SelectionColumnLabel</MudTh>
+                    <MudTh>Version</MudTh>
+                    <MudTh>Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Name</MudTd>
+                    <MudTd>
+                        @if (PluginCentric)
+                        {
+                            @context.Version
+                        }
+                        else
+                        {
+                            <MudSelect T="string" @bind-Value="context.Version" Dense="true" 
+                                      OnBlur="() => UpdateAssociationVersion(context)">
+                                @if (context.AvailableVersions != null)
+                                {
+                                    @foreach (var version in context.AvailableVersions)
+                                    {
+                                        <MudSelectItem Value="@version">@version</MudSelectItem>
+                                    }
+                                }
+                            </MudSelect>
+                        }
+                    </MudTd>
+                    <MudTd>
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" 
+                                     OnClick="() => ConfirmDisassociate(context)" Size="Size.Small" />
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText>No @(PluginCentric ? "document processes" : "plugins") associated.</MudText>
+                </NoRecordsContent>
+            </MudTable>
+            
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OpenAssociateDialog" Class="mt-3">
+                @(PluginCentric ? "Associate Document Process" : "Associate Plugin")
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@code {
+    [Parameter] public Guid? PluginId { get; set; }
+    [Parameter] public Guid? DocumentProcessId { get; set; }
+    [Parameter] public bool PluginCentric { get; set; } = true;
+    [Parameter] public string Title { get; set; } = "Associated Items";
+    [Parameter] public string SelectionColumnLabel { get; set; } = "Name";
+    [Parameter] public EventCallback OnAssociationChanged { get; set; }
+    
+    private List<AssociationViewModel> AssociatedItems { get; set; } = new();
+    private List<SelectableItem> AvailableItems { get; set; } = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshAssociations();
+    }
+    
+    protected override async Task OnParametersSetAsync()
+    {
+        await RefreshAssociations();
+    }
+
+    private async Task RefreshAssociations()
+    {
+        try
+        {
+            if (PluginCentric && PluginId.HasValue)
+            {
+                // Get document processes associated with this plugin
+                var plugin = await PluginApiClient.GetMcpPluginByIdAsync(PluginId.Value);
+                
+                // Check if DocumentProcesses is available and populated
+                var associatedProcessIds = new List<Guid>();
+                
+                if (plugin?.DocumentProcesses != null && plugin.DocumentProcesses.Any())
+                {
+                    AssociatedItems = plugin.DocumentProcesses
+                        .Where(p => p.DocumentProcess != null)
+                        .Select(p => new AssociationViewModel
+                        {
+                            Id = p.DocumentProcessId,
+                            PluginId = PluginId.Value,
+                            Name = p.DocumentProcess?.ShortName ?? "Unknown Process",
+                            Version = p.Version != null ? $"{p.Version.Major}.{p.Version.Minor}.{p.Version.Patch}" : "Unknown Version"
+                        })
+                        .ToList();
+                    
+                    associatedProcessIds = AssociatedItems.Select(a => a.Id).ToList();
+                }
+                else
+                {
+                    // If DocumentProcesses property is empty, try to get them directly
+                    var associatedProcesses = await PluginApiClient.GetDocumentProcessesByPluginIdAsync(PluginId.Value);
+                    
+                    AssociatedItems = associatedProcesses.Select(p => new AssociationViewModel
+                    {
+                        Id = p.Id,
+                        PluginId = PluginId.Value,
+                        Name = p.ShortName ?? "Unknown Process",
+                        Version = "Latest Version" // Default if specific version is unknown
+                    }).ToList();
+                    
+                    associatedProcessIds = AssociatedItems.Select(a => a.Id).ToList();
+                }
+                
+                // Get all processes that are not associated for the add dialog
+                var allProcesses = await DocumentProcessApiClient.GetAllDocumentProcessInfoAsync();
+                var associatedProcessIdsSet = associatedProcessIds.ToHashSet();
+                
+                AvailableItems = allProcesses
+                    .Where(p => !associatedProcessIdsSet.Contains(p.Id))
+                    .Select(p => new SelectableItem
+                    {
+                        Id = p.Id,
+                        Name = p.ShortName,
+                        IsSelected = false
+                    })
+                    .ToList();
+            }
+            else if (!PluginCentric && DocumentProcessId.HasValue)
+            {
+                // Get plugins associated with this document process
+                var plugins = await PluginApiClient.GetMcpPluginsByDocumentProcessIdAsync(DocumentProcessId.Value);
+                
+                AssociatedItems = plugins.Select(p => {
+                    var docProcess = p.DocumentProcesses?.FirstOrDefault(dp => dp.DocumentProcessId == DocumentProcessId.Value);
+                    var version = docProcess?.Version;
+                    var versionString = version != null ? $"{version.Major}.{version.Minor}.{version.Patch}" : 
+                        p.LatestVersion != null ? $"{p.LatestVersion.Major}.{p.LatestVersion.Minor}.{p.LatestVersion.Patch}" : "1.0.0";
+                    
+                    return new AssociationViewModel
+                    {
+                        Id = p.Id,
+                        PluginId = p.Id,
+                        Name = p.Name,
+                        Version = versionString,
+                        AvailableVersions = p.Versions
+                            .OrderByDescending(v => v.Major)
+                            .ThenByDescending(v => v.Minor)
+                            .ThenByDescending(v => v.Patch)
+                            .Select(v => $"{v.Major}.{v.Minor}.{v.Patch}")
+                            .ToList()
+                    };
+                }).ToList();
+                
+                // Get all plugins that are not associated for the add dialog
+                var allPlugins = await PluginApiClient.GetAllMcpPluginsAsync();
+                var associatedPluginIds = AssociatedItems.Select(a => a.PluginId).ToHashSet();
+                
+                AvailableItems = allPlugins
+                    .Where(p => !associatedPluginIds.Contains(p.Id))
+                    .Select(p => new SelectableItem
+                    {
+                        Id = p.Id,
+                        Name = p.Name,
+                        IsSelected = false
+                    })
+                    .ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error refreshing associations");
+            Snackbar.Add($"Error loading associations: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void OpenAssociateDialog()
+    {
+        if (AvailableItems.Count == 0)
+        {
+            Snackbar.Add($"No {(PluginCentric ? "document processes" : "plugins")} available to associate.", Severity.Info);
+            return;
+        }
+        
+        var parameters = new DialogParameters
+        {
+            { "Title", PluginCentric ? "Associate Document Process" : "Associate Plugin" },
+            { "Items", AvailableItems },
+            { "SelectionLabel", PluginCentric ? "Document Processes" : "Plugins" }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = DialogService.Show<SelectItemsDialog>(
+            PluginCentric ? "Associate Document Process" : "Associate Plugin", 
+            parameters, options);
+
+        dialog.Result.ContinueWith(async result =>
+        {
+            if (!result.Result.Cancelled && result.Result.Data is List<SelectableItem> selectedItems)
+            {
+                await AssociateSelectedItems(selectedItems.Where(i => i.IsSelected).ToList());
+            }
+        });
+    }
+    
+    private async Task AssociateSelectedItems(List<SelectableItem> selectedItems)
+    {
+        if (!selectedItems.Any()) return;
+        
+        try
+        {
+            foreach (var item in selectedItems)
+            {
+                if (PluginCentric && PluginId.HasValue)
+                {
+                    // Get the latest version of the plugin
+                    var plugin = await PluginApiClient.GetMcpPluginByIdAsync(PluginId.Value);
+                    var latestVersion = plugin.LatestVersion;
+                    
+                    if (latestVersion == null)
+                    {
+                        Snackbar.Add($"Plugin {plugin.Name} has no versions.", Severity.Warning);
+                        continue;
+                    }
+                    
+                    // Associate plugin with document process using the latest version
+                    await PluginApiClient.AssociateMcpPluginWithDocumentProcessAsync(
+                        PluginId.Value, item.Id, latestVersion);
+                    
+                    Snackbar.Add($"Successfully associated '{plugin.Name}' with document process.", Severity.Success);
+                }
+                else if (!PluginCentric && DocumentProcessId.HasValue)
+                {
+                    // Get the plugin to find its latest version
+                    var plugin = await PluginApiClient.GetMcpPluginByIdAsync(item.Id);
+                    var latestVersion = plugin.LatestVersion;
+                    
+                    if (latestVersion == null)
+                    {
+                        Snackbar.Add($"Plugin {plugin.Name} has no versions.", Severity.Warning);
+                        continue;
+                    }
+                    
+                    // Associate plugin with document process using the latest version
+                    await PluginApiClient.AssociateMcpPluginWithDocumentProcessAsync(
+                        plugin.Id, DocumentProcessId.Value, latestVersion);
+                    
+                    Snackbar.Add($"Successfully associated plugin '{plugin.Name}' with document process.", Severity.Success);
+                }
+            }
+            
+            // Refresh the associations list
+            await RefreshAssociations();
+            await OnAssociationChanged.InvokeAsync();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error associating items");
+            Snackbar.Add($"Error associating items: {ex.Message}", Severity.Error);
+        }
+    }
+    
+    private void ConfirmDisassociate(AssociationViewModel association)
+    {
+        var parameters = new DialogParameters
+        {
+            { "ContentText", $"Are you sure you want to disassociate this {(PluginCentric ? "document process" : "plugin")}?" },
+            { "ButtonText", "Disassociate" },
+            { "DialogColor", Color.Error }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = DialogService.Show<ConfirmationDialog>("Confirm Disassociation", parameters, options);
+
+        dialog.Result.ContinueWith(async result =>
+        {
+            if (!result.Result.Cancelled)
+            {
+                await DisassociateItem(association);
+                await InvokeAsync(StateHasChanged);
+            }
+        });
+    }
+
+    private async Task DisassociateItem(AssociationViewModel association)
+    {
+        try
+        {
+            if (PluginCentric)
+            {
+                await PluginApiClient.DisassociateMcpPluginFromDocumentProcessAsync(
+                    PluginId.Value, association.Id);
+            }
+            else
+            {
+                await PluginApiClient.DisassociateMcpPluginFromDocumentProcessAsync(
+                    association.PluginId, DocumentProcessId.Value);
+            }
+
+            Snackbar.Add("Successfully disassociated.", Severity.Success);
+            await RefreshAssociations();
+            await OnAssociationChanged.InvokeAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error disassociating item");
+            Snackbar.Add($"Error disassociating: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task UpdateAssociationVersion(AssociationViewModel association)
+    {
+        try
+        {
+            if (!DocumentProcessId.HasValue) return;
+            
+            // Parse the version string
+            var versionParts = association.Version.Split('.');
+            if (versionParts.Length != 3 ||
+                !int.TryParse(versionParts[0], out int major) ||
+                !int.TryParse(versionParts[1], out int minor) ||
+                !int.TryParse(versionParts[2], out int patch))
+            {
+                Snackbar.Add("Invalid version format. Expected format: Major.Minor.Patch", Severity.Error);
+                return;
+            }
+
+            // Get the plugin to find the specified version
+            var plugin = await PluginApiClient.GetMcpPluginByIdAsync(association.PluginId);
+            var version = plugin.Versions.FirstOrDefault(v => 
+                v.Major == major && v.Minor == minor && v.Patch == patch);
+                
+            if (version == null)
+            {
+                Snackbar.Add("Selected version not found for this plugin.", Severity.Error);
+                return;
+            }
+
+            // Update the association with the new version
+            await PluginApiClient.UpdateMcpPluginVersionAsync(DocumentProcessId.Value, association.PluginId, version);
+            
+            Snackbar.Add("Plugin version updated successfully.", Severity.Success);
+            await RefreshAssociations();
+            await OnAssociationChanged.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error updating plugin version");
+            Snackbar.Add($"Error updating plugin version: {ex.Message}", Severity.Error);
+        }
+    }
+
+    public class AssociationViewModel
+    {
+        public Guid Id { get; set; } // Document Process ID or Plugin ID depending on context
+        public Guid PluginId { get; set; } // Always Plugin ID
+        public string Name { get; set; } = string.Empty;
+        public string Version { get; set; } = string.Empty;
+        public List<string>? AvailableVersions { get; set; }
+    }
+
+    public class SelectableItem
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public bool IsSelected { get; set; }
+    }
+}
