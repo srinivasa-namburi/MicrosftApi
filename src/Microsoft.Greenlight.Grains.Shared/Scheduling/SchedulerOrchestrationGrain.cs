@@ -46,8 +46,8 @@ public class SchedulerOrchestrationGrain : Grain, ISchedulerOrchestrationGrain, 
             _logger.LogInformation("SchedulerOrchestrationGrain activated with primary key {Key}", this.GetPrimaryKeyString());
 
             // Always execute all jobs immediately on startup, regardless of whether reminders existed
-            //_logger.LogInformation("Executing all scheduled jobs immediately upon startup");
-            //await ExecuteJobsImmediatelyAsync();
+            _logger.LogInformation("Executing all scheduled jobs immediately upon startup");
+            await ExecuteJobsImmediatelyAsync();
 
             // Load existing reminders
             await LoadExistingRemindersAsync(cancellationToken);
