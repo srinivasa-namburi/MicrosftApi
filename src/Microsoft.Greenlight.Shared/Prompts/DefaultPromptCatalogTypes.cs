@@ -33,38 +33,39 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
          [Question] 
          {{ question }}
          [/Question]
-
+         
          And the following answer:
          [Answer]
          {{ aiAnswer }}
          [/Answer]
-
+         
          Provide a sentiment on whether the answer is positive, negative, or neutral. Use the following score numeric values:
          Positive = 100,
          Negative = 800,
          Neutral = 999
-
+         
          Determined your score of the answer in these ways:
-
-         * NEGATIVE: the answer is negative or irrelevant to the question asked. Also mark
+         
+         * Negative (answer 800): the answer is negative or irrelevant to the question asked. Also mark
          the answer as negative if the Answer specifies that details are missing or certain parts of the
          question have not been satisfied.
-
-         * POSITIVE: the answer is good and relevant to the question asked. You do not need to 
+         
+         * Positive (answer 100): the answer is good and relevant to the question asked. You do not need to 
          look for opinions, just a confirmation that the question has been answered correctly.
-
-         * NEUTRAL: the answer is neither positive nor negative and you cannot determine
+         
+         * Neutral (answer 999): the answer is neither positive nor negative and you cannot determine
          the sentiment using the two bullets above this one.
-
+         
          "INFO NOT FOUND" means the sentiment should be negative. This also applies if the Answer
          points out that information is not present in the context.
-
-         Provide ONLY this number, no introduction, no explanation, no context, just the number.
+         
+         Provide ONLY the number score matching your determined sentiment with no introduction, no explanation, no context, just the number. 
+         To reiterate, your response should be 100 for a positive sentiment, 800 for a negative sentiment and 999 for a neutral sentiment.
          """;
 
 
     /// <inheritdoc />
-    public string ReviewQuestionAnswerPrompt => 
+    public string ReviewQuestionAnswerPrompt =>
         """
         You are analyzing a document and answering a specific question about its content.
 
@@ -103,7 +104,7 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
         """;
 
     /// <inheritdoc />
-    public string ChatSystemPrompt => 
+    public string ChatSystemPrompt =>
         """
         This is a chat between an intelligent AI bot specializing in assisting with producing 
         various types of reports and documents - and one or more human participants. 
@@ -194,7 +195,7 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
         Subsequent queries will ask you to expand upon and integrate summaries from each pass.
         
         You may see fragments labeled **[EXAMPLE: Document Extract]** from previous applications. 
-        Use these extracts as context to craft a coherent section. The fragments might include information from various parts of the document—not just **{{ fullSectionName }}**—so filter out any irrelevant details.
+        Use these extracts as context to craft a coherent section. The fragments might include information from various parts of the documentâ€”not just **{{ fullSectionName }}**â€”so filter out any irrelevant details.
         
         {{ sectionSpecificPromptInstructions }}
         
@@ -240,7 +241,7 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
         {{ tableOfContentsString }}
         [/TOC]
         
-        Your output should be a full section or chapter—not a summary. Follow these formatting guidelines:
+        Your output should be a full section or chapterâ€”not a summary. Follow these formatting guidelines:
         - Remove numbering and any prefixes like "Section" or "Chapter" from headings.
         - Use UTF-8 encoding.
         - Separate paragraphs with two newlines (\n\n).
@@ -249,7 +250,7 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
         - Render tables as inline Markdown tables (or HTML tables for complex cases).
         - Structure your content with headings and subheadings if appropriate.
         
-        If details are missing, indicate what’s needed with a concise **[DETAIL: <dataType>]** tag (one or two words).
+        If details are missing, indicate whatâ€™s needed with a concise **[DETAIL: <dataType>]** tag (one or two words).
         
         If you determine that your output is complete for the entire section (i.e., the final pass), end your response on a new line with:
         [*COMPLETE*]
@@ -283,7 +284,7 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
         Also, ignore the initial heading and the first two paragraphs from the original prompt. 
         This is pass number **{{ passNumber }}** of **{{ numberOfPasses }}**.
         
-        Begin your response with the content only — do not include commentary about your process or internal reasoning. 
+        Begin your response with the content only â€” do not include commentary about your process or internal reasoning. 
         The output from each pass should seamlessly integrate without requiring further editing.
         
         If this pass completes the section, end your output with a new line containing:
