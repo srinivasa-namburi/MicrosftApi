@@ -65,7 +65,7 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
 
 
     /// <inheritdoc />
-    public string ReviewQuestionAnswerPrompt =>
+    public string ReviewQuestionAnswerPrompt => 
         """
         You are analyzing a document and answering a specific question about its content.
 
@@ -104,7 +104,7 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
         """;
 
     /// <inheritdoc />
-    public string ChatSystemPrompt =>
+    public string ChatSystemPrompt => 
         """
         This is a chat between an intelligent AI bot specializing in assisting with producing 
         various types of reports and documents - and one or more human participants. 
@@ -241,7 +241,7 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
         {{ tableOfContentsString }}
         [/TOC]
         
-        Your output should be a full section or chapter—not a summary. Follow these formatting guidelines:
+        Your output should be a full section or chapternot a summary. Follow these formatting guidelines:
         - Remove numbering and any prefixes like "Section" or "Chapter" from headings.
         - Use UTF-8 encoding.
         - Separate paragraphs with two newlines (\n\n).
@@ -250,7 +250,7 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
         - Render tables as inline Markdown tables (or HTML tables for complex cases).
         - Structure your content with headings and subheadings if appropriate.
         
-        If details are missing, indicate what’s needed with a concise **[DETAIL: <dataType>]** tag (one or two words).
+        If details are missing, indicate whats needed with a concise **[DETAIL: <dataType>]** tag (one or two words).
         
         If you determine that your output is complete for the entire section (i.e., the final pass), end your response on a new line with:
         [*COMPLETE*]
@@ -284,7 +284,7 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
         Also, ignore the initial heading and the first two paragraphs from the original prompt. 
         This is pass number **{{ passNumber }}** of **{{ numberOfPasses }}**.
         
-        Begin your response with the content only — do not include commentary about your process or internal reasoning. 
+        Begin your response with the content only  do not include commentary about your process or internal reasoning. 
         The output from each pass should seamlessly integrate without requiring further editing.
         
         If this pass completes the section, end your output with a new line containing:

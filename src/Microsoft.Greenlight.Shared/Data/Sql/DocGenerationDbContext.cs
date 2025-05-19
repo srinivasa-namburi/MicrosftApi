@@ -990,7 +990,7 @@ public class DocGenerationDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasOne(e => e.DynamicDocumentProcessDefinition)
-                .WithMany()
+                .WithMany(e => e.McpServerAssociations)
                 .HasForeignKey(e => e.DynamicDocumentProcessDefinitionId)
                 .IsRequired()
                 .OnDelete(DeleteBehavior.Cascade);
@@ -1001,7 +1001,7 @@ public class DocGenerationDbContext : DbContext
                 .IsRequired(false)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            entity.HasIndex(e => new { e.McpPluginId, DocumentProcessId = e.DynamicDocumentProcessDefinitionId })
+            entity.HasIndex(e => new { e.McpPluginId, e.DynamicDocumentProcessDefinitionId })
                 .IsUnique(false);
         });
     }
