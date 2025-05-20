@@ -242,7 +242,7 @@ builder.UseOrleans(siloBuilder =>
 
     siloBuilder.AddAzureBlobGrainStorage("PubSubStore", options =>
     {
-        var tuple = Microsoft.Greenlight.Shared.Helpers.AzureStorageHelper.ParseBlobEndpointAndCredential(orleansBlobStoreConnectionString!);
+        var tuple = AzureStorageHelper.ParseBlobEndpointAndCredential(orleansBlobStoreConnectionString!);
         var blobEndpoint = tuple.endpoint;
         var sharedKey = tuple.sharedKeyCredential;
         if (sharedKey != null)
@@ -258,7 +258,7 @@ builder.UseOrleans(siloBuilder =>
     siloBuilder.AddAzureBlobGrainStorageAsDefault(options =>
     {
         options.ContainerName = "grain-storage";
-        var tuple = Microsoft.Greenlight.Shared.Helpers.AzureStorageHelper.ParseBlobEndpointAndCredential(orleansBlobStoreConnectionString!);
+        var tuple = AzureStorageHelper.ParseBlobEndpointAndCredential(orleansBlobStoreConnectionString!);
         var blobEndpoint = tuple.endpoint;
         var sharedKey = tuple.sharedKeyCredential;
         if (sharedKey != null)
@@ -273,7 +273,7 @@ builder.UseOrleans(siloBuilder =>
 
     siloBuilder.UseAzureTableReminderService(options =>
     {
-        var tuple = Microsoft.Greenlight.Shared.Helpers.AzureStorageHelper.ParseTableEndpointAndCredential(checkPointTableStorageConnectionString!);
+        var tuple = AzureStorageHelper.ParseTableEndpointAndCredential(checkPointTableStorageConnectionString!);
         var tableEndpoint = tuple.endpoint;
         var sharedKey = tuple.sharedKeyCredential;
         if (sharedKey != null)

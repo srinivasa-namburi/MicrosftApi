@@ -33,6 +33,9 @@ public static class AzureStorageHelper
     /// </summary>
     public static (Uri endpoint, StorageSharedKeyCredential? sharedKeyCredential) ParseBlobEndpointAndCredential(string connectionString)
     {
+        if (string.IsNullOrWhiteSpace(connectionString))
+            throw new ArgumentException("Blob connection string is missing or empty.", nameof(connectionString));
+
         if (IsDevelopmentStorage(connectionString))
         {
             // For Azurite/local, parse AccountName and AccountKey
@@ -47,15 +50,35 @@ public static class AzureStorageHelper
                 endpoint = new Uri(endpointMatch.Groups[1].Value);
             return (endpoint, new StorageSharedKeyCredential(accountName, accountKey));
         }
+        else if (connectionString.TrimStart().StartsWith("http", StringComparison.OrdinalIgnoreCase))
+        {
+            // If the connection string is just a URL, treat it as the endpoint and use default credentials
+            return (new Uri(connectionString), null);
+        }
         else
         {
             // For prod, use the connection string directly (let BlobServiceClient parse it)
-            return (new Uri(""), null);
+            // Try to extract AccountName, AccountKey, and BlobEndpoint
+            var endpointMatch = Regex.Match(connectionString, @"BlobEndpoint=([^;]+)");
+            var accountNameMatch = Regex.Match(connectionString, @"AccountName=([^;]+)");
+            var accountKeyMatch = Regex.Match(connectionString, @"AccountKey=([^;]+)");
+            if (endpointMatch.Success && accountNameMatch.Success && accountKeyMatch.Success)
+            {
+                var endpoint = new Uri(endpointMatch.Groups[1].Value);
+                var accountName = accountNameMatch.Groups[1].Value;
+                var accountKey = accountKeyMatch.Groups[1].Value;
+                return (endpoint, new StorageSharedKeyCredential(accountName, accountKey));
+            }
+            // If not, fallback to using the connection string as endpoint (may throw if invalid)
+            return (new Uri(connectionString), null);
         }
     }
 
     public static (Uri endpoint, TableSharedKeyCredential? sharedKeyCredential) ParseTableEndpointAndCredential(string connectionString)
     {
+        if (string.IsNullOrWhiteSpace(connectionString))
+            throw new ArgumentException("Table connection string is missing or empty.", nameof(connectionString));
+
         if (IsDevelopmentStorage(connectionString))
         {
             var accountName = "devstoreaccount1";
@@ -69,9 +92,27 @@ public static class AzureStorageHelper
                 endpoint = new Uri(endpointMatch.Groups[1].Value);
             return (endpoint, new TableSharedKeyCredential(accountName, accountKey));
         }
+        else if (connectionString.TrimStart().StartsWith("http", StringComparison.OrdinalIgnoreCase))
+        {
+            // If the connection string is just a URL, treat it as the endpoint and use default credentials
+            return (new Uri(connectionString), null);
+        }
         else
         {
-            return (new Uri(""), null);
+            // For prod, use the connection string directly (let TableServiceClient parse it)
+            // Try to extract TableEndpoint, AccountName, and AccountKey
+            var endpointMatch = Regex.Match(connectionString, @"TableEndpoint=([^;]+)");
+            var accountNameMatch = Regex.Match(connectionString, @"AccountName=([^;]+)");
+            var accountKeyMatch = Regex.Match(connectionString, @"AccountKey=([^;]+)");
+            if (endpointMatch.Success && accountNameMatch.Success && accountKeyMatch.Success)
+            {
+                var endpoint = new Uri(endpointMatch.Groups[1].Value);
+                var accountName = accountNameMatch.Groups[1].Value;
+                var accountKey = accountKeyMatch.Groups[1].Value;
+                return (endpoint, new TableSharedKeyCredential(accountName, accountKey));
+            }
+            // If not, fallback to using the connection string as endpoint (may throw if invalid)
+            return (new Uri(connectionString), null);
         }
     }
 }
