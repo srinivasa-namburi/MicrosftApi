@@ -27,7 +27,7 @@ resource kmvectordb 'Microsoft.DBforPostgreSQL/flexibleServers@2023-03-01-previe
     tier: 'MemoryOptimized'
   }
   properties: {
-    version: '17'
+    version: '16'
     administratorLogin: 'pgadmin'
     administratorLoginPassword: administratorPassword
     storage: {

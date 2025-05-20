@@ -100,7 +100,7 @@ if (builder.ExecutionContext.IsRunMode) // For local development
         .AddTables("checkpointing");
 
     kmvectorDb = builder.AddPostgres("kmvectordb-server", port: 9002)
-        .WithImage("pgvector/pgvector:pg17") // Adds pgvector support to Postgres by using a custom image
+        .WithImage("pgvector/pgvector:pg16") // Adds pgvector support to Postgres by using a custom image
         .WithDataVolume("pvico-pgsql-kmvectordb-vol")
         .WithLifetime(ContainerLifetime.Persistent)
         .AddDatabase("kmvectordb");

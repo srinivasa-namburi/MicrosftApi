@@ -106,6 +106,17 @@ namespace Microsoft.Greenlight.Grains.Shared.Maintenance
                 if (rows == null || !rows.Any())
                     throw new Exception("Backup file is empty or invalid.");
 
+                // Normalize and validate rows for embedding and labels
+                foreach (var row in rows)
+                {
+                    // Ensure embedding is a non-null float[]
+                    if (row.embedding == null)
+                        row.embedding = Array.Empty<float>();
+                    // Ensure labels is a non-null string[]
+                    if (row.labels == null)
+                        row.labels = Array.Empty<string>();
+                }
+
                 _logger.LogInformation("Retrieved {Count} rows from backup file", rows.Count);
 
                 await using var conn = await _dataSource.OpenConnectionAsync();
