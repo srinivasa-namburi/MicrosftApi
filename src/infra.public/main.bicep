@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+
 targetScope = 'resourceGroup'
 
 @minLength(1)
@@ -21,7 +23,7 @@ param containerAppEnvSubnet string = ''
 @description('The resource identifier of the subnet used by the PostgreSQL Flexible Server. Required for private deployments')
 param postgresSubnet string = ''
 
-@description('The resource identifier of the private DNS zone for PostgreSQL Flexible Server. Required for private deployments with PostgreSQL')
+@description('The resource identifier of the subnet used by the private DNS zone for PostgreSQL Flexible Server. Required for private deployments with PostgreSQL')
 param postgresDnsZoneId string = ''
 
 @description('If the SQL server is already existing')
@@ -37,6 +39,13 @@ param administratorPassword string
 ])
 @description('Deployment model: public or private')
 param deploymentModel string = 'public'
+
+@allowed([
+  'aisearch'
+  'postgres'
+])
+@description('Memory backend to use: aisearch or postgres')
+param memoryBackend string = 'aisearch'
 
 var isPrivate = deploymentModel == 'private'
 var tags = {
@@ -55,7 +64,7 @@ module resources 'resources.bicep' = {
   }
 }
 
-module aiSearch 'aiSearch/aiSearch.module.bicep' = {
+module aiSearch 'aiSearch/aiSearch.module.bicep' = if (memoryBackend == 'aisearch') {
   name: 'aiSearch'
   scope: resourceGroup('${resourceGroupName}')
   params: {
@@ -152,7 +161,7 @@ module orleansStorage 'orleans/orleans.module.bicep' = {
   }
 }
 
-module kmvectordb 'kmvectordb/kmvectordb.module.bicep' = {
+module kmvectordb 'kmvectordb/kmvectordb.module.bicep' = if (memoryBackend == 'postgres') {
   name: 'kmvectordb'
   scope: resourceGroup('${resourceGroupName}')
   params: {
@@ -202,7 +211,7 @@ output AZURE_CONTAINER_REGISTRY_NAME string = resources.outputs.AZURE_CONTAINER_
 output AZURE_CONTAINER_APPS_ENVIRONMENT_NAME string = resources.outputs.AZURE_CONTAINER_APPS_ENVIRONMENT_NAME
 output AZURE_CONTAINER_APPS_ENVIRONMENT_ID string = resources.outputs.AZURE_CONTAINER_APPS_ENVIRONMENT_ID
 output AZURE_CONTAINER_APPS_ENVIRONMENT_DEFAULT_DOMAIN string = resources.outputs.AZURE_CONTAINER_APPS_ENVIRONMENT_DEFAULT_DOMAIN
-output AISEARCH_CONNECTIONSTRING string = aiSearch.outputs.connectionString
+output AISEARCH_CONNECTIONSTRING string = memoryBackend == 'aisearch' ? aiSearch.outputs.connectionString : ''
 output DOCING_BLOBENDPOINT string = docing.outputs.blobEndpoint
 output INSIGHTS_APPINSIGHTSCONNECTIONSTRING string = insights.outputs.appInsightsConnectionString
 output REDIS_CONNECTIONSTRING string = redis.outputs.connectionString
@@ -221,11 +230,10 @@ output ORLEANS_BLOB_CONNECTIONSTRING string = orleansStorage.outputs.blobConnect
 output ORLEANS_STORAGE_TABLEENDPOINT string = orleansStorage.outputs.tableEndpoint
 output ORLEANS_TABLE_CONNECTIONSTRING string = orleansStorage.outputs.tableConnectionString
 
-output KMVECTORDB_SERVER_CONNECTIONSTRING string = kmvectordb.outputs.connectionString
-output KMVECTORDB_SERVER_FQDN string = kmvectordb.outputs.serverFqdn
+output KMVECTORDB_SERVER_CONNECTIONSTRING string = memoryBackend == 'postgres' ? kmvectordb.outputs.connectionString : ''
+output KMVECTORDB_SERVER_FQDN string = memoryBackend == 'postgres' ? kmvectordb.outputs.serverFqdn : ''
 
-// Custom outputs
-output AI_SEARCH_RESOURCE_ID string = aiSearch.outputs.resourceId
+output AI_SEARCH_RESOURCE_ID string = memoryBackend == 'aisearch' ? aiSearch.outputs.resourceId : ''
 output DOCING_RESOURCE_ID string = docing.outputs.resourceId
 output REDIS_RESOURCE_ID string = redis.outputs.resourceId
 output SBUS_RESOURCE_ID string = sbus.outputs.resourceId
@@ -233,4 +241,4 @@ output SIGNALR_RESOURCE_ID string = signalr.outputs.resourceId
 output SQLDOCGEN_RESOURCE_ID string = sqldocgen.outputs.resourceId
 output EVENTHUB_RESOURCE_ID string = eventhub.outputs.resourceId
 output ORLEANS_STORAGE_RESOURCE_ID string = orleansStorage.outputs.resourceId
-output KMVECTORDB_RESOURCE_ID string = kmvectordb.outputs.resourceId
+output KMVECTORDB_RESOURCE_ID string = memoryBackend == 'postgres' ? kmvectordb.outputs.resourceId : ''

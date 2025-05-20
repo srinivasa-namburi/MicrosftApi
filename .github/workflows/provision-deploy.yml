@@ -223,7 +223,7 @@ jobs:
 
           echo "Existing SQL server present (EXISTING_SQL_SERVER): $EXISTING_SQL_SERVER"
 
-          # Pass parameters directly to azd to avoid interactive prompts
+          # Provision using environment variables and main.parameters.json (no explicit --parameters option)
           azd provision --no-prompt
         env:
           AZD_INITIAL_ENVIRONMENT_CONFIG: ${{ secrets.AZD_INITIAL_ENVIRONMENT_CONFIG }}
@@ -234,6 +234,7 @@ jobs:
           AZURE_RESOURCE_GROUP: ${{ env.AZURE_RESOURCE_GROUP }}
           AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           AZURE_ENV_NAME: ${{ env.AZURE_ENV_NAME }}
+          MEMORY_BACKEND: ${{ env.MEMORY_BACKEND }}
 
       - name: Configure Azure SQL Server for Azure AD authentication
         run: |

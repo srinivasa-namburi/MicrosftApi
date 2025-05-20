@@ -6,9 +6,9 @@ param peSubnet string
 
 // For each resource, accept both the resource ID and resource name.
 @description('Resource ID of the Azure Search service.')
-param aiSearchId string
+param aiSearchId string = ''
 @description('Resource name of the Azure Search service.')
-param aiSearchName string
+param aiSearchName string = ''
 
 @description('Resource ID of the storage account (docing).')
 param docingId string
@@ -48,7 +48,7 @@ param orleansStorageId string
 param orleansStorageName string
 
 // Private endpoint for Azure Search
-resource peAiSearch 'Microsoft.Network/privateEndpoints@2023-11-01' = {
+resource peAiSearch 'Microsoft.Network/privateEndpoints@2023-11-01' = if (!empty(aiSearchId) && !empty(aiSearchName)) {
   name: '${aiSearchName}-pl'
   location: location
   properties: {
@@ -242,7 +242,7 @@ resource orleansStorageTablePrivateEndpoint 'Microsoft.Network/privateEndpoints@
   }
 }
 
-output aiSearchPeName string = peAiSearch.name
+output aiSearchPeName string = !empty(aiSearchId) && !empty(aiSearchName) ? peAiSearch.name : ''
 output docingPeName string = peDocing.name
 output redisPeName string = peRedis.name
 output sbusPeName string = peSbus.name

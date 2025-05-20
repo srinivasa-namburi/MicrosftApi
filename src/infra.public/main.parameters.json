@@ -34,6 +34,9 @@
     },
     "administratorPassword": {
       "value": "${BICEP_PG_ADMIN_PASSWORD}"
+    },
+    "memoryBackend": {
+      "value": "${MEMORY_BACKEND}"
     }
   }
 }
