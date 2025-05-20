@@ -79,6 +79,33 @@ namespace Microsoft.Greenlight.Grains.Shared.Scheduling
             var existingImplementations = await dbContext.PromptImplementations
                 .ToListAsync();
 
+            // --- Update unchanged prompt implementations if the default text has changed ---
+            int totalImplementationsUpdated = 0;
+            foreach (var implementation in existingImplementations)
+            {
+                // Find the matching prompt definition
+                var promptDefinition = promptDefinitions.FirstOrDefault(pd => pd.Id == implementation.PromptDefinitionId);
+                if (promptDefinition == null) continue;
+
+                // Get default text for this prompt from DefaultPromptCatalogTypes if available
+                var promptCatalogProperty = _defaultPromptCatalogTypes.GetType()
+                    .GetProperties()
+                    .FirstOrDefault(p => p.PropertyType == typeof(string) && p.Name == promptDefinition.ShortCode);
+
+                if (promptCatalogProperty != null)
+                {
+                    string defaultText = promptCatalogProperty.GetValue(_defaultPromptCatalogTypes)?.ToString() ?? string.Empty;
+                    // Only update if unchanged (CreatedUtc == ModifiedUtc) and text differs
+                    if (implementation.CreatedUtc == implementation.ModifiedUtc && implementation.Text != defaultText)
+                    {
+                        implementation.Text = defaultText;
+                        implementation.ModifiedUtc = DateTime.UtcNow;
+                        totalImplementationsUpdated++;
+                        _logger.LogInformation($"Updated prompt implementation for prompt '{promptDefinition.ShortCode}' in process '{implementation.DocumentProcessDefinitionId}' to match updated default text.");
+                    }
+                }
+            }
+
             // Count for logging
             int totalImplementationsAdded = 0;
 
@@ -135,14 +162,14 @@ namespace Microsoft.Greenlight.Grains.Shared.Scheduling
                 }
             }
 
-            if (totalImplementationsAdded > 0)
+            if (totalImplementationsAdded > 0 || totalImplementationsUpdated > 0)
             {
                 await dbContext.SaveChangesAsync();
-                _logger.LogInformation("Created a total of {Count} prompt implementations across all document processes", totalImplementationsAdded);
+                _logger.LogInformation("Created a total of {Count} prompt implementations and updated {UpdatedCount} implementations across all document processes", totalImplementationsAdded, totalImplementationsUpdated);
             }
             else
             {
-                _logger.LogInformation("All document processes already have all prompt implementations. No new implementations created.");
+                _logger.LogInformation("All document processes already have all prompt implementations. No new implementations created or updated.");
             }
         }
     }

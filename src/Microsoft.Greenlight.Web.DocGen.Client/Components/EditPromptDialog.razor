@@ -80,6 +80,8 @@
     <DialogActions>
         <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SavePrompt"
         Disabled="@(!_allRequiredVariablesPresent)">Save</MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Warning" OnClick="ShowRestoreDefaultConfirmation"
+        Disabled="@(string.IsNullOrEmpty(Prompt?.ShortCode))">Restore Default</MudButton>
         <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="Cancel">Cancel</MudButton>
     </DialogActions>
 </MudDialog>
@@ -189,6 +191,45 @@
         }
 
         MudDialog.Close();
+    }
+    
+    private async Task ShowRestoreDefaultConfirmation()
+    {
+        var parameters = new DialogParameters
+        {
+            { "ContentText", "Are you sure you want to restore this prompt to its default text? This will overwrite any changes you have made." },
+            { "ButtonText", "Restore Default" },
+            { "DialogColor", Color.Warning }
+        };
+
+        var options = new DialogOptions() { CloseButton = true, MaxWidth = MaxWidth.Small, Position = DialogPosition.Center};
+        
+        var dialog = await DialogService.ShowAsync<ConfirmationDialog>("Confirm Restore Default", parameters, options);
+        var result = await dialog.Result;
+        
+        if (!result.Cancelled)
+        {
+            await RestoreDefaultPrompt();
+        }
+    }
+    
+    private async Task RestoreDefaultPrompt()
+    {
+        if (string.IsNullOrEmpty(Prompt?.ShortCode))
+            return;
+            
+        var defaultText = await DocumentProcessApiClient.GetDefaultPromptTextAsync(Prompt.ShortCode);
+        
+        if (!string.IsNullOrEmpty(defaultText))
+        {
+            Prompt.Text = defaultText;
+            // Update the editor value
+            if (_promptEditor != null)
+            {
+                _promptEditor.Value = defaultText;
+            }
+            CheckRequiredVariables();
+        }
     }
 
     private void Cancel()

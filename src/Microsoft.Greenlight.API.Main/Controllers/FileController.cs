@@ -510,7 +510,8 @@ public class FileController : BaseController
             "document-export" or
             "document-assets" or
             "reviews" or
-            "temporary-references")
+            "temporary-references" or
+            "index-backups")
         {
             return true;
         }

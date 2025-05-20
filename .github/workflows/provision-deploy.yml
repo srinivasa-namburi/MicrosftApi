@@ -20,10 +20,13 @@ jobs:
       AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
       AZURE_SUBNET_CAE: ${{ vars.AZURE_SUBNET_CAE }}
       AZURE_SUBNET_PE: ${{ vars.AZURE_SUBNET_PE }}
+      AZURE_SUBNET_POSTGRES: ${{ vars.AZURE_SUBNET_POSTGRES }}
+      POSTGRES_DNSZONE_RESOURCEID: ${{ vars.POSTGRES_DNSZONE_RESOURCEID }}
       AZURE_CLOUD: ${{ vars.AZURE_CLOUD }}
       DEPLOYMENT_MODEL: ${{ vars.DEPLOYMENT_MODEL }}
       AZURE_CAE_WORKLOAD_TYPE: ${{ vars.AZURE_CAE_WORKLOAD_TYPE }}
       HOSTNAMEOVERRIDE: ${{ vars.HOSTNAMEOVERRIDE }}
+      MEMORY_BACKEND: ${{ vars.MEMORY_BACKEND }}
 
     steps:
       - name: Checkout
@@ -52,9 +55,35 @@ jobs:
 
           # Set AZURE_ENV_NAME to AZURE_RESOURCE_GROUP, but remove "rg-" prefix if present.
           AZURE_ENV_NAME=$(echo "${AZURE_RESOURCE_GROUP}" | sed 's/^rg-//')
-          echo "AZURE_ENV_NAME=${AZURE_ENV_NAME}" >> $GITHUB_ENV
+          echo "AZURE_ENV_NAME=${AZURE_ENV_NAME}" >> $GITHUB_ENV          
 
-          # Existing validations (e.g. for private deployments)
+          # Validate MEMORY_BACKEND selection
+          if [ -z "${MEMORY_BACKEND}" ]; then
+            echo "No MEMORY_BACKEND specified, defaulting to 'aisearch'"
+            MEMORY_BACKEND="aisearch"
+            echo "MEMORY_BACKEND=${MEMORY_BACKEND}" >> $GITHUB_ENV
+          fi
+
+          echo "Memory backend selected: ${MEMORY_BACKEND}"
+
+          # Check if PostgreSQL DNS Zone is required and provided
+          POSTGRES_REQUIRED=false
+
+          # DNS zone is required if using postgres backend in private deployment
+          if [ "${DEPLOYMENT_MODEL}" == "private" ] && [ "${MEMORY_BACKEND}" == "postgres" ]; then
+            POSTGRES_REQUIRED=true
+            echo "Private deployment with PostgreSQL backend - DNS zone required"
+          fi
+
+          if [ "${POSTGRES_REQUIRED}" == "true" ] && [ -z "${POSTGRES_DNSZONE_RESOURCEID}" ]; then
+            echo "Error: POSTGRES_DNSZONE_RESOURCEID is required for private deployments with PostgreSQL backend."
+            echo "Please set the POSTGRES_DNSZONE_RESOURCEID GitHub variable with the resource ID"
+            echo "of your pre-existing Private DNS Zone for PostgreSQL Flexible Server."
+            echo "Format: /subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.Network/privateDnsZones/privatelink.postgres.database.azure.com"
+            exit 1
+          fi
+
+          # Check for other required variables for private deployments
           if [ "${DEPLOYMENT_MODEL}" == "private" ]; then
             if [ "${AZURE_CAE_WORKLOAD_TYPE}" == "consumption" ]; then
               echo "Error: When DEPLOYMENT_MODEL is 'private', AZURE_CAE_WORKLOAD_TYPE cannot be 'consumption'."
@@ -62,6 +91,10 @@ jobs:
             fi
             if [ -z "${AZURE_SUBNET_CAE}" ] || [ -z "${AZURE_SUBNET_PE}" ]; then
               echo "Error: When DEPLOYMENT_MODEL is 'private', both AZURE_SUBNET_CAE and AZURE_SUBNET_PE must be non-empty."
+              exit 1
+            fi
+            if [ "${POSTGRES_REQUIRED}" == "true" ] && [ -z "${AZURE_SUBNET_POSTGRES}" ]; then
+              echo "Error: When using PostgreSQL in a private deployment, AZURE_SUBNET_POSTGRES must be provided."
               exit 1
             fi
           fi
@@ -158,6 +191,26 @@ jobs:
           RG_NAME="${AZURE_RESOURCE_GROUP}"
           echo "Using Resource Group: ${RG_NAME}"
 
+          # Generate a deterministic PostgreSQL admin password based on resource group name AND subscription ID
+          # This ensures unique passwords across tenants/subscriptions but consistent within an environment
+          SUBSCRIPTION_ID="${AZURE_SUBSCRIPTION_ID}"
+
+          # Create a complex seed with both subscription ID and resource group name
+          COMPLEX_SEED="${SUBSCRIPTION_ID}-${RG_NAME}-pgadmin-secret"
+          echo "Generating deterministic password based on subscription and resource group..."
+
+          # Generate the hash using SHA-256
+          HASH_SEED=$(echo -n "${COMPLEX_SEED}" | shasum -a 256 | cut -c1-20)
+
+          # Ensure password complexity by adding required character types
+          # PostgreSQL requires uppercase, lowercase, numbers, and special characters
+          PG_ADMIN_PASSWORD="${HASH_SEED}Aa1!"
+
+          echo "Generated deterministic PostgreSQL admin password."
+
+          # Export as environment variable for azd to pick up
+          export BICEP_PG_ADMIN_PASSWORD="${PG_ADMIN_PASSWORD}"
+
           # Check if any SQL servers exist in the resource group.
           sqlServers=$(az sql server list --resource-group "$RG_NAME" --query "[].name" -o tsv)
           if [ -z "$sqlServers" ]; then
@@ -169,6 +222,8 @@ jobs:
           fi
 
           echo "Existing SQL server present (EXISTING_SQL_SERVER): $EXISTING_SQL_SERVER"
+
+          # Pass parameters directly to azd to avoid interactive prompts
           azd provision --no-prompt
         env:
           AZD_INITIAL_ENVIRONMENT_CONFIG: ${{ secrets.AZD_INITIAL_ENVIRONMENT_CONFIG }}
@@ -177,6 +232,7 @@ jobs:
           AZURE_SUBNET_CAE: ${{ vars.AZURE_SUBNET_CAE }}
           AZURE_SUBNET_PE: ${{ vars.AZURE_SUBNET_PE }}
           AZURE_RESOURCE_GROUP: ${{ env.AZURE_RESOURCE_GROUP }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           AZURE_ENV_NAME: ${{ env.AZURE_ENV_NAME }}
 
       - name: Configure Azure SQL Server for Azure AD authentication
@@ -300,6 +356,37 @@ jobs:
           cat Microsoft.Greenlight.AppHost/appsettings.Production.json
         env:
           HOSTNAMEOVERRIDE: ${{ env.HOSTNAMEOVERRIDE }}
+
+      - name: Configure Memory Backend
+        run: |
+          echo "Configuring memory backend: ${MEMORY_BACKEND}"
+
+          # Read the current appsettings file
+          appsettings=$(cat Microsoft.Greenlight.AppHost/appsettings.Production.json)
+
+          # Set UsePostgresMemory based on MEMORY_BACKEND
+          usePostgresMemory="false"
+          if [ "${MEMORY_BACKEND}" == "postgres" ]; then
+            usePostgresMemory="true"
+            echo "Setting UsePostgresMemory to true (using PostgreSQL backend)"
+          else
+            echo "Setting UsePostgresMemory to false (using AI Search backend)"
+          fi
+
+          # Update the JSON file with the setting
+          updated=$(echo "${appsettings}" | jq --argjson usePostgresMemory "$usePostgresMemory" '
+            .ServiceConfiguration.GreenlightServices.Global.UsePostgresMemory = $usePostgresMemory
+          ')
+
+          # Write the updated JSON back to the file
+          echo "${updated}" > Microsoft.Greenlight.AppHost/appsettings.Production.json
+
+          echo "Updated UsePostgresMemory setting to: $usePostgresMemory"
+          echo "*****************************************************************************************"
+          cat Microsoft.Greenlight.AppHost/appsettings.Production.json | grep -A 3 "UsePostgresMemory"
+          echo "*****************************************************************************************"
+        env:
+          MEMORY_BACKEND: ${{ env.MEMORY_BACKEND }}
 
       - name: Configure Azure SignalR usage
         if: env.ENABLE_AZURE_SIGNALR != ''

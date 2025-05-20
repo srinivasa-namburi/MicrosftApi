@@ -11,7 +11,7 @@ public class KernelMemoryInstanceFactory : IKernelMemoryInstanceFactory
 {
     private readonly IDocumentLibraryInfoService _documentLibraryInfoService;
     private readonly IDocumentProcessInfoService _documentProcessInfoService;
-    private readonly IServiceProvider _sp;
+    private readonly IServiceScopeFactory _serviceScopeFactory;
     private readonly KernelMemoryInstanceContainer _instanceContainer;
     private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
 
@@ -20,18 +20,27 @@ public class KernelMemoryInstanceFactory : IKernelMemoryInstanceFactory
         IOptionsSnapshot<ServiceConfigurationOptions> serviceConfigurationOptions,
         KernelMemoryInstanceContainer instanceContainer)
     {
+        _serviceScopeFactory = sp.GetRequiredService<IServiceScopeFactory>();
+
         using var scope = sp.CreateScope();
-    
         _documentLibraryInfoService = scope.ServiceProvider.GetRequiredService<IDocumentLibraryInfoService>();
         _documentProcessInfoService = scope.ServiceProvider.GetRequiredService<IDocumentProcessInfoService>();
-        _sp = sp;
         _instanceContainer = instanceContainer;
         _serviceConfigurationOptions = serviceConfigurationOptions.Value;
     }
 
     public IKernelMemory GetKernelMemoryForAdhocUploads()
     {
-        return _instanceContainer.KernelMemoryInstances.TryGetValue("AdhocUploads", out var memory) ? memory : _sp.GetKernelMemoryForAdHocUploads(_serviceConfigurationOptions);
+        if (_instanceContainer.KernelMemoryInstances.TryGetValue("AdhocUploads", out var memory))
+        {
+            return memory;
+        }
+
+        using var scope = _serviceScopeFactory.CreateScope();
+        var scopedServiceProvider = scope.ServiceProvider;
+        var kernelMemory = scopedServiceProvider.GetKernelMemoryForAdHocUploads(_serviceConfigurationOptions);
+        _instanceContainer.KernelMemoryInstances["AdhocUploads"] = kernelMemory;
+        return kernelMemory;
     }
 
     public async Task<IKernelMemory> GetKernelMemoryInstanceForDocumentLibrary(string documentLibraryShortName)
@@ -74,7 +83,10 @@ public class KernelMemoryInstanceFactory : IKernelMemoryInstanceFactory
             throw new Exception($"Document Process with short name {documentProcessShortName} not found.");
         }
 
-        var kernelMemory = _sp.GetKernelMemoryInstanceForDocumentLibrary(_serviceConfigurationOptions, new DocumentLibraryInfo
+        using var scope = _serviceScopeFactory.CreateScope();
+        var scopedServiceProvider = scope.ServiceProvider;
+
+        var kernelMemory = scopedServiceProvider.GetKernelMemoryInstanceForDocumentLibrary(_serviceConfigurationOptions, new DocumentLibraryInfo
         {
             ShortName = documentProcess.ShortName,
             IndexName = documentProcess.Repositories[0],
@@ -93,18 +105,19 @@ public class KernelMemoryInstanceFactory : IKernelMemoryInstanceFactory
         {
             return library;
         }
-        else
+
+        if (documentLibraryInfo == null)
         {
-            if (documentLibraryInfo == null)
-            {
-                throw new Exception($"Document Library with short name {documentLibraryShortName} not found.");
-            }
-
-            var kernelMemory = _sp.GetKernelMemoryInstanceForDocumentLibrary(_serviceConfigurationOptions, documentLibraryInfo);
-
-            _instanceContainer.KernelMemoryInstances[documentLibraryShortName] = kernelMemory;
-
-            return kernelMemory;
+            throw new Exception($"Document Library with short name {documentLibraryShortName} not found.");
         }
+
+        using var scope = _serviceScopeFactory.CreateScope();
+        var scopedServiceProvider = scope.ServiceProvider;
+
+        var kernelMemory = scopedServiceProvider.GetKernelMemoryInstanceForDocumentLibrary(_serviceConfigurationOptions, documentLibraryInfo);
+
+        _instanceContainer.KernelMemoryInstances[documentLibraryShortName] = kernelMemory;
+
+        return kernelMemory;
     }
 }

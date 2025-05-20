@@ -18,8 +18,18 @@ param peSubnet string = ''
 @description('The resource identifier of the subnet used by the Container Apps instance. Must be delegated to Microsoft.App/environments')
 param containerAppEnvSubnet string = ''
 
+@description('The resource identifier of the subnet used by the PostgreSQL Flexible Server. Required for private deployments')
+param postgresSubnet string = ''
+
+@description('The resource identifier of the private DNS zone for PostgreSQL Flexible Server. Required for private deployments with PostgreSQL')
+param postgresDnsZoneId string = ''
+
 @description('If the SQL server is already existing')
-param existingSqlServer bool
+param existingSqlServer bool = false
+
+@description('Administrator password for PostgreSQL')
+@secure()
+param administratorPassword string
 
 @allowed([
   'public'
@@ -142,6 +152,20 @@ module orleansStorage 'orleans/orleans.module.bicep' = {
   }
 }
 
+module kmvectordb 'kmvectordb/kmvectordb.module.bicep' = {
+  name: 'kmvectordb'
+  scope: resourceGroup('${resourceGroupName}')
+  params: {
+    location: location
+    principalId: resources.outputs.MANAGED_IDENTITY_PRINCIPAL_ID
+    principalType: 'ServicePrincipal'
+    deploymentModel: deploymentModel
+    postgresSubnet: isPrivate ? postgresSubnet : ''
+    postgresDnsZoneId: isPrivate ? postgresDnsZoneId : ''
+    administratorPassword: administratorPassword
+  }
+}
+
 // Deploy private endpoints if deploymentModel is private.
 module privateEndpoints 'privateEndpoints.bicep' = if (isPrivate) {
   name: 'privateEndpoints'
@@ -197,6 +221,9 @@ output ORLEANS_BLOB_CONNECTIONSTRING string = orleansStorage.outputs.blobConnect
 output ORLEANS_STORAGE_TABLEENDPOINT string = orleansStorage.outputs.tableEndpoint
 output ORLEANS_TABLE_CONNECTIONSTRING string = orleansStorage.outputs.tableConnectionString
 
+output KMVECTORDB_SERVER_CONNECTIONSTRING string = kmvectordb.outputs.connectionString
+output KMVECTORDB_SERVER_FQDN string = kmvectordb.outputs.serverFqdn
+
 // Custom outputs
 output AI_SEARCH_RESOURCE_ID string = aiSearch.outputs.resourceId
 output DOCING_RESOURCE_ID string = docing.outputs.resourceId
@@ -206,3 +233,4 @@ output SIGNALR_RESOURCE_ID string = signalr.outputs.resourceId
 output SQLDOCGEN_RESOURCE_ID string = sqldocgen.outputs.resourceId
 output EVENTHUB_RESOURCE_ID string = eventhub.outputs.resourceId
 output ORLEANS_STORAGE_RESOURCE_ID string = orleansStorage.outputs.resourceId
+output KMVECTORDB_RESOURCE_ID string = kmvectordb.outputs.resourceId

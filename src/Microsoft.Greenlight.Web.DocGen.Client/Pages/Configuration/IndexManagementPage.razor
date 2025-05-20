@@ -1,0 +1,423 @@
+@page "/admin/indexes"
+@implements IAsyncDisposable
+@using Microsoft.Greenlight.Shared.Contracts.Messages
+@using Microsoft.AspNetCore.SignalR.Client
+
+
+@inject IConfigurationApiClient ConfigClient
+@inject IJSRuntime JSRuntime
+@inject IAuthorizationApiClient AuthorizationApiClient
+@inject IConfigurationApiClient ConfigurationApiClient
+@inject IDocumentLibraryApiClient DocumentLibraryApiClient
+@inject IDocumentProcessApiClient DocumentProcessApiClient
+@inject IFileApiClient FileApiClient
+@inject NavigationManager NavigationManager
+
+<MudPaper Class="pa-4">
+    <MudText Typo="Typo.h5" Class="mb-2">Index Management</MudText>
+    <MudAlert Severity="Severity.Info" Class="mb-4">
+        This page allows you to export and import index (vector) data from your Greenlight instance.<br />
+    </MudAlert>
+
+    @if (_isLoading)
+    {
+        <MudProgressCircular Indeterminate="true" Class="my-6 mx-auto d-block" />
+    }
+    else if (!_isPostgresMemoryEnabled)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-4">
+            <MudText Typo="Typo.h6">Postgres Memory Not Enabled</MudText>
+            This feature is only available when <code>UsePostgresMemory</code> is set to <code>true</code> in the system configuration.
+        </MudAlert>
+    }
+    else
+    {
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudCard>
+                    <MudCardHeader>
+                        <MudText Typo="Typo.h6">Export Index</MudText>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudSelect T="string" @bind-Value="_exportTable" Label="Table Name" Variant="Variant.Outlined" Class="mb-2">
+                            @foreach (var index in _validIndexes)
+                            {
+                                <MudSelectItem Value="@index">@index</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(_isExporting || string.IsNullOrWhiteSpace(_exportTable))" OnClick="StartExportAsync">
+                            @if (_isExporting)
+                            {
+                                <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="me-2" />
+                                @("Exporting...")
+                            }
+                            else
+                            {
+                                @("Export")
+                            }
+                        </MudButton>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudCard>
+                    <MudCardHeader>
+                        <MudText Typo="Typo.h6">Import Index</MudText>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudSelect T="string" @bind-Value="_importTable" Label="Table Name" Variant="Variant.Outlined" Class="mb-2">
+                            @foreach (var index in _validIndexes)
+                            {
+                                <MudSelectItem Value="@index">@index</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <MudFileUpload T="IReadOnlyList<IBrowserFile>"
+                                       FilesChanged="HandleImportFileSelected"
+                                       MaximumFileCount="1">
+                            <ButtonTemplate>
+                                <MudButton HtmlTag="label"
+                                           Variant="Variant.Filled"
+                                           Color="Color.Primary"
+                                           StartIcon="@Icons.Material.Filled.CloudUpload"
+                                           for="@context">
+                                    Upload Index Zip file for @_importTable
+                                </MudButton>
+                            </ButtonTemplate>
+                        </MudFileUpload>
+                        <MudTextField @bind-Value="_importUrl" Label="Blob URL" Variant="Variant.Outlined" Class="mb-2" Disabled="true" />
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(_isImporting || string.IsNullOrWhiteSpace(_importTable) || string.IsNullOrWhiteSpace(_importUrl))" OnClick="StartImportAsync">
+                            @if (_isImporting)
+                            {
+                                <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="me-2" />
+                                @("Importing...")
+                            }
+                            else
+                            {
+                                @("Import")
+                            }
+                        </MudButton>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+
+        <MudPaper Class="mt-6 pa-4">
+            <MudText Typo="Typo.h6" Class="mb-2">Recent Jobs</MudText>
+            @if (_recentJobs.Count == 0)
+            {
+                <MudText Color="Color.Secondary">No recent jobs.</MudText>
+            }
+            else
+            {
+                <MudTable Items="_recentJobs" Hover="true" Dense="true">
+                    <HeaderContent>
+                        <MudTh>Type</MudTh>
+                        <MudTh>Table</MudTh>
+                        <MudTh>Started</MudTh>
+                        <MudTh>Status</MudTh>
+                        <MudTh>Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Type">@context.Type</MudTd>
+                        <MudTd DataLabel="Table">@context.TableName</MudTd>
+                        <MudTd DataLabel="Started">@context.Started.ToLocalTime().ToString("g")</MudTd>
+                        <MudTd DataLabel="Status">
+                            @if (context.IsCompleted)
+                            {
+                                <MudChip Color="Color.Success" Label="true">Completed</MudChip>
+                            }
+                            else if (context.IsFailed)
+                            {
+                                <MudChip Color="Color.Error" Label="true">Failed</MudChip>
+                            }
+                            else
+                            {
+                                <MudChip Color="Color.Primary" Label="true">In Progress</MudChip>
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="Actions">
+                            @if (context.Type == "Export" && context.IsCompleted && !string.IsNullOrEmpty(context.BlobUrl))
+                            {
+                                <MudButton Href="@context.BlobUrl" Target="_blank" Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small">Download</MudButton>
+                            }
+                            @if (context.IsFailed && !string.IsNullOrEmpty(context.Error))
+                            {
+                                <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small" OnClick="@(() => ShowError(context.Error))">Show Error</MudButton>
+                            }
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        </MudPaper>
+    }
+</MudPaper>
+
+@code {
+    private bool _isLoading = true;
+    private bool _isPostgresMemoryEnabled = false;
+    private bool _isExporting = false;
+    private bool _isImporting = false;
+    private string _exportTable = string.Empty;
+    private string _importTable = string.Empty;
+    private string _importUrl = string.Empty;
+    private List<JobViewModel> _recentJobs = new();
+    private List<string> _validIndexes = new();
+
+    [CascadingParameter] public HubConnection? HubConnection { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var globalOptions = await ConfigClient.GetGlobalOptionsAsync();
+            _isPostgresMemoryEnabled = globalOptions?.UsePostgresMemory ?? false;
+            await LoadValidIndexesAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error retrieving configuration: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+
+        await StartHubConnections();
+    }
+
+    private async Task LoadValidIndexesAsync()
+    {
+        var libraries = await DocumentLibraryApiClient.GetAllDocumentLibrariesAsync();
+        var indexes = new HashSet<string>();
+        foreach (var lib in libraries)
+        {
+            if (!string.IsNullOrWhiteSpace(lib.IndexName))
+            {
+                indexes.Add($"km-{lib.IndexName}");
+            }
+        }
+        var processes = await DocumentProcessApiClient.GetAllDocumentProcessInfoAsync();
+        foreach (var proc in processes)
+        {
+            // Fix: Check for null and length before accessing first element
+            if (proc.Repositories is { Count: > 0 } && !string.IsNullOrWhiteSpace(proc.Repositories[0]))
+            {
+                indexes.Add($"km-{proc.Repositories[0]}");
+            }
+        }
+        _validIndexes = indexes.OrderBy(x => x).ToList();
+    }
+
+    private async Task StartHubConnections()
+    {
+        if (HubConnection == null)
+        {
+            var apiAddress = await AuthorizationApiClient.GetApiAddressAsync();
+            HubConnection = new HubConnectionBuilder()
+                .WithUrl($"{apiAddress}/hubs/notification-hub", options =>
+                {
+                    options.AccessTokenProvider = async () => await ConfigurationApiClient.GetAccessTokenAsync();
+                })
+                .WithStatefulReconnect()
+                .WithAutomaticReconnect()
+                .Build();
+        }
+
+        HubConnection.On<IndexExportJobNotification>("ReceiveExportJobCompletedNotification", async notification => await HandleExportJobStatusChanged(notification.JobId));
+        HubConnection.On<IndexExportJobNotification>("ReceiveExportJobFailedNotification", async notification => await HandleExportJobStatusChanged(notification.JobId));
+        HubConnection.On<IndexImportJobNotification>("ReceiveImportJobCompletedNotification", async notification => await HandleImportJobStatusChanged(notification.JobId));
+        HubConnection.On<IndexImportJobNotification>("ReceiveImportJobFailedNotification", async notification => await HandleImportJobStatusChanged(notification.JobId));
+
+        if (HubConnection.State == HubConnectionState.Disconnected)
+        {
+            await HubConnection.StartAsync();
+        }
+        await HubConnection.SendAsync("AddToGroup", "admin");
+    }
+
+    private async Task StopHubConnections()
+    {
+        if (HubConnection is { State: HubConnectionState.Connected })
+        {
+            HubConnection.Remove("ReceiveExportJobCompletedNotification");
+            HubConnection.Remove("ReceiveExportJobFailedNotification");
+            HubConnection.Remove("ReceiveImportJobCompletedNotification");
+            HubConnection.Remove("ReceiveImportJobFailedNotification");
+
+            await HubConnection.SendAsync("RemoveFromGroup", "admin");
+            await HubConnection.StopAsync();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (HubConnection != null)
+        {
+            await StopHubConnections();
+            await HubConnection.DisposeAsync();
+        }
+    }
+
+    private async Task StartExportAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_exportTable)) return;
+
+        _isExporting = true;
+        try
+        {
+            var response = await ConfigClient.StartIndexExportAsync(new IndexExportRequest
+            {
+                Schema = "km",
+                TableName = _exportTable
+            });
+
+            var job = new JobViewModel {
+                Type = "Export",
+                TableName = _exportTable,
+                JobId = response.JobId,
+                Started = DateTimeOffset.UtcNow
+            };
+            _recentJobs.Insert(0, job);
+            _exportTable = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error starting export: {ex.Message}");
+        }
+        finally
+        {
+            _isExporting = false;
+        }
+    }
+
+    private async Task StartImportAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_importTable) || string.IsNullOrWhiteSpace(_importUrl)) return;
+
+        _isImporting = true;
+        try
+        {
+            // Remove the /api/file/download/ prefix from the URL
+            _importUrl = FileApiClient.ExtractBlobUrlFromProxiedUrl(_importUrl);
+            
+            var response = await ConfigClient.StartIndexImportAsync(new IndexImportRequest
+            {
+                Schema = "km",
+                TableName = _importTable,
+                BlobUrl = _importUrl
+            });
+
+            var job = new JobViewModel {
+                Type = "Import",
+                TableName = _importTable,
+                JobId = response.JobId,
+                Started = DateTimeOffset.UtcNow,
+                BlobUrl = _importUrl
+            };
+            _recentJobs.Insert(0, job);
+            _importTable = string.Empty;
+            _importUrl = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error starting import: {ex.Message}");
+        }
+        finally
+        {
+            _isImporting = false;
+        }
+    }
+
+    private async Task HandleImportFileSelected(IReadOnlyList<IBrowserFile>? files)
+    {
+        if (files == null || files.Count == 0)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "No file selected for upload.");
+            return;
+        }
+        var file = files[0];
+        var fileName = file.Name;
+        try
+        {
+            // Upload to the same container as used for exports: "index-backups"
+            var blobUrl = await FileApiClient.UploadFileDirectAsync("index-backups", fileName, file);
+            _importUrl = FileApiClient.ExtractBlobUrlFromProxiedUrl(blobUrl);
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error uploading file '{file.Name}': {ex.Message}");
+        }
+    }
+
+    private async Task HandleExportJobStatusChanged(Guid jobId)
+    {
+        try
+        {
+            var status = await ConfigClient.GetIndexExportStatusAsync(jobId);
+            UpdateJobFromStatus(status, "Export");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error updating export job status: {ex.Message}");
+        }
+    }
+
+    private async Task HandleImportJobStatusChanged(Guid jobId)
+    {
+        try
+        {
+            var status = await ConfigClient.GetIndexImportStatusAsync(jobId);
+            UpdateJobFromStatus(status, "Import");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error updating import job status: {ex.Message}");
+        }
+    }
+
+    private void UpdateJobFromStatus(IndexExportJobStatus status, string type)
+    {
+        var job = _recentJobs.FirstOrDefault(j => j.JobId == status.JobId);
+        if (job != null)
+        {
+            job.IsCompleted = status.IsCompleted;
+            job.IsFailed = status.IsFailed;
+            job.Error = status.Error;
+            job.BlobUrl = status.BlobUrl;
+            job.Completed = status.Completed;
+            StateHasChanged();
+        }
+    }
+
+    private void UpdateJobFromStatus(IndexImportJobStatus status, string type)
+    {
+        var job = _recentJobs.FirstOrDefault(j => j.JobId == status.JobId);
+        if (job != null)
+        {
+            job.IsCompleted = status.IsCompleted;
+            job.IsFailed = status.IsFailed;
+            job.Error = status.Error;
+            job.BlobUrl = status.BlobUrl;
+            job.Completed = status.Completed;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ShowError(string error)
+    {
+        await JSRuntime.InvokeVoidAsync("alert", error);
+    }
+
+    private class JobViewModel
+    {
+        public Guid JobId { get; set; }
+        public string Type { get; set; } = string.Empty;
+        public string TableName { get; set; } = string.Empty;
+        public string? BlobUrl { get; set; }
+        public string? Error { get; set; }
+        public bool IsCompleted { get; set; }
+        public bool IsFailed { get; set; }
+        public DateTimeOffset Started { get; set; }
+        public DateTimeOffset? Completed { get; set; }
+    }
+}

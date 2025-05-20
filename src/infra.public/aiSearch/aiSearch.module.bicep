@@ -15,8 +15,8 @@ resource aiSearch 'Microsoft.Search/searchServices@2024-06-01-preview' = {
     name: 'standard'
   }
   properties: {
-    replicaCount: 2
-    partitionCount: 2
+    replicaCount: 1
+    partitionCount: 1
     hostingMode: 'default'
     disableLocalAuth: false
     authOptions: {

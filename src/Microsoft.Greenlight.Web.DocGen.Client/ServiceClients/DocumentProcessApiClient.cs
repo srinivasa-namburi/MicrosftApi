@@ -192,6 +192,20 @@ public class DocumentProcessApiClient : WebAssemblyBaseServiceClient<DocumentPro
         return await response?.Content.ReadFromJsonAsync<List<string>>()! ?? [];
     }
 
+    public async Task<string?> GetDefaultPromptTextAsync(string shortCode)
+    {
+        var url = $"/api/prompts/default/{shortCode}";
+        var response = await SendGetRequestMessage(url);
+        
+        if (response?.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+        
+        response?.EnsureSuccessStatusCode();
+        return await response?.Content.ReadFromJsonAsync<string>();
+    }
+
     public async Task<DocumentProcessValidationPipelineInfo?> GetValidationPipelineAsync(Guid documentProcessId)
     {
         var url = $"/api/document-processes/{documentProcessId}/validation-pipeline";

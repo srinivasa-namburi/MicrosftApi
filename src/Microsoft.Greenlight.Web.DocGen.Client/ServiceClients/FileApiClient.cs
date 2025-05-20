@@ -81,4 +81,14 @@ public class FileApiClient : WebAssemblyBaseServiceClient<FileApiClient>, IFileA
     {
         return $"{HttpClient.BaseAddress}api/file/download/asset/{linkId}";
     }
+
+    public string ExtractBlobUrlFromProxiedUrl(string proxiedUrl)
+    {
+       // Remove /api/file/download/
+        var cleanedUrl = proxiedUrl.Replace("/api/file/download/", string.Empty);
+
+        // WebUtility.UrlDecode the cleaned URL
+        cleanedUrl = WebUtility.UrlDecode(cleanedUrl);
+        return cleanedUrl;
+    }
 }

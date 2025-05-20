@@ -5,6 +5,7 @@ using AutoMapper;
 using Azure.AI.OpenAI;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
+using Azure.Storage;
 using Humanizer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -38,6 +39,7 @@ using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
 using Microsoft.SemanticKernel.Embeddings;
+using Npgsql;
 using Orleans.Configuration;
 using Orleans.Serialization;
 using StackExchange.Redis;
@@ -97,6 +99,12 @@ public static class BuilderExtensions
 
         }
 
+        // Add Postgres client
+        builder.AddNpgsqlDataSource("kmvectordb", configureDataSourceBuilder: dataSourceBuilder =>
+        {
+            dataSourceBuilder.UseVector();
+        });
+        
         return builder;
     }
 
@@ -139,7 +147,7 @@ public static class BuilderExtensions
         {
             settings.Credential = credentialHelper.GetAzureCredential();
         });
-        
+
         builder.AddKeyedAzureTableClient("checkpointing", settings =>
         {
             settings.Credential = credentialHelper.GetAzureCredential();
@@ -406,9 +414,17 @@ public static class BuilderExtensions
 
                     checkpointBuilder.Configure(options =>
                     {
-                        options.TableServiceClient = new TableServiceClient(
-                            new Uri(checkPointTableStorageConnectionString!), credentialHelper.GetAzureCredential());
-
+                        var tuple = AzureStorageHelper.ParseTableEndpointAndCredential(checkPointTableStorageConnectionString!);
+                        var tableEndpoint = tuple.endpoint;
+                        var sharedKey = tuple.sharedKeyCredential;
+                        if (sharedKey != null)
+                        {
+                            options.TableServiceClient = new TableServiceClient(tableEndpoint, sharedKey);
+                        }
+                        else
+                        {
+                            options.TableServiceClient = new TableServiceClient(new Uri(checkPointTableStorageConnectionString!), credentialHelper.GetAzureCredential());
+                        }
                         options.PersistInterval = TimeSpan.FromSeconds(10);
                     }));
 
@@ -416,26 +432,48 @@ public static class BuilderExtensions
 
             siloBuilder.AddAzureBlobGrainStorage("PubSubStore", options =>
             {
-                var blobStorageUrl = new Uri(orleansBlobStoreConnectionString!);
-                options.BlobServiceClient =
-                    new BlobServiceClient(blobStorageUrl, credentialHelper.GetAzureCredential());
+                var tuple = AzureStorageHelper.ParseBlobEndpointAndCredential(orleansBlobStoreConnectionString!);
+                var blobEndpoint = tuple.endpoint;
+                var sharedKey = tuple.sharedKeyCredential;
+                if (sharedKey != null)
+                {
+                    options.BlobServiceClient = new BlobServiceClient(blobEndpoint, sharedKey);
+                }
+                else
+                {
+                    options.BlobServiceClient = new BlobServiceClient(new Uri(orleansBlobStoreConnectionString!), credentialHelper.GetAzureCredential());
+                }
             });
 
             siloBuilder.AddAzureBlobGrainStorageAsDefault(options =>
             {
                 options.ContainerName = "grain-storage";
-                var blobStorageUrl = new Uri(orleansBlobStoreConnectionString!);
-                options.BlobServiceClient =
-                    new BlobServiceClient(blobStorageUrl, credentialHelper.GetAzureCredential());
+                var tuple = AzureStorageHelper.ParseBlobEndpointAndCredential(orleansBlobStoreConnectionString!);
+                var blobEndpoint = tuple.endpoint;
+                var sharedKey = tuple.sharedKeyCredential;
+                if (sharedKey != null)
+                {
+                    options.BlobServiceClient = new BlobServiceClient(blobEndpoint, sharedKey);
+                }
+                else
+                {
+                    options.BlobServiceClient = new BlobServiceClient(new Uri(orleansBlobStoreConnectionString!), credentialHelper.GetAzureCredential());
+                }
             });
 
             siloBuilder.UseAzureTableReminderService(options =>
             {
-                // Use the same table storage connection that you're using for checkpointing
-                options.TableServiceClient = new TableServiceClient(
-                    new Uri(checkPointTableStorageConnectionString!),
-                    credentialHelper.GetAzureCredential());
-
+                var tuple = AzureStorageHelper.ParseTableEndpointAndCredential(checkPointTableStorageConnectionString!);
+                var tableEndpoint = tuple.endpoint;
+                var sharedKey = tuple.sharedKeyCredential;
+                if (sharedKey != null)
+                {
+                    options.TableServiceClient = new TableServiceClient(tableEndpoint, sharedKey);
+                }
+                else
+                {
+                    options.TableServiceClient = new TableServiceClient(new Uri(checkPointTableStorageConnectionString!), credentialHelper.GetAzureCredential());
+                }
                 options.TableName = "OrleansReminders";
             });
 
@@ -684,21 +722,21 @@ public static class BuilderExtensions
     {
         // Register the MCP plugin container as a singleton
         builder.Services.TryAddSingleton<MCPServerContainer>();
-        
+
         // Register the MCP plugin manager as a singleton with factory pattern
         builder.Services.TryAddSingleton<McpPluginManager>((serviceProvider) =>
         {
             var pluginContainer = serviceProvider.GetRequiredService<MCPServerContainer>();
             var serviceScopeFactory = serviceProvider.GetRequiredService<IServiceScopeFactory>();
             var loggerFactory = serviceProvider.GetService<ILoggerFactory>();
-            
+
             var logger = loggerFactory?.CreateLogger<McpPluginManager>();
             return new McpPluginManager(serviceScopeFactory, pluginContainer, logger);
         });
-        
+
         // Register the MCP plugin background service
         builder.Services.AddHostedService<McpPluginBackgroundService>();
-        
+
         return builder;
     }
 }

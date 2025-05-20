@@ -10,6 +10,8 @@ using Microsoft.Greenlight.Shared.Services;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
+using Npgsql;
+using Microsoft.Extensions.Configuration;
 
 namespace Microsoft.Greenlight.SetupManager.DB;
 
@@ -55,6 +57,9 @@ public class SetupDataInitializerService(
 
         await InitializeDatabaseAsync(dbContext, cancellationToken);
 
+        // Create kmvectordb and add pg_vector extension if needed
+        await CreateKmVectorDbAndPgVectorExtensionAsync(scope.ServiceProvider, cancellationToken);
+
         await SeedAsync(dbContext, cancellationToken);
 
         _lifetime.StopApplication();
@@ -73,6 +78,97 @@ public class SetupDataInitializerService(
             "Document Generation Database initialized in {ElapsedMilliseconds}ms", sw.ElapsedMilliseconds);
 
         activity!.Stop();
+    }
+
+    private async Task CreateKmVectorDbAndPgVectorExtensionAsync(IServiceProvider serviceProvider, CancellationToken cancellationToken)
+    {
+        var configuration = serviceProvider.GetRequiredService<IConfiguration>();
+        var connectionString = configuration.GetConnectionString("kmvectordb");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            _logger.LogWarning("No connection string found for 'kmvectordb'. Skipping vector DB setup.");
+            return;
+        }
+
+        var builder = new NpgsqlConnectionStringBuilder(connectionString);
+        var targetDb = builder.Database;
+        // Connect to the server's default DB (postgres or template1)
+        builder.Database = "postgres";
+        var adminConnectionString = builder.ToString();
+
+        // Wait for server to be available (up to 30 seconds)
+        var serverReady = false;
+        var sw = Stopwatch.StartNew();
+        Exception? lastException = null;
+        while (!serverReady && sw.Elapsed < TimeSpan.FromSeconds(30))
+        {
+            try
+            {
+                using var conn = new NpgsqlConnection(adminConnectionString);
+                await conn.OpenAsync(cancellationToken);
+                serverReady = true;
+            }
+            catch (Exception ex)
+            {
+                lastException = ex;
+                await Task.Delay(1000, cancellationToken);
+            }
+        }
+        if (!serverReady)
+        {
+            _logger.LogError(lastException, "Could not connect to Postgres server for kmvectordb setup after 30 seconds.");
+            return;
+        }
+
+        // Create database if it doesn't exist
+        try
+        {
+            using var conn = new NpgsqlConnection(adminConnectionString);
+            await conn.OpenAsync(cancellationToken);
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $"SELECT 1 FROM pg_database WHERE datname = @dbname;";
+            cmd.Parameters.AddWithValue("@dbname", targetDb);
+            var exists = await cmd.ExecuteScalarAsync(cancellationToken);
+            if (exists == null)
+            {
+                _logger.LogInformation("Creating database '{DbName}'...", targetDb);
+                using var createCmd = conn.CreateCommand();
+                createCmd.CommandText = $"CREATE DATABASE \"{targetDb}\";";
+                await createCmd.ExecuteNonQueryAsync(cancellationToken);
+            }
+            else
+            {
+                _logger.LogInformation("Database '{DbName}' already exists.", targetDb);
+            }
+
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error ensuring kmvectordb exists.");
+            return;
+        }
+
+        // Add pg_vector extension if not present and create km schema if not present
+        try
+        {
+            builder.Database = targetDb;
+            var vectorDbConnectionString = builder.ToString();
+            using var conn = new NpgsqlConnection(vectorDbConnectionString);
+            await conn.OpenAsync(cancellationToken);
+            using var cmd = conn.CreateCommand();
+            // Ensure pgvector extension
+            cmd.CommandText = "CREATE EXTENSION IF NOT EXISTS vector;";
+            await cmd.ExecuteNonQueryAsync(cancellationToken);
+            _logger.LogInformation("pgvector extension ensured for database '{DbName}'.", targetDb);
+            // Ensure km schema
+            cmd.CommandText = "CREATE SCHEMA IF NOT EXISTS km;";
+            await cmd.ExecuteNonQueryAsync(cancellationToken);
+            _logger.LogInformation("Schema 'km' ensured for database '{DbName}'.", targetDb);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error ensuring pgvector extension or km schema for kmvectordb.");
+        }
     }
 
     private async Task SeedAsync(DocGenerationDbContext dbContext, CancellationToken cancellationToken)
@@ -975,6 +1071,4 @@ public class SetupDataInitializerService(
             }
         }
     }
-
-
 }

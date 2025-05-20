@@ -85,7 +85,7 @@ public class ServiceConfigurationOptions
     /// </summary>
     public class GreenlightServicesOptions
     {
-        
+
         /// <inheritdoc cref="FrontendOptions"/>>
         public FrontendOptions FrontEnd { get; set; } = new FrontendOptions();
 
@@ -93,6 +93,11 @@ public class ServiceConfigurationOptions
         /// Options for feature flags.
         /// </summary>
         public FeatureFlagsOptions FeatureFlags { get; set; } = new FeatureFlagsOptions();
+
+        /// <summary>
+        /// Global options for various settings
+        /// </summary>
+        public GlobalOptions Global { get; set; } = new GlobalOptions();
 
         /// <inheritdoc cref="ScalabilityOptions"/>>
         public ScalabilityOptions Scalability { get; set; } = new ScalabilityOptions();
@@ -220,6 +225,24 @@ public class ServiceConfigurationOptions
             /// </summary>
             public bool CreateBodyTextNodes { get; set; }
 
+        }
+
+        public class GlobalOptions
+        {
+            /// <summary>
+            /// Use Application Insights to generate trace and performance data
+            /// </summary>
+            public bool UseApplicationInsights { get; set; }
+
+            /// <summary>        
+            /// Use Azure SQL Server for local development instead of a container
+            /// </summary>
+            public bool UseAzureSqlServer { get; set; }
+
+            /// <summary>
+            /// Use Postgres for Kernel Memory MemoryDB storage
+            /// </summary>
+            public bool UsePostgresMemory { get; set; }
         }
     }
 

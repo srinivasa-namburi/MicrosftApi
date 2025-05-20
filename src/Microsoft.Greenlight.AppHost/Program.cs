@@ -27,6 +27,7 @@ IResourceBuilder<IResourceWithConnectionString> eventHub;
 IResourceBuilder<IResourceWithConnectionString> orleansClusteringTable;
 IResourceBuilder<IResourceWithConnectionString> orleansBlobStorage;
 IResourceBuilder<IResourceWithConnectionString> orleansCheckpointing;
+IResourceBuilder<IResourceWithConnectionString> kmvectorDb;
 
 if (builder.ExecutionContext.IsRunMode) // For local development
 {
@@ -92,7 +93,7 @@ if (builder.ExecutionContext.IsRunMode) // For local development
 
 
     var orleansStorage = builder
-        .AddAzureStorage("orleans-storage");
+        .AddAzureStorage("orleans-storage").RunAsEmulator();
 
     orleansBlobStorage = orleansStorage
         .AddBlobs("blob-orleans");
@@ -102,6 +103,13 @@ if (builder.ExecutionContext.IsRunMode) // For local development
 
     orleansCheckpointing = orleansStorage
         .AddTables("checkpointing");
+
+    kmvectorDb = builder.AddPostgres("kmvectordb-server", port: 9002)
+        .WithImage("pgvector/pgvector:pg17") // Adds pgvector support to Postgres by using a custom image
+        .WithDataVolume("pvico-pgsql-kmvectordb-vol")
+        .WithLifetime(ContainerLifetime.Persistent)
+        .AddDatabase("kmvectordb");
+
 }
 else // For production/Azure deployment
 {
@@ -131,6 +139,9 @@ else // For production/Azure deployment
 
     orleansCheckpointing = orleansStorage
         .AddTables("checkpointing");
+
+    kmvectorDb = builder.AddAzurePostgresFlexibleServer("kmvectordb-server")
+        .AddDatabase("kmvectordb");
 }
 
 OrleansService orleans = builder.AddOrleans("default")
@@ -148,6 +159,7 @@ var dbSetupManager = builder
     .WithConfigSection(envAzureAdConfigurationSection)
     .WithReference(docGenSql)
     .WithReference(redisResource)
+    .WithReference(kmvectorDb)
     .WaitFor(docGenSql) // We need this to be up and running before we can run the setup manager
     .WaitFor(redisResource); // Wait for this to make it ready for other services
  
@@ -163,6 +175,7 @@ var apiMain = builder
     .WithReference(signalr)
     .WithReference(redisResource)
     .WithReference(docGenSql)
+    .WithReference(kmvectorDb)
     .WithReference(sbus)
     .WithReference(azureAiSearch)
     .WithReference(eventHub)
@@ -180,6 +193,7 @@ var silo = builder.AddProject<Projects.Microsoft_Greenlight_Silo>("silo")
     .WithConfigSection(envAzureAdConfigurationSection)
     .WithReference(blobStorage)
     .WithReference(docGenSql)
+    .WithReference(kmvectorDb)
     .WithReference(sbus)
     .WithReference(redisResource)
     .WithReference(azureAiSearch)

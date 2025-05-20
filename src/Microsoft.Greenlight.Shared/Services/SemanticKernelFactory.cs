@@ -248,7 +248,12 @@ namespace Microsoft.Greenlight.Shared.Services
 
             if (toolCallingEnabled)
             {
-                promptExecutionSettings.ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions;
+                //promptExecutionSettings.ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions;
+                promptExecutionSettings.FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(autoInvoke:true, options:new FunctionChoiceBehaviorOptions()
+                {
+                    AllowConcurrentInvocation = true,
+                    AllowParallelCalls = true
+                });
             }
 
             return promptExecutionSettings;

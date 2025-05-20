@@ -136,6 +136,46 @@ public class NotificationHub : Hub<INotificationHubClient>
     }
 
     /// <summary>
+    /// Sends a notification that an index export job has completed to a specific group.
+    /// </summary>
+    /// <param name="groupId">The group to notify (user group).</param>
+    /// <param name="notification">The export job notification.</param>
+    public async Task SendExportJobCompletedNotification(string groupId, IndexExportJobNotification notification)
+    {
+        await Clients.Group(groupId).ReceiveExportJobCompletedNotification(notification);
+    }
+
+    /// <summary>
+    /// Sends a notification that an index export job has failed to a specific group.
+    /// </summary>
+    /// <param name="groupId">The group to notify (user group).</param>
+    /// <param name="notification">The export job notification.</param>
+    public async Task SendExportJobFailedNotification(string groupId, IndexExportJobNotification notification)
+    {
+        await Clients.Group(groupId).ReceiveExportJobFailedNotification(notification);
+    }
+
+    /// <summary>
+    /// Sends a notification that an index import job has completed to a specific group.
+    /// </summary>
+    /// <param name="groupId">The group to notify (user group).</param>
+    /// <param name="notification">The import job notification.</param>
+    public async Task SendImportJobCompletedNotification(string groupId, IndexImportJobNotification notification)
+    {
+        await Clients.Group(groupId).ReceiveImportJobCompletedNotification(notification);
+    }
+
+    /// <summary>
+    /// Sends a notification that an index import job has failed to a specific group.
+    /// </summary>
+    /// <param name="groupId">The group to notify (user group).</param>
+    /// <param name="notification">The import job notification.</param>
+    public async Task SendImportJobFailedNotification(string groupId, IndexImportJobNotification notification)
+    {
+        await Clients.Group(groupId).ReceiveImportJobFailedNotification(notification);
+    }
+
+    /// <summary>
     /// Adds the current connection to a specific group.
     /// </summary>
     /// <param name="groupName">The name of the group to add the connection to.</param>

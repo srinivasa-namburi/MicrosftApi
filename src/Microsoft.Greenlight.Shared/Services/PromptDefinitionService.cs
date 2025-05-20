@@ -3,7 +3,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Models.DocumentProcess;
 using Microsoft.Greenlight.Shared.Prompts;
-using Microsoft.Greenlight.Shared.Repositories;
 using System.Text.RegularExpressions;
 
 namespace Microsoft.Greenlight.Shared.Services;

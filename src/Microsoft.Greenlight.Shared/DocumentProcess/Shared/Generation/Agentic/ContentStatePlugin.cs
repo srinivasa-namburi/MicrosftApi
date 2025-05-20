@@ -1,96 +1,92 @@
-﻿using Microsoft.SemanticKernel;
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+using Microsoft.SemanticKernel;
+using Microsoft.Greenlight.Grains.Document.Contracts;
 using System.ComponentModel;
-using System.Text;
 
 namespace Microsoft.Greenlight.Shared.DocumentProcess.Shared.Generation.Agentic;
 
 public class ContentStatePlugin
 {
-    private readonly SortedDictionary<int, string> _documentParts = new();
+    private readonly IGrainFactory _grainFactory;
     private readonly string _sourceDocuments;
     private readonly int _blockSize;
-    
-    public ContentStatePlugin(string sourceDocuments, int blockSize)
+    private readonly Guid _executionId;
+    private bool _initialized = false;
+
+    public ContentStatePlugin(IGrainFactory grainFactory, Guid executionId, string sourceDocuments, int blockSize)
     {
+        _grainFactory = grainFactory;
+        _executionId = executionId;
         _sourceDocuments = sourceDocuments;
         _blockSize = blockSize;
     }
 
-    [KernelFunction, Description("Get the content for a specific sequence number")]
-    public string GetSequenceContent(int sequenceNumber)
+    /// <summary>
+    /// Initializes the grain state. Must be called before using the plugin.
+    /// </summary>
+    public async Task InitializeAsync()
     {
-        return _documentParts.TryGetValue(sequenceNumber, out var content) ? content : string.Empty;
+        if (!_initialized)
+        {
+            var grain = _grainFactory.GetGrain<IContentStateGrain>(_executionId);
+            await grain.SetSourceDocumentsAsync(_sourceDocuments, _blockSize);
+            _initialized = true;
+        }
+    }
+
+    [KernelFunction, Description("Get the content for a specific sequence number")]
+    public async Task<string> GetSequenceContent(int sequenceNumber)
+    {
+        var grain = _grainFactory.GetGrain<IContentStateGrain>(_executionId);
+        return await grain.GetSequenceContentAsync(sequenceNumber);
     }
 
     [KernelFunction, Description("Get all content assembled in order")]
-    public string GetAssembledContent()
+    public async Task<string> GetAssembledContent()
     {
-        return string.Join("\n\n", _documentParts.Values);
+        var grain = _grainFactory.GetGrain<IContentStateGrain>(_executionId);
+        return await grain.GetAssembledContentAsync();
     }
 
     [KernelFunction, Description("Store content for a specific sequence")]
-    public void StoreSequenceContent(int sequenceNumber, string content)
+    public async Task StoreSequenceContent(int sequenceNumber, string content)
     {
-        _documentParts[sequenceNumber] = content;
+        var grain = _grainFactory.GetGrain<IContentStateGrain>(_executionId);
+        await grain.StoreSequenceContentAsync(sequenceNumber, content);
     }
 
     [KernelFunction, Description("Remove a specific sequence")]
-    public void RemoveSequenceContent(int sequenceNumber)
+    public async Task RemoveSequenceContent(int sequenceNumber)
     {
-        if (_documentParts.ContainsKey(sequenceNumber))
-        {
-            _documentParts.Remove(sequenceNumber);
-        }
+        var grain = _grainFactory.GetGrain<IContentStateGrain>(_executionId);
+        await grain.RemoveSequenceContentAsync(sequenceNumber);
     }
 
     [KernelFunction, Description("Get all source documents")]
-    public string GetSourceDocuments()
+    public async Task<string> GetSourceDocuments()
     {
-        return _sourceDocuments;
+        var grain = _grainFactory.GetGrain<IContentStateGrain>(_executionId);
+        return await grain.GetSourceDocumentsAsync();
     }
 
     [KernelFunction, Description("Get all sequence numbers in use")]
-    public string GetSequenceNumbers()
+    public async Task<string> GetSequenceNumbers()
     {
-        return string.Join(", ", _documentParts.Keys);
+        var grain = _grainFactory.GetGrain<IContentStateGrain>(_executionId);
+        return await grain.GetSequenceNumbersAsync();
     }
 
     [KernelFunction, Description("Gets the next available sequence number for producing content output")]
-    public string GetNextSequenceNumber()
+    public async Task<string> GetNextSequenceNumber()
     {
-        // Get the last sequence number
-        var lastSequenceNumber = _documentParts.Keys.Count > 0 ? _documentParts.Keys.Max() : 0;
-
-        // Return the next sequence number
-        return (lastSequenceNumber + _blockSize).ToString();
+        var grain = _grainFactory.GetGrain<IContentStateGrain>(_executionId);
+        return await grain.GetNextSequenceNumberAsync();
     }
 
     [KernelFunction, Description("Get content with surrounding context")]
-    public string GetSequenceWithContext(int sequenceNumber)
+    public async Task<string> GetSequenceWithContext(int sequenceNumber)
     {
-        var surroundingContent = new StringBuilder();
-        
-        // Get previous sequence if it exists
-        if (_documentParts.TryGetValue(sequenceNumber - _blockSize, out var prevContent))
-        {
-            surroundingContent.AppendLine("Previous content:");
-            surroundingContent.AppendLine(prevContent);
-        }
-        
-        // Get current sequence
-        if (_documentParts.TryGetValue(sequenceNumber, out var currentContent))
-        {
-            surroundingContent.AppendLine("Current content:");
-            surroundingContent.AppendLine(currentContent);
-        }
-        
-        // Get next sequence if it exists
-        if (_documentParts.TryGetValue(sequenceNumber + _blockSize, out var nextContent))
-        {
-            surroundingContent.AppendLine("Next content:");
-            surroundingContent.AppendLine(nextContent);
-        }
-        
-        return surroundingContent.ToString();
+        var grain = _grainFactory.GetGrain<IContentStateGrain>(_executionId);
+        return await grain.GetSequenceWithContextAsync(sequenceNumber);
     }
 }

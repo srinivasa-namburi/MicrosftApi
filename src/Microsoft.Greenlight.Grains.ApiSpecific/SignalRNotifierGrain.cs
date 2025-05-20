@@ -297,5 +297,85 @@ namespace Microsoft.Greenlight.Grains.ApiSpecific
         }
 
         #endregion
+
+        #region Index Export/Import Notifications
+
+        /// <inheritdoc/>
+        public async Task NotifyExportJobCompletedAsync(string userGroup, IndexExportJobNotification notification)
+        {
+            try
+            {
+                await _hubContext.Clients
+                    .Group(userGroup)
+                    .ReceiveExportJobCompletedNotification(notification);
+
+                _logger.LogInformation("Sent export job completed notification for table {TableName}, job {JobId}",
+                    notification.TableName, notification.JobId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending export job completed notification for table {TableName}, job {JobId}",
+                    notification.TableName, notification.JobId);
+            }
+        }
+
+        /// <inheritdoc/>
+        public async Task NotifyExportJobFailedAsync(string userGroup, IndexExportJobNotification notification)
+        {
+            try
+            {
+                await _hubContext.Clients
+                    .Group(userGroup)
+                    .ReceiveExportJobFailedNotification(notification);
+
+                _logger.LogInformation("Sent export job failed notification for table {TableName}, job {JobId}: {Error}",
+                    notification.TableName, notification.JobId, notification.Error);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending export job failed notification for table {TableName}, job {JobId}",
+                    notification.TableName, notification.JobId);
+            }
+        }
+
+        /// <inheritdoc/>
+        public async Task NotifyImportJobCompletedAsync(string userGroup, IndexImportJobNotification notification)
+        {
+            try
+            {
+                await _hubContext.Clients
+                    .Group(userGroup)
+                    .ReceiveImportJobCompletedNotification(notification);
+
+                _logger.LogInformation("Sent import job completed notification for table {TableName}, job {JobId}",
+                    notification.TableName, notification.JobId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending import job completed notification for table {TableName}, job {JobId}",
+                    notification.TableName, notification.JobId);
+            }
+        }
+
+        /// <inheritdoc/>
+        public async Task NotifyImportJobFailedAsync(string userGroup, IndexImportJobNotification notification)
+        {
+            try
+            {
+                await _hubContext.Clients
+                    .Group(userGroup)
+                    .ReceiveImportJobFailedNotification(notification);
+
+                _logger.LogInformation("Sent import job failed notification for table {TableName}, job {JobId}: {Error}",
+                    notification.TableName, notification.JobId, notification.Error);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending import job failed notification for table {TableName}, job {JobId}",
+                    notification.TableName, notification.JobId);
+            }
+        }
+
+        #endregion
     }
 }

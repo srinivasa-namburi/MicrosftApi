@@ -52,7 +52,7 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
                 if (documentProcess == null)
                 {
                     _logger.LogError("Document process {DocumentProcessName} not found", documentLibraryShortName);
-                    await orchestrationGrain.OnIngestionFailedAsync($"Document process {documentLibraryShortName} not found");
+                    await orchestrationGrain.OnIngestionFailedAsync($"Document process {documentLibraryShortName} not found", false);
                     return;
                 }
                 
@@ -64,7 +64,7 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
                 if (kernelMemoryRepository == null)
                 {
                     _logger.LogError("Failed to get Kernel Memory repository for document process {DocumentProcessName}", documentLibraryShortName);
-                    await orchestrationGrain.OnIngestionFailedAsync($"Failed to get Kernel Memory repository for {documentLibraryShortName}");
+                    await orchestrationGrain.OnIngestionFailedAsync($"Failed to get Kernel Memory repository for {documentLibraryShortName}", false);
                     return;
                 }
                 
@@ -73,7 +73,7 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
                 if (fileStream == null)
                 {
                     _logger.LogError("Failed to get document stream for {DocumentUrl}", documentUrl);
-                    await orchestrationGrain.OnIngestionFailedAsync($"Failed to get document stream for {documentUrl}");
+                    await orchestrationGrain.OnIngestionFailedAsync($"Failed to get document stream for {documentUrl}", false);
                     return;
                 }
                 
@@ -93,7 +93,7 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
                 if (documentLibraryRepository == null)
                 {
                     _logger.LogError("Additional Document Library KM Repository not found");
-                    await orchestrationGrain.OnIngestionFailedAsync("Additional Document Library KM Repository not found");
+                    await orchestrationGrain.OnIngestionFailedAsync("Additional Document Library KM Repository not found", false);
                     return;
                 }
                 
@@ -102,7 +102,7 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
                 if (fileStream == null)
                 {
                     _logger.LogError("Failed to get document stream for {DocumentUrl}", documentUrl);
-                    await orchestrationGrain.OnIngestionFailedAsync($"Failed to get document stream for {documentUrl}");
+                    await orchestrationGrain.OnIngestionFailedAsync($"Failed to get document stream for {documentUrl}", false);
                     return;
                 }
                 
@@ -114,7 +114,7 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
                 if (documentLibrary == null)
                 {
                     _logger.LogError("Document library {DocumentLibraryName} not found", documentLibraryShortName);
-                    await orchestrationGrain.OnIngestionFailedAsync($"Document library {documentLibraryShortName} not found");
+                    await orchestrationGrain.OnIngestionFailedAsync($"Document library {documentLibraryShortName} not found", false);
                     return;
                 }
                 
@@ -141,7 +141,7 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
                 fileName, documentLibraryType, documentLibraryShortName);
                 
             await orchestrationGrain.OnIngestionFailedAsync(
-                $"Failed to process document {fileName}: {ex.Message}");
+                $"Failed to process document {fileName}: {ex.Message}", false);
             throw;
         }
     }

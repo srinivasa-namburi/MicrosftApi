@@ -4,6 +4,7 @@ using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Contracts.DTO.Configuration;
 using Microsoft.Greenlight.Web.Shared.ServiceClients;
+using System.Net.Http.Json;
 
 namespace Microsoft.Greenlight.Web.DocGen.ServiceClients;
 
@@ -31,20 +32,9 @@ public class ConfigurationApiClient : BaseServiceClient<ConfigurationApiClient>,
        return documentProcesses;
     }
 
-    public async Task RestartWorkersAsync()
-    {
-        var response = await SendPostRequestMessage("/api/configuration/restart-workers", null);
-        response?.EnsureSuccessStatusCode();
-    }
-
     public async Task<ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions> GetFeatureFlagsAsync()
     {
         return _serviceConfigurationOptions.CurrentValue.GreenlightServices.FeatureFlags;
-    }
-
-    public async Task<ServiceConfigurationOptions.GreenlightServicesOptions> GetGreenlightServicesAsync()
-    {
-        return _serviceConfigurationOptions.CurrentValue.GreenlightServices;
     }
 
     public async Task<ServiceConfigurationOptions.GreenlightServicesOptions.FrontendOptions> GetFrontEndAsync()
@@ -60,6 +50,27 @@ public class ConfigurationApiClient : BaseServiceClient<ConfigurationApiClient>,
     public async Task<ServiceConfigurationOptions.GreenlightServicesOptions.ScalabilityOptions> GetScalabilityOptionsAsync()
     {
         return _serviceConfigurationOptions.CurrentValue.GreenlightServices.Scalability;
+    }
+
+    public async Task<ServiceConfigurationOptions.GreenlightServicesOptions.GlobalOptions> GetGlobalOptionsAsync()
+    {
+       return _serviceConfigurationOptions.CurrentValue.GreenlightServices.Global;
+    }
+
+    /// <inheritdoc />
+    public async Task<IndexJobStartedResponse> StartIndexExportAsync(IndexExportRequest request)
+    {
+        var response = await SendPostRequestMessage("/api/configuration/indexes/export", request);
+        response?.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<IndexJobStartedResponse>() ?? throw new IOException("No JobId returned from export start.");
+    }
+
+    /// <inheritdoc />
+    public async Task<IndexJobStartedResponse> StartIndexImportAsync(IndexImportRequest request)
+    {
+        var response = await SendPostRequestMessage("/api/configuration/indexes/import", request);
+        response?.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<IndexJobStartedResponse>() ?? throw new IOException("No JobId returned from import start.");
     }
 
     public async Task<DbConfigurationInfo> UpdateConfigurationAsync(ConfigurationUpdateRequest request)
@@ -156,5 +167,23 @@ public class ConfigurationApiClient : BaseServiceClient<ConfigurationApiClient>,
         response?.EnsureSuccessStatusCode();
     }
 
+    /// <summary>
+    /// Gets the status of an export job.
+    /// </summary>
+    public async Task<IndexExportJobStatus> GetIndexExportStatusAsync(Guid jobId)
+    {
+        var response = await SendGetRequestMessage($"/api/configuration/indexes/export/{jobId}");
+        response?.EnsureSuccessStatusCode();
+        return await response?.Content.ReadFromJsonAsync<IndexExportJobStatus>() ?? throw new IOException($"No export job status for {jobId}");
+    }
 
+    /// <summary>
+    /// Gets the status of an import job.
+    /// </summary>
+    public async Task<IndexImportJobStatus> GetIndexImportStatusAsync(Guid jobId)
+    {
+        var response = await SendGetRequestMessage($"/api/configuration/indexes/import/{jobId}");
+        response?.EnsureSuccessStatusCode();
+        return await response?.Content.ReadFromJsonAsync<IndexImportJobStatus>() ?? throw new IOException($"No import job status for {jobId}");
+    }
 }

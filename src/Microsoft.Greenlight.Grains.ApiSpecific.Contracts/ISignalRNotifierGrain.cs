@@ -74,5 +74,11 @@ namespace Microsoft.Greenlight.Grains.ApiSpecific.Contracts
         Task NotifyBackendProcessingMessageAsync(BackendProcessingMessageGenerated notification);
         Task NotifyReviewQuestionAnsweredAsync(ReviewQuestionAnsweredNotification notification);
         Task NotifyReviewCompletedAsync(ReviewCompletedNotification notification);
+
+        // Export/Import job notifications (now using DTOs from shared contracts)
+        Task NotifyExportJobCompletedAsync(string userGroup, IndexExportJobNotification notification);
+        Task NotifyExportJobFailedAsync(string userGroup, IndexExportJobNotification notification);
+        Task NotifyImportJobCompletedAsync(string userGroup, IndexImportJobNotification notification);
+        Task NotifyImportJobFailedAsync(string userGroup, IndexImportJobNotification notification);
     }
 }

@@ -1,6 +1,8 @@
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
+using Azure.Storage;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Greenlight.ServiceDefaults;
 using Microsoft.Greenlight.Shared.Configuration;
@@ -21,6 +23,11 @@ using System.Reflection;
 
 // Use standard WebApplicationBuilder instead of the custom class
 var builder = WebApplication.CreateBuilder(args);
+
+builder.WebHost.ConfigureKestrel(serverOptions =>
+{
+    serverOptions.Limits.MaxRequestBodySize = 1024 * 1024 * 1024; // 1024MB
+});
 
 builder.Services.AddSingleton<AzureCredentialHelper>();
 var credentialHelper = new AzureCredentialHelper(builder.Configuration);
@@ -47,6 +54,14 @@ builder.RegisterStaticPlugins(serviceConfigurationOptions);
 builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
 
 builder.Services.AddControllers();
+
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = 1024 * 1024 * 1024; // 1024MB
+    options.ValueLengthLimit = 1024 * 1024 * 1024;         // 1024MB
+    options.ValueCountLimit = 16384;                       // Increased if needed
+});
+
 builder.Services.AddProblemDetails();
 
 builder.Services.AddEndpointsApiExplorer();
@@ -209,9 +224,17 @@ builder.UseOrleans(siloBuilder =>
 
             checkpointBuilder.Configure(options =>
             {
-                options.TableServiceClient = new TableServiceClient(
-                    new Uri(checkPointTableStorageConnectionString!), credentialHelper.GetAzureCredential());
-
+                var tuple = Microsoft.Greenlight.Shared.Helpers.AzureStorageHelper.ParseTableEndpointAndCredential(checkPointTableStorageConnectionString!);
+                var tableEndpoint = tuple.endpoint;
+                var sharedKey = tuple.sharedKeyCredential;
+                if (sharedKey != null)
+                {
+                    options.TableServiceClient = new TableServiceClient(tableEndpoint, sharedKey);
+                }
+                else
+                {
+                    options.TableServiceClient = new TableServiceClient(new Uri(checkPointTableStorageConnectionString!), credentialHelper.GetAzureCredential());
+                }
                 options.PersistInterval = TimeSpan.FromSeconds(10);
             }));
 
@@ -219,26 +242,48 @@ builder.UseOrleans(siloBuilder =>
 
     siloBuilder.AddAzureBlobGrainStorage("PubSubStore", options =>
     {
-        var blobStorageUrl = new Uri(orleansBlobStoreConnectionString!);
-        options.BlobServiceClient =
-            new BlobServiceClient(blobStorageUrl, credentialHelper.GetAzureCredential());
+        var tuple = Microsoft.Greenlight.Shared.Helpers.AzureStorageHelper.ParseBlobEndpointAndCredential(orleansBlobStoreConnectionString!);
+        var blobEndpoint = tuple.endpoint;
+        var sharedKey = tuple.sharedKeyCredential;
+        if (sharedKey != null)
+        {
+            options.BlobServiceClient = new BlobServiceClient(blobEndpoint, sharedKey);
+        }
+        else
+        {
+            options.BlobServiceClient = new BlobServiceClient(new Uri(orleansBlobStoreConnectionString!), credentialHelper.GetAzureCredential());
+        }
     });
 
     siloBuilder.AddAzureBlobGrainStorageAsDefault(options =>
     {
         options.ContainerName = "grain-storage";
-        var blobStorageUrl = new Uri(orleansBlobStoreConnectionString!);
-        options.BlobServiceClient =
-            new BlobServiceClient(blobStorageUrl, credentialHelper.GetAzureCredential());
+        var tuple = Microsoft.Greenlight.Shared.Helpers.AzureStorageHelper.ParseBlobEndpointAndCredential(orleansBlobStoreConnectionString!);
+        var blobEndpoint = tuple.endpoint;
+        var sharedKey = tuple.sharedKeyCredential;
+        if (sharedKey != null)
+        {
+            options.BlobServiceClient = new BlobServiceClient(blobEndpoint, sharedKey);
+        }
+        else
+        {
+            options.BlobServiceClient = new BlobServiceClient(new Uri(orleansBlobStoreConnectionString!), credentialHelper.GetAzureCredential());
+        }
     });
 
     siloBuilder.UseAzureTableReminderService(options =>
     {
-        // Use the same table storage connection that you're using for checkpointing
-        options.TableServiceClient = new TableServiceClient(
-            new Uri(checkPointTableStorageConnectionString!),
-            credentialHelper.GetAzureCredential());
-
+        var tuple = Microsoft.Greenlight.Shared.Helpers.AzureStorageHelper.ParseTableEndpointAndCredential(checkPointTableStorageConnectionString!);
+        var tableEndpoint = tuple.endpoint;
+        var sharedKey = tuple.sharedKeyCredential;
+        if (sharedKey != null)
+        {
+            options.TableServiceClient = new TableServiceClient(tableEndpoint, sharedKey);
+        }
+        else
+        {
+            options.TableServiceClient = new TableServiceClient(new Uri(checkPointTableStorageConnectionString!), credentialHelper.GetAzureCredential());
+        }
         options.TableName = "OrleansReminders";
     });
 

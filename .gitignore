@@ -516,3 +516,4 @@ webapi/CopilotChatWebApi.sln
 
 /src/Microsoft.Greenlight.AppHost/infra
 /src/Microsoft.Greenlight.AppHost/appsettings.Development .json
+/src/Microsoft.Greenlight.Silo/appsettings.Development.json

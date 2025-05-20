@@ -13,6 +13,6 @@ namespace Microsoft.Greenlight.Grains.Ingestion.Contracts
         
         Task OnFileCopiedAsync(string fileName, string originalDocumentUrl);
         Task OnIngestionCompletedAsync();
-        Task OnIngestionFailedAsync(string reason);
+        Task OnIngestionFailedAsync(string reason, bool acquired);
     }
 }

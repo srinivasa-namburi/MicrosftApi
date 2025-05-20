@@ -23,10 +23,18 @@ using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using MudBlazor.Services;
 using StackExchange.Redis;
+using System.Net.Http.Headers;
 using System.Security.Claims;
 using Yarp.ReverseProxy.Transforms;
+using Yarp.ReverseProxy.Forwarder;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.WebHost.ConfigureKestrel(serverOptions =>
+{
+    serverOptions.Limits.MaxRequestBodySize = 1024 * 1024 * 1024; // 1024MB
+
+});
 
 builder.AddServiceDefaults();
 
@@ -182,7 +190,9 @@ builder.Services.AddSingleton<DynamicComponentResolver>();
 
 builder.Services.Configure<FormOptions>(options =>
 {
-    options.MultipartBodyLengthLimit = 10 * 1024 * 1024 * 20; // 200MB
+    options.MultipartBodyLengthLimit = 1024 * 1024 * 1024; // 1024MB
+    options.ValueLengthLimit = 1024 * 1024 * 1024;
+    options.ValueCountLimit = 16384;        
 });
 
 builder.Services.AddSingleton<IHostedService, ShutdownCleanupService>();
@@ -234,10 +244,10 @@ app.MapForwarder("/api/{**catch-all}", "https://api-main/", transformBuilder =>
         var accessToken = await transformContext.HttpContext.GetTokenAsync("access_token");
         if (!string.IsNullOrEmpty(accessToken))
         {
-            transformContext.ProxyRequest.Headers.Authorization = new("Bearer", accessToken);
+            transformContext.ProxyRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         }
     });
-}).WithMetadata(new RequestSizeLimitAttribute(512 * 1024 * 1024))
+}).WithMetadata(new RequestSizeLimitAttribute(1024 * 1024 * 1024))
   .RequireAuthorization();
 
 app.MapForwarder("/hubs/{**catch-all}", "https://api-main/", transformBuilder =>
@@ -247,7 +257,7 @@ app.MapForwarder("/hubs/{**catch-all}", "https://api-main/", transformBuilder =>
         var accessToken = await transformContext.HttpContext.GetTokenAsync("access_token");
         if (!string.IsNullOrEmpty(accessToken))
         {
-            transformContext.ProxyRequest.Headers.Authorization = new("Bearer", accessToken);
+            transformContext.ProxyRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         }
     });
 }).RequireAuthorization();

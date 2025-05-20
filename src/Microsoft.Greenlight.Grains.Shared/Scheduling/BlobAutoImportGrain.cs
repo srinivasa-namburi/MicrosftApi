@@ -73,7 +73,15 @@ namespace Microsoft.Greenlight.Grains.Shared.Scheduling
 
             // Get the scheduler orchestration grain and update the reminder
             var schedulerGrain = GrainFactory.GetGrain<ISchedulerOrchestrationGrain>("Scheduler");
-            await schedulerGrain.UpdateReminderAsync("BlobAutoImport", TimeSpan.FromMilliseconds(newDelayMs));
+            try
+            {
+                await schedulerGrain.UpdateReminderAsync("BlobAutoImport", TimeSpan.FromMilliseconds(newDelayMs));
+            }
+            catch (Exception ex)
+            {
+                // Do nothing - updating the reminder is not critical
+            }
+
         }
 
         /// <summary>

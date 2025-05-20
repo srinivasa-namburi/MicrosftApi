@@ -54,4 +54,7 @@ public interface IPromptCatalogTypes
     /// Gets the prompt used to provide a sentiment score for the review answer.
     /// </summary>
     string ReviewSentimentAnalysisScorePrompt { get; }
+
+    /// <inheritdoc />
+    string SectionGenerationAgenticMainPrompt { get; }
 }

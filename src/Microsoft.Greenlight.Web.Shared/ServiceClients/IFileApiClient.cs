@@ -10,4 +10,5 @@ public interface IFileApiClient : IServiceClient
     Task<ContentReferenceItemInfo> UploadTemporaryReferenceFileAsync(string fileName, IBrowserFile file);
     Task<ExportedDocumentLinkInfo?> GetFileInfoById(Guid linkId);
     string GetDownloadUrlForExportedLinkId(Guid linkId);
+    string ExtractBlobUrlFromProxiedUrl(string proxiedUrl);
 }

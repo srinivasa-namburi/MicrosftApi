@@ -1,12 +1,17 @@
-﻿using Azure.Search.Documents.Indexes;
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+using Azure.Search.Documents.Indexes;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.Shared.Services.Search;
+using Microsoft.Greenlight.Shared.Configuration;
 using Orleans.Concurrency;
+using Npgsql; // Added for Postgres support
+using System.Data;
 
 namespace Microsoft.Greenlight.Grains.Shared.Scheduling;
 
@@ -17,6 +22,8 @@ public class RepositoryIndexMaintenanceGrain : Grain, IRepositoryIndexMaintenanc
     private readonly ILogger<RepositoryIndexMaintenanceGrain> _logger;
     private readonly SearchIndexClient _searchIndexClient;
     private readonly AzureFileHelper _fileHelper;
+    private readonly IOptionsSnapshot<ServiceConfigurationOptions> _optionsSnapshot;
+    private readonly NpgsqlDataSource _npgsqlDataSource; // Added for Postgres
     private const string DummyDocumentContainer = "admin";
     private const string DummyDocumentName = "DummyDocument.pdf";
 
@@ -24,27 +31,56 @@ public class RepositoryIndexMaintenanceGrain : Grain, IRepositoryIndexMaintenanc
         IServiceProvider sp,
         ILogger<RepositoryIndexMaintenanceGrain> logger,
         SearchIndexClient searchIndexClient,
-        AzureFileHelper fileHelper)
+        AzureFileHelper fileHelper,
+        IOptionsSnapshot<ServiceConfigurationOptions> optionsSnapshot,
+        NpgsqlDataSource npgsqlDataSource) // Added for Postgres
     {
+        _optionsSnapshot = optionsSnapshot;
         _sp = sp;
         _logger = logger;
         _searchIndexClient = searchIndexClient;
         _fileHelper = fileHelper;
+        _npgsqlDataSource = npgsqlDataSource; // Added for Postgres
     }
 
+    /// <inheritdoc/>
     public async Task ExecuteAsync()
     {
         var documentProcessInfoService = _sp.GetRequiredService<IDocumentProcessInfoService>();
         var documentLibraryInfoService = _sp.GetRequiredService<IDocumentLibraryInfoService>();
         var documentLibraryRepository = _sp.GetRequiredService<IAdditionalDocumentLibraryKernelMemoryRepository>();
 
-        var indexNames = new HashSet<string>();
-        await foreach (var indexName in _searchIndexClient.GetIndexNamesAsync(CancellationToken.None))
-        {
-            indexNames.Add(indexName);
-        }
+        List<string> indexNamesList;
 
-        var indexNamesList = indexNames.ToList();
+        if (_optionsSnapshot.Value.GreenlightServices.Global.UsePostgresMemory)
+        {
+            // Query Postgres for tables in the km schema with names starting with 'km-'
+            var indexNames = new HashSet<string>();
+            await using var conn = await _npgsqlDataSource.OpenConnectionAsync();
+            await using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"SELECT tablename FROM pg_tables WHERE schemaname = 'km' AND tablename LIKE 'km-%'";
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    var tableName = reader.GetString(0);
+                    if (tableName.StartsWith("km-"))
+                    {
+                        indexNames.Add(tableName.Substring(3)); // Remove 'km-' prefix
+                    }
+                }
+            }
+            indexNamesList = indexNames.ToList();
+        }
+        else
+        {
+            var indexNames = new HashSet<string>();
+            await foreach (var indexName in _searchIndexClient.GetIndexNamesAsync(CancellationToken.None))
+            {
+                indexNames.Add(indexName);
+            }
+            indexNamesList = indexNames.ToList();
+        }
 
         await CreateKernelMemoryIndexes(
             documentProcessInfoService, 

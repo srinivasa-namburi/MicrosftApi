@@ -12,6 +12,7 @@ using Microsoft.Greenlight.Shared.Contracts.Streams;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Management.Configuration;
 using Microsoft.Greenlight.Shared.Models.Configuration;
+using Microsoft.Greenlight.Grains.Shared.Contracts;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Orleans.Streams;
@@ -128,16 +129,15 @@ public class ConfigurationController : BaseController
     }
 
     /// <summary>
-    /// Gets the Greenlight Services options.
+    /// Gets the global options.
     /// </summary>
-    /// <returns>The full Greenlight Services options.</returns>
-    [HttpGet("greenlight-services")]
+    [HttpGet("global-options")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [Produces("application/json")]
-    public ActionResult<ServiceConfigurationOptions.GreenlightServicesOptions> GetGreenlightServices()
+    public ActionResult<ServiceConfigurationOptions.GreenlightServicesOptions.GlobalOptions> GetGlobalOptions()
     {
-        var configurationGreenlightServicesOptions = _configuration.GetSection("ServiceConfiguration:GreenlightServices").Get<ServiceConfigurationOptions.GreenlightServicesOptions>();
-        return Ok(configurationGreenlightServicesOptions);
+        var configurationGlobalOptions = _configuration.GetSection("ServiceConfiguration:GreenlightServices:Global").Get<ServiceConfigurationOptions.GreenlightServicesOptions.GlobalOptions>();
+        return Ok(configurationGlobalOptions);
     }
 
     /// <summary>
@@ -513,6 +513,62 @@ public class ConfigurationController : BaseController
     }
 
     /// <summary>
+    /// Starts an export job for a given index table (Postgres only).
+    /// </summary>
+    [HttpPost("indexes/export")]
+    public async Task<IActionResult> StartIndexExport([FromBody] IndexExportRequest request)
+    {
+        if (!_serviceConfigurationOptionsMonitor.CurrentValue.GreenlightServices.Global.UsePostgresMemory)
+            return BadRequest("Export is only available when UsePostgresMemory is enabled.");
+        if (string.IsNullOrWhiteSpace(request.TableName) || string.IsNullOrWhiteSpace(request.Schema))
+            return BadRequest("TableName and Schema are required.");
+        var jobId = Guid.NewGuid();
+        var grain = _clusterClient.GetGrain<IIndexExportGrain>(jobId);
+        var userGroup = User?.Identity?.Name ?? "admin";
+        _= grain.StartExportAsync(request.Schema, request.TableName, userGroup);
+        return Accepted(new Microsoft.Greenlight.Shared.Contracts.DTO.IndexJobStartedResponse { JobId = jobId });
+    }
+
+    /// <summary>
+    /// Gets the status of an export job.
+    /// </summary>
+    [HttpGet("indexes/export/{jobId}")]
+    public async Task<ActionResult<IndexExportJobStatus>> GetIndexExportStatus(Guid jobId)
+    {
+        var grain = _clusterClient.GetGrain<IIndexExportGrain>(jobId);
+        var status = await grain.GetStatusAsync();
+        return Ok(status);
+    }
+
+    /// <summary>
+    /// Starts an import job for a given index table (Postgres only).
+    /// </summary>
+    [HttpPost("indexes/import")]
+    public async Task<IActionResult> StartIndexImport([FromBody] IndexImportRequest request)
+    {
+        if (!_serviceConfigurationOptionsMonitor.CurrentValue.GreenlightServices.Global.UsePostgresMemory)
+            return BadRequest("Import is only available when UsePostgresMemory is enabled.");
+        if (string.IsNullOrWhiteSpace(request.TableName) || string.IsNullOrWhiteSpace(request.Schema) || string.IsNullOrWhiteSpace(request.BlobUrl))
+            return BadRequest("TableName, Schema, and BlobUrl are required.");
+        var jobId = Guid.NewGuid();
+        var grain = _clusterClient.GetGrain<IIndexImportGrain>(jobId);
+        var userGroup = User?.Identity?.Name ?? "admin";
+        _ = grain.StartImportAsync(request.Schema, request.TableName, request.BlobUrl, userGroup);
+        return Accepted(new Microsoft.Greenlight.Shared.Contracts.DTO.IndexJobStartedResponse { JobId = jobId });
+    }
+
+    /// <summary>
+    /// Gets the status of an import job.
+    /// </summary>
+    [HttpGet("indexes/import/{jobId}")]
+    public async Task<ActionResult<IndexImportJobStatus>> GetIndexImportStatus(Guid jobId)
+    {
+        var grain = _clusterClient.GetGrain<IIndexImportGrain>(jobId);
+        var status = await grain.GetStatusAsync();
+        return Ok(status);
+    }
+
+    /// <summary>
     /// Checks if a given key matches any of the accepted keys with wildcard patterns.
     /// </summary>
     /// <param name="key">The key to check.</param>
@@ -534,3 +590,5 @@ public class ConfigurationController : BaseController
         return false;
     }
 }
+
+

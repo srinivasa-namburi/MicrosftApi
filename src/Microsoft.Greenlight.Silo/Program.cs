@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using Microsoft.Greenlight.Grains.Shared.Scheduling;
 using Microsoft.Greenlight.ServiceDefaults;
 using Microsoft.Greenlight.Shared.Configuration;
@@ -42,9 +43,12 @@ builder.Services.AddOptions<ServiceConfigurationOptions>()
     .ValidateDataAnnotations()
     .ValidateOnStart();
 
-// This enables reloading:
-builder.Services.Configure<ServiceConfigurationOptions>(
-    builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
+//// This enables reloading:
+//builder.Services.Configure<ServiceConfigurationOptions>(
+//    builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
+// Add this to provide a singleton instance directly:
+builder.Services.AddSingleton(sp => 
+    sp.GetRequiredService<IOptions<ServiceConfigurationOptions>>().Value);
 
 builder.Services.AddGreenlightHostedServices();
 

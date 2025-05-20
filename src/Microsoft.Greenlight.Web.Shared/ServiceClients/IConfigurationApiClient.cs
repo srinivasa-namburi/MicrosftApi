@@ -9,7 +9,6 @@ public interface IConfigurationApiClient : IServiceClient
     Task<string?> GetAzureMapsKeyAsync();
     Task<List<DocumentProcessOptions?>> GetDocumentProcessesAsync();
     Task<ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions> GetFeatureFlagsAsync();
-    Task<ServiceConfigurationOptions.GreenlightServicesOptions> GetGreenlightServicesAsync();
     Task<ServiceConfigurationOptions.GreenlightServicesOptions.FrontendOptions> GetFrontEndAsync();
     Task<ServiceConfigurationOptions.OpenAiOptions> GetOpenAiOptionsAsync();
     Task<DbConfigurationInfo> UpdateConfigurationAsync(ConfigurationUpdateRequest request);
@@ -25,4 +24,29 @@ public interface IConfigurationApiClient : IServiceClient
     Task<AiModelDeploymentInfo> UpdateAiModelDeploymentAsync(AiModelDeploymentInfo deployment);
     Task DeleteAiModelDeploymentAsync(Guid id);
     Task<ServiceConfigurationOptions.GreenlightServicesOptions.ScalabilityOptions> GetScalabilityOptionsAsync();
+
+    /// <summary>
+    /// Gets the global options.
+    /// </summary>
+    Task<ServiceConfigurationOptions.GreenlightServicesOptions.GlobalOptions> GetGlobalOptionsAsync();
+
+    /// <summary>
+    /// Starts an export job for a given index table (Postgres only).
+    /// </summary>
+    Task<IndexJobStartedResponse> StartIndexExportAsync(IndexExportRequest request);
+
+    /// <summary>
+    /// Starts an import job for a given index table (Postgres only).
+    /// </summary>
+    Task<IndexJobStartedResponse> StartIndexImportAsync(IndexImportRequest request);
+
+    /// <summary>
+    /// Gets the status of an export job.
+    /// </summary>
+    Task<IndexExportJobStatus> GetIndexExportStatusAsync(Guid jobId);
+
+    /// <summary>
+    /// Gets the status of an import job.
+    /// </summary>
+    Task<IndexImportJobStatus> GetIndexImportStatusAsync(Guid jobId);
 }

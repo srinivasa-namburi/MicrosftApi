@@ -2,6 +2,30 @@
 
 ## Important Update Notes
 
+05/19/25:
+
+- This update introduces configurable long-term memory backend options for storing vector embeddings.
+  - You can now choose between Azure AI Search or Azure Postgres Flexible Server via the `MEMORY_BACKEND` GitHub Action variable.
+  - Set `MEMORY_BACKEND` to `aisearch` (default) for Azure AI Search or `postgres` for Azure PostgreSQL Flexible Server.
+  - For private deployments with Postgres backend, a pre-existing private DNS zone is required:
+    - You must create a private DNS zone named "privatelink.postgres.database.azure.com"
+    - Set the `POSTGRES_DNSZONE_RESOURCEID` GitHub Action variable to the resource ID of this DNS zone (format: `/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.Network/privateDnsZones/privatelink.postgres.database.azure.com`)
+    - The deployment will fail if this variable is not provided when required (for private deployments using PostgreSQL)
+
+05/08/25:
+
+- This update includes an optional move to Azure PostgreSQL Flexible Server for vector db storage.
+  It requires a new private dns zone if you're running in private mode:
+
+  - Azure PostgreSQL Flexible Server: "privatelink.postgres.database.azure.com"
+
+  A new private endpoint is also created if you deploy in private mode. After deployment, you need to link this private endpoint
+  to the private dns zone created above.
+
+  The endpoint name is:
+
+  - "$kmvectordb`<deploymentid>`-pl
+
 04/14/25:
 
 - This update includes three additional services - Azure Event Hubs, a new Storage account and a table storage account on that new storage account. If you deploy in _private_ mode, you will need to set the private dns zone for these three new private endpoints after deployment. Please make sure you have these private DNS zones created and available in your environment on an accessible subscription. They are as follows (replace with Azure US Government zone names if applicable):
@@ -78,10 +102,14 @@ If you wish to grant access to a an additional, different resource group for the
 4. If using private networking:
 
    - Create or select a VNET in the Azure Portal in the same subscription of the deployment
-   - Create or select a Subnet in the VNET created above
-   - Create a Subnet for Container Apps Environment for GenAI for Industry Permitting
+   - Create or select a Subnet in the VNET created above (min /24)
+   - Create a Subnet for Container Apps Environment for GenAI for Industry Permitting (min /23)
      - The Subnet for Container Apps Environment must use Subnet Delegation - delegate to Microsoft.App.Environments.
+   - Create a Subnet for Azure PostgreSQL Flexible server (min /28)
+     - The Subnet for Azure PostgreSQL Flexible server muse use subnet delegation - delegate to Microsoft.DBforPostgreSQL/flexibleServers
    - Take note of the Subnet ID for both of these subnets, you will these to fill in the the AZURE_SUBNET_CAE and AZURE_SUBNET_PE variables.
+   - Create a Private DNS Zone named "privatelink.postgres.database.azure.com" (required for PostgreSQL backend in private deployments)
+     - Take note of the resource ID of this DNS zone for the POSTGRES_DNSZONE_RESOURCEID variable
 
 5. Add the following deployment variables to the Secrets and Variables section of the repository:
 
@@ -96,19 +124,20 @@ If you wish to grant access to a an additional, different resource group for the
      - AZURE_RESOURCE_GROUP: {Whatever you’d like the Resource Group to be named.}
      - AZURE_LOCATION : {usgovvirginia | swedencentral}
      - AZURE_SUBNET_CAE : {This is the Subnet ID of the Container Apps Environment subnet created above - find it in the portal}
-     - AZURE_SUBNET_PE : {This is the Subnet ID of the Container Apps Environment subnet created above - find it in the portal}
+     - AZURE_SUBNET_PE : {This is the Subnet ID of the services subnet created above - find it in the portal}
+     - AZURE_SUBNET_POSTGRES : {This is the Subnet ID of the Azure Postgres subnet create above - find it in the portal}
      - AZURE_SUBSCRIPTION_ID: {Your Subscription ID}
      - DEPLOYMENT_MODEL: {private | public}
+     - MEMORY_BACKEND: {aisearch | postgres} (Optional, defaults to 'aisearch')
+     - POSTGRES_DNSZONE_RESOURCEID: {Required for private deployments with PostgreSQL backend. The resource ID of your pre-existing private DNS zone for PostgreSQL Flexible Server, in format `/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.Network/privateDnsZones/privatelink.postgres.database.azure.com`}
      - PVICO_OPENAI_RESOURCEGROUP : {The name of the Resource Group where your Azure OpenAI instance has been deployed}
      - HOSTNAMEOVERRIDE : (Only required if used with third party load balancers) Json object with the following format:
-
-       ```json
-       "HostNameOverride": {
-         "Web": "webtest.azure.ai",
-         "Api": "apitest.azure.ai"
-       }
-       ```
-
+   ```json
+   {
+     "Web": "webtest.azure.ai",
+     "Api": "apitest.azure.ai"
+   }
+   ```
      - ENABLE_AZURE_SIGNALR: (Optional) Set to false if you want to disable the Azure SignalR service and use the API as your SignalR endpoint.
 
 ![SetGithubSecrets](./docs/assets/GithubSecrets.png)

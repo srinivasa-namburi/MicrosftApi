@@ -18,6 +18,7 @@
     </Project>
   </Folder>
   <Folder Name="/00. Misc/">
+    <File Path="../DEPLOYMENT.md" />
     <File Path=".gitignore" />
   </Folder>
   <Folder Name="/00. Misc/Build/">

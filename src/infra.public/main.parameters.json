@@ -17,6 +17,12 @@
     "containerAppEnvSubnet": {
       "value": "${AZURE_SUBNET_CAE}"
     },
+    "postgresSubnet": {
+      "value": "${AZURE_SUBNET_POSTGRES}"
+    },
+    "postgresDnsZoneId": {
+      "value": "${POSTGRES_DNSZONE_RESOURCEID}"
+    },
     "location": {
       "value": "${AZURE_LOCATION}"
     },
@@ -25,6 +31,9 @@
     },
     "existingSqlServer": {
       "value": "${EXISTING_SQL_SERVER}"
+    },
+    "administratorPassword": {
+      "value": "${BICEP_PG_ADMIN_PASSWORD}"
     }
   }
 }

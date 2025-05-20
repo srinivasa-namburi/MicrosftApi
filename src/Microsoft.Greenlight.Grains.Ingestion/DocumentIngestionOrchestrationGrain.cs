@@ -126,10 +126,12 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
             await SafeWriteStateAsync();
         }
 
+        bool acquired = false;
         try
         {
             // Wait for a slot to become available in the semaphore
-            await _processingThrottleSemaphore.WaitAsync(5.Minutes());
+            await _processingThrottleSemaphore.WaitAsync(1.Hours());
+            acquired = true;
 
             // Start processing the document with a unique grain but pass THIS grain's ID
             // as the orchestration ID to maintain correlation
@@ -153,9 +155,9 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
                         _logger.LogError(t.Exception,
                             "Error processing document {FileName} for {DocumentLibraryType} {DocumentLibraryName}",
                             fileName, _state.State.DocumentLibraryType, _state.State.DocumentLibraryShortName);
-                        
+
                         // Notify orchestration of failure and release the semaphore
-                        _ = OnIngestionFailedAsync($"Failed to process document {fileName}: {t.Exception?.Message}");
+                        _ = OnIngestionFailedAsync($"Failed to process document {fileName}: {t.Exception?.Message}", acquired);
                     }
                     else
                     {
@@ -175,7 +177,7 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
                 fileName, _state.State.DocumentLibraryType, _state.State.DocumentLibraryShortName);
 
             // Notify orchestration of failure and release the semaphore
-            await OnIngestionFailedAsync($"Error queuing document {fileName} for processing: {ex.Message}");
+            await OnIngestionFailedAsync($"Error queuing document {fileName} for processing: {ex.Message}", acquired);
         }
     }
 
@@ -185,7 +187,7 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
         await SafeWriteStateAsync();
 
         // Release a slot in the semaphore for the next document
-        _processingThrottleSemaphore.Release();
+        ReleaseSemaphore();
 
         // If all files are processed (successfully or with errors), mark as complete
         if (_state.State.ProcessedFiles + _state.State.FailedFiles >= _state.State.TotalFiles && _state.State.TotalFiles > 0)
@@ -199,14 +201,17 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
         }
     }
 
-    public async Task OnIngestionFailedAsync(string reason)
+    public async Task OnIngestionFailedAsync(string reason, bool acquired)
     {
         _state.State.FailedFiles++;
         _state.State.Errors.Add(reason);
         await SafeWriteStateAsync();
 
         // Release a slot in the semaphore for the next document
-        _processingThrottleSemaphore.Release();
+        if (acquired)
+        {
+            ReleaseSemaphore();
+        }
 
         // If all files are processed (successfully or with errors), mark as complete
         if (_state.State.ProcessedFiles + _state.State.FailedFiles >= _state.State.TotalFiles && _state.State.TotalFiles > 0)
@@ -231,6 +236,18 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
         finally
         {
             _stateLock.Release();
+        }
+    }
+
+    private void ReleaseSemaphore()
+    {
+        try
+        {
+            _processingThrottleSemaphore.Release();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error releasing semaphore");
         }
     }
 }

@@ -195,7 +195,7 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
         Subsequent queries will ask you to expand upon and integrate summaries from each pass.
         
         You may see fragments labeled **[EXAMPLE: Document Extract]** from previous applications. 
-        Use these extracts as context to craft a coherent section. The fragments might include information from various parts of the documentâ€”not just **{{ fullSectionName }}**â€”so filter out any irrelevant details.
+        Use these extracts as context to craft a coherent section. The fragments might include information from various parts of the document—not just **{{ fullSectionName }}**—so filter out any irrelevant details.
         
         {{ sectionSpecificPromptInstructions }}
         
@@ -211,16 +211,14 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
         - For NRC regulations, refer to the document library **NRC.Regulations** via the document library plugin.
         
         Additional plugin instructions:
-        - Use **native_FacilitiesPlugin** (if available) to find geographical markers.
-        - Use **native_EarthQuakePlugin** for seismic history.
-        - Use **native_DocumentLibraryPlugin** to check for specific details, prioritizing plugin data over general knowledge. 
-          Make sure to use this plugin only to look up information that is tailored to a specific subject you're inquiring about. 
-          If there is no relevant document library plugin for a topic, don't use the plugin.
+        - Use **DP__FacilitiesPlugin** (if available) to find geographical markers.
+        - Use **DP__EarthQuakePlugin** for seismic history.
+        - Use **DP__DocumentLibraryPlugin** to check for specific details, prioritizing plugin data over general knowledge. Make sure to use this plugin only to look up information that is tailored to a specific subject you're inquiring about. If there is no relevant document library plugin for a topic, don't use the plugin.
         
         If you use any plugins, list the references at the end of your section:
-        - For **native_FacilitiesPlugin**, cite as *Azure Maps (API)*.
-        - For **native_EarthQuakePlugin**, cite as *US Geological Survey (API)*.
-        - For **native_DocumentLibraryPlugin** cite as a short form description of the library in question
+        - For **DP__FacilitiesPlugin**, cite as *Azure Maps (API)*.
+        - For **DP__EarthQuakePlugin**, cite as *US Geological Survey (API) and include urls to earthquake reports*.
+        - For **DP__DocumentLibraryPlugin** cite as a short form description of the library in question
         
         Only include these references if the plugin outputs are directly used.
         
@@ -241,7 +239,7 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
         {{ tableOfContentsString }}
         [/TOC]
         
-        Your output should be a full section or chapterÂ—not a summary. Follow these formatting guidelines:
+        Your output should be a full section or chapter—not a summary. Follow these formatting guidelines:
         - Remove numbering and any prefixes like "Section" or "Chapter" from headings.
         - Use UTF-8 encoding.
         - Separate paragraphs with two newlines (\n\n).
@@ -250,7 +248,7 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
         - Render tables as inline Markdown tables (or HTML tables for complex cases).
         - Structure your content with headings and subheadings if appropriate.
         
-        If details are missing, indicate whatÂ’s needed with a concise **[DETAIL: <dataType>]** tag (one or two words).
+        If details are missing, indicate what’s needed with a concise **[DETAIL: <dataType>]** tag (one or two words).
         
         If you determine that your output is complete for the entire section (i.e., the final pass), end your response on a new line with:
         [*COMPLETE*]
@@ -284,7 +282,7 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
         Also, ignore the initial heading and the first two paragraphs from the original prompt. 
         This is pass number **{{ passNumber }}** of **{{ numberOfPasses }}**.
         
-        Begin your response with the content only Â— do not include commentary about your process or internal reasoning. 
+        Begin your response with the content only — do not include commentary about your process or internal reasoning. 
         The output from each pass should seamlessly integrate without requiring further editing.
         
         If this pass completes the section, end your output with a new line containing:
@@ -295,4 +293,84 @@ public class DefaultPromptCatalogTypes : IPromptCatalogTypes
         For reference, here is the original prompt and examples:
         {{ originalPrompt }}
         """;
+
+    /// <inheritdoc />
+    public string SectionGenerationAgenticMainPrompt =>
+        """
+You are the ContentAgent, responsible for drafting, expanding, and revising content for the section: {{ fullSectionName }}.
+
+Your task is to produce the content for the section **{{ fullSectionName }}** as part of an iterative document generation process for the project identified by **{{ documentProcessName }}**. You are not required to deliver the complete section in your first response; instead, provide as much detail as possible and continue to expand, clarify, and improve the content as needed based on feedback and review.
+
+You may see fragments labeled **[EXAMPLE: Document Extract]** from previous applications. Use these extracts as context to craft a coherent section. The fragments might include information from various parts of the document—not just **{{ fullSectionName }}**—so filter out any irrelevant details.
+
+[EXAMPLES]
+{{ exampleString }}
+[/EXAMPLES]
+
+{{ sectionSpecificPromptInstructions }}
+
+To tailor the content for this project, you MUST always consider and attempt to use the available tool calls/functions as listed in [AVAILABLE PLUGINS AND FUNCTIONS] to enhance, verify, or supplement your content wherever possible. If you require additional data, request it with the **[DETAIL: <dataType>]** tag.
+
+IMPORTANT: You MUST NOT include any content that belongs to child sections of the current section. Use the [TOC] table of contents to identify child sections. Only include content relevant to the current section, and exclude any content that should appear in a child section as listed in the [TOC].
+
+Keep these guidelines in mind:
+- Use the area's actual name rather than its lat/long in your text. If no name is available, use the lat/long.
+- When referencing lat/long values, generate a map image with the **DP__FacilitiesPlugin** and insert it as a markdown image using the provided URL. Do not translate lat/long values.
+- Adapt any geographical references from source documents (such as roads, rivers, or lakes) to reflect the features of the project area, using plugins or your general knowledge as needed.
+- For NRC regulations, refer to the document library **NRC.Regulations** via the **DP__DocumentLibraryPlugin**, if available
+
+Additional plugin instructions:
+- Use **DP__FacilitiesPlugin** (if available) to find geographical markers.
+- Use **DP__EarthQuakePlugin** for seismic history.
+- Use **DP__DocumentLibraryPlugin** to check for specific details, prioritizing plugin data over general knowledge. Make sure to use this plugin only to look up information that is tailored to a specific subject you're inquiring about. If there is no relevant document library plugin for a topic, don't use the plugin.
+
+If you use any plugins, list the references at the end of your section:
+- For **DP__FacilitiesPlugin**, cite as *Azure Maps (API)*.
+- For **DP__EarthQuakePlugin**, cite as *US Geological Survey (API) and include urls to earthquake reports*.
+- For **DP__DocumentLibraryPlugin** cite as a short form description of the library in question
+
+Only include these references if the plugin outputs are directly used.
+
+Project-specific metadata is provided between the **[METADATA]** and **[/METADATA]** tags in JSON format. Ignore the following fields in the metadata: DocumentProcessName, MetadataModelName, DocumentGenerationRequestFullTypeName, ID, AuthorOid.
+
+[METADATA]
+{{ customDataString }}
+[/METADATA]
+
+Between the [TOC] and [/TOC] tags is the table of contents for the entire document. Use this TOC to ensure your section fits seamlessly with the rest of the document. Check neighboring sections and validate any chapter or section references against the TOC. Do not refer to sections not listed in the TOC. Do not write anything in this section that belongs to a child section of this section.
+
+[TOC]
+{{ tableOfContentsString }}
+[/TOC]
+
+PLUGIN USAGE REQUIREMENTS:
+- YOU MUST use ContentState.StoreSequenceContent() to store each block of content as you create it
+- YOU MUST use ContentState.GetSequenceNumbers() before creating new content to avoid duplicates
+- YOU MUST use ContentState.GetNextSequenceNumber() to determine the next sequence number to use
+- YOU MUST use DocumentHistory.GetFullDocumentSoFar() to maintain consistency with other sections
+- Regularly check what you've written using ContentState.GetAssembledContent()
+
+Content Creation Process:
+1. FIRST determine the next sequence number with GetNextSequenceNumber()
+2. Draft a portion of content
+3. STORE that content using StoreSequenceContent(sequenceNumber, content)
+4. Check assembled content with GetAssembledContent()
+5. Repeat until the section is complete
+
+Guidelines:
+- Your goal is to produce a comprehensive, detailed, and high-quality section. Use iterative improvements to expand, clarify, and improve the content.
+- Do not mark the section as ready for review until you are confident it is as thorough and complete as possible. Err on the side of being exhaustive.
+- After each iteration, review your own output and look for areas to expand, clarify, or add supporting details, examples, or explanations.
+- Use all available plugins to gather supporting information, citations, and data.
+- If you find gaps, add [DETAIL: ...] tags to indicate missing information.
+- Use the DocumentHistory plugin to ensure consistency and avoid duplication with other sections.
+- Use the table of contents and metadata to ensure your section fits seamlessly with the rest of the document.
+- If the section is long, break it into logical parts and store each part using StoreSequenceContent.
+- Only when you are certain the section is complete, indicate readiness for review (e.g., 'Ready for review.').
+- If the reviewer requests more detail or expansion, continue iterating until the section is truly comprehensive.
+
+[AVAILABLE PLUGINS AND FUNCTIONS]
+{{ pluginFunctionDescriptions }}
+[/AVAILABLE PLUGINS AND FUNCTIONS]
+""";
 }

@@ -51,17 +51,6 @@ public class ConfigurationApiClient : WebAssemblyBaseServiceClient<Configuration
                throw new IOException("No Greenlight services available!");
     }
 
-    public async Task<ServiceConfigurationOptions.GreenlightServicesOptions> GetGreenlightServicesAsync()
-    {
-        var response = await SendGetRequestMessage($"/api/configuration/greenlight-services");
-        response?.EnsureSuccessStatusCode();
-
-        return await response?.Content
-                   .ReadFromJsonAsync<ServiceConfigurationOptions.GreenlightServicesOptions>()! ??
-               throw new IOException("No Greenlight services available!");
-
-    }
-
     public async Task<ServiceConfigurationOptions.GreenlightServicesOptions.FrontendOptions> GetFrontEndAsync()
     {
         var response = await SendGetRequestMessage($"/api/configuration/frontend", authorize: false);
@@ -81,6 +70,13 @@ public class ConfigurationApiClient : WebAssemblyBaseServiceClient<Configuration
                throw new IOException("No OpenAI options available!");
     }
 
+    public async Task<ServiceConfigurationOptions.GreenlightServicesOptions.GlobalOptions> GetGlobalOptionsAsync()
+    {
+        var response = await SendGetRequestMessage($"/api/configuration/global-options");
+        response?.EnsureSuccessStatusCode();
+        return await response?.Content.ReadFromJsonAsync<ServiceConfigurationOptions.GreenlightServicesOptions.GlobalOptions>() ??
+               throw new IOException("No global options available!");
+    }
 
     public async Task<DbConfigurationInfo> UpdateConfigurationAsync(ConfigurationUpdateRequest request)
     {
@@ -175,5 +171,35 @@ public class ConfigurationApiClient : WebAssemblyBaseServiceClient<Configuration
     {
         var response = await SendDeleteRequestMessage($"/api/configuration/ai-model-deployments/{id}");
         response?.EnsureSuccessStatusCode();
+    }
+
+    /// <inheritdoc />
+    public async Task<IndexJobStartedResponse> StartIndexExportAsync(IndexExportRequest request)
+    {
+        var response = await SendPostRequestMessage("/api/configuration/indexes/export", request);
+        response?.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<IndexJobStartedResponse>() ?? throw new IOException("No JobId returned from export start.");
+    }
+
+    /// <inheritdoc />
+    public async Task<IndexJobStartedResponse> StartIndexImportAsync(IndexImportRequest request)
+    {
+        var response = await SendPostRequestMessage("/api/configuration/indexes/import", request);
+        response?.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<IndexJobStartedResponse>() ?? throw new IOException("No JobId returned from import start.");
+    }
+
+    public async Task<IndexExportJobStatus> GetIndexExportStatusAsync(Guid jobId)
+    {
+        var response = await SendGetRequestMessage($"/api/configuration/indexes/export/{jobId}");
+        response?.EnsureSuccessStatusCode();
+        return await response?.Content.ReadFromJsonAsync<IndexExportJobStatus>() ?? throw new IOException($"No export job status for {jobId}");
+    }
+
+    public async Task<IndexImportJobStatus> GetIndexImportStatusAsync(Guid jobId)
+    {
+        var response = await SendGetRequestMessage($"/api/configuration/indexes/import/{jobId}");
+        response?.EnsureSuccessStatusCode();
+        return await response?.Content.ReadFromJsonAsync<IndexImportJobStatus>() ?? throw new IOException($"No import job status for {jobId}");
     }
 }

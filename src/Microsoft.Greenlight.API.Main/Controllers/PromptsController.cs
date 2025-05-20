@@ -158,6 +158,39 @@ public class PromptsController : BaseController
     }
 
     /// <summary>
+    /// Gets the default prompt text for a given prompt short code from DefaultPromptCatalogTypes.
+    /// </summary>
+    /// <param name="shortCode">The short code of the prompt.</param>
+    /// <returns>The default prompt text.
+    /// Produces Status Codes:
+    ///     200 OK: When default prompt text is found
+    ///     404 Not Found: When no default prompt exists with the given short code
+    /// </returns>
+    [HttpGet("default/{shortCode}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [Produces("application/json")]
+    public ActionResult<string> GetDefaultPromptText(string shortCode)
+    {
+        var defaultPrompts = new DefaultPromptCatalogTypes();
+        var property = defaultPrompts.GetType().GetProperty(shortCode);
+        
+        if (property == null)
+        {
+            return NotFound();
+        }
+
+        var defaultPromptText = property.GetValue(defaultPrompts) as string;
+        
+        if (string.IsNullOrEmpty(defaultPromptText))
+        {
+            return NotFound();
+        }
+
+        return Ok(defaultPromptText);
+    }
+
+    /// <summary>
     /// Deletes the prompt.
     /// </summary>
     /// <param name="id">The identifier.</param>

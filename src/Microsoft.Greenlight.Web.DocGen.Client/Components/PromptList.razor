@@ -1,7 +1,7 @@
 @inject IDocumentProcessApiClient DocumentProcessApiClient
 @inject IDialogService DialogService
 
-<MudTable Items="Prompts" Hover="true" Striped="true">
+<MudTable Items="SortedPrompts" Hover="true" Striped="true">
     <HeaderContent>
         <MudTh>Short Code</MudTh>
         <MudTh>Text</MudTh>
@@ -34,6 +34,8 @@
 
     // Add the cascading parameter to receive the dark mode setting
     [CascadingParameter(Name = "IsDarkMode")] public bool IsDarkMode { get; set; }
+
+    private List<PromptInfo> SortedPrompts => Prompts.OrderBy(p => p.ShortCode).ToList();
 
     protected override async Task OnInitializedAsync()
     {

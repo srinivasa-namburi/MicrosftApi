@@ -47,7 +47,6 @@ param orleansStorageId string
 @description('Resource name of the Orleans storage account.')
 param orleansStorageName string
 
-
 // Private endpoint for Azure Search
 resource peAiSearch 'Microsoft.Network/privateEndpoints@2023-11-01' = {
   name: '${aiSearchName}-pl'

@@ -1,3 +1,4 @@
+using Azure.Core;
 using Azure.Search.Documents.Indexes;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -6,7 +7,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.KernelMemory;
 using Microsoft.KernelMemory.Configuration;
 using Microsoft.Greenlight.Shared.Configuration;
-using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Contracts.DTO.DocumentLibrary;
 using Microsoft.Greenlight.Shared.Helpers;
 
@@ -18,7 +18,6 @@ namespace Microsoft.Greenlight.Shared.Extensions;
 public static class KernelMemoryExtensions
 {
     private const int PartitionSize = 1200;
-    private const int MaxTokensPerLine = 100;
 
     /// <summary>
     /// Adds keyed Kernel Memory for document processing given a document process name.
@@ -34,16 +33,17 @@ public static class KernelMemoryExtensions
         string documentProcessName = "",
         string? key = "")
     {
-        var serviceProvider = builder.Services.BuildServiceProvider();
-        var blobContainerName = documentProcessName.ToLower().Replace(" ", "-").Replace(".", "-") + "-km-blobs";
-
-        var kernelMemory = CreateKernelMemoryInstance(
-            serviceProvider,
-            serviceConfigurationOptions,
-            blobContainerName
+        // Register a factory that creates KernelMemory instances when needed
+        // instead of using a temporary service provider
+        builder.Services.AddKeyedSingleton<IKernelMemory>(documentProcessName + "-IKernelMemory", (sp, _) => 
+        {
+            var blobContainerName = documentProcessName.ToLower().Replace(" ", "-").Replace(".", "-") + "-km-blobs";
+            return CreateKernelMemoryInstance(
+                sp,
+                serviceConfigurationOptions,
+                blobContainerName
             );
-
-        builder.Services.AddKeyedSingleton<IKernelMemory>(documentProcessName + "-IKernelMemory", kernelMemory);
+        });
 
         return builder;
     }
@@ -76,13 +76,17 @@ public static class KernelMemoryExtensions
         DocumentLibraryInfo documentLibraryInfo,
         string? key = null)
     {
+        // Create a new scope to ensure services aren't disposed
+        using var scope = serviceProvider.CreateScope();
+        var scopedProvider = scope.ServiceProvider;
+        
         var documentLibraryShortName = documentLibraryInfo.ShortName;
         var indexName = documentLibraryInfo.IndexName;
 
         var blobContainerName = documentLibraryShortName.ToLower().Replace(" ", "-").Replace(".", "-") + "-km-blobs";
 
         var kernelMemory = CreateKernelMemoryInstance(
-            serviceProvider,
+            scopedProvider,
             serviceConfigurationOptions,
             blobContainerName,
             indexName
@@ -101,11 +105,15 @@ public static class KernelMemoryExtensions
         this IServiceProvider serviceProvider,
         ServiceConfigurationOptions serviceConfigurationOptions)
     {
+        // Create a new scope to ensure services aren't disposed
+        using var scope = serviceProvider.CreateScope();
+        var scopedProvider = scope.ServiceProvider;
+        
         const string blobContainerName = "adhoc-km-blobs";
         const string indexName = "index-adhoc-km";
 
         var kernelMemory = CreateKernelMemoryInstance(
-            serviceProvider,
+            scopedProvider,
             serviceConfigurationOptions,
             blobContainerName,
             indexName
@@ -126,36 +134,102 @@ public static class KernelMemoryExtensions
 
         // Get OpenAI connection string
         var openAiConnString = configuration.GetConnectionString("openai-planner") ?? throw new InvalidOperationException("OpenAI connection string not found.");
+        var kmVectorDbConnectionString = configuration.GetConnectionString("kmvectordb") ?? throw new InvalidOperationException("Postgres KM Vector DB connection string not found.");
 
         // Extract Endpoint and Key
         var openAiEndpoint = openAiConnString.Split(";").FirstOrDefault(x => x.Contains("Endpoint="))?.Split("=")[1]
             ?? throw new ArgumentException("OpenAI endpoint must be provided in the configuration.");
-        var openAiKey = openAiConnString.Split(";").FirstOrDefault(x => x.Contains("Key="))?.Split("=")[1]
-            ?? throw new ArgumentException("OpenAI key must be provided in the configuration.");
+        var openAiKey = openAiConnString.Split(";").FirstOrDefault(x => x.Contains("Key="))?.Split("=")[1];
+
+        AzureOpenAIConfig.AuthTypes authType;
+        string? apiKey = null;
+        TokenCredential? tokenCredential = null;
+
+        if (!string.IsNullOrEmpty(openAiKey))
+        {
+            authType = AzureOpenAIConfig.AuthTypes.APIKey;
+            apiKey = openAiKey;
+        }
+        else
+        {
+            authType = AzureOpenAIConfig.AuthTypes.ManualTokenCredential;
+            tokenCredential = azureCredentialHelper.GetAzureCredential();
+        }
 
         var openAiEmbeddingConfig = new AzureOpenAIConfig()
         {
-            Auth = AzureOpenAIConfig.AuthTypes.APIKey,
+            Auth = authType,
             Endpoint = openAiEndpoint,
-            APIKey = openAiKey,
             Deployment = serviceConfigurationOptions.OpenAi.EmbeddingModelDeploymentName,
             APIType = AzureOpenAIConfig.APITypes.EmbeddingGeneration
         };
 
+        // Set the token credential if using manual token credential authentication, if not set the API key
+        if (authType == AzureOpenAIConfig.AuthTypes.APIKey && apiKey != null)
+        {
+            openAiEmbeddingConfig.APIKey = apiKey;
+        }
+        else if (tokenCredential != null)
+        {
+            openAiEmbeddingConfig.SetCredential(tokenCredential);
+        }
+
         var openAiChatCompletionConfig = new AzureOpenAIConfig()
         {
-            Auth = AzureOpenAIConfig.AuthTypes.APIKey,
+            Auth = authType,
             Endpoint = openAiEndpoint,
-            APIKey = openAiKey,
             Deployment = serviceConfigurationOptions.OpenAi.Gpt4o_Or_Gpt4128KDeploymentName,
             APIType = AzureOpenAIConfig.APITypes.ChatCompletion
         };
+
+        // Set the token credential if using manual token credential authentication, if not set the API key
+        if (authType == AzureOpenAIConfig.AuthTypes.APIKey && apiKey != null)
+        {
+            openAiChatCompletionConfig.APIKey = apiKey;
+        }
+        else if (tokenCredential != null)
+        {
+            openAiChatCompletionConfig.SetCredential(tokenCredential);
+        }
 
         var azureAiSearchConfig = new AzureAISearchConfig()
         {
             Endpoint = baseSearchClient.Endpoint.AbsoluteUri,
             Auth = AzureAISearchConfig.AuthTypes.ManualTokenCredential
         };
+
+        var postgresConfig = new PostgresConfig
+        {
+            ConnectionString = kmVectorDbConnectionString,
+            Schema = "km",
+            TableNamePrefix = "km_",
+            Columns = new Dictionary<string, string>
+            {
+                { "id",        "_pk" },
+                { "embedding", "embedding" },
+                { "tags",      "labels" },
+                { "content",   "chunk" },
+                { "payload",   "extras" }
+            },
+            CreateTableSql =
+            [
+                "BEGIN;                                                                      ",
+                "SELECT pg_advisory_xact_lock(%%lock_id%%);                                  ",
+                "CREATE TABLE IF NOT EXISTS %%table_name%% (                                 ",
+                "  _pk         TEXT NOT NULL PRIMARY KEY,                                    ",
+                "  embedding   vector(%%vector_size%%),                                      ",
+                "  labels      TEXT[] DEFAULT '{}'::TEXT[] NOT NULL,                         ",
+                "  chunk       TEXT DEFAULT '' NOT NULL,                                     ",
+                "  extras      JSONB DEFAULT '{}'::JSONB NOT NULL,                           ",
+                "  my_field1   TEXT DEFAULT '',                                              ",
+                "  _update     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP            ",
+                ");                                                                          ",
+                "CREATE INDEX ON %%table_name%% USING GIN(labels);                           ",
+                "CREATE INDEX ON %%table_name%% USING hnsw (embedding vector_cosine_ops); ",
+                "COMMIT;                                                                     "
+            ]
+        };
+
 
         azureAiSearchConfig.SetCredential(azureCredentialHelper.GetAzureCredential());
 
@@ -202,9 +276,16 @@ public static class KernelMemoryExtensions
             .WithAzureOpenAITextEmbeddingGeneration(openAiEmbeddingConfig)
             .WithAzureOpenAITextGeneration(openAiChatCompletionConfig)
             .WithCustomTextPartitioningOptions(textPartitioningOptions)
-            .WithAzureBlobsDocumentStorage(azureBlobsConfig)
-            .WithAzureAISearchMemoryDb(azureAiSearchConfig)
-            ;
+            .WithAzureBlobsDocumentStorage(azureBlobsConfig);
+
+        if (serviceConfigurationOptions.GreenlightServices.Global.UsePostgresMemory)
+        {
+            kernelMemoryBuilder.WithPostgresMemoryDb(postgresConfig);
+        }
+        else
+        {
+            kernelMemoryBuilder.WithAzureAISearchMemoryDb(azureAiSearchConfig);
+        }
 
         // Add Logging
         kernelMemoryBuilder.Services.AddLogging(l =>

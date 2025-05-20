@@ -92,7 +92,7 @@ public class DocumentFileCopyGrain : Grain, IDocumentFileCopyGrain
                                 blob.Name, sourceContainerName, targetContainerName);
                             
                             await orchestrationGrain.OnIngestionFailedAsync(
-                                $"Failed to copy blob {blob.Name}: {exception.Message}");
+                                $"Failed to copy blob {blob.Name}: {exception.Message}", false);
                         }
                     }
                     catch (Exception ex)
@@ -102,7 +102,7 @@ public class DocumentFileCopyGrain : Grain, IDocumentFileCopyGrain
                             blob.Name, sourceContainerName, targetContainerName);
                             
                         await orchestrationGrain.OnIngestionFailedAsync(
-                            $"Unexpected error copying blob {blob.Name}: {ex.Message}");
+                            $"Unexpected error copying blob {blob.Name}: {ex.Message}", false);
                     }
                 }
             }
@@ -119,7 +119,7 @@ public class DocumentFileCopyGrain : Grain, IDocumentFileCopyGrain
                 sourceContainerName, sourceFolderPath, targetContainerName);
                 
             await orchestrationGrain.OnIngestionFailedAsync(
-                $"Failed to process copy operation: {ex.Message}");
+                $"Failed to process copy operation: {ex.Message}", false);
         }
     }
 }

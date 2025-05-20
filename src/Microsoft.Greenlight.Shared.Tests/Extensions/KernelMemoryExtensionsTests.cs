@@ -38,7 +38,7 @@ namespace Microsoft.Greenlight.Shared.Tests.Extensions
             var documentLibraryInfo = new DocumentLibraryInfo { ShortName = "TestLibrary" };
             IConfiguration configuration = new ConfigurationBuilder().Build();
             var azureCredentialHelper = new AzureCredentialHelper(configuration);
-            
+
             var serviceCollection = new ServiceCollection()
                 .AddSingleton(configuration)
                 .AddSingleton(azureCredentialHelper)
@@ -61,7 +61,8 @@ namespace Microsoft.Greenlight.Shared.Tests.Extensions
 
             var inMemoryConfiguration = new Dictionary<string, string?>
             {
-                { "ConnectionStrings:openai-planner", "" }
+                { "ConnectionStrings:openai-planner", "" },
+                { "ConnectionStrings:kmvectordb", "Host=localhost;Port=9002;Username=postgres;Password=postgres;Database=kmvectordb "}
             };
 
             IConfiguration configuration = new ConfigurationBuilder().AddInMemoryCollection(inMemoryConfiguration).Build();
@@ -89,7 +90,8 @@ namespace Microsoft.Greenlight.Shared.Tests.Extensions
 
             var inMemoryConfiguration = new Dictionary<string, string?>
             {
-                { "ConnectionStrings:openai-planner", "Endpoint=test" }
+                { "ConnectionStrings:openai-planner", "Endpoint=test" },
+                { "ConnectionStrings:kmvectordb", "Host=localhost;Port=9002;Username=postgres;Password=postgres;Database=kmvectordb "}
             };
 
             IConfiguration configuration = new ConfigurationBuilder().AddInMemoryCollection(inMemoryConfiguration).Build();
@@ -117,7 +119,8 @@ namespace Microsoft.Greenlight.Shared.Tests.Extensions
 
             var inMemoryConfiguration = new Dictionary<string, string?>
             {
-                { "ConnectionStrings:openai-planner", "Endpoint=test;Key=test" }
+                { "ConnectionStrings:openai-planner", "Endpoint=test;Key=test" },
+                { "ConnectionStrings:kmvectordb", "Host=localhost;Port=9002;Username=postgres;Password=postgres;Database=kmvectordb "}
             };
 
             IConfiguration configuration = new ConfigurationBuilder().AddInMemoryCollection(inMemoryConfiguration).Build();
@@ -146,7 +149,8 @@ namespace Microsoft.Greenlight.Shared.Tests.Extensions
             var inMemoryConfiguration = new Dictionary<string, string?>
             {
                 { "ConnectionStrings:openai-planner", "Endpoint=https://test.com;Key=test" },
-                { "ConnectionStrings:blob-docing", "DefaultEndpointsProtocol=https;AccountName=http://test.azure.com;AccountKey=test"   }
+                { "ConnectionStrings:blob-docing", "DefaultEndpointsProtocol=https;AccountName=http://test.azure.com;AccountKey=test" },
+                { "ConnectionStrings:kmvectordb", "Host=localhost;Port=9002;Username=postgres;Password=postgres;Database=kmvectordb "}
             };
 
             IConfiguration configuration = new ConfigurationBuilder().AddInMemoryCollection(inMemoryConfiguration).Build();

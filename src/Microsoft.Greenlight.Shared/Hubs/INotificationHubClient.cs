@@ -96,4 +96,31 @@ public interface INotificationHubClient
     Task ReceiveValidationExecutionForDocumentNotification(
         ValidationExecutionForDocumentNotification notification);
 
+    /// <summary>
+    /// Receives a notification that an index export job has been completed.
+    /// </summary>
+    /// <param name="notification">The index export job notification.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
+    Task ReceiveExportJobCompletedNotification(IndexExportJobNotification notification);
+
+    /// <summary>
+    /// Receives a notification that an index export job has failed.
+    /// </summary>
+    /// <param name="notification">The index export job notification.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
+    Task ReceiveExportJobFailedNotification(IndexExportJobNotification notification);
+
+    /// <summary>
+    /// Receives a notification that an index import job has been completed.
+    /// </summary>
+    /// <param name="notification">The index import job notification.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
+    Task ReceiveImportJobCompletedNotification(IndexImportJobNotification notification);
+
+    /// <summary>
+    /// Receives a notification that an index import job has failed.
+    /// </summary>
+    /// <param name="notification">The index import job notification.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
+    Task ReceiveImportJobFailedNotification(IndexImportJobNotification notification);
 }
