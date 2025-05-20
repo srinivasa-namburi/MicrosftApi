@@ -20,11 +20,6 @@ param redisId string
 @description('Resource name of the Redis cache.')
 param redisName string
 
-@description('Resource ID of the Service Bus namespace.')
-param sbusId string
-@description('Resource name of the Service Bus namespace.')
-param sbusName string
-
 @description('Resource ID of the SignalR service.')
 param signalrId string
 @description('Resource name of the SignalR service.')
@@ -48,7 +43,7 @@ param orleansStorageId string
 param orleansStorageName string
 
 // Private endpoint for Azure Search
-resource peAiSearch 'Microsoft.Network/privateEndpoints@2023-11-01' = if (!empty(aiSearchId) && !empty(aiSearchName)) {
+resource peAiSearch 'Microsoft.Network/privateEndpoints@2023-11-01' = {
   name: '${aiSearchName}-pl'
   location: location
   properties: {
@@ -106,28 +101,6 @@ resource peRedis 'Microsoft.Network/privateEndpoints@2023-11-01' = {
           privateLinkServiceId: redisId
           groupIds: [
             'redisCache'
-          ]
-        }
-      }
-    ]
-  }
-}
-
-// Private endpoint for Service Bus
-resource peSbus 'Microsoft.Network/privateEndpoints@2023-11-01' = {
-  name: '${sbusName}-pl'
-  location: location
-  properties: {
-    subnet: {
-      id: peSubnet
-    }
-    privateLinkServiceConnections: [
-      {
-        name: '${sbusName}-pl'
-        properties: {
-          privateLinkServiceId: sbusId
-          groupIds: [
-            'namespace'
           ]
         }
       }
@@ -242,9 +215,8 @@ resource orleansStorageTablePrivateEndpoint 'Microsoft.Network/privateEndpoints@
   }
 }
 
-output aiSearchPeName string = !empty(aiSearchId) && !empty(aiSearchName) ? peAiSearch.name : ''
+output aiSearchPeName string = peAiSearch.name
 output docingPeName string = peDocing.name
 output redisPeName string = peRedis.name
-output sbusPeName string = peSbus.name
 output signalrPeName string = peSignalr.name
 output sqldocgenPeName string = peSqldocgen.name

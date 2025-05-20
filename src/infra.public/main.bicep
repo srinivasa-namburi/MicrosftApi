@@ -64,7 +64,7 @@ module resources 'resources.bicep' = {
   }
 }
 
-module aiSearch 'aiSearch/aiSearch.module.bicep' = if (memoryBackend == 'aisearch') {
+module aiSearch 'aiSearch/aiSearch.module.bicep' = {
   name: 'aiSearch'
   scope: resourceGroup('${resourceGroupName}')
   params: {
@@ -102,17 +102,6 @@ module redis 'redis/redis.module.bicep' = {
     location: location
     principalId: resources.outputs.MANAGED_IDENTITY_PRINCIPAL_ID
     principalName: resources.outputs.MANAGED_IDENTITY_NAME
-    deploymentModel: deploymentModel
-  }
-}
-
-module sbus 'sbus/sbus.module.bicep' = {
-  name: 'sbus'
-  scope: resourceGroup('${resourceGroupName}')
-  params: {
-    location: location
-    principalId: resources.outputs.MANAGED_IDENTITY_PRINCIPAL_ID
-    principalType: 'ServicePrincipal'
     deploymentModel: deploymentModel
   }
 }
@@ -161,7 +150,7 @@ module orleansStorage 'orleans/orleans.module.bicep' = {
   }
 }
 
-module kmvectordb 'kmvectordb/kmvectordb.module.bicep' = if (memoryBackend == 'postgres') {
+module kmvectordb 'kmvectordb/kmvectordb.module.bicep' = {
   name: 'kmvectordb'
   scope: resourceGroup('${resourceGroupName}')
   params: {
@@ -182,14 +171,12 @@ module privateEndpoints 'privateEndpoints.bicep' = if (isPrivate) {
   params: {
     location: location
     peSubnet: peSubnet
-    aiSearchId: memoryBackend == 'aisearch' ? aiSearch.outputs.resourceId : ''
-    aiSearchName: memoryBackend == 'aisearch' ? aiSearch.outputs.resourceName : ''
+    aiSearchId: aiSearch.outputs.resourceId
+    aiSearchName: aiSearch.outputs.resourceName
     docingId: docing.outputs.resourceId
     docingName: docing.outputs.resourceName
     redisId: redis.outputs.resourceId
     redisName: redis.outputs.resourceName
-    sbusId: sbus.outputs.resourceId
-    sbusName: sbus.outputs.resourceName
     signalrId: signalr.outputs.resourceId
     signalrName: signalr.outputs.resourceName
     sqldocgenId: sqldocgen.outputs.resourceId
@@ -211,11 +198,10 @@ output AZURE_CONTAINER_REGISTRY_NAME string = resources.outputs.AZURE_CONTAINER_
 output AZURE_CONTAINER_APPS_ENVIRONMENT_NAME string = resources.outputs.AZURE_CONTAINER_APPS_ENVIRONMENT_NAME
 output AZURE_CONTAINER_APPS_ENVIRONMENT_ID string = resources.outputs.AZURE_CONTAINER_APPS_ENVIRONMENT_ID
 output AZURE_CONTAINER_APPS_ENVIRONMENT_DEFAULT_DOMAIN string = resources.outputs.AZURE_CONTAINER_APPS_ENVIRONMENT_DEFAULT_DOMAIN
-output AISEARCH_CONNECTIONSTRING string = memoryBackend == 'aisearch' ? aiSearch.outputs.connectionString : ''
+output AISEARCH_CONNECTIONSTRING string = aiSearch.outputs.connectionString
 output DOCING_BLOBENDPOINT string = docing.outputs.blobEndpoint
 output INSIGHTS_APPINSIGHTSCONNECTIONSTRING string = insights.outputs.appInsightsConnectionString
 output REDIS_CONNECTIONSTRING string = redis.outputs.connectionString
-output SBUS_SERVICEBUSENDPOINT string = sbus.outputs.serviceBusEndpoint
 output SIGNALR_HOSTNAME string = signalr.outputs.hostName
 output SQLDOCGEN_SQLSERVERFQDN string = sqldocgen.outputs.sqlServerFqdn
 
@@ -230,15 +216,14 @@ output ORLEANS_BLOB_CONNECTIONSTRING string = orleansStorage.outputs.blobConnect
 output ORLEANS_STORAGE_TABLEENDPOINT string = orleansStorage.outputs.tableEndpoint
 output ORLEANS_TABLE_CONNECTIONSTRING string = orleansStorage.outputs.tableConnectionString
 
-output KMVECTORDB_SERVER_CONNECTIONSTRING string = memoryBackend == 'postgres' ? kmvectordb.outputs.connectionString : ''
-output KMVECTORDB_SERVER_FQDN string = memoryBackend == 'postgres' ? kmvectordb.outputs.serverFqdn : ''
+output KMVECTORDB_SERVER_CONNECTIONSTRING string = kmvectordb.outputs.connectionString
+output KMVECTORDB_SERVER_FQDN string = kmvectordb.outputs.serverFqdn
 
-output AI_SEARCH_RESOURCE_ID string = memoryBackend == 'aisearch' ? aiSearch.outputs.resourceId : ''
+output AI_SEARCH_RESOURCE_ID string = aiSearch.outputs.resourceId
 output DOCING_RESOURCE_ID string = docing.outputs.resourceId
 output REDIS_RESOURCE_ID string = redis.outputs.resourceId
-output SBUS_RESOURCE_ID string = sbus.outputs.resourceId
 output SIGNALR_RESOURCE_ID string = signalr.outputs.resourceId
 output SQLDOCGEN_RESOURCE_ID string = sqldocgen.outputs.resourceId
 output EVENTHUB_RESOURCE_ID string = eventhub.outputs.resourceId
 output ORLEANS_STORAGE_RESOURCE_ID string = orleansStorage.outputs.resourceId
-output KMVECTORDB_RESOURCE_ID string = memoryBackend == 'postgres' ? kmvectordb.outputs.resourceId : ''
+output KMVECTORDB_RESOURCE_ID string = kmvectordb.outputs.resourceId

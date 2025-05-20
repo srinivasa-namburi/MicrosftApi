@@ -123,11 +123,6 @@ public static class BuilderExtensions
         builder.AddGreenLightRedisClient("redis", credentialHelper, serviceConfigurationOptions);
 
         // Common services and dependencies
-        builder.AddAzureServiceBusClient("sbus", configureSettings: delegate (AzureMessagingServiceBusSettings settings)
-        {
-            settings.Credential = credentialHelper.GetAzureCredential();
-        });
-
         builder.AddAzureSearchClient("aiSearch", configureSettings: delegate (AzureSearchSettings settings)
         {
             settings.Credential = credentialHelper.GetAzureCredential();

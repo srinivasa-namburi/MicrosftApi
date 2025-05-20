@@ -17,7 +17,6 @@ var sqlPassword = builder.AddParameter("sqlPassword", true);
 var sqlDatabaseName = builder.Configuration["ServiceConfiguration:SQL:DatabaseName"];
 
 IResourceBuilder<IResourceWithConnectionString> docGenSql;
-IResourceBuilder<IResourceWithConnectionString> sbus;
 IResourceBuilder<IResourceWithConnectionString> redisResource;
 IResourceBuilder<IResourceWithConnectionString> signalr;
 IResourceBuilder<IResourceWithConnectionString> azureAiSearch;
@@ -59,10 +58,6 @@ if (builder.ExecutionContext.IsRunMode) // For local development
     signalr = builder.Configuration.GetConnectionString("signalr") != null
         ? builder.AddConnectionString("signalr")
         : builder.AddAzureSignalR("signalr");
-
-    sbus = builder.Configuration.GetConnectionString("sbus") != null
-        ? builder.AddConnectionString("sbus")
-        : builder.AddAzureServiceBus("sbus");
 
     eventHub = builder.Configuration.GetConnectionString("greenlight-cg-streams") != null
         ? builder.AddConnectionString("greenlight-cg-streams")
@@ -116,7 +111,6 @@ else // For production/Azure deployment
     docGenSql = builder.AddAzureSqlServer("sqldocgen").AddDatabase(sqlDatabaseName!);
 
     redisResource = builder.AddAzureRedis("redis");
-    sbus = builder.AddAzureServiceBus("sbus");
     azureAiSearch = builder.AddAzureSearch("aiSearch");
     signalr = builder.AddAzureSignalR("signalr");
 
@@ -176,7 +170,6 @@ var apiMain = builder
     .WithReference(redisResource)
     .WithReference(docGenSql)
     .WithReference(kmvectorDb)
-    .WithReference(sbus)
     .WithReference(azureAiSearch)
     .WithReference(eventHub)
     .WithReference(orleans.AsClient())
@@ -194,7 +187,6 @@ var silo = builder.AddProject<Projects.Microsoft_Greenlight_Silo>("silo")
     .WithReference(blobStorage)
     .WithReference(docGenSql)
     .WithReference(kmvectorDb)
-    .WithReference(sbus)
     .WithReference(redisResource)
     .WithReference(azureAiSearch)
     .WithReference(eventHub)
@@ -223,7 +215,6 @@ var docGenFrontend = builder
     .WithConfigSection(envKestrelConfigurationSection)
     .WithReference(azureAiSearch)
     .WithReference(blobStorage)
-    .WithReference(sbus)
     .WithReference(docGenSql)
     .WithReference(redisResource)
     .WithReference(signalr)

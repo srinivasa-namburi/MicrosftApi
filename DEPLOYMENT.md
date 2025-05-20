@@ -132,13 +132,15 @@ If you wish to grant access to a an additional, different resource group for the
      - POSTGRES_DNSZONE_RESOURCEID: {Required for private deployments with PostgreSQL backend. The resource ID of your pre-existing private DNS zone for PostgreSQL Flexible Server, in format `/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.Network/privateDnsZones/privatelink.postgres.database.azure.com`}
      - PVICO_OPENAI_RESOURCEGROUP : {The name of the Resource Group where your Azure OpenAI instance has been deployed}
      - HOSTNAMEOVERRIDE : (Only required if used with third party load balancers) Json object with the following format:
+
    ```json
    {
      "Web": "webtest.azure.ai",
      "Api": "apitest.azure.ai"
    }
    ```
-     - ENABLE_AZURE_SIGNALR: (Optional) Set to false if you want to disable the Azure SignalR service and use the API as your SignalR endpoint.
+
+   - ENABLE_AZURE_SIGNALR: (Optional) Set to false if you want to disable the Azure SignalR service and use the API as your SignalR endpoint.
 
 ![SetGithubSecrets](./docs/assets/GithubSecrets.png)
 
