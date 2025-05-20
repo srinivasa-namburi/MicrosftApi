@@ -182,8 +182,8 @@ module privateEndpoints 'privateEndpoints.bicep' = if (isPrivate) {
   params: {
     location: location
     peSubnet: peSubnet
-    aiSearchId: aiSearch.outputs.resourceId
-    aiSearchName: aiSearch.outputs.resourceName
+    aiSearchId: memoryBackend == 'aisearch' ? aiSearch.outputs.resourceId : ''
+    aiSearchName: memoryBackend == 'aisearch' ? aiSearch.outputs.resourceName : ''
     docingId: docing.outputs.resourceId
     docingName: docing.outputs.resourceName
     redisId: redis.outputs.resourceId
