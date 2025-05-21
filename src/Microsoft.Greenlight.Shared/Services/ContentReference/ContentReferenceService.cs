@@ -16,7 +16,7 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
     public class ContentReferenceService : IContentReferenceService
     {
         private readonly IDistributedCache _cache;
-        private readonly DocGenerationDbContext _dbContext;
+        private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
         private readonly ILogger<ContentReferenceService> _logger;
         private readonly IContentReferenceGenerationServiceFactory _generationServiceFactory;
         private readonly IAiEmbeddingService _aiEmbeddingService;
@@ -30,20 +30,20 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
         /// Constructor for the (now updated) content reference service.
         /// </summary>
         /// <param name="cache">Distributed cache for storing lightweight reference DTOs</param>
-        /// <param name="dbContext">Database context for accessing document data</param>
+        /// <param name="dbContextFactory">Factory for creating database contexts</param>
         /// <param name="generationServiceFactory">Factory for resolving content reference generation services</param>
         /// <param name="aiEmbeddingService">Service for generating and comparing embeddings</param>
         /// <param name="logger">Logger for service diagnostics</param>
         /// <param name="mapper">AutoMapper instance</param>
         public ContentReferenceService(
             IDistributedCache cache,
-            DocGenerationDbContext dbContext,
+            IDbContextFactory<DocGenerationDbContext> dbContextFactory,
             IContentReferenceGenerationServiceFactory generationServiceFactory,
             IAiEmbeddingService aiEmbeddingService,
             ILogger<ContentReferenceService> logger, IMapper mapper)
         {
             _cache = cache;
-            _dbContext = dbContext;
+            _dbContextFactory = dbContextFactory;
             _generationServiceFactory = generationServiceFactory;
             _aiEmbeddingService = aiEmbeddingService;
             _logger = logger;
@@ -108,9 +108,9 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                 var queryEmbedding = await _aiEmbeddingService.GenerateEmbeddingsAsync(searchTerm);
                 var results = new List<(ContentReferenceItemInfo Item, float Score)>();
 
-                // Use the database to get stored embeddings (or generate if needed)
+                await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
                 var referenceIds = allReferences.Select(r => r.Id).ToList();
-                var dbReferences = await _dbContext.ContentReferenceItems
+                var dbReferences = await dbContext.ContentReferenceItems
                     .Where(r => referenceIds.Contains(r.Id))
                     .Include(r => r.Embeddings)
                     .ToListAsync();
@@ -132,7 +132,7 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                         else
                         {
                             // Generate embeddings on the fly if there are none
-                            var embedding = await GenerateEmbeddingsForReferenceAsync(reference);
+                            var embedding = await GenerateEmbeddingsForReferenceAsync(reference, dbContext);
                             if (embedding is { Length: > 0 })
                             {
                                 var referenceInfo = allReferences.FirstOrDefault(r => r.Id == reference.Id);
@@ -203,14 +203,17 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
 
                     case ContentReferenceType.ReviewItem:
                         // ContentReferenceSourceId is a ReviewInstanceId; get the ExportedLinkId from the ReviewInstance
-                        var reviewInstance = await _dbContext.Set<ReviewInstance>().FirstOrDefaultAsync(r => r.Id == reference.ContentReferenceSourceId.Value);
-                        if (reviewInstance != null && reviewInstance.ExportedLinkId != Guid.Empty)
+                        await using (var dbContext = await _dbContextFactory.CreateDbContextAsync())
                         {
-                            var exportedDocLink = await _dbContext.ExportedDocumentLinks.FindAsync(reviewInstance.ExportedLinkId);
-                            if (exportedDocLink != null)
+                            var reviewInstance = await dbContext.Set<ReviewInstance>().FirstOrDefaultAsync(r => r.Id == reference.ContentReferenceSourceId.Value);
+                            if (reviewInstance != null && reviewInstance.ExportedLinkId != Guid.Empty)
                             {
-                                var fileService2 = _generationServiceFactory.GetGenerationService<ExportedDocumentLink>(ContentReferenceType.ExternalFile);
-                                ragText = await fileService2?.GenerateContentTextForRagAsync(exportedDocLink.Id);
+                                var exportedDocLink = await dbContext.ExportedDocumentLinks.FindAsync(reviewInstance.ExportedLinkId);
+                                if (exportedDocLink != null)
+                                {
+                                    var fileService2 = _generationServiceFactory.GetGenerationService<ExportedDocumentLink>(ContentReferenceType.ExternalFile);
+                                    ragText = await fileService2?.GenerateContentTextForRagAsync(exportedDocLink.Id);
+                                }
                             }
                         }
                         break;
@@ -250,15 +253,17 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
         /// <inheritdoc />
         public async Task<string?> GetRagTextAsync(Guid id)
         {
-            var reference = await _dbContext.ContentReferenceItems.FirstOrDefaultAsync(r => r.Id == id);
+            await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+            var reference = await dbContext.ContentReferenceItems.FirstOrDefaultAsync(r => r.Id == id);
             return reference?.RagText;
         }
 
         /// <inheritdoc />
         public async Task<ContentReferenceItem> GetOrCreateContentReferenceItemAsync(Guid id, ContentReferenceType type)
         {
+            await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
             // Always check the database first with better query optimization - include FileHash for ExternalFile type
-            var query = _dbContext.ContentReferenceItems.AsQueryable();
+            var query = dbContext.ContentReferenceItems.AsQueryable();
             if (type == ContentReferenceType.ExternalFile)
             {
                 query = query.Include(r => r.Embeddings);
@@ -274,12 +279,12 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                 if (type == ContentReferenceType.ExternalFile)
                 {
                     // Try to find the ExportedDocumentLink that this reference points to
-                    var exportedDocLink = await _dbContext.ExportedDocumentLinks.FindAsync(id);
+                    var exportedDocLink = await dbContext.ExportedDocumentLinks.FindAsync(id);
 
                     if (exportedDocLink != null && !string.IsNullOrEmpty(exportedDocLink.FileHash))
                     {
                         // Look for existing references with matching file hash
-                        var existingReference = await _dbContext.ContentReferenceItems
+                        var existingReference = await dbContext.ContentReferenceItems
                             .Include(r => r.Embeddings)
                             .Where(r =>
                                 r.ReferenceType == ContentReferenceType.ExternalFile &&
@@ -326,17 +331,17 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                     };
                 }
 
-                _dbContext.ContentReferenceItems.Add(reference);
+                dbContext.ContentReferenceItems.Add(reference);
             }
 
             // --- Custom logic for ReviewItem: treat as ExternalFile for RAG/embedding if needed ---
             if (reference.ReferenceType == ContentReferenceType.ReviewItem && string.IsNullOrEmpty(reference.RagText) && reference.ContentReferenceSourceId != null)
             {
                 // ContentReferenceSourceId is a ReviewInstanceId; get the ExportedLinkId from the ReviewInstance
-                var reviewInstance = await _dbContext.Set<ReviewInstance>().FirstOrDefaultAsync(r => r.Id == reference.ContentReferenceSourceId.Value);
+                var reviewInstance = await dbContext.Set<ReviewInstance>().FirstOrDefaultAsync(r => r.Id == reference.ContentReferenceSourceId.Value);
                 if (reviewInstance != null && reviewInstance.ExportedLinkId != Guid.Empty)
                 {
-                    var exportedDocLink = await _dbContext.ExportedDocumentLinks.FindAsync(reviewInstance.ExportedLinkId);
+                    var exportedDocLink = await dbContext.ExportedDocumentLinks.FindAsync(reviewInstance.ExportedLinkId);
                     if (exportedDocLink != null)
                     {
                         try
@@ -373,7 +378,7 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                 }
             }
 
-            await _dbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             return reference;
         }
 
@@ -384,7 +389,8 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
             // Process each reference type
             var validDocumentIds = await ProcessGeneratedDocumentReferencesAsync(ct);
 
-            await _dbContext.SaveChangesAsync(ct);
+            await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+            await dbContext.SaveChangesAsync(ct);
 
             // Remove stale references for all processed types
             await RemoveStaleReferencesAsync(validDocumentIds, ct);
@@ -400,8 +406,9 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
         /// <returns>HashSet of valid document IDs</returns>
         private async Task<HashSet<Guid>> ProcessGeneratedDocumentReferencesAsync(CancellationToken ct = default)
         {
+            await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
             // Get all documents
-            var documents = await _dbContext.GeneratedDocuments.ToListAsync(ct);
+            var documents = await dbContext.GeneratedDocuments.ToListAsync(ct);
             var validDocumentIds = documents.Select(doc => doc.Id).ToHashSet();
 
             var documentService = _generationServiceFactory.GetGenerationService<GeneratedDocument>(ContentReferenceType.GeneratedDocument);
@@ -424,7 +431,7 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                 }
 
                 // Insert or update each new reference (by checking ContentReferenceSourceId)
-                await UpsertReferencesAsync(newReferenceInfos, ct);
+                await UpsertReferencesAsync(newReferenceInfos, dbContext, ct);
             }
 
             return validDocumentIds;
@@ -434,14 +441,15 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
         /// Inserts or updates references based on ContentReferenceSourceId
         /// </summary>
         /// <param name="referenceInfos">References to upsert</param>
+        /// <param name="dbContext">Database context</param>
         /// <param name="ct">Cancellation token</param>
-        private async Task UpsertReferencesAsync(List<ContentReferenceItemInfo> referenceInfos, CancellationToken ct = default)
+        private async Task UpsertReferencesAsync(List<ContentReferenceItemInfo> referenceInfos, DocGenerationDbContext dbContext, CancellationToken ct = default)
         {
             foreach (var newRef in referenceInfos)
             {
                 if (newRef.ContentReferenceSourceId.HasValue)
                 {
-                    var existingReference = await _dbContext.ContentReferenceItems
+                    var existingReference = await dbContext.ContentReferenceItems
                         .FirstOrDefaultAsync(r => r.ContentReferenceSourceId == newRef.ContentReferenceSourceId
                                                  && r.ReferenceType == newRef.ReferenceType, ct);
                     if (existingReference == null)
@@ -455,16 +463,16 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                             DisplayName = newRef.DisplayName,
                             Description = newRef.Description
                         };
-                        _dbContext.ContentReferenceItems.Add(reference);
-                        await EnsureContentReferenceItemWithRagTextAsync(reference, saveChanges: false);
+                        dbContext.ContentReferenceItems.Add(reference);
+                        await EnsureContentReferenceItemWithRagTextAsync(reference, dbContext, saveChanges: false);
                     }
                     else
                     {
                         // Update existing reference
                         existingReference.DisplayName = newRef.DisplayName;
                         existingReference.Description = newRef.Description;
-                        _dbContext.ContentReferenceItems.Update(existingReference);
-                        await EnsureContentReferenceItemWithRagTextAsync(existingReference, saveChanges: false);
+                        dbContext.ContentReferenceItems.Update(existingReference);
+                        await EnsureContentReferenceItemWithRagTextAsync(existingReference, dbContext, saveChanges: false);
                     }
                 }
             }
@@ -474,12 +482,12 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
         /// Removes stale references that no longer have a corresponding source entity
         /// </summary>
         /// <param name="validDocumentIds">Valid document IDs</param>
-        /// <param name="validFileIds">Valid file IDs</param>
         /// <param name="ct">Cancellation token</param>
         private async Task RemoveStaleReferencesAsync(HashSet<Guid> validDocumentIds, CancellationToken ct = default)
         {
+            await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
             // For document references
-            var staleDocumentReferences = await _dbContext.ContentReferenceItems
+            var staleDocumentReferences = await dbContext.ContentReferenceItems
                 .Where(r => r.ReferenceType == ContentReferenceType.GeneratedDocument &&
                             r.ContentReferenceSourceId.HasValue &&
                             !validDocumentIds.Contains(r.ContentReferenceSourceId.Value))
@@ -495,17 +503,17 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                 // Find ContentEmbeddings for each stale reference and remove them first
                 foreach (var reference in allStaleReferences)
                 {
-                    var embeddings = await _dbContext.ContentEmbeddings
+                    var embeddings = await dbContext.ContentEmbeddings
                         .Where(e => e.ContentReferenceItemId == reference.Id)
                         .ToListAsync(ct);
                     if (embeddings.Any())
                     {
-                        _dbContext.ContentEmbeddings.RemoveRange(embeddings);
+                        dbContext.ContentEmbeddings.RemoveRange(embeddings);
                     }
                 }
 
-                _dbContext.ContentReferenceItems.RemoveRange(allStaleReferences);
-                await _dbContext.SaveChangesAsync(ct);
+                dbContext.ContentReferenceItems.RemoveRange(allStaleReferences);
+                await dbContext.SaveChangesAsync(ct);
             }
         }
 
@@ -515,8 +523,9 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
             if (ids == null || !ids.Any())
                 return new List<ContentReferenceItem>();
 
+            await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
             // Fetch all items from the database
-            var existingItems = await _dbContext.ContentReferenceItems
+            var existingItems = await dbContext.ContentReferenceItems
                 .Where(r => ids.Contains(r.Id))
                 .ToListAsync();
 
@@ -531,18 +540,18 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                     Id = id,
                     ReferenceType = ContentReferenceType.GeneratedDocument // default type
                 };
-                _dbContext.ContentReferenceItems.Add(newItem);
+                dbContext.ContentReferenceItems.Add(newItem);
                 existingItems.Add(newItem);
             }
 
             if (missingIds.Any())
-                await _dbContext.SaveChangesAsync();
+                await dbContext.SaveChangesAsync();
 
             // Ensure RagText is populated for all items
             var result = new List<ContentReferenceItem>();
             foreach (var item in existingItems)
             {
-                var ensuredItem = await EnsureContentReferenceItemWithRagTextAsync(item, saveChanges: true);
+                var ensuredItem = await EnsureContentReferenceItemWithRagTextAsync(item, dbContext, saveChanges: true);
                 result.Add(ensuredItem);
             }
 
@@ -552,8 +561,9 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
         /// <inheritdoc />
         public async Task RemoveReferenceAsync(Guid referenceId, CancellationToken ct = default)
         {
+            await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
             // Remove the content reference item and its associated embeddings from the database
-            var referenceItem = await _dbContext.ContentReferenceItems
+            var referenceItem = await dbContext.ContentReferenceItems
                 .Include(r => r.Embeddings)
                 .FirstOrDefaultAsync(r => r.Id == referenceId, ct);
 
@@ -561,18 +571,18 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
             {
                 if (referenceItem.Embeddings.Any())
                 {
-                    _dbContext.ContentEmbeddings.RemoveRange(referenceItem.Embeddings);
+                    dbContext.ContentEmbeddings.RemoveRange(referenceItem.Embeddings);
                 }
-                _dbContext.ContentReferenceItems.Remove(referenceItem);
+                dbContext.ContentReferenceItems.Remove(referenceItem);
             }
 
-            await _dbContext.SaveChangesAsync(ct);
+            await dbContext.SaveChangesAsync(ct);
             // Refresh the cache since the set of references has changed.
             await RefreshReferencesCacheAsync();
         }
 
         /// <inheritdoc />
-        private async Task<ContentReferenceItem> EnsureContentReferenceItemWithRagTextAsync(ContentReferenceItem reference, bool saveChanges = false)
+        private async Task<ContentReferenceItem> EnsureContentReferenceItemWithRagTextAsync(ContentReferenceItem reference, DocGenerationDbContext dbContext, bool saveChanges = false)
         {
             if (reference == null)
                 throw new ArgumentNullException(nameof(reference));
@@ -587,7 +597,7 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                         reference.RagText = generatedRagText;
                         if (saveChanges)
                         {
-                            await _dbContext.SaveChangesAsync();
+                            await dbContext.SaveChangesAsync();
                         }
                     }
                 }
@@ -602,7 +612,7 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
 
 
 
-        private async Task<float[]?> GenerateEmbeddingsForReferenceAsync(ContentReferenceItem reference)
+        private async Task<float[]?> GenerateEmbeddingsForReferenceAsync(ContentReferenceItem reference, DocGenerationDbContext dbContext)
         {
             if (reference?.ContentReferenceSourceId == null)
                 return null;
@@ -625,10 +635,10 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
 
                     case ContentReferenceType.ReviewItem:
                         // ContentReferenceSourceId is a ReviewInstanceId; get the ExportedLinkId from the ReviewInstance
-                        var reviewInstance = await _dbContext.ReviewInstances.FirstOrDefaultAsync(r => r.Id == reference.ContentReferenceSourceId.Value);
+                        var reviewInstance = await dbContext.ReviewInstances.FirstOrDefaultAsync(r => r.Id == reference.ContentReferenceSourceId.Value);
                         if (reviewInstance != null && reviewInstance.ExportedLinkId != Guid.Empty)
                         {
-                            var exportedDocLink = await _dbContext.ExportedDocumentLinks.FindAsync(reviewInstance.ExportedLinkId);
+                            var exportedDocLink = await dbContext.ExportedDocumentLinks.FindAsync(reviewInstance.ExportedLinkId);
                             if (exportedDocLink != null)
                             {
                                 var fileServiceForReviewFiles = _generationServiceFactory.GetGenerationService<ExportedDocumentLink>(ContentReferenceType.ExternalFile);
@@ -742,9 +752,10 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
             if (!references.Any())
                 return result;
 
+            await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
             foreach (var reference in references.Where(r => !string.IsNullOrEmpty(r.RagText)))
             {
-                var storedEmbeddings = await _dbContext.ContentEmbeddings
+                var storedEmbeddings = await dbContext.ContentEmbeddings
                     .Where(e => e.ContentReferenceItemId == reference.Id)
                     .OrderBy(e => e.SequenceNumber)
                     .ToListAsync();
@@ -753,8 +764,8 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                     (storedEmbeddings.Any() &&
                      !AreChunksUpToDate(storedEmbeddings.Select(e => e.ChunkText).ToList(), reference.RagText, maxChunkTokens))))
                 {
-                    await GenerateAndStoreEmbeddingsAsync(reference, maxChunkTokens);
-                    storedEmbeddings = await _dbContext.ContentEmbeddings
+                    await GenerateAndStoreEmbeddingsAsync(reference, dbContext, maxChunkTokens);
+                    storedEmbeddings = await dbContext.ContentEmbeddings
                         .Where(e => e.ContentReferenceItemId == reference.Id)
                         .OrderBy(e => e.SequenceNumber)
                         .ToListAsync();
@@ -776,24 +787,21 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
         }
 
         /// <summary>
-        /// Generates and stores embeddings for a content reference item.
-        /// </summary>
-        /// <summary>
         /// Generates and stores embeddings for a content reference item with adaptive parallelism to handle rate limits.
         /// </summary>
-        private async Task GenerateAndStoreEmbeddingsAsync(ContentReferenceItem reference, int maxChunkTokens)
+        private async Task GenerateAndStoreEmbeddingsAsync(ContentReferenceItem reference, DocGenerationDbContext dbContext, int maxChunkTokens)
         {
             if (string.IsNullOrEmpty(reference.RagText))
                 return;
 
-            var existingEmbeddings = await _dbContext.ContentEmbeddings
+            var existingEmbeddings = await dbContext.ContentEmbeddings
                 .Where(e => e.ContentReferenceItemId == reference.Id)
                 .ToListAsync();
 
             if (existingEmbeddings.Any())
             {
-                _dbContext.ContentEmbeddings.RemoveRange(existingEmbeddings);
-                await _dbContext.SaveChangesAsync();
+                dbContext.ContentEmbeddings.RemoveRange(existingEmbeddings);
+                await dbContext.SaveChangesAsync();
             }
 
             var chunks = ChunkContent(reference.RagText, maxChunkTokens);
@@ -872,13 +880,13 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                         SequenceNumber = success.Index,
                         GeneratedUtc = DateTime.UtcNow
                     };
-                    _dbContext.ContentEmbeddings.Add(embedding);
+                    dbContext.ContentEmbeddings.Add(embedding);
                 }
 
                 // Save completed embeddings
                 if (successfulEmbeddings.Any())
                 {
-                    await _dbContext.SaveChangesAsync();
+                    await dbContext.SaveChangesAsync();
                 }
 
                 // Re-queue failed chunks
@@ -916,9 +924,6 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
             }
         }
 
-        /// <summary>
-        /// Determines if an exception is related to rate limiting.
-        /// </summary>
         private bool IsRateLimitError(Exception ex)
         {
             string exceptionMessage = ex.ToString();
@@ -928,10 +933,6 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                    exceptionMessage.Contains("rate limit");
         }
 
-
-        /// <summary>
-        /// Checks if stored chunks match what would be generated from the current text.
-        /// </summary>
         private bool AreChunksUpToDate(List<string> storedChunks, string currentText, int maxChunkTokens)
         {
             var newChunks = ChunkContent(currentText, maxChunkTokens);
@@ -945,9 +946,6 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
             return true;
         }
 
-        /// <summary>
-        /// Serializes an embedding vector to a byte array.
-        /// </summary>
         private byte[] SerializeEmbeddingVector(float[] vector)
         {
             using var memoryStream = new MemoryStream();
@@ -960,9 +958,6 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
             return memoryStream.ToArray();
         }
 
-        /// <summary>
-        /// Deserializes an embedding vector from a byte array.
-        /// </summary>
         private float[] DeserializeEmbeddingVector(byte[] bytes)
         {
             using var memoryStream = new MemoryStream(bytes);
@@ -981,9 +976,7 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
             var references = new List<ContentReferenceItemInfo>();
             try
             {
-                // Currently only support GeneratedDocument references.
                 await AddGeneratedDocumentReferencesAsync(references);
-                // Additional types can be added in future.
             }
             catch (Exception ex)
             {
@@ -996,7 +989,8 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
         {
             try
             {
-                var documents = await _dbContext.GeneratedDocuments
+                await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+                var documents = await dbContext.GeneratedDocuments
                     .AsNoTracking()
                     .ToListAsync();
 

@@ -43,7 +43,7 @@ public class KmDocsPlugin : IPluginImplementation
     }
 
     [KernelFunction(nameof(AskQuestionAsync))]
-    [Description("Ask a question to the underlying document process knowledge base")]
+    [Description("Ask a question to the underlying library of documents similar to the one you're working on. This knowledge base provides chunks of other documents of the same type, but they do NOT contain detail for the current document. Use for language and completeness checks for sections, but not for project details for the current project.")]
     public async Task<string> AskQuestionAsync(
         [Description("The question to ask the document repository. Make sure to format as a proper question ending with a question mark")]
         string question)
@@ -63,7 +63,7 @@ public class KmDocsPlugin : IPluginImplementation
     }
 
     [KernelFunction(nameof(SearchKnowledgeBase))]
-    [Description("Search the underlying document process knowledge base. Prefer this over AskQuestionAsync.")]
+    [Description("Search the library of documents similar to the one you're working on. Prefer this over AskQuestionAsync. This knowledge base provides chunks of other documents of the same type, but they do NOT contain detail for the current document. Use for language and completeness checks for sections, but not for project details for the current project.")]
     public async Task<List<KernelMemoryDocumentSourceReferenceItem>> SearchKnowledgeBase(
         [Description("The search query to use")]
         string searchQuery)
