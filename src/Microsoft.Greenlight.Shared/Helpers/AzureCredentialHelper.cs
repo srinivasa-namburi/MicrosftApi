@@ -66,13 +66,16 @@ public class AzureCredentialHelper
 
     private void Initialize()
     {
-
         var azureInstance = _configuration["AzureAd:Instance"];
-        if (azureInstance != null && azureInstance.Contains(AzureAuthorityHosts.AzureGovernment.ToString()))
+        if (!string.IsNullOrEmpty(azureInstance) &&
+            azureInstance.Contains(AzureAuthorityHosts.AzureGovernment.ToString(), StringComparison.OrdinalIgnoreCase))
         {
             _authorityHost = AzureAuthorityHosts.AzureGovernment;
         }
-
-        _authorityHost = AzureAuthorityHosts.AzurePublicCloud;
+        else
+        {
+            _authorityHost = AzureAuthorityHosts.AzurePublicCloud;
+        }
     }
+
 }
