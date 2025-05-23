@@ -48,6 +48,7 @@ param deploymentModel string = 'public'
 param memoryBackend string = 'aisearch'
 
 var isPrivate = deploymentModel == 'private'
+var usePostgresMemory = memoryBackend == 'postgres'
 var tags = {
   'azd-env-name': resourceGroupName
 }
@@ -150,7 +151,8 @@ module orleansStorage 'orleans/orleans.module.bicep' = {
   }
 }
 
-module kmvectordb 'kmvectordb/kmvectordb.module.bicep' = {
+// Only deploy PostgreSQL vector database if using postgres memory backend
+module kmvectordb 'kmvectordb/kmvectordb.module.bicep' = if (usePostgresMemory) {
   name: 'kmvectordb'
   scope: resourceGroup('${resourceGroupName}')
   params: {
@@ -216,8 +218,10 @@ output ORLEANS_BLOB_CONNECTIONSTRING string = orleansStorage.outputs.blobConnect
 output ORLEANS_STORAGE_TABLEENDPOINT string = orleansStorage.outputs.tableEndpoint
 output ORLEANS_TABLE_CONNECTIONSTRING string = orleansStorage.outputs.tableConnectionString
 
-output KMVECTORDB_SERVER_CONNECTIONSTRING string = kmvectordb.outputs.connectionString
-output KMVECTORDB_SERVER_FQDN string = kmvectordb.outputs.serverFqdn
+// Conditional outputs for PostgreSQL vector database - only available when postgres memory backend is used
+output KMVECTORDB_SERVER_CONNECTIONSTRING string = usePostgresMemory ? kmvectordb.outputs.connectionString : ''
+output KMVECTORDB_SERVER_FQDN string = usePostgresMemory ? kmvectordb.outputs.serverFqdn : ''
+output KMVECTORDB_RESOURCE_ID string = usePostgresMemory ? kmvectordb.outputs.resourceId : ''
 
 output AI_SEARCH_RESOURCE_ID string = aiSearch.outputs.resourceId
 output DOCING_RESOURCE_ID string = docing.outputs.resourceId
@@ -226,4 +230,3 @@ output SIGNALR_RESOURCE_ID string = signalr.outputs.resourceId
 output SQLDOCGEN_RESOURCE_ID string = sqldocgen.outputs.resourceId
 output EVENTHUB_RESOURCE_ID string = eventhub.outputs.resourceId
 output ORLEANS_STORAGE_RESOURCE_ID string = orleansStorage.outputs.resourceId
-output KMVECTORDB_RESOURCE_ID string = kmvectordb.outputs.resourceId

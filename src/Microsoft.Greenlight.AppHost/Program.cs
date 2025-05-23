@@ -26,7 +26,10 @@ IResourceBuilder<IResourceWithConnectionString> eventHub;
 IResourceBuilder<IResourceWithConnectionString> orleansClusteringTable;
 IResourceBuilder<IResourceWithConnectionString> orleansBlobStorage;
 IResourceBuilder<IResourceWithConnectionString> orleansCheckpointing;
-IResourceBuilder<IResourceWithConnectionString> kmvectorDb;
+IResourceBuilder<IResourceWithConnectionString>? kmvectorDb = null;
+
+// Read UsePostgresMemory flag from configuration
+var usePostgres = builder.Configuration.GetValue<bool>("ServiceConfiguration:GreenlightServices:Global:UsePostgresMemory");
 
 if (builder.ExecutionContext.IsRunMode) // For local development
 {
@@ -41,8 +44,7 @@ if (builder.ExecutionContext.IsRunMode) // For local development
     {
         docGenSql = builder
          .AddAzureSqlServer("sqldocgen")
-         .AddDatabase(sqlDatabaseName!)
-         ;
+         .AddDatabase(sqlDatabaseName!);
     }
     else
     {
@@ -86,7 +88,6 @@ if (builder.ExecutionContext.IsRunMode) // For local development
             insights = builder.AddAzureApplicationInsights("insights");
     }
 
-
     var orleansStorage = builder
         .AddAzureStorage("orleans-storage").RunAsEmulator();
 
@@ -99,12 +100,14 @@ if (builder.ExecutionContext.IsRunMode) // For local development
     orleansCheckpointing = orleansStorage
         .AddTables("checkpointing");
 
-    kmvectorDb = builder.AddPostgres("kmvectordb-server", port: 9002)
-        .WithImage("pgvector/pgvector:pg16") // Adds pgvector support to Postgres by using a custom image
-        .WithDataVolume("pvico-pgsql-kmvectordb-vol")
-        .WithLifetime(ContainerLifetime.Persistent)
-        .AddDatabase("kmvectordb");
-
+    if (usePostgres)
+    {
+        kmvectorDb = builder.AddPostgres("kmvectordb-server", port: 9002)
+            .WithImage("pgvector/pgvector:pg16") // Adds pgvector support to Postgres by using a custom image
+            .WithDataVolume("pvico-pgsql-kmvectordb-vol")
+            .WithLifetime(ContainerLifetime.Persistent)
+            .AddDatabase("kmvectordb");
+    }
 }
 else // For production/Azure deployment
 {
@@ -134,8 +137,11 @@ else // For production/Azure deployment
     orleansCheckpointing = orleansStorage
         .AddTables("checkpointing");
 
-    kmvectorDb = builder.AddAzurePostgresFlexibleServer("kmvectordb-server")
-        .AddDatabase("kmvectordb");
+    if (usePostgres)
+    {
+        kmvectorDb = builder.AddAzurePostgresFlexibleServer("kmvectordb-server")
+            .AddDatabase("kmvectordb");
+    }
 }
 
 OrleansService orleans = builder.AddOrleans("default")
@@ -144,7 +150,7 @@ OrleansService orleans = builder.AddOrleans("default")
     .WithServiceId("greenlight-main-silo")
     .WithGrainStorage(orleansBlobStorage);
 
-var dbSetupManager = builder
+var dbSetupManagerBuilder = builder
     .AddProject<Projects.Microsoft_Greenlight_SetupManager_DB>("db-setupmanager")
     .WithReplicas(1) // There can only be one Setup Manager
     .WithConfigSection(envServiceConfigurationConfigurationSection)
@@ -153,11 +159,15 @@ var dbSetupManager = builder
     .WithConfigSection(envAzureAdConfigurationSection)
     .WithReference(docGenSql)
     .WithReference(redisResource)
-    .WithReference(kmvectorDb)
     .WaitFor(docGenSql) // We need this to be up and running before we can run the setup manager
     .WaitFor(redisResource); // Wait for this to make it ready for other services
- 
-var apiMain = builder
+if (usePostgres && kmvectorDb != null)
+{
+    dbSetupManagerBuilder.WithReference(kmvectorDb);
+}
+var dbSetupManager = dbSetupManagerBuilder;
+
+var apiMainBuilder = builder
     .AddProject<Projects.Microsoft_Greenlight_API_Main>("api-main")
     .WithExternalHttpEndpoints()
     .WithConfigSection(envAzureAdConfigurationSection)
@@ -169,7 +179,6 @@ var apiMain = builder
     .WithReference(signalr)
     .WithReference(redisResource)
     .WithReference(docGenSql)
-    .WithReference(kmvectorDb)
     .WithReference(azureAiSearch)
     .WithReference(eventHub)
     .WithReference(orleans.AsClient())
@@ -177,8 +186,13 @@ var apiMain = builder
     .WithReference(orleansBlobStorage)
     .WithReference(orleansClusteringTable)
     .WaitForCompletion(dbSetupManager);
+if (usePostgres && kmvectorDb != null)
+{
+    apiMainBuilder.WithReference(kmvectorDb);
+}
+var apiMain = apiMainBuilder;
 
-var silo = builder.AddProject<Projects.Microsoft_Greenlight_Silo>("silo")
+var siloBuilder = builder.AddProject<Projects.Microsoft_Greenlight_Silo>("silo")
     .WithReplicas(1)
     .WithConfigSection(envServiceConfigurationConfigurationSection)
     .WithConfigSection(envConnectionStringsConfigurationSection)
@@ -186,7 +200,6 @@ var silo = builder.AddProject<Projects.Microsoft_Greenlight_Silo>("silo")
     .WithConfigSection(envAzureAdConfigurationSection)
     .WithReference(blobStorage)
     .WithReference(docGenSql)
-    .WithReference(kmvectorDb)
     .WithReference(redisResource)
     .WithReference(azureAiSearch)
     .WithReference(eventHub)
@@ -196,6 +209,11 @@ var silo = builder.AddProject<Projects.Microsoft_Greenlight_Silo>("silo")
     .WithReference(orleansClusteringTable)
     .WithReference(apiMain)
     .WaitForCompletion(dbSetupManager);
+if (usePostgres && kmvectorDb != null)
+{
+    siloBuilder.WithReference(kmvectorDb);
+}
+var silo = siloBuilder;
 
 if (builder.ExecutionContext.IsRunMode)
 {
@@ -205,7 +223,7 @@ if (builder.ExecutionContext.IsRunMode)
         .WithEnvironment("Orleans__Endpoints__SiloPort", "10091");
 }
 
-var docGenFrontend = builder
+var docGenFrontendBuilder = builder
     .AddProject<Projects.Microsoft_Greenlight_Web_DocGen>("web-docgen")
     .WithExternalHttpEndpoints()
     .WithConfigSection(envAzureAdConfigurationSection)
@@ -226,6 +244,11 @@ var docGenFrontend = builder
     .WithReference(orleansClusteringTable)
     .WaitFor(apiMain)
     .WaitForCompletion(dbSetupManager);
+if (usePostgres && kmvectorDb != null)
+{
+    docGenFrontendBuilder.WithReference(kmvectorDb);
+}
+var docGenFrontend = docGenFrontendBuilder;
 
 apiMain.WithReference(docGenFrontend); // Necessary for CORS policy creation
 
