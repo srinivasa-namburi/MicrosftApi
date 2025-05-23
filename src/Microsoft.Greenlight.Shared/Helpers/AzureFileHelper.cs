@@ -1,3 +1,4 @@
+using Azure;
 using Azure.Storage.Blobs;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -27,8 +28,7 @@ public class AzureFileHelper
     /// <param name="blobServiceClient">The BlobServiceClient instance.</param>
     /// <param name="dbContextFactory">Database Context factory</param>
     public AzureFileHelper(
-        [FromKeyedServices("blob-docing")]
-        BlobServiceClient blobServiceClient, 
+        [FromKeyedServices("blob-docing")] BlobServiceClient blobServiceClient,
         IDbContextFactory<DocGenerationDbContext> dbContextFactory,
         ILogger<AzureFileHelper> logger)
     {
@@ -45,7 +45,8 @@ public class AzureFileHelper
     /// <param name="containerName">The name of the container.</param>
     /// <param name="overwriteIfExists">Whether to overwrite the file if it exists.</param>
     /// <returns>The URL of the uploaded file.</returns>
-    public virtual async Task<string> UploadFileToBlobAsync(Stream stream, string fileName, string containerName, bool overwriteIfExists)
+    public virtual async Task<string> UploadFileToBlobAsync(Stream stream, string fileName, string containerName,
+        bool overwriteIfExists)
     {
         var container = _blobServiceClient.GetBlobContainerClient(containerName);
         await container.CreateIfNotExistsAsync();
@@ -57,6 +58,7 @@ public class AzureFileHelper
 
         return blobClient.Uri.ToString();
     }
+
     /// <summary>
     /// Saves file information to the database with file hash for deduplication.
     /// </summary>
@@ -65,65 +67,66 @@ public class AzureFileHelper
     /// <param name="fileName">The name of the file.</param>
     /// <param name="generatedDocumentId">The ID of the generated document.</param>
     /// <returns>The saved ExportedDocumentLink entity.</returns>
-   public virtual async Task<ExportedDocumentLink> SaveFileInfoAsync(string absoluteUrl, string containerName, string fileName, Guid? generatedDocumentId = null)
-{
-    var dbContext = await _dbContextFactory.CreateDbContextAsync();
-
-    var documentType = containerName switch
+    public virtual async Task<ExportedDocumentLink> SaveFileInfoAsync(string absoluteUrl, string containerName,
+        string fileName, Guid? generatedDocumentId = null)
     {
-        "document-export" => FileDocumentType.ExportedDocument,
-        "document-assets" => FileDocumentType.DocumentAsset,
-        "reviews" => FileDocumentType.Review,
-        "temporary-references" => FileDocumentType.TemporaryReferenceFile,
-        _ => FileDocumentType.ExportedDocument
-    };
+        var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
-    // Calculate file hash by retrieving the file and computing its hash
-    string? fileHash = null;
-    try
-    {
-        // Get the file stream using the existing method - wrap with both null-safety and try-catch
-        var fileStream = await GetFileAsStreamFromFullBlobUrlAsync(absoluteUrl);
-        if (fileStream != null)
+        var documentType = containerName switch
         {
-            try
+            "document-export" => FileDocumentType.ExportedDocument,
+            "document-assets" => FileDocumentType.DocumentAsset,
+            "reviews" => FileDocumentType.Review,
+            "temporary-references" => FileDocumentType.TemporaryReferenceFile,
+            _ => FileDocumentType.ExportedDocument
+        };
+
+        // Calculate file hash by retrieving the file and computing its hash
+        string? fileHash = null;
+        try
+        {
+            // Get the file stream using the existing method - wrap with both null-safety and try-catch
+            var fileStream = await GetFileAsStreamFromFullBlobUrlAsync(absoluteUrl);
+            if (fileStream != null)
             {
-                // Use the StreamExtensions helper to generate the hash
-                fileHash = fileStream.GenerateHashFromStreamAndResetStream();
+                try
+                {
+                    // Use the StreamExtensions helper to generate the hash
+                    fileHash = fileStream.GenerateHashFromStreamAndResetStream();
+                }
+                catch (Exception ex)
+                {
+                    // Log but continue - we'll just save without the hash
+                    _logger.LogError($"Error calculating hash for {fileName}: {ex.Message}");
+                }
             }
-            catch (Exception ex)
+            else
             {
-                // Log but continue - we'll just save without the hash
-                _logger.LogError($"Error calculating hash for {fileName}: {ex.Message}");
+                _logger.LogWarning($"Warning: Could not retrieve file stream for {absoluteUrl}");
             }
         }
-        else
+        catch (Exception ex)
         {
-            _logger.LogWarning($"Warning: Could not retrieve file stream for {absoluteUrl}");
+            // Log but continue - the file hash is optional
+            _logger.LogError($"Error calculating file hash for {fileName}: {ex.Message}");
         }
+
+        var entityEntry = await dbContext.ExportedDocumentLinks.AddAsync(new ExportedDocumentLink
+        {
+            GeneratedDocumentId = generatedDocumentId,
+            AbsoluteUrl = absoluteUrl,
+            BlobContainer = containerName,
+            Created = DateTimeOffset.UtcNow,
+            FileName = fileName,
+            MimeType = new MimeTypesDetection().GetFileType(fileName),
+            Type = documentType,
+            FileHash = fileHash // Set the calculated hash - which may be null
+        });
+
+        await dbContext.SaveChangesAsync();
+
+        return entityEntry.Entity;
     }
-    catch (Exception ex)
-    {
-        // Log but continue - the file hash is optional
-        _logger.LogError($"Error calculating file hash for {fileName}: {ex.Message}");
-    }
-
-    var entityEntry = await dbContext.ExportedDocumentLinks.AddAsync(new ExportedDocumentLink
-    {
-        GeneratedDocumentId = generatedDocumentId,
-        AbsoluteUrl = absoluteUrl,
-        BlobContainer = containerName,
-        Created = DateTimeOffset.UtcNow,
-        FileName = fileName,
-        MimeType = new MimeTypesDetection().GetFileType(fileName),
-        Type = documentType,
-        FileHash = fileHash // Set the calculated hash - which may be null
-    });
-
-    await dbContext.SaveChangesAsync();
-
-    return entityEntry.Entity;
-}
 
 
 
@@ -239,4 +242,89 @@ public class AzureFileHelper
             Console.WriteLine($"Error deleting blob {blobName} from container {containerName}: {ex.Message}");
         }
     }
+
+    /// <summary>
+    /// Opens a writable stream directly to a blob.  Bytes are flushed to Azure
+    /// as they are written; when the caller disposes the stream the upload is
+    /// finalised.
+    /// </summary>
+    /// <param name="containerName">Target container.</param>
+    /// <param name="blobName">Name / path of the blob.</param>
+    /// <param name="overwrite">True = create or replace; false = fail if the blob already exists.</param>
+    /// <param name="cancellationToken">Optional cancellation token.</param>
+    /// <returns>A writable <see cref="Stream"/>.</returns>
+    public virtual async Task<Stream> OpenWriteStreamAsync(
+        string containerName,
+        string blobName,
+        bool overwrite = true,
+        CancellationToken cancellationToken = default)
+    {
+        // Make sure the container exists (no-op if it already does)
+        var container = _blobServiceClient.GetBlobContainerClient(containerName);
+        await container.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
+
+        var blob = container.GetBlobClient(blobName);
+
+        /*  Blob SDK notes
+         *  ---------------
+         *  - OpenWriteAsync returns a stream that uploads data in blocks under
+         *    the hood; it is ideal for large, unknown-length payloads.
+         *  - If you want to control block size, parallelism, etc. you can pass
+         *    a BlobOpenWriteOptions instance (left at defaults here).
+         */
+        return await blob.OpenWriteAsync(
+            overwrite: overwrite,
+            options: null,
+            cancellationToken: cancellationToken);
+    }
+
+    /// <summary>
+    /// Opens a readable stream to an existing blob.  The caller reads it exactly
+    /// like any other <see cref="Stream"/> – perfect for piping straight into
+    /// Postgres COPY or for computing checksums.
+    /// </summary>
+    /// <param name="containerName">Name of the container.</param>
+    /// <param name="blobName">Name / path of the blob inside the container.</param>
+    /// <param name="cancellationToken">Optional cancellation token.</param>
+    /// <returns>A readable <see cref="Stream"/>; throws <see cref="RequestFailedException"/>
+    ///          if the blob does not exist.</returns>
+    public virtual async Task<Stream> OpenReadStreamAsync(
+        string containerName,
+        string blobName,
+        CancellationToken cancellationToken = default)
+    {
+        var container = _blobServiceClient.GetBlobContainerClient(containerName);
+        var blob = container.GetBlobClient(blobName);
+
+        /*  OpenReadAsync downloads on demand and supports random access if you
+         *  pass allowModifications:false (the default).  Good for very large
+         *  blobs because you never need the whole thing in memory or on disk.
+         */
+        return await blob.OpenReadAsync(
+            options: null, // BlobOpenReadOptions
+            cancellationToken: cancellationToken);
+    }
+
+    /// <summary>
+    /// Get the storage account name from the blob service client.
+    /// </summary>
+    /// <returns></returns>
+    public string GetStorageAccountName()
+    {
+        // Get the storage account name from the _blobServiceClient
+        var uri = _blobServiceClient.Uri;
+        var accountName = uri.Host.Split('.')[0];
+        return accountName;
+
+    }
+
+    /// <summary>
+    /// Get the blob service client from the helper
+    /// </summary>
+    /// <returns></returns>
+    public BlobServiceClient GetBlobServiceClient()
+    {
+        return _blobServiceClient;
+    }
 }
+    

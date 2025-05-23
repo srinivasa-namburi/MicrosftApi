@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 using System.IO.Compression;
 using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Grains.ApiSpecific.Contracts;
@@ -7,9 +7,7 @@ using Microsoft.Greenlight.Grains.Shared.Contracts.Models;
 using Microsoft.Greenlight.Shared.Contracts.Messages;
 using Microsoft.Greenlight.Shared.Helpers;
 using Npgsql;
-using NpgsqlTypes;
 using Orleans.Concurrency;
-using Pgvector;
 
 namespace Microsoft.Greenlight.Grains.Shared.Maintenance
 {
@@ -75,120 +73,256 @@ namespace Microsoft.Greenlight.Grains.Shared.Maintenance
                 Started = DateTimeOffset.UtcNow
             };
 
-            string? tempZipPath = null;
-            string? tempExtractDir = null;
-            string? tempJsonPath = null;
             try
             {
-                _logger.LogInformation("Starting import for {Schema}.{Table} from blob: {Url}", schema, tableName, blobUrl);
+                _logger.LogInformation(
+                    "Starting import for {Schema}.{Table} from blob: {Url}",
+                    schema, tableName, blobUrl);
 
-                // Download the zip file to a temp file
-                tempZipPath = Path.Combine(Path.GetTempPath(), $"import-{Guid.NewGuid()}.zip");
-                await using (var blobStream = await _fileHelper.GetFileAsStreamFromFullBlobUrlAsync(blobUrl))
-                await using (var fileStream = File.Create(tempZipPath))
-                {
-                    await blobStream.CopyToAsync(fileStream);
-                }
+                // 1) Open & decompress the backup blob
+                await using var rawBlobStream = await _fileHelper.GetFileAsStreamFromFullBlobUrlAsync(blobUrl)
+                                           ?? throw new InvalidOperationException("Could not open backup blob.");
+                await using var gzip = new GZipStream(rawBlobStream, CompressionMode.Decompress, leaveOpen: false);
 
-                // Extract the zip to a temp directory
-                tempExtractDir = Path.Combine(Path.GetTempPath(), $"import-{Guid.NewGuid()}");
-                Directory.CreateDirectory(tempExtractDir);
-                ZipFile.ExtractToDirectory(tempZipPath, tempExtractDir);
-
-                // Find the JSON file in the extracted directory
-                tempJsonPath = Directory.GetFiles(tempExtractDir, "*.json").FirstOrDefault();
-                if (tempJsonPath == null)
-                    throw new Exception("No JSON file found in the extracted zip archive.");
-
-                // Read and deserialize the JSON
-                await using var jsonStream = File.OpenRead(tempJsonPath);
-                var rows = await JsonSerializer.DeserializeAsync<List<IndexSectionRow>>(jsonStream);
-                if (rows == null || !rows.Any())
-                    throw new Exception("Backup file is empty or invalid.");
-
-                // Normalize and validate rows for embedding and labels
-                foreach (var row in rows)
-                {
-                    // Ensure embedding is a non-null float[]
-                    if (row.embedding == null)
-                        row.embedding = Array.Empty<float>();
-                    // Ensure labels is a non-null string[]
-                    if (row.labels == null)
-                        row.labels = Array.Empty<string>();
-                }
-
-                _logger.LogInformation("Retrieved {Count} rows from backup file", rows.Count);
-
+                // 2) Connect and reload types
                 await using var conn = await _dataSource.OpenConnectionAsync();
                 await conn.ReloadTypesAsync();
-                await using var tx = await conn.BeginTransactionAsync();
 
-                try
+                // Create a unique name for the temporary table
+                string tempTableName = $"{tableName}_import_{DateTime.UtcNow.Ticks}";
+
+                // 3) Clean up any existing temporary tables first
+                await CleanupExistingTemporaryTables(conn, schema, tableName);
+
+                // 4) Create temporary table with the same structure as the original
+                await CreateTemporaryTableWithSameStructure(conn, schema, tableName, tempTableName);
+
+                // 5) Perform the COPY operation into the temporary table
                 {
-                    // Truncate the table first
-                    _logger.LogInformation("Truncating table {Schema}.{Table}", schema, tableName);
-                    await using (var clearCmd = new NpgsqlCommand($"TRUNCATE {schema}.\"{tableName}\"", conn, tx))
-                    {
-                        await clearCmd.ExecuteNonQueryAsync();
-                    }
+                    await using var pgStream = await conn.BeginRawBinaryCopyAsync(
+                        $"COPY {schema}.\"{tempTableName}\" FROM STDIN (FORMAT BINARY)");
 
-                    int insertedCount = 0;
-                    foreach (var row in rows)
-                    {
-                        var cmdText = $@"INSERT INTO {schema}.""{tableName}"" (_pk, embedding, labels, chunk, extras, my_field1, _update) VALUES (@pk, @embedding, @labels, @chunk, @extras, @my_field1, @update)";
-                        await using var cmd = new NpgsqlCommand(cmdText, conn, tx);
-                        cmd.Parameters.AddWithValue("pk", row._pk);
-                        cmd.Parameters.AddWithValue("embedding", new Vector(row.embedding));
-                        cmd.Parameters.AddWithValue("labels", row.labels);
-                        cmd.Parameters.AddWithValue("chunk", row.chunk);
-                        cmd.Parameters.AddWithValue("extras", NpgsqlDbType.Jsonb, row.extras.GetRawText());
-                        cmd.Parameters.AddWithValue("my_field1", row.my_field1);
-                        cmd.Parameters.AddWithValue("update", row._update.HasValue ? row._update.Value : DBNull.Value);
-                        await cmd.ExecuteNonQueryAsync();
-                        insertedCount++;
-                    }
+                    // 6) Pump from GZip → Postgres
+                    await gzip.CopyToAsync(pgStream, bufferSize: 64 * 1024);
+                    await pgStream.FlushAsync();
 
-                    _logger.LogInformation("Inserted {Count} rows into {Schema}.{Table}", insertedCount, schema, tableName);
-                    await tx.CommitAsync();
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error during import, rolling back transaction");
-                    await tx.RollbackAsync();
-                    throw;
+                    // The COPY operation completes when the stream is disposed by the await using
                 }
 
+                // 7) Count rows in the temporary table to verify import was successful
+                int rowCount = await CountRowsInTable(conn, schema, tempTableName);
+                _logger.LogInformation("Successfully imported {RowCount} rows into temporary table", rowCount);
+
+                // 8) Now in a transaction, swap out the data
+                await SwapTableData(conn, schema, tableName, tempTableName);
+
+                // The operation is now complete, set status and notify
                 _status.Completed = DateTimeOffset.UtcNow;
                 _status.IsCompleted = true;
 
-                _logger.LogInformation("Successfully imported {Schema}.{Table} from blob storage", schema, tableName);
+                _logger.LogInformation(
+                    "Successfully imported {Schema}.{Table} from blob storage",
+                    schema, tableName);
                 await _notifier.NotifyImportJobCompletedAsync(userGroup, ToNotification());
             }
             catch (Exception ex)
             {
                 _status.Error = ex.Message;
                 _status.Completed = DateTimeOffset.UtcNow;
-                var statusType = _status.GetType();
-                var isFailedProp = statusType.GetProperty("IsFailed");
-                if (isFailedProp != null && isFailedProp.CanWrite)
-                {
-                    isFailedProp.SetValue(_status, true);
-                }
-                else
-                {
-                    var isFailedField = statusType.GetField("IsFailed");
-                    if (isFailedField != null)
-                        isFailedField.SetValue(_status, true);
-                }
 
-                _logger.LogError(ex, "Import failed for {Schema}.{Table} from {Url}", schema, tableName, blobUrl);
+                // Mark as failed
+                var t = _status.GetType();
+                var pi = t.GetProperty("IsFailed");
+                if (pi != null && pi.CanWrite) pi.SetValue(_status, true);
+                else t.GetField("IsFailed")?.SetValue(_status, true);
+
+                _logger.LogError(
+                    ex, "Import failed for {Schema}.{Table} from {Url}",
+                    schema, tableName, blobUrl);
                 await _notifier.NotifyImportJobFailedAsync(userGroup, ToNotification());
             }
-            finally
+        }
+
+        /// <summary>
+        /// Cleans up any existing temporary tables that may be left over from previous import attempts
+        /// </summary>
+        private async Task CleanupExistingTemporaryTables(NpgsqlConnection conn, string schema, string baseTableName)
+        {
+            _logger.LogInformation("Checking for and cleaning up any existing temporary import tables for {Schema}.{Table}",
+                schema, baseTableName);
+
+            // Look for any tables in the schema that match the pattern of our temporary tables
+            string pattern = $"{baseTableName}_import_%";
+
+            using var cmd = new NpgsqlCommand(
+                @$"
+                DO $$
+                DECLARE
+                    temp_table_record RECORD;
+                BEGIN
+                    -- Find all tables matching the pattern in this schema
+                    FOR temp_table_record IN 
+                        SELECT tablename 
+                        FROM pg_tables 
+                        WHERE schemaname = '{schema}' 
+                          AND tablename LIKE '{pattern}'
+                    LOOP
+                        -- Drop each table found
+                        EXECUTE 'DROP TABLE IF EXISTS {schema}.' || quote_ident(temp_table_record.tablename) || ' CASCADE';
+                        RAISE NOTICE 'Dropped temporary table: %', temp_table_record.tablename;
+                    END LOOP;
+                END $$;
+                ", conn);
+
+            await cmd.ExecuteNonQueryAsync();
+            _logger.LogInformation("Cleanup of temporary tables completed");
+        }
+
+        /// <summary>
+        /// Creates a temporary table with the same structure as the original table
+        /// </summary>
+        private async Task CreateTemporaryTableWithSameStructure(NpgsqlConnection conn, string schema, string originalTable, string tempTable)
+        {
+            _logger.LogInformation("Creating temporary table {Schema}.{TempTable} with same structure as {Schema}.{OriginalTable}",
+                schema, tempTable, schema, originalTable);
+
+            // First check if table exists before attempting to create it
+            bool tableExists = await CheckTableExists(conn, schema, tempTable);
+            if (tableExists)
             {
-                try { if (tempJsonPath != null && File.Exists(tempJsonPath)) File.Delete(tempJsonPath); } catch { }
-                try { if (tempZipPath != null && File.Exists(tempZipPath)) File.Delete(tempZipPath); } catch { }
-                try { if (tempExtractDir != null && Directory.Exists(tempExtractDir)) Directory.Delete(tempExtractDir, true); } catch { }
+                _logger.LogWarning("Temporary table {Schema}.{TempTable} already exists, dropping it first",
+                    schema, tempTable);
+
+                // Drop the table if it already exists
+                using (var dropCmd = new NpgsqlCommand($"DROP TABLE IF EXISTS {schema}.\"{tempTable}\" CASCADE", conn))
+                {
+                    await dropCmd.ExecuteNonQueryAsync();
+                }
+            }
+
+            // Create the temporary table with the same structure as the original
+            // Using a two-step approach: create the table structure first, then add indexes separately
+            using var cmd = new NpgsqlCommand(
+                $@"
+                -- Create the table structure without indexes
+                CREATE TABLE {schema}.""{tempTable}"" (LIKE {schema}.""{originalTable}"" INCLUDING DEFAULTS INCLUDING CONSTRAINTS EXCLUDING INDEXES);
+                ", conn);
+
+            await cmd.ExecuteNonQueryAsync();
+
+            // Now add the indexes separately
+            await CreateIndexesForTable(conn, schema, originalTable, tempTable);
+        }
+
+        /// <summary>
+        /// Checks if a table exists in the database
+        /// </summary>
+        private async Task<bool> CheckTableExists(NpgsqlConnection conn, string schema, string tableName)
+        {
+            using var cmd = new NpgsqlCommand(
+                "SELECT EXISTS (SELECT FROM pg_tables WHERE schemaname = @schema AND tablename = @tableName)",
+                conn);
+
+            cmd.Parameters.AddWithValue("schema", schema);
+            cmd.Parameters.AddWithValue("tableName", tableName);
+
+            return (bool)await cmd.ExecuteScalarAsync();
+        }
+
+        /// <summary>
+        /// Creates the same indexes on the temporary table as exist on the original table
+        /// </summary>
+        private async Task CreateIndexesForTable(NpgsqlConnection conn, string schema, string originalTable, string tempTable)
+        {
+            _logger.LogInformation("Creating indexes for temporary table {Schema}.{TempTable}",
+                schema, tempTable);
+
+            // Get the list of indexes from the original table and create them on the temp table
+            using var cmd = new NpgsqlCommand(
+                $@"
+                DO $$
+                DECLARE
+                    index_def text;
+                    index_cmd text;
+                BEGIN
+                    -- For each index on the original table
+                    FOR index_def IN 
+                        SELECT indexdef 
+                        FROM pg_indexes 
+                        WHERE schemaname = '{schema}' AND tablename = '{originalTable}'
+                    LOOP
+                        -- Replace the original table name with the temp table name in the index definition
+                        index_cmd := REPLACE(index_def, '{originalTable}', '{tempTable}');
+
+                        -- Log the command we're about to execute
+                        RAISE NOTICE 'Executing index creation: %', index_cmd;
+
+                        -- Execute the modified index creation command
+                        BEGIN
+                            EXECUTE index_cmd;
+                            RAISE NOTICE 'Index created successfully';
+                        EXCEPTION WHEN OTHERS THEN
+                            -- Log errors but continue with other indexes
+                            RAISE WARNING 'Error creating index: %', SQLERRM;
+                        END;
+                    END LOOP;
+                END $$;
+                ", conn);
+
+            await cmd.ExecuteNonQueryAsync();
+            _logger.LogInformation("Index creation for temporary table completed");
+        }
+
+        /// <summary>
+        /// Counts the number of rows in a table
+        /// </summary>
+        private async Task<int> CountRowsInTable(NpgsqlConnection conn, string schema, string tableName)
+        {
+            using var cmd = new NpgsqlCommand($"SELECT COUNT(*) FROM {schema}.\"{tableName}\"", conn);
+            return Convert.ToInt32(await cmd.ExecuteScalarAsync());
+        }
+
+        /// <summary>
+        /// Swaps the data between the original table and the temporary table
+        /// </summary>
+        private async Task SwapTableData(NpgsqlConnection conn, string schema, string originalTable, string tempTable)
+        {
+            _logger.LogInformation("Swapping data from temporary table {Schema}.{TempTable} to {Schema}.{OriginalTable}",
+                schema, tempTable, schema, originalTable);
+
+            // Start a transaction for the data swap
+            await using var tx = await conn.BeginTransactionAsync();
+
+            try
+            {
+                // Truncate the original table and insert data from the temporary table
+                using var cmd = new NpgsqlCommand(
+                    $@"
+                    -- Truncate the original table
+                    TRUNCATE TABLE {schema}.""{originalTable}"";
+
+                    -- Insert data from temporary table to original table
+                    INSERT INTO {schema}.""{originalTable}""
+                    SELECT * FROM {schema}.""{tempTable}"";
+
+                    -- Drop the temporary table
+                    DROP TABLE {schema}.""{tempTable}"" CASCADE;
+                    ", conn, tx);
+
+                await cmd.ExecuteNonQueryAsync();
+
+                // Commit the transaction
+                await tx.CommitAsync();
+
+                _logger.LogInformation("Data swap completed successfully");
+            }
+            catch (Exception ex)
+            {
+                // Rollback the transaction if anything goes wrong
+                await tx.RollbackAsync();
+
+                _logger.LogError(ex, "Failed to swap data from temporary table to original table");
+                throw new InvalidOperationException($"Failed to swap data: {ex.Message}", ex);
             }
         }
 

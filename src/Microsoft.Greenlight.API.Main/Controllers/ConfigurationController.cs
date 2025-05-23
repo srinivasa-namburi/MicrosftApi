@@ -526,7 +526,7 @@ public class ConfigurationController : BaseController
         var grain = _clusterClient.GetGrain<IIndexExportGrain>(jobId);
         var userGroup = User?.Identity?.Name ?? "admin";
         _= grain.StartExportAsync(request.Schema, request.TableName, userGroup);
-        return Accepted(new Microsoft.Greenlight.Shared.Contracts.DTO.IndexJobStartedResponse { JobId = jobId });
+        return Accepted(new IndexJobStartedResponse { JobId = jobId });
     }
 
     /// <summary>
@@ -554,7 +554,7 @@ public class ConfigurationController : BaseController
         var grain = _clusterClient.GetGrain<IIndexImportGrain>(jobId);
         var userGroup = User?.Identity?.Name ?? "admin";
         _ = grain.StartImportAsync(request.Schema, request.TableName, request.BlobUrl, userGroup);
-        return Accepted(new Microsoft.Greenlight.Shared.Contracts.DTO.IndexJobStartedResponse { JobId = jobId });
+        return Accepted(new IndexJobStartedResponse { JobId = jobId });
     }
 
     /// <summary>
