@@ -134,7 +134,7 @@ public static class KernelMemoryExtensions
 
         // Get OpenAI connection string
         var openAiConnString = configuration.GetConnectionString("openai-planner") ?? throw new InvalidOperationException("OpenAI connection string not found.");
-        var kmVectorDbConnectionString = configuration.GetConnectionString("kmvectordb") ?? throw new InvalidOperationException("Postgres KM Vector DB connection string not found.");
+        var kmVectorDbConnectionString = configuration.GetConnectionString("kmvectordb");
 
         // Extract Endpoint and Key
         var openAiEndpoint = openAiConnString.Split(";").FirstOrDefault(x => x.Contains("Endpoint="))?.Split("=")[1]
@@ -198,37 +198,41 @@ public static class KernelMemoryExtensions
             Auth = AzureAISearchConfig.AuthTypes.ManualTokenCredential
         };
 
-        var postgresConfig = new PostgresConfig
+        PostgresConfig? postgresConfig = null;
+        if (kmVectorDbConnectionString != null)
         {
-            ConnectionString = kmVectorDbConnectionString,
-            Schema = "km",
-            TableNamePrefix = "km_",
-            Columns = new Dictionary<string, string>
+            postgresConfig = new PostgresConfig
             {
-                { "id",        "_pk" },
-                { "embedding", "embedding" },
-                { "tags",      "labels" },
-                { "content",   "chunk" },
-                { "payload",   "extras" }
-            },
-            CreateTableSql =
-            [
-                "BEGIN;                                                                      ",
-                "SELECT pg_advisory_xact_lock(%%lock_id%%);                                  ",
-                "CREATE TABLE IF NOT EXISTS %%table_name%% (                                 ",
-                "  _pk         TEXT NOT NULL PRIMARY KEY,                                    ",
-                "  embedding   vector(%%vector_size%%),                                      ",
-                "  labels      TEXT[] DEFAULT '{}'::TEXT[] NOT NULL,                         ",
-                "  chunk       TEXT DEFAULT '' NOT NULL,                                     ",
-                "  extras      JSONB DEFAULT '{}'::JSONB NOT NULL,                           ",
-                "  my_field1   TEXT DEFAULT '',                                              ",
-                "  _update     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP            ",
-                ");                                                                          ",
-                "CREATE INDEX ON %%table_name%% USING GIN(labels);                           ",
-                "CREATE INDEX ON %%table_name%% USING hnsw (embedding vector_cosine_ops); ",
-                "COMMIT;                                                                     "
-            ]
-        };
+                ConnectionString = kmVectorDbConnectionString,
+                Schema = "km",
+                TableNamePrefix = "km_",
+                Columns = new Dictionary<string, string>
+                {
+                    { "id", "_pk" },
+                    { "embedding", "embedding" },
+                    { "tags", "labels" },
+                    { "content", "chunk" },
+                    { "payload", "extras" }
+                },
+                CreateTableSql =
+                [
+                    "BEGIN;                                                                      ",
+                    "SELECT pg_advisory_xact_lock(%%lock_id%%);                                  ",
+                    "CREATE TABLE IF NOT EXISTS %%table_name%% (                                 ",
+                    "  _pk         TEXT NOT NULL PRIMARY KEY,                                    ",
+                    "  embedding   vector(%%vector_size%%),                                      ",
+                    "  labels      TEXT[] DEFAULT '{}'::TEXT[] NOT NULL,                         ",
+                    "  chunk       TEXT DEFAULT '' NOT NULL,                                     ",
+                    "  extras      JSONB DEFAULT '{}'::JSONB NOT NULL,                           ",
+                    "  my_field1   TEXT DEFAULT '',                                              ",
+                    "  _update     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP            ",
+                    ");                                                                          ",
+                    "CREATE INDEX ON %%table_name%% USING GIN(labels);                           ",
+                    "CREATE INDEX ON %%table_name%% USING hnsw (embedding vector_cosine_ops); ",
+                    "COMMIT;                                                                     "
+                ]
+            };
+        }
 
 
         azureAiSearchConfig.SetCredential(azureCredentialHelper.GetAzureCredential());
@@ -278,7 +282,7 @@ public static class KernelMemoryExtensions
             .WithCustomTextPartitioningOptions(textPartitioningOptions)
             .WithAzureBlobsDocumentStorage(azureBlobsConfig);
 
-        if (serviceConfigurationOptions.GreenlightServices.Global.UsePostgresMemory)
+        if (serviceConfigurationOptions.GreenlightServices.Global.UsePostgresMemory && postgresConfig != null)
         {
             kernelMemoryBuilder.WithPostgresMemoryDb(postgresConfig);
         }

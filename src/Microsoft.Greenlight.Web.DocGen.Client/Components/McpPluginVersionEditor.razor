@@ -131,6 +131,8 @@
             _model.Name = PluginInfo.Name;
             _model.Description = PluginInfo.Description;
             _environmentVariables = new Dictionary<string, string>();
+            _model.Arguments = new List<string>();
+            _model.EnvironmentVariables = new Dictionary<string, string>();
         }
         else if (!IsNewVersion && Version != null)
         {
@@ -142,12 +144,14 @@
             _sseUrl = Version.Url ?? string.Empty;
             _sseAuthType = Version.AuthenticationType ?? McpPluginAuthenticationType.None;
 
-            _environmentVariables = new Dictionary<string, string>(
-                Version.EnvironmentVariables ?? new Dictionary<string, string>());
+            // Ensure model arguments and env vars are set from Version
+            _model.Arguments = Version.Arguments != null ? new List<string>(Version.Arguments) : new List<string>();
+            _model.EnvironmentVariables = Version.EnvironmentVariables != null ? new Dictionary<string, string>(Version.EnvironmentVariables) : new Dictionary<string, string>();
+            _environmentVariables = new Dictionary<string, string>(_model.EnvironmentVariables);
 
-            if (Version.Arguments != null && Version.Arguments.Any())
+            if (_model.Arguments != null && _model.Arguments.Any())
             {
-                _argumentsString = string.Join(",", Version.Arguments);
+                _argumentsString = string.Join(",", _model.Arguments);
             }
         }
     }

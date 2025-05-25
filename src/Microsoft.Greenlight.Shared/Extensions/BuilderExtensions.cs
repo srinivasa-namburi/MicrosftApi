@@ -100,10 +100,14 @@ public static class BuilderExtensions
         }
 
         // Add Postgres client
-        builder.AddNpgsqlDataSource("kmvectordb", configureDataSourceBuilder: dataSourceBuilder =>
+        if (serviceConfigurationOptions.GreenlightServices.Global.UsePostgresMemory)
         {
-            dataSourceBuilder.UseVector();
-        });
+            builder.AddNpgsqlDataSource("kmvectordb", configureDataSourceBuilder: dataSourceBuilder =>
+            {
+                dataSourceBuilder.UseVector();
+            });
+        }
+       
         
         return builder;
     }
@@ -223,6 +227,9 @@ public static class BuilderExtensions
         builder.Services.AddSingleton<IPluginSourceReferenceCollector, PluginSourceReferenceCollector>();
         builder.Services.AddKeyedTransient<IFunctionInvocationFilter, InputOutputTrackingPluginInvocationFilter>(
             "InputOutputTrackingPluginInvocationFilter");
+
+        builder.Services.AddKeyedTransient<IFunctionInvocationFilter, PluginExecutionLoggingFilter>(
+            "PluginExecutionLoggingFilter");
 
         builder.AddRepositories();
 

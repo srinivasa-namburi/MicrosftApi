@@ -23,7 +23,7 @@ public class RepositoryIndexMaintenanceGrain : Grain, IRepositoryIndexMaintenanc
     private readonly SearchIndexClient _searchIndexClient;
     private readonly AzureFileHelper _fileHelper;
     private readonly IOptionsSnapshot<ServiceConfigurationOptions> _optionsSnapshot;
-    private readonly NpgsqlDataSource _npgsqlDataSource; // Added for Postgres
+    private readonly NpgsqlDataSource? _npgsqlDataSource; // Now optional
     private const string DummyDocumentContainer = "admin";
     private const string DummyDocumentName = "DummyDocument.pdf";
 
@@ -33,14 +33,14 @@ public class RepositoryIndexMaintenanceGrain : Grain, IRepositoryIndexMaintenanc
         SearchIndexClient searchIndexClient,
         AzureFileHelper fileHelper,
         IOptionsSnapshot<ServiceConfigurationOptions> optionsSnapshot,
-        NpgsqlDataSource npgsqlDataSource) // Added for Postgres
+        NpgsqlDataSource? npgsqlDataSource = null) // Now optional
     {
         _optionsSnapshot = optionsSnapshot;
         _sp = sp;
         _logger = logger;
         _searchIndexClient = searchIndexClient;
         _fileHelper = fileHelper;
-        _npgsqlDataSource = npgsqlDataSource; // Added for Postgres
+        _npgsqlDataSource = npgsqlDataSource; // Now optional
     }
 
     /// <inheritdoc/>
@@ -54,23 +54,31 @@ public class RepositoryIndexMaintenanceGrain : Grain, IRepositoryIndexMaintenanc
 
         if (_optionsSnapshot.Value.GreenlightServices.Global.UsePostgresMemory)
         {
-            // Query Postgres for tables in the km schema with names starting with 'km-'
-            var indexNames = new HashSet<string>();
-            await using var conn = await _npgsqlDataSource.OpenConnectionAsync();
-            await using (var cmd = conn.CreateCommand())
+            if (_npgsqlDataSource == null)
             {
-                cmd.CommandText = @"SELECT tablename FROM pg_tables WHERE schemaname = 'km' AND tablename LIKE 'km-%'";
-                await using var reader = await cmd.ExecuteReaderAsync();
-                while (await reader.ReadAsync())
+                _logger.LogWarning("UsePostgresMemory is enabled but NpgsqlDataSource is not configured. Skipping Postgres index discovery.");
+                indexNamesList = new List<string>();
+            }
+            else
+            {
+                // Query Postgres for tables in the km schema with names starting with 'km-'
+                var indexNames = new HashSet<string>();
+                await using var conn = await _npgsqlDataSource.OpenConnectionAsync();
+                await using (var cmd = conn.CreateCommand())
                 {
-                    var tableName = reader.GetString(0);
-                    if (tableName.StartsWith("km-"))
+                    cmd.CommandText = @"SELECT tablename FROM pg_tables WHERE schemaname = 'km' AND tablename LIKE 'km-%'";
+                    await using var reader = await cmd.ExecuteReaderAsync();
+                    while (await reader.ReadAsync())
                     {
-                        indexNames.Add(tableName.Substring(3)); // Remove 'km-' prefix
+                        var tableName = reader.GetString(0);
+                        if (tableName.StartsWith("km-"))
+                        {
+                            indexNames.Add(tableName.Substring(3)); // Remove 'km-' prefix
+                        }
                     }
                 }
+                indexNamesList = indexNames.ToList();
             }
-            indexNamesList = indexNames.ToList();
         }
         else
         {

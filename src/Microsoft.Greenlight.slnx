@@ -4,6 +4,7 @@
     <BuildType Name="Publish" />
     <BuildType Name="Release" />
   </Configurations>
+  <Folder Name="/.github/" />
   <Folder Name="/0. Aspire Infrastructure/">
     <Project Path="Microsoft.Greenlight.AppHost/Microsoft.Greenlight.AppHost.csproj">
       <BuildType Solution="Publish|*" Project="Debug" />
@@ -20,6 +21,7 @@
   <Folder Name="/00. Misc/">
     <File Path="../DEPLOYMENT.md" />
     <File Path=".gitignore" />
+    <File Path=".github/copilot-instructions.md" />
   </Folder>
   <Folder Name="/00. Misc/Build/">
     <File Path="../.github/workflows/load-trainingdata.yml" />

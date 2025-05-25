@@ -658,6 +658,19 @@ namespace Microsoft.Greenlight.Shared.Plugins
 
             try
             {
+                // Clean the directory
+                foreach (var file in Directory.GetFiles(pluginDirectory, "*", SearchOption.AllDirectories))
+                {
+                    try
+                    {
+                        File.Delete(file);
+                    }
+                    catch (IOException ex)
+                    {
+                        _logger?.LogWarning(ex, "Error deleting file {File}", file);
+                    }
+                }
+
                 // Extract the plugin
                 using (var archive = new ZipArchive(pluginStream, ZipArchiveMode.Read, leaveOpen: true))
                 {
@@ -684,11 +697,11 @@ namespace Microsoft.Greenlight.Shared.Plugins
                     return true; // Overrides needed
                 }
 
-                // Update plugin and version details from manifest
-                plugin.Description ??= manifest.Description;
-                version.Command ??= manifest.Command;
-                version.Arguments = version.Arguments.Any() ? version.Arguments : manifest.Arguments;
-                version.EnvironmentVariables = version.EnvironmentVariables.Any() ? version.EnvironmentVariables : manifest.EnvironmentVariables;
+                // Always set plugin and version details from manifest
+                plugin.Description = manifest.Description;
+                version.Command = manifest.Command;
+                version.Arguments = manifest.Arguments;
+                version.EnvironmentVariables = manifest.EnvironmentVariables;
 
                 return false; // No overrides needed
             }

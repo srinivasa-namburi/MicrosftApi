@@ -451,6 +451,9 @@ namespace Microsoft.Greenlight.API.Main.Controllers
             var pluginStream = await _fileHelper.GetFileAsStreamFromContainerAndBlobName(containerName, blobFileName);
             var needsOverride = await _pluginManager.ProcessUploadedPluginAsync(pluginStream!, plugin, existingVersion);
 
+            // Ensure manifest values are persisted
+            await _dbContext.SaveChangesAsync();
+
             // Reload the plugin with its versions to get the complete data
             var updatedPlugin = await _dbContext.McpPlugins
                 .Include(p => p.Versions)

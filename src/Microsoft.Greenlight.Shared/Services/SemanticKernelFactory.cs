@@ -428,6 +428,9 @@ namespace Microsoft.Greenlight.Shared.Services
             kernel.FunctionInvocationFilters.Add(
                 scope.ServiceProvider.GetRequiredKeyedService<IFunctionInvocationFilter>("InputOutputTrackingPluginInvocationFilter"));
 
+            kernel.FunctionInvocationFilters.Add(
+                scope.ServiceProvider.GetRequiredKeyedService<IFunctionInvocationFilter>("PluginExecutionLoggingFilter"));
+
             return kernel;
         }
 

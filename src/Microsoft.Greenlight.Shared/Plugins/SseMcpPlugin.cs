@@ -1,9 +1,9 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
 using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.SemanticKernel;
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol.Transport;
 using System.Text.RegularExpressions;
 
 namespace Microsoft.Greenlight.Shared.Plugins
@@ -79,15 +79,12 @@ namespace Microsoft.Greenlight.Shared.Plugins
         {
             if (_isDisposed)
                 throw new ObjectDisposedException(nameof(SseMcpPlugin));
-            
             await InitializeAsync(documentProcess);
-            
             if (McpClient == null)
             {
                 _logger?.LogWarning("Unable to get kernel functions for SSE MCP plugin {PluginName} - MCP client is null", Name);
                 return [];
             }
-            
             // First attempt
             try
             {
@@ -96,22 +93,18 @@ namespace Microsoft.Greenlight.Shared.Plugins
             catch (Exception ex)
             {
                 _logger?.LogWarning(ex, "Error getting kernel functions from SSE MCP plugin {PluginName}. Attempting to reconnect...", Name);
-                
                 // Try to reinitialize the client and retry once
                 try
                 {
                     // Stop the current client
                     await StopAsync();
-                    
                     // Start a new client
                     await StartAsync();
-                    
                     if (McpClient == null)
                     {
                         _logger?.LogError("Failed to recreate MCP client for SSE plugin {PluginName}", Name);
                         return Array.Empty<KernelFunction>();
                     }
-                    
                     // Retry with the new client
                     return await GetToolsAndCreateKernelFunctionsAsync();
                 }
@@ -152,6 +145,7 @@ namespace Microsoft.Greenlight.Shared.Plugins
             return kernelFunctions;
         }
 
+        /// <inheritdoc/>
         public override async Task StartAsync()
         {
             if (_isDisposed)
@@ -171,33 +165,64 @@ namespace Microsoft.Greenlight.Shared.Plugins
                 _lock.Release();
                 try
                 {
-                    var mcpClient = await McpClientFactory.CreateAsync(new SseClientTransport(sseConfig));
-                    await _lock.WaitAsync();
-                    try
+                    // Try original endpoint, then /sse, then /mcp if needed
+                    var endpointsToTry = new List<Uri> { sseConfig.Endpoint };
+                    if (!sseConfig.Endpoint.AbsolutePath.TrimEnd('/').EndsWith("/sse", StringComparison.OrdinalIgnoreCase))
+                        endpointsToTry.Add(new Uri(AppendPath(sseConfig.Endpoint, "sse")));
+                    if (!sseConfig.Endpoint.AbsolutePath.TrimEnd('/').EndsWith("/mcp", StringComparison.OrdinalIgnoreCase))
+                        endpointsToTry.Add(new Uri(AppendPath(sseConfig.Endpoint, "mcp")));
+
+                    Exception? lastException = null;
+                    foreach (var endpoint in endpointsToTry)
                     {
-                        if (_isDisposed)
+                        try
                         {
-                            await mcpClient.DisposeAsync();
-                            throw new ObjectDisposedException(nameof(SseMcpPlugin));
+                            var tryConfig = new SseClientTransportOptions { Name = Name, Endpoint = endpoint };
+                            var mcpClient = await McpClientFactory.CreateAsync(new SseClientTransport(tryConfig));
+                            await _lock.WaitAsync();
+                            try
+                            {
+                                if (_isDisposed)
+                                {
+                                    await mcpClient.DisposeAsync();
+                                    throw new ObjectDisposedException(nameof(SseMcpPlugin));
+                                }
+                                if (!_isStarted)
+                                {
+                                    McpClient = mcpClient;
+                                    _isStarted = true;
+                                    _logger?.LogInformation("SSE MCP plugin started: {PluginName} v{Version} (Endpoint: {Endpoint})", Name, Version, endpoint);
+                                    return;
+                                }
+                                else
+                                {
+                                    await mcpClient.DisposeAsync();
+                                }
+                            }
+                            finally { _lock.Release(); }
                         }
-                        if (!_isStarted)
+                        catch (Exception ex) when (Is404or406(ex))
                         {
-                            McpClient = mcpClient;
-                            _isStarted = true;
-                            _logger?.LogInformation("SSE MCP plugin started: {PluginName} v{Version}", Name, Version);
+                            _logger?.LogInformation(ex, "Endpoint {Endpoint} failed with 404/406. Trying next fallback.", endpoint);
+                            lastException = ex;
+                            continue;
                         }
-                        else
+                        catch (Exception ex)
                         {
-                            await mcpClient.DisposeAsync();
+                            _logger?.LogError(ex, "Error creating SSE MCP client for plugin: {PluginName} (Endpoint: {Endpoint})", Name, endpoint);
+                            lastException = ex;
+                            break;
                         }
                     }
-                    finally { _lock.Release(); }
+                    await _lock.WaitAsync();
+                    try { McpClient = null; } finally { _lock.Release(); }
+                    throw lastException ?? new InvalidOperationException("Failed to create SSE MCP client for all endpoints.");
                 }
                 catch (Exception ex)
                 {
-                    _logger?.LogError(ex, "Error creating SSE MCP client for plugin: {PluginName}", Name);
-                    await _lock.WaitAsync();
-                    try { McpClient = null; } finally { _lock.Release(); }
+                    _logger?.LogError(ex, "Error starting SSE MCP plugin: {PluginName}", Name);
+                    McpClient = null;
+                    if (_lock.CurrentCount == 0) _lock.Release();
                     throw;
                 }
             }
@@ -210,6 +235,42 @@ namespace Microsoft.Greenlight.Shared.Plugins
             }
         }
 
+        /// <summary>
+        /// Appends a path segment to a base URI, handling trailing slashes.
+        /// </summary>
+        private static string AppendPath(Uri baseUri, string segment)
+        {
+            var baseStr = baseUri.ToString().TrimEnd('/');
+            return $"{baseStr}/{segment}";
+        }
+
+        /// <summary>
+        /// Determines if the exception is an HTTP 404 or 406 error (direct or inner exception).
+        /// </summary>
+        private static bool Is404or406(Exception ex)
+        {
+            // Check for common HTTP exception types and status codes
+            var type = ex.GetType();
+            if (type.Name == "TransportException")
+            {
+                var statusCodeProp = type.GetProperty("StatusCode");
+                if (statusCodeProp != null)
+                {
+                    var statusCode = statusCodeProp.GetValue(ex);
+                    if (statusCode is int code && (code == 404 || code == 406))
+                        return true;
+                }
+            }
+            if (ex.Message != null && (ex.Message.Contains("404") || ex.Message.Contains("406")))
+                return true;
+            if (ex.InnerException != null)
+                return Is404or406(ex.InnerException);
+            return false;
+        }
+
+        /// <summary>
+        /// Prepares the SSE configuration options.
+        /// </summary>
         private SseClientTransportOptions PrepareSseConfig(string url)
         {
             var sseConfig = new SseClientTransportOptions
