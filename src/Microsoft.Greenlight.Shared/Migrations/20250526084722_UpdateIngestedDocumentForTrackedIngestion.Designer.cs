@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Microsoft.Greenlight.Shared.Data.Sql;
 
@@ -11,9 +12,11 @@ using Microsoft.Greenlight.Shared.Data.Sql;
 namespace Microsoft.Greenlight.Shared.Migrations
 {
     [DbContext(typeof(DocGenerationDbContext))]
-    partial class DocGenerationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250526084722_UpdateIngestedDocumentForTrackedIngestion")]
+    partial class UpdateIngestedDocumentForTrackedIngestion
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1074,11 +1077,11 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("DocumentLibraryOrProcessName")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<int>("DocumentLibraryType")
                         .HasColumnType("int");
+
+                    b.Property<string>("DocumentProcess")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Error")
                         .HasColumnType("nvarchar(max)");
@@ -1091,6 +1094,7 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("FinalBlobUrl")
+                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("FolderPath")
@@ -1103,6 +1107,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<int>("IngestionState")
                         .HasColumnType("int");
 
+                    b.Property<DateTime>("LastUpdatedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime>("ModifiedUtc")
                         .HasColumnType("datetime2");
 
@@ -1110,18 +1117,11 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
 
-                    b.Property<string>("OriginalDocumentUrl")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
-
-                    b.Property<Guid>("RunId")
-                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("UploadedByUserOid")
                         .HasColumnType("nvarchar(max)");

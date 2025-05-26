@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Greenlight.Grains.Ingestion.Contracts;
+using Microsoft.Greenlight.Grains.Ingestion.Contracts.Helpers;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Services;
@@ -133,10 +134,10 @@ namespace Microsoft.Greenlight.Grains.Shared.Scheduling
                         "New files found for {SourceType} {SourceName}",
                         sourceTypeName.ToLowerInvariant(), shortName);
                         
-                    // Create a unique ID for the orchestration process
-                    var ingestionId = Guid.NewGuid();
-                    var orchestrationGrain = GrainFactory.GetGrain<IDocumentIngestionOrchestrationGrain>(ingestionId);
-                    await orchestrationGrain.StartIngestionAsync(
+                    // Use deterministic orchestration ID for container/folder
+                    var orchestrationId = IngestionOrchestrationIdHelper.GenerateOrchestrationId(container, folder);
+                    var orchestrationGrain = GrainFactory.GetGrain<IDocumentIngestionOrchestrationGrain>(orchestrationId);
+                    _ = orchestrationGrain.StartIngestionAsync(
                         shortName,
                         libraryType,
                         container,

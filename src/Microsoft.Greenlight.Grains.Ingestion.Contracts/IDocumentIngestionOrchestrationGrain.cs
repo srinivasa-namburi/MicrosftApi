@@ -1,17 +1,20 @@
-﻿using Microsoft.Greenlight.Shared.Enums;
+﻿using System.Threading.Tasks;
+using Microsoft.Greenlight.Shared.Enums;
 using Orleans;
 
 namespace Microsoft.Greenlight.Grains.Ingestion.Contracts
 {
-    public interface IDocumentIngestionOrchestrationGrain : IGrainWithGuidKey
+    /// <summary>
+    /// Grain contract for orchestrating document ingestion.
+    /// </summary>
+    public interface IDocumentIngestionOrchestrationGrain : IGrainWithStringKey
     {
         Task StartIngestionAsync(
-            string documentLibraryShortName, 
+            string documentLibraryShortName,
             DocumentLibraryType documentLibraryType,
             string blobContainerName,
             string folderPath);
-        
-        Task OnFileCopiedAsync(string fileName, string originalDocumentUrl);
+
         Task OnIngestionCompletedAsync();
         Task OnIngestionFailedAsync(string reason, bool acquired);
     }

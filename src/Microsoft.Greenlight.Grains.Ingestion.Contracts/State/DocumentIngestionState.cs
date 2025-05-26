@@ -1,12 +1,16 @@
-﻿using Microsoft.Greenlight.Shared.Enums;
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+using Microsoft.Greenlight.Shared.Enums;
 using Orleans;
 
 namespace Microsoft.Greenlight.Grains.Ingestion.Contracts.State
 {
+    /// <summary>
+    /// State for document ingestion orchestration. (No changes needed for DTO refactor, but doc added for clarity.)
+    /// </summary>
     [GenerateSerializer(GenerateFieldIds = GenerateFieldIds.PublicProperties)]
     public class DocumentIngestionState
     {
-        public Guid Id { get; set; } = Guid.Empty;
+        public String Id { get; set; } = "";
         public DateTime LastUpdatedUtc { get; set; } = DateTime.UtcNow;
         public IngestionOrchestrationState Status { get; set; } = IngestionOrchestrationState.NotStarted;
         public string DocumentLibraryShortName { get; set; } = string.Empty;
@@ -21,8 +25,7 @@ namespace Microsoft.Greenlight.Grains.Ingestion.Contracts.State
     public enum IngestionOrchestrationState
     {
         NotStarted,
-        CopyingFiles,
-        ProcessingDocuments,
+        Running,
         Completed,
         Failed
     }

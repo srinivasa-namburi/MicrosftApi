@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Microsoft.Greenlight.Shared.Data.Sql;
 
@@ -11,9 +12,11 @@ using Microsoft.Greenlight.Shared.Data.Sql;
 namespace Microsoft.Greenlight.Shared.Migrations
 {
     [DbContext(typeof(DocGenerationDbContext))]
-    partial class DocGenerationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250526083838_AddIngestedDocumentIngestionTracking")]
+    partial class AddIngestedDocumentIngestionTracking
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1067,6 +1070,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("ClassificationShortCode")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("Container")
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
@@ -1074,11 +1080,8 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("DocumentLibraryOrProcessName")
+                    b.Property<string>("DocumentProcess")
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<int>("DocumentLibraryType")
-                        .HasColumnType("int");
 
                     b.Property<string>("Error")
                         .HasColumnType("nvarchar(max)");
@@ -1090,9 +1093,6 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
 
-                    b.Property<string>("FinalBlobUrl")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<string>("FolderPath")
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
@@ -1102,6 +1102,12 @@ namespace Microsoft.Greenlight.Shared.Migrations
 
                     b.Property<int>("IngestionState")
                         .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("LastUpdatedUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<DateTime>("ModifiedUtc")
                         .HasColumnType("datetime2");
@@ -1114,14 +1120,14 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("Plugin")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
-
-                    b.Property<Guid>("RunId")
-                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("UploadedByUserOid")
                         .HasColumnType("nvarchar(max)");
@@ -1132,7 +1138,7 @@ namespace Microsoft.Greenlight.Shared.Migrations
 
                     b.HasIndex("OrchestrationId");
 
-                    b.HasIndex("Container", "FolderPath", "FileName", "FileHash", "IngestionState")
+                    b.HasIndex("Container", "FolderPath", "FileName", "FileHash", "IsDeleted")
                         .IsUnique()
                         .HasFilter("[FileHash] IS NOT NULL");
 

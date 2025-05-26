@@ -18,9 +18,14 @@ public class IngestedDocument : EntityBase
     public string? FileHash { get; set; }
 
     /// <summary>
-    /// Original URL of the document.
+    /// The original blob URL of the file before it is copied.
     /// </summary>
     public required string OriginalDocumentUrl { get; set; }
+
+    /// <summary>
+    /// The final blob URL of the file after it has been copied to its destination.
+    /// </summary>
+    public string? FinalBlobUrl { get; set; }
 
     /// <summary>
     /// OID of the user who uploaded the document.
@@ -28,27 +33,47 @@ public class IngestedDocument : EntityBase
     public string? UploadedByUserOid { get; set; }
 
     /// <summary>
-    /// Document process associated with the document.
+    /// Name of the document library or process associated with the document.
     /// </summary>
-    public string? DocumentProcess { get; set; }
+    public string? DocumentLibraryOrProcessName { get; set; }
 
     /// <summary>
-    /// Plugin used for the document.
+    /// The type of document ingestion (library or process).
     /// </summary>
-    public string? Plugin { get; set; }
+    public DocumentLibraryType DocumentLibraryType { get; set; }
 
     /// <summary>
     /// Ingestion state of the document.
     /// </summary>
-    public IngestionState IngestionState { get; set; } = IngestionState.Uploaded;
-
-    /// <summary>
-    /// Classification short code of the document.
-    /// </summary>
-    public string? ClassificationShortCode { get; set; }
+    public IngestionState IngestionState { get; set; } = IngestionState.Discovered;
 
     /// <summary>
     /// Date when the document was ingested.
     /// </summary>
     public DateTime IngestedDate { get; set; }
+
+    /// <summary>
+    /// The container in which the file resides.
+    /// </summary>
+    public required string Container { get; set; }
+
+    /// <summary>
+    /// The folder path within the container.
+    /// </summary>
+    public required string FolderPath { get; set; }
+
+    /// <summary>
+    /// The orchestration ID (SHA256 of container + folder) for this ingestion batch.
+    /// </summary>
+    public required string OrchestrationId { get; set; }
+
+    /// <summary>
+    /// The RunId for the ingestion batch this document belongs to.
+    /// </summary>
+    public Guid RunId { get; set; }
+
+    /// <summary>
+    /// Error message if ingestion failed.
+    /// </summary>
+    public string? Error { get; set; }
 }

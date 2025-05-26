@@ -4,7 +4,6 @@
     <BuildType Name="Publish" />
     <BuildType Name="Release" />
   </Configurations>
-  <Folder Name="/.github/" />
   <Folder Name="/0. Aspire Infrastructure/">
     <Project Path="Microsoft.Greenlight.AppHost/Microsoft.Greenlight.AppHost.csproj">
       <BuildType Solution="Publish|*" Project="Debug" />

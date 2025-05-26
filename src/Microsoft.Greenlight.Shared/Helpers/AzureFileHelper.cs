@@ -128,7 +128,40 @@ public class AzureFileHelper
         return entityEntry.Entity;
     }
 
-
+    /// <summary>
+    /// Generates a hash for a file in blob storage given its absolute URL.
+    /// </summary>
+    /// <param name="absoluteUrl">The absolute URL of the file in blob storage.</param>
+    /// <returns>The file hash as a string, or null if the file could not be hashed.</returns>
+    public virtual async Task<string?> GenerateFileHashFromBlobUrlAsync(string absoluteUrl)
+    {
+        try
+        {
+            var fileStream = await GetFileAsStreamFromFullBlobUrlAsync(absoluteUrl);
+            if (fileStream != null)
+            {
+                try
+                {
+                    return fileStream.GenerateHashFromStreamAndResetStream();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"Error calculating hash for {absoluteUrl}: {ex.Message}");
+                    return null;
+                }
+            }
+            else
+            {
+                _logger.LogWarning($"Warning: Could not retrieve file stream for {absoluteUrl}");
+                return null;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"Error calculating file hash for {absoluteUrl}: {ex.Message}");
+            return null;
+        }
+    }
 
     /// <summary>
     /// Retrieves a file as a stream from a full blob URL.
@@ -327,4 +360,3 @@ public class AzureFileHelper
         return _blobServiceClient;
     }
 }
-    

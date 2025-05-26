@@ -859,11 +859,22 @@ public class DocGenerationDbContext : DbContext
             .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<IngestedDocument>()
+            .ToTable("IngestedDocuments");
+
+        modelBuilder.Entity<IngestedDocument>()
+            .Property(x => x.RunId)
+            .IsRequired();
+
+        modelBuilder.Entity<IngestedDocument>()
             .HasIndex(d => d.FileHash)
             .IsUnique(false);
 
         modelBuilder.Entity<IngestedDocument>()
-            .HasIndex(d => d.DocumentProcess)
+            .HasIndex(d => new { d.Container, d.FolderPath, d.FileName, d.FileHash, d.IngestionState })
+            .IsUnique();
+
+        modelBuilder.Entity<IngestedDocument>()
+            .HasIndex(d => d.OrchestrationId)
             .IsUnique(false);
 
         modelBuilder.Entity<ContentNode>()

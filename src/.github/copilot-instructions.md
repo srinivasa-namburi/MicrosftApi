@@ -33,13 +33,18 @@
 - Never expose backend model classes directly in controller responses.
 - Using the `DocGenerationDbContext` for database operations is acceptable, but ensure that all data returned to the frontend is in the form of DTO/Info objects.
 
-
 ### Backend Grains (CQRS/Command Handling)
 - Command and event-driven features are implemented as Orleans grains (see `Grains` projects in the `30. Orleans Framework` solution folder).
-- Grain contracts (interfaces) are defined in `Grains.*.Contracts` projects and implemented in `Grains.*` projects.
+- Grain contracts (interfaces) are defined in `Grains.*.Contracts` projects and implemented in `Grains.*` projects. These 
+  contracts can use State models from the State folder in their Contracts project and can use EF models directly in their implementations.
+- If a Grain is exposed via an API, it should only expose contract types (DTO/Info) in its method signatures if not using only simple types (e.g., `string`, `int`).
+- Grain methods that are only used between grains or constrained to the backend can use backend model classes directly in their method signatures if necessary,
+  but in general, if encapsulated correctly this shouldn't be strictly necessary. Use request/response/result types for complex operations.
 - Grains should not expose backend model classes to the outside. Use contract types for all grain method signatures.
 - Grains are used for distributed, stateful, or long-running operations (e.g., chat, review, validation, ingestion).
-- For any service class that is used by a grain, if accessing entity framework, use `IDbContextFactory<DocGenerationDbContext>` to create a new instance of the `DocGenerationDbContext` for each operation. 
+- For any service class or Orleans grain that needs to access Entity Framework, always inject `IDbContextFactory<DocGenerationDbContext>` via dependency injection.
+- In each method that needs a DbContext, use the following pattern:    await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+- Do not resolve the DbContext or its factory from the service provider in each method; inject the factory once in the constructor.
 - This ensures that the DbContext is not shared across grains and avoids issues with concurrency and state management.
 
 ### SignalR Notifications

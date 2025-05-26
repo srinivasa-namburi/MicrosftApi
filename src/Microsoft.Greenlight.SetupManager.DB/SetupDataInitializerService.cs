@@ -183,7 +183,6 @@ public class SetupDataInitializerService(
         var promptDefinitionService = scope.ServiceProvider.GetRequiredService<IPromptDefinitionService>();
         await promptDefinitionService.EnsurePromptDefinitionsAsync(cancellationToken);
 
-        await Seed2024_04_07_IngestedDocumentDocumentProcess(dbContext, cancellationToken);
         await Seed2024_05_24_OrphanedChatMessagesCleanup(dbContext, cancellationToken);
         await Seed2025_02_27_CreateDefaultSequentialValidationPipeline(dbContext, cancellationToken);
         await Seed2025_03_18_DefaultConfiguration(dbContext, cancellationToken);
@@ -924,36 +923,7 @@ public class SetupDataInitializerService(
 
     }
 
-    private async Task Seed2024_04_07_IngestedDocumentDocumentProcess(DocGenerationDbContext dbContext,
-        CancellationToken cancellationToken)
-    {
-        // Set Document Process to "US.NuclearLicensing" on IngestedDocuments where DocumentProcess is null
-        // First, get a count of the number of IngestedDocuments where DocumentProcess is null. If it's 0, we don't
-        // need to do anything.
-
-        var count = await dbContext.IngestedDocuments
-            .Where(x => x.DocumentProcess == null)
-            .CountAsync(cancellationToken);
-
-        if (count == 0)
-        {
-            _logger.LogInformation(
-                "No IngestedDocuments found where DocumentProcess is null. Skipping seeding logic.");
-            return;
-        }
-
-
-        _logger.LogInformation(
-            "Seeding : Setting Document Process to 'US.NuclearLicensing' on {Count} IngestedDocuments where DocumentProcess is null",
-            count);
-
-        await dbContext.Database.ExecuteSqlRawAsync(
-            "UPDATE IngestedDocuments SET DocumentProcess = {0} WHERE DocumentProcess IS NULL",
-            "US.NuclearLicensing");
-
-        await dbContext.SaveChangesAsync(cancellationToken);
-    }
-
+   
     private async Task Seed2024_05_24_OrphanedChatMessagesCleanup(DocGenerationDbContext dbContext,
         CancellationToken cancellationToken)
     {

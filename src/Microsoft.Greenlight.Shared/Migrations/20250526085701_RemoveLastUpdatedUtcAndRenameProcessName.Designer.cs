@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Microsoft.Greenlight.Shared.Data.Sql;
 
@@ -11,9 +12,11 @@ using Microsoft.Greenlight.Shared.Data.Sql;
 namespace Microsoft.Greenlight.Shared.Migrations
 {
     [DbContext(typeof(DocGenerationDbContext))]
-    partial class DocGenerationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250526085701_RemoveLastUpdatedUtcAndRenameProcessName")]
+    partial class RemoveLastUpdatedUtcAndRenameProcessName
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1091,6 +1094,7 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("FinalBlobUrl")
+                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("FolderPath")
@@ -1119,9 +1123,6 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
-
-                    b.Property<Guid>("RunId")
-                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("UploadedByUserOid")
                         .HasColumnType("nvarchar(max)");

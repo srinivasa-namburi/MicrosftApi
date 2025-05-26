@@ -18,7 +18,7 @@ var sqlDatabaseName = builder.Configuration["ServiceConfiguration:SQL:DatabaseNa
 
 IResourceBuilder<IResourceWithConnectionString> docGenSql;
 IResourceBuilder<IResourceWithConnectionString> redisResource;
-IResourceBuilder<IResourceWithConnectionString> signalr;
+IResourceBuilder<IResourceWithConnectionString>? signalr = null;
 IResourceBuilder<IResourceWithConnectionString> azureAiSearch;
 IResourceBuilder<IResourceWithConnectionString> blobStorage;
 IResourceBuilder<IResourceWithConnectionString> insights = null!;
@@ -55,12 +55,6 @@ if (builder.ExecutionContext.IsRunMode) // For local development
         .AddDatabase(sqlDatabaseName!);
     }
 
-    // Test for each connection string. If it's not available, use the buidler.AddAzure... for each 
-    // resource type.
-    signalr = builder.Configuration.GetConnectionString("signalr") != null
-        ? builder.AddConnectionString("signalr")
-        : builder.AddAzureSignalR("signalr");
-
     eventHub = builder.Configuration.GetConnectionString("greenlight-cg-streams") != null
         ? builder.AddConnectionString("greenlight-cg-streams")
         : builder.AddAzureEventHubs("eventhub")
@@ -75,6 +69,10 @@ if (builder.ExecutionContext.IsRunMode) // For local development
         ? builder.AddConnectionString("blob-docing")
         : builder
             .AddAzureStorage("docing")
+            .RunAsEmulator(azurite =>
+            {
+                azurite.WithDataVolume("pvico-docing-emulator-storage");
+            })
             .AddBlobs("blob-docing");
 
     // Only add Application Insights if the connection string is set
@@ -89,7 +87,11 @@ if (builder.ExecutionContext.IsRunMode) // For local development
     }
 
     var orleansStorage = builder
-        .AddAzureStorage("orleans-storage").RunAsEmulator();
+        .AddAzureStorage("orleans-storage")
+        .RunAsEmulator(azurite =>
+        {
+            azurite.WithDataVolume("pvico-orleans-emulator-storage");
+        });
 
     orleansBlobStorage = orleansStorage
         .AddBlobs("blob-orleans");
@@ -176,7 +178,6 @@ var apiMainBuilder = builder
     .WithConfigSection(envAzureConfigurationSection)
     .WithConfigSection(envKestrelConfigurationSection)
     .WithReference(blobStorage)
-    .WithReference(signalr)
     .WithReference(redisResource)
     .WithReference(docGenSql)
     .WithReference(azureAiSearch)
@@ -189,6 +190,11 @@ var apiMainBuilder = builder
 if (usePostgres && kmvectorDb != null)
 {
     apiMainBuilder.WithReference(kmvectorDb);
+}
+
+if (signalr != null)
+{
+    apiMainBuilder.WithReference(signalr);
 }
 var apiMain = apiMainBuilder;
 
@@ -235,7 +241,6 @@ var docGenFrontendBuilder = builder
     .WithReference(blobStorage)
     .WithReference(docGenSql)
     .WithReference(redisResource)
-    .WithReference(signalr)
     .WithReference(eventHub)
     .WithReference(apiMain)
     .WithReference(orleans.AsClient())
@@ -244,6 +249,11 @@ var docGenFrontendBuilder = builder
     .WithReference(orleansClusteringTable)
     .WaitFor(apiMain)
     .WaitForCompletion(dbSetupManager);
+
+if (signalr != null)
+{
+    docGenFrontendBuilder.WithReference(signalr);
+}
 if (usePostgres && kmvectorDb != null)
 {
     docGenFrontendBuilder.WithReference(kmvectorDb);

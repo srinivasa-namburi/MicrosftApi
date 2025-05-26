@@ -1,8 +1,12 @@
-﻿// Microsoft.Greenlight.Grains.Ingestion/DocumentProcessorGrain.cs
-
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+using System;
+using System.IO;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Grains.Ingestion.Contracts;
+using Microsoft.Greenlight.Shared.Contracts.DTO.Document;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Helpers;
@@ -18,66 +22,64 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
     private readonly ILogger<DocumentProcessorGrain> _logger;
     private readonly IDocumentProcessInfoService _documentProcessInfoService;
     private readonly IServiceProvider _serviceProvider;
+    private readonly IDbContextFactory<Microsoft.Greenlight.Shared.Data.Sql.DocGenerationDbContext> _dbContextFactory;
+    private bool _isRunning; // In-memory, not persisted
     
     public DocumentProcessorGrain(
         ILogger<DocumentProcessorGrain> logger,
         IDocumentProcessInfoService documentProcessInfoService,
-        IServiceProvider serviceProvider)
+        IServiceProvider serviceProvider,
+        IDbContextFactory<Microsoft.Greenlight.Shared.Data.Sql.DocGenerationDbContext> dbContextFactory)
     {
         _logger = logger;
         _documentProcessInfoService = documentProcessInfoService;
         _serviceProvider = serviceProvider;
+        _dbContextFactory = dbContextFactory;
     }
-    
-    public async Task ProcessDocumentAsync(
-        string fileName,
-        string documentUrl,
-        string documentLibraryShortName,
-        DocumentLibraryType documentLibraryType,
-        Guid orchestrationGrainId,
-        string? uploadedByUserOid = null)
+
+    public async Task<DocumentProcessResult> ProcessDocumentAsync(Guid documentId)
     {
-        // Get the orchestration grain using the passed ID instead of deriving from this grain's ID
-        var orchestrationGrain = GrainFactory.GetGrain<IDocumentIngestionOrchestrationGrain>(orchestrationGrainId);
-        
+        if (_isRunning)
+        {
+            _logger.LogInformation("Processing already running for file {FileId}, skipping.", documentId);
+            return DocumentProcessResult.Fail("Processing already running.");
+        }
+        _isRunning = true;
         try
         {
-            // Determine repository based on document library type
-            string repositoryName;
-            
+            await using var db = await _dbContextFactory.CreateDbContextAsync();
+            var entity = await db.IngestedDocuments.FindAsync(documentId);
+            if (entity == null)
+            {
+                _logger.LogError("IngestedDocument with Id {Id} not found in DB for processing.", documentId);
+                return DocumentProcessResult.Fail($"IngestedDocument with Id {documentId} not found in DB.");
+            }
+            string fileName = entity.FileName;
+            string documentUrl = entity.FinalBlobUrl ?? entity.OriginalDocumentUrl;
+            string documentLibraryShortName = entity.DocumentLibraryOrProcessName ?? string.Empty;
+            DocumentLibraryType documentLibraryType = entity.DocumentLibraryType;
+            string? uploadedByUserOid = entity.UploadedByUserOid;
             if (documentLibraryType == DocumentLibraryType.PrimaryDocumentProcessLibrary)
             {
-                // Get document process info to determine which repository to use
                 var documentProcess = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentLibraryShortName);
                 if (documentProcess == null)
                 {
                     _logger.LogError("Document process {DocumentProcessName} not found", documentLibraryShortName);
-                    await orchestrationGrain.OnIngestionFailedAsync($"Document process {documentLibraryShortName} not found", false);
-                    return;
+                    return DocumentProcessResult.Fail($"Document process {documentLibraryShortName} not found");
                 }
-                
-                // Use the first repository by default
-                repositoryName = documentProcess.Repositories.FirstOrDefault() ?? documentLibraryShortName;
-                
-                // Get the appropriate repository for Kernel Memory
+                var repositoryName = documentProcess.Repositories.FirstOrDefault() ?? documentLibraryShortName;
                 var kernelMemoryRepository = _serviceProvider.GetServiceForDocumentProcess<IKernelMemoryRepository>(documentLibraryShortName);
                 if (kernelMemoryRepository == null)
                 {
                     _logger.LogError("Failed to get Kernel Memory repository for document process {DocumentProcessName}", documentLibraryShortName);
-                    await orchestrationGrain.OnIngestionFailedAsync($"Failed to get Kernel Memory repository for {documentLibraryShortName}", false);
-                    return;
+                    return DocumentProcessResult.Fail($"Failed to get Kernel Memory repository for {documentLibraryShortName}");
                 }
-                
-                // Get document stream
                 await using var fileStream = await GetDocumentStreamAsync(documentUrl);
                 if (fileStream == null)
                 {
                     _logger.LogError("Failed to get document stream for {DocumentUrl}", documentUrl);
-                    await orchestrationGrain.OnIngestionFailedAsync($"Failed to get document stream for {documentUrl}", false);
-                    return;
+                    return DocumentProcessResult.Fail($"Failed to get document stream for {documentUrl}");
                 }
-                
-                // Process the document with Kernel Memory
                 await kernelMemoryRepository.StoreContentAsync(
                     documentLibraryShortName,
                     repositoryName,
@@ -88,37 +90,26 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
             }
             else // AdditionalDocumentLibrary
             {
-                // Get the appropriate document library repository
                 var documentLibraryRepository = _serviceProvider.GetService<IAdditionalDocumentLibraryKernelMemoryRepository>();
                 if (documentLibraryRepository == null)
                 {
                     _logger.LogError("Additional Document Library KM Repository not found");
-                    await orchestrationGrain.OnIngestionFailedAsync("Additional Document Library KM Repository not found", false);
-                    return;
+                    return DocumentProcessResult.Fail("Additional Document Library KM Repository not found");
                 }
-                
-                // Get document stream
                 await using var fileStream = await GetDocumentStreamAsync(documentUrl);
                 if (fileStream == null)
                 {
                     _logger.LogError("Failed to get document stream for {DocumentUrl}", documentUrl);
-                    await orchestrationGrain.OnIngestionFailedAsync($"Failed to get document stream for {documentUrl}", false);
-                    return;
+                    return DocumentProcessResult.Fail($"Failed to get document stream for {documentUrl}");
                 }
-                
-                // Get document library to determine index name
                 using var scope = _serviceProvider.CreateScope();
                 var documentLibraryInfoService = scope.ServiceProvider.GetRequiredService<IDocumentLibraryInfoService>();
                 var documentLibrary = await documentLibraryInfoService.GetDocumentLibraryByShortNameAsync(documentLibraryShortName);
-                
                 if (documentLibrary == null)
                 {
                     _logger.LogError("Document library {DocumentLibraryName} not found", documentLibraryShortName);
-                    await orchestrationGrain.OnIngestionFailedAsync($"Document library {documentLibraryShortName} not found", false);
-                    return;
+                    return DocumentProcessResult.Fail($"Document library {documentLibraryShortName} not found");
                 }
-                
-                // Process the document with Kernel Memory
                 await documentLibraryRepository.StoreContentAsync(
                     documentLibraryShortName,
                     documentLibrary.IndexName,
@@ -127,34 +118,26 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
                     documentUrl,
                     uploadedByUserOid);
             }
-            
-            _logger.LogInformation(
-                "Successfully processed document {FileName} for {DocumentLibraryType} {DocumentLibraryName}",
-                fileName, documentLibraryType, documentLibraryShortName);
-                
-            await orchestrationGrain.OnIngestionCompletedAsync();
+            _logger.LogInformation("Successfully processed document {FileName} for {DocumentLibraryType} {DocumentLibraryName}", fileName, documentLibraryType, documentLibraryShortName);
+            return DocumentProcessResult.Ok();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, 
-                "Failed to process document {FileName} for {DocumentLibraryType} {DocumentLibraryName}",
-                fileName, documentLibraryType, documentLibraryShortName);
-                
-            await orchestrationGrain.OnIngestionFailedAsync(
-                $"Failed to process document {fileName}: {ex.Message}", false);
-            throw;
+            _logger.LogError(ex, "Failed to process document {DocumentId}", documentId);
+            return DocumentProcessResult.Fail($"Failed to process document: {ex.Message}");
+        }
+        finally
+        {
+            _isRunning = false;
         }
     }
-    
+
     private async Task<Stream> GetDocumentStreamAsync(string documentUrl)
     {
         try
         {
-            // Create helper to get file stream
             using var scope = _serviceProvider.CreateScope();
             var azureFileHelper = scope.ServiceProvider.GetRequiredService<AzureFileHelper>();
-            
-            // Get the file stream
             return await azureFileHelper.GetFileAsStreamFromFullBlobUrlAsync(documentUrl);
         }
         catch (Exception ex)

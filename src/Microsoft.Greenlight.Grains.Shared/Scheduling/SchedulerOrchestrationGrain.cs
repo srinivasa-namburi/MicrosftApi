@@ -139,7 +139,6 @@ public class SchedulerOrchestrationGrain : Grain, ISchedulerOrchestrationGrain, 
             // Execute all jobs using the same methods that reminders use
             await ExecuteContentReferenceIndexingJobAsync();
             await ExecutePromptDefinitionsUpdateJobAsync();
-            await ExecuteBlobAutoImportJobAsync();
             await ExecuteRepositoryIndexMaintenanceJobAsync();
 
             _logger.LogInformation("All jobs have been executed immediately on startup");

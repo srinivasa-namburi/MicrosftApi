@@ -6,17 +6,27 @@ namespace Microsoft.Greenlight.Shared.Enums;
 public enum IngestionState
 {
     /// <summary>
+    /// The file has been discovered for ingestion.
+    /// </summary>
+    Discovered = 50,
+
+    /// <summary>
     /// The file has been uploaded.
     /// </summary>
     Uploaded = 100,
 
     /// <summary>
-    /// The file is being classified.
+    /// The file is being copied from the ingestion drop point.
     /// </summary>
-    Classifying = 200,
+    FileCopying = 150,
 
     /// <summary>
-    /// The file is being processed.
+    /// The file has been copied to its final location.
+    /// </summary>
+    FileCopied = 200,
+
+    /// <summary>
+    /// The file is being processed (e.g., indexed, classified).
     /// </summary>
     Processing = 300,
 
@@ -26,12 +36,12 @@ public enum IngestionState
     Complete = 800,
 
     /// <summary>
-    /// The file classification is unsupported.
-    /// </summary>
-    ClassificationUnsupported = 850,
-
-    /// <summary>
     /// The ingestion process has failed.
     /// </summary>
-    Failed = 900
+    Failed = 900,
+
+    /// <summary>
+    /// The file is marked as deleted and can be reuploaded regardless of hash.
+    /// </summary>
+    Deleted = 950
 }
