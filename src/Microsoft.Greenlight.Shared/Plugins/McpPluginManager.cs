@@ -167,6 +167,7 @@ namespace Microsoft.Greenlight.Shared.Plugins
 
                 var pluginAssociations = await dbContext.McpPluginDocumentProcesses
                     .Include(p => p.McpPlugin)
+                        .ThenInclude(v=>v!.Versions)
                     .Include(p => p.Version)
                     .AsNoTracking()
                     .Where(p => p.DynamicDocumentProcessDefinitionId == documentProcess.Id && p.McpPlugin != null)
@@ -180,7 +181,15 @@ namespace Microsoft.Greenlight.Shared.Plugins
                     }
 
                     var plugin = association.McpPlugin;
-                    var versionToUse = association.Version ?? plugin.LatestVersion;
+                    McpPluginVersion? versionToUse = null;
+                    if (association.KeepOnLatestVersion)
+                    {
+                        versionToUse = plugin.LatestVersion;
+                    }
+                    else
+                    {
+                        versionToUse = association.Version ?? plugin.LatestVersion;
+                    }
 
                     if (versionToUse == null)
                     {
@@ -641,6 +650,49 @@ namespace Microsoft.Greenlight.Shared.Plugins
                 _logger?.LogError(ex, "Error loading SSE MCP plugin {PluginName}, version {Version}",
                     plugin.Name, version);
                 return null;
+            }
+        }
+
+        /// <summary>
+        /// Stops and removes a specific version of an MCP plugin from the container.
+        /// </summary>
+        /// <param name="pluginName">The name of the plugin.</param>
+        /// <param name="versionString">The version string of the plugin to remove (e.g., "1.0.0").</param>
+        /// <returns>A task that represents the asynchronous operation.</returns>
+        public async Task StopAndRemovePluginVersionAsync(string pluginName, string versionString)
+        {
+            if (string.IsNullOrWhiteSpace(pluginName))
+            {
+                _logger?.LogWarning("Cannot remove plugin version: Plugin name is null or empty.");
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(versionString))
+            {
+                _logger?.LogWarning("Cannot remove plugin version for '{PluginName}': Version string is null or empty.", pluginName);
+                return;
+            }
+
+            if (_pluginContainer.TryGetPlugin(pluginName, versionString, out var pluginInstance) && pluginInstance != null)
+            {
+                _logger?.LogInformation("Stopping plugin '{PluginName}' version '{Version}' before removal.", pluginName, versionString);
+                try
+                {
+                    await pluginInstance.StopAsync();
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "Error stopping plugin '{PluginName}' version '{Version}' during removal.", pluginName, versionString);
+                    // Continue with removal even if stopping fails
+                }
+            }
+
+            if (_pluginContainer.RemovePlugin(pluginName, versionString))
+            {
+                _logger?.LogInformation("Successfully removed plugin '{PluginName}' version '{Version}' from container.", pluginName, versionString);
+            }
+            else
+            {
+                _logger?.LogWarning("Plugin '{PluginName}' version '{Version}' not found in container for removal, or already removed.", pluginName, versionString);
             }
         }
 

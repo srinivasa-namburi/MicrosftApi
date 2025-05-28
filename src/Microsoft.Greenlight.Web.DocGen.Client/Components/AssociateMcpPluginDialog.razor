@@ -1,10 +1,11 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
 @inject IPluginApiClient PluginApiClient
 @inject ISnackbar Snackbar
 @inject IDocumentProcessApiClient DocumentProcessApiClient
 
 <MudDialog>
     <DialogContent>
-        <MudForm @bind-Form="form" OnValidSubmit="HandleValidSubmit">
+        <MudForm @ref="form" OnValidSubmit="HandleValidSubmit">
             <MudSelect T="Guid" @bind-Value="selectedDocumentProcessId" Label="Select Document Process" Required="true">
                 @foreach (var process in _documentProcesses)
                 {
@@ -12,12 +13,14 @@
                 }
             </MudSelect>
 
-            <MudSelect T="McpPluginVersionInfo" @bind-Value="selectedPluginVersion" Label="Select Plugin Version" Required="true">
-                @foreach (var version in Plugin?.Versions?.OrderByDescending(v => v) ?? Enumerable.Empty<McpPluginVersionInfo>())
+            <MudSelect T="McpPluginVersionInfo" @bind-Value="selectedPluginVersion" Label="Select Plugin Version" Required="true" Disabled="keepOnLatestVersion">
+                @foreach (var version in Plugin?.Versions?.OrderByDescending(v => v.Major).ThenByDescending(v => v.Minor).ThenByDescending(v => v.Patch) ?? Enumerable.Empty<McpPluginVersionInfo>())
                 {
                     <MudSelectItem Value="@version">@version.ToString()</MudSelectItem>
                 }
             </MudSelect>
+
+            <MudCheckBox @bind-Checked="keepOnLatestVersion" Label="Keep on latest version" Class="mt-2" />
 
             <MudButton Class="mt-4" Type="Submit" Variant="Variant.Filled" Color="Color.Primary">Associate</MudButton>
         </MudForm>
@@ -25,12 +28,13 @@
 </MudDialog>
 
 @code {
-    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = default!;
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
     [Parameter] public McpPluginInfo Plugin { get; set; } = new();
     private List<DocumentProcessInfo> _documentProcesses = new();
     private Guid selectedDocumentProcessId;
     private McpPluginVersionInfo? selectedPluginVersion;
     private MudForm form;
+    private bool keepOnLatestVersion = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -40,8 +44,7 @@
 
     private async Task HandleValidSubmit()
     {
-        // If no version has been selected, show an error message
-        if (selectedPluginVersion == null)
+        if (!keepOnLatestVersion && selectedPluginVersion == null)
         {
             Snackbar.Add("Please select a plugin version.", Severity.Error);
             return;
@@ -49,13 +52,19 @@
 
         try
         {
-            await PluginApiClient.AssociateMcpPluginWithDocumentProcessAsync(Plugin.Id, selectedDocumentProcessId, selectedPluginVersion);
-            Snackbar.Add("MCP plugin associated successfully.", Severity.Success);
+            var versionToAssociate = keepOnLatestVersion ? Plugin.LatestVersion : selectedPluginVersion;
+            if (versionToAssociate == null)
+            {
+                Snackbar.Add("No valid version selected.", Severity.Error);
+                return;
+            }
+            await PluginApiClient.AssociateMcpPluginWithDocumentProcessAsync(Plugin.Id, selectedDocumentProcessId, versionToAssociate, keepOnLatestVersion);
+            Snackbar.Add($"Plugin '{Plugin.Name}' associated successfully.", Severity.Success);
             MudDialog.Close(DialogResult.Ok(true));
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error associating MCP plugin: {ex.Message}", Severity.Error);
+            Snackbar.Add($"Error associating plugin: {ex.Message}", Severity.Error);
         }
     }
 }

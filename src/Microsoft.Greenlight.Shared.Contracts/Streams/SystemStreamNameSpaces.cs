@@ -10,5 +10,10 @@
         /// of the configuration subsystem.
         /// </summary>
         public static string ConfigurationUpdatedNamespace => "ConfigurationUpdated";
+
+        /// <summary>
+        /// This stream receives messages about plugin updates (stop/remove) and triggers plugin manager actions.
+        /// </summary>
+        public static string PluginUpdateNamespace => "PluginUpdate";
     }
 }

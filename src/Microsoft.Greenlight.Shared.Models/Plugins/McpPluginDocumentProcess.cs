@@ -50,5 +50,10 @@ namespace Microsoft.Greenlight.Shared.Models.Plugins
         /// Gets or sets whether this plugin is enabled for the document process.
         /// </summary>
         public bool IsEnabled { get; set; } = true;
+
+        /// <summary>
+        /// Gets or sets whether to always use the latest version of the plugin for this association.
+        /// </summary>
+        public bool KeepOnLatestVersion { get; set; } = false;
     }
 }

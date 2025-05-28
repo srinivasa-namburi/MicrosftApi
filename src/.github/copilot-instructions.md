@@ -10,6 +10,9 @@
 - Use dependency injection for all services, including API clients and backend services.
 - Use async/await for all asynchronous operations.
 
+# Other general instructions
+- Don't ever run "dotnet ef database update" after adding migrations. These are updated manually by a feature of the application.
+
 ## Feature Implementation Pattern
 
 ### Frontend (Blazor Pages & Components)

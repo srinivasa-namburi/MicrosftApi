@@ -8,7 +8,7 @@ using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Models.Plugins;
 using Microsoft.Greenlight.Shared.Plugins;
-using Swashbuckle.AspNetCore.Annotations;
+using Microsoft.Greenlight.Grains.Shared.Contracts;
 
 namespace Microsoft.Greenlight.API.Main.Controllers
 {
@@ -22,7 +22,11 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         private readonly IMapper _mapper;
         private readonly AzureFileHelper _fileHelper;
         private readonly McpPluginManager _pluginManager;
+        private readonly IGrainFactory _grainFactory;
         private readonly ILogger<McpPluginsController>? _logger;
+
+        // A known GUID for the McpPluginManagementGrain
+        private static readonly Guid McpPluginManagementGrainId = new("A7A5C7A5-5C1A-4F8A-8A2E-3A9A8A5C7A9F");
 
         /// <summary>
         /// Initializes a new instance of the <see cref="McpPluginsController"/> class.
@@ -31,12 +35,14 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         /// <param name="mapper">The mapper.</param>
         /// <param name="fileHelper">The file helper.</param>
         /// <param name="pluginManager">The plugin manager.</param>
+        /// <param name="grainFactory">The Orleans grain factory.</param>
         /// <param name="logger">The logger.</param>
         public McpPluginsController(
             DocGenerationDbContext dbContext,
             IMapper mapper,
             AzureFileHelper fileHelper,
             McpPluginManager pluginManager,
+            IGrainFactory grainFactory,
             ILogger<McpPluginsController>? logger = null
         )
         {
@@ -44,6 +50,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
             _mapper = mapper;
             _fileHelper = fileHelper;
             _pluginManager = pluginManager;
+            _grainFactory = grainFactory;
             _logger = logger;
         }
 
@@ -103,29 +110,91 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         /// Gets MCP plugins by document process identifier.
         /// </summary>
         /// <param name="documentProcessId">The document process identifier.</param>
-        /// <returns>A list of MCP plugins associated with the document process.
+        /// <returns>A list of plugin associations for the document process.
         /// Produces Status Codes:
         ///     200 OK: When completed successfully
         /// </returns>
         [HttpGet("/api/document-processes/{documentProcessId:guid}/mcp-plugins")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [Produces("application/json")]
-        [Produces<List<McpPluginInfo>>]
-        public async Task<ActionResult<List<McpPluginInfo>>> GetMcpPluginsByDocumentProcessId(Guid documentProcessId)
+        [Produces<List<McpPluginAssociationInfo>>]
+        public async Task<ActionResult<List<McpPluginAssociationInfo>>> GetMcpPluginsByDocumentProcessId(Guid documentProcessId)
         {
-
-            // Fetch all plugins associated with the specified document process ID
-
-            var plugins = await _dbContext.McpPluginDocumentProcesses
-                .Where(mpd => mpd.DynamicDocumentProcessDefinitionId == documentProcessId)
-                .Include(mpd => mpd.McpPlugin)
-                .ThenInclude(p => p.Versions)
+            // Optimize query to only get necessary data for associations
+            var associations = await _dbContext.McpPluginDocumentProcesses
+                .Where(dp => dp.DynamicDocumentProcessDefinitionId == documentProcessId)
+                .Select(dp => new 
+                {
+                    dp.Id,
+                    dp.McpPluginId,
+                    dp.DynamicDocumentProcessDefinitionId,
+                    dp.KeepOnLatestVersion,
+                    dp.Version,
+                    dp.McpPlugin.Name,
+                    dp.McpPlugin.Versions
+                })
                 .AsNoTracking()
-                .Select(mpd => mpd.McpPlugin)
-            .ToListAsync();
+                .ToListAsync();
 
-            var pluginInfos = _mapper.Map<List<McpPluginInfo>>(plugins);
-            return Ok(pluginInfos); // Always returns OK with the list (which might be empty)
+            var result = associations.Select(a => new McpPluginAssociationInfo
+            {
+                AssociationId = a.Id,
+                PluginId = a.McpPluginId,
+                DocumentProcessId = a.DynamicDocumentProcessDefinitionId,
+                Name = a.Name,
+                KeepOnLatestVersion = a.KeepOnLatestVersion,
+                CurrentVersion = _mapper.Map<McpPluginVersionInfo>(a.Version),
+                AvailableVersions = _mapper.Map<List<McpPluginVersionInfo>>(a.Versions.OrderByDescending(v => v.Major)
+                    .ThenByDescending(v => v.Minor)
+                    .ThenByDescending(v => v.Patch))
+            }).ToList();
+
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Gets document processes associated with a specific MCP plugin, with optimized data transfer
+        /// </summary>
+        /// <param name="pluginId">The plugin identifier.</param>
+        /// <returns>A list of associations for the plugin
+        /// Produces Status Codes:
+        ///     200 OK: When completed successfully
+        /// </returns>
+        [HttpGet("{pluginId:guid}/document-process-associations")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [Produces("application/json")]
+        [Produces<List<McpPluginAssociationInfo>>]
+        public async Task<ActionResult<List<McpPluginAssociationInfo>>> GetPluginAssociations(Guid pluginId)
+        {
+            var associations = await _dbContext.McpPluginDocumentProcesses
+                .Where(dp => dp.McpPluginId == pluginId)
+                .Select(dp => new
+                {
+                    dp.Id,
+                    dp.McpPluginId,
+                    dp.DynamicDocumentProcessDefinitionId,
+                    dp.KeepOnLatestVersion,
+                    dp.Version,
+                    ProcessName = dp.DynamicDocumentProcessDefinition.ShortName,
+                    dp.McpPlugin.Versions
+                })
+                .AsNoTracking()
+                .ToListAsync();
+
+            var result = associations.Select(a => new McpPluginAssociationInfo
+            {
+                AssociationId = a.Id,
+                PluginId = a.McpPluginId,
+                DocumentProcessId = a.DynamicDocumentProcessDefinitionId,
+                Name = a.ProcessName ?? "Unknown Process",
+                KeepOnLatestVersion = a.KeepOnLatestVersion,
+                CurrentVersion = _mapper.Map<McpPluginVersionInfo>(a.Version),
+                AvailableVersions = _mapper.Map<List<McpPluginVersionInfo>>(a.Versions.OrderByDescending(v => v.Major)
+                    .ThenByDescending(v => v.Minor)
+                    .ThenByDescending(v => v.Patch))
+            }).ToList();
+
+            return Ok(result);
         }
 
         /// <summary>
@@ -160,11 +229,12 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         }
 
         /// <summary>
-        /// Associates an MCP plugin with a document process.
+        /// Associates an MCP plugin with a document process (with support for KeepOnLatestVersion).
         /// </summary>
         /// <param name="pluginId">The plugin identifier.</param>
         /// <param name="documentProcessId">The document process identifier.</param>
         /// <param name="version">The plugin version.</param>
+        /// <param name="keepOnLatestVersion">Whether to always use the latest version.</param>
         /// <returns>An action result.
         /// Produces Status Codes:
         ///     204 No Content: When completed successfully
@@ -175,7 +245,8 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> AssociateMcpPluginWithDocumentProcess(Guid pluginId, Guid documentProcessId, string version)
+        public async Task<IActionResult> AssociateMcpPluginWithDocumentProcess(
+            Guid pluginId, Guid documentProcessId, string version, [FromQuery] bool keepOnLatestVersion = false)
         {
             try
             {
@@ -210,7 +281,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
                     v.Minor == parsedVersion.Minor &&
                     v.Patch == parsedVersion.Patch);
 
-                if (pluginVersion == null)
+                if (pluginVersion == null && !keepOnLatestVersion)
                 {
                     return NotFound($"Version {version} not found for plugin {plugin.Name}.");
                 }
@@ -224,7 +295,8 @@ namespace Microsoft.Greenlight.API.Main.Controllers
                 if (existingAssociation != null)
                 {
                     // Update the existing association
-                    existingAssociation.VersionId = pluginVersion.Id;
+                    existingAssociation.VersionId = keepOnLatestVersion ? null : pluginVersion?.Id;
+                    existingAssociation.KeepOnLatestVersion = keepOnLatestVersion;
                     existingAssociation.IsEnabled = true;
                 }
                 else
@@ -234,7 +306,8 @@ namespace Microsoft.Greenlight.API.Main.Controllers
                     {
                         McpPluginId = pluginId,
                         DynamicDocumentProcessDefinitionId = documentProcessId,
-                        VersionId = pluginVersion.Id,
+                        VersionId = keepOnLatestVersion ? null : pluginVersion?.Id,
+                        KeepOnLatestVersion = keepOnLatestVersion,
                         IsEnabled = true
                     };
 
@@ -251,22 +324,23 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         }
 
         /// <summary>
-        /// Updates the version of an MCP plugin for a document process.
+        /// Updates the version or KeepOnLatestVersion flag of an MCP plugin for a document process.
         /// </summary>
         /// <param name="documentProcessId">The document process identifier.</param>
         /// <param name="pluginId">The plugin identifier.</param>
-        /// <param name="version">The new plugin version.</param>
+        /// <param name="update">The update info (version and/or KeepOnLatestVersion).</param>
         /// <returns>An action result.
         /// Produces Status Codes:
         ///     204 No Content: When completed successfully
         ///     400 Bad Request: When parameters are invalid
         ///     404 Not Found: When the plugin or document process was not found
         /// </returns>
-        [HttpPut("/api/document-processes/{documentProcessId:guid}/mcp-plugins/{pluginId:guid}/version")]
+        [HttpPut("/api/document-processes/{documentProcessId:guid}/mcp-plugins/{pluginId:guid}/association")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> UpdateMcpPluginVersion(Guid documentProcessId, Guid pluginId, [FromBody] McpPluginVersionInfo version)
+        public async Task<IActionResult> UpdateMcpPluginAssociation(
+            Guid documentProcessId, Guid pluginId, [FromBody] McpPluginAssociationInfo update)
         {
             try
             {
@@ -289,17 +363,6 @@ namespace Microsoft.Greenlight.API.Main.Controllers
                     return NotFound($"Document process with ID {documentProcessId} not found.");
                 }
 
-                // Find the specified version
-                var pluginVersion = plugin.Versions.FirstOrDefault(v =>
-                    v.Major == version.Major &&
-                    v.Minor == version.Minor &&
-                    v.Patch == version.Patch);
-
-                if (pluginVersion == null)
-                {
-                    return NotFound($"Version {version.Major}.{version.Minor}.{version.Patch} not found for plugin {plugin.Name}.");
-                }
-
                 // Check if association exists
                 var existingAssociation = await _dbContext.McpPluginDocumentProcesses
                     .FirstOrDefaultAsync(p =>
@@ -311,8 +374,27 @@ namespace Microsoft.Greenlight.API.Main.Controllers
                     return NotFound($"No association found between plugin {plugin.Name} and document process ID {documentProcessId}.");
                 }
 
-                // Update the association with the new version
-                existingAssociation.VersionId = pluginVersion.Id;
+                if (update.KeepOnLatestVersion)
+                {
+                    existingAssociation.VersionId = null;
+                    existingAssociation.KeepOnLatestVersion = true;
+                }
+                else if (update.CurrentVersion != null)
+                {
+                    // Find the specified version
+                    var pluginVersion = plugin.Versions.FirstOrDefault(v =>
+                        v.Major == update.CurrentVersion.Major &&
+                        v.Minor == update.CurrentVersion.Minor &&
+                        v.Patch == update.CurrentVersion.Patch);
+
+                    if (pluginVersion == null)
+                    {
+                        return NotFound($"Version {update.CurrentVersion.Major}.{update.CurrentVersion.Minor}.{update.CurrentVersion.Patch} not found for plugin {plugin.Name}.");
+                    }
+
+                    existingAssociation.VersionId = pluginVersion.Id;
+                    existingAssociation.KeepOnLatestVersion = false;
+                }
 
                 await _dbContext.SaveChangesAsync();
                 return NoContent();
@@ -459,6 +541,22 @@ namespace Microsoft.Greenlight.API.Main.Controllers
                 .Include(p => p.Versions)
                 .FirstAsync(p => p.Id == plugin.Id);
 
+            // Notify the grain about the update
+            // Enumerate all versions and stop them
+            foreach (var version in updatedPlugin.Versions)
+            {
+                try
+                {
+                    var managementGrain = _grainFactory.GetGrain<IMcpPluginManagementGrain>(McpPluginManagementGrainId);
+                    await managementGrain.StopAndRemovePluginVersionAsync(plugin.Name, version.ToString());
+                    _logger?.LogInformation("Successfully notified McpPluginManagementGrain to stop plugin {PluginName} version {Version}", plugin.Name, version.ToString());
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "Error notifying McpPluginManagementGrain to stop plugin {PluginName} version {Version}", plugin.Name, version.ToString());
+                }
+            }
+
             var pluginInfo = _mapper.Map<McpPluginInfo>(updatedPlugin);
             return Ok(new McpPluginUploadResponse
             {
@@ -504,7 +602,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
             }
 
             // Save or update plugin information in the database
-            var plugin = await _dbContext.McpPlugins
+            var plugin = await _dbContext.McpPlugins.Include(mcpPlugin => mcpPlugin.Versions)
                 .FirstOrDefaultAsync(p => p.Name == createModel.Name);
 
             if (plugin == null)
@@ -561,11 +659,27 @@ namespace Microsoft.Greenlight.API.Main.Controllers
             }
 
             await _dbContext.SaveChangesAsync();
-
+            
             // Reload the plugin with its versions to get the complete data
             var updatedPlugin = await _dbContext.McpPlugins
                 .Include(p => p.Versions)
                 .FirstAsync(p => p.Id == plugin.Id);
+
+            // Notify the grain about the update
+            // Enumerate all versions and stop them
+            foreach (var version in updatedPlugin.Versions)
+            {
+                try
+                {
+                    var managementGrain = _grainFactory.GetGrain<IMcpPluginManagementGrain>(McpPluginManagementGrainId);
+                    await managementGrain.StopAndRemovePluginVersionAsync(plugin.Name, version.ToString());
+                    _logger?.LogInformation("Successfully notified McpPluginManagementGrain to stop plugin {PluginName} version {Version}", plugin.Name, version.ToString());
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "Error notifying McpPluginManagementGrain to stop plugin {PluginName} version {Version}", plugin.Name, version.ToString());
+                }
+            }
 
             var pluginInfo = _mapper.Map<McpPluginInfo>(updatedPlugin);
             return Ok(pluginInfo);
@@ -608,7 +722,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
             }
 
             // Save or update plugin information in the database
-            var plugin = await _dbContext.McpPlugins
+            var plugin = await _dbContext.McpPlugins.Include(mcpPlugin => mcpPlugin.Versions)
                 .FirstOrDefaultAsync(p => p.Name == createModel.Name);
 
             if (plugin == null)
@@ -681,6 +795,22 @@ namespace Microsoft.Greenlight.API.Main.Controllers
             var updatedPlugin = await _dbContext.McpPlugins
                 .Include(p => p.Versions)
                 .FirstAsync(p => p.Id == plugin.Id);
+
+            // Notify the grain about the update
+            // Enumerate all versions and stop them
+            foreach (var version in updatedPlugin.Versions)
+            {
+                try
+                {
+                    var managementGrain = _grainFactory.GetGrain<IMcpPluginManagementGrain>(McpPluginManagementGrainId);
+                    await managementGrain.StopAndRemovePluginVersionAsync(plugin.Name, version.ToString());
+                    _logger?.LogInformation("Successfully notified McpPluginManagementGrain to stop plugin {PluginName} version {Version}", plugin.Name, version.ToString());
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "Error notifying McpPluginManagementGrain to stop plugin {PluginName} version {Version}", plugin.Name, version.ToString());
+                }
+            }
 
             var pluginInfo = _mapper.Map<McpPluginInfo>(updatedPlugin);
             return Ok(pluginInfo);
@@ -795,11 +925,27 @@ namespace Microsoft.Greenlight.API.Main.Controllers
 
             _dbContext.McpPlugins.Update(plugin);
             await _dbContext.SaveChangesAsync();
-
+            
             // Reload the plugin with its versions to get the complete data
             var updatedPlugin = await _dbContext.McpPlugins
                 .Include(p => p.Versions)
                 .FirstAsync(p => p.Id == plugin.Id);
+
+            // Notify the grain about the update
+            // Enumerate all versions and stop them
+            foreach (var version in updatedPlugin.Versions)
+            {
+                try
+                {
+                    var managementGrain = _grainFactory.GetGrain<IMcpPluginManagementGrain>(McpPluginManagementGrainId);
+                    await managementGrain.StopAndRemovePluginVersionAsync(plugin.Name, version.ToString());
+                    _logger?.LogInformation("Successfully notified McpPluginManagementGrain to stop plugin {PluginName} version {Version}", plugin.Name, version.ToString());
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "Error notifying McpPluginManagementGrain to stop plugin {PluginName} version {Version}", plugin.Name, version.ToString());
+                }
+            }
 
             var pluginInfo = _mapper.Map<McpPluginInfo>(updatedPlugin);
             return Ok(pluginInfo);
@@ -838,8 +984,28 @@ namespace Microsoft.Greenlight.API.Main.Controllers
                 }
 
                 // Remove all versions
-                if (plugin.Versions != null && plugin.Versions.Any())
+                if (plugin.Versions.Any())
                 {
+                    // Notify the grain about the deletion
+                    try
+                    {
+                        var managementGrain = _grainFactory.GetGrain<IMcpPluginManagementGrain>(McpPluginManagementGrainId);
+                        if (plugin.Versions != null)
+                        {
+                            foreach (var version in plugin.Versions)
+                            {
+                                await managementGrain.StopAndRemovePluginVersionAsync(plugin.Name, version.ToString());
+                                _logger?.LogInformation(
+                                    "Successfully notified McpPluginManagementGrain to stop plugin {PluginName} version {Version}",
+                                    plugin.Name, version.ToString());
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogError(ex, "Error notifying McpPluginManagementGrain to stop plugin {PluginName}", plugin.Name);
+                    }
+
                     _dbContext.McpPluginVersions.RemoveRange(plugin.Versions);
                 }
 

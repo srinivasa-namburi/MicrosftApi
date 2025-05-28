@@ -103,9 +103,9 @@ internal sealed class PluginApiClient : WebAssemblyBaseServiceClient<PluginApiCl
         }
     }
 
-    public async Task AssociateMcpPluginWithDocumentProcessAsync(Guid pluginId, Guid documentProcessId, McpPluginVersionInfo version)
+    public async Task AssociateMcpPluginWithDocumentProcessAsync(Guid pluginId, Guid documentProcessId, McpPluginVersionInfo version, bool keepOnLatestVersion = false)
     {
-        var url = $"/api/mcp-plugins/{pluginId}/{version.Major}.{version.Minor}.{version.Patch}/associate/{documentProcessId}";
+        var url = $"/api/mcp-plugins/{pluginId}/{version.Major}.{version.Minor}.{version.Patch}/associate/{documentProcessId}?keepOnLatestVersion={keepOnLatestVersion.ToString().ToLower()}";
         var response = await SendPostRequestMessage(url, payload: null);
         response?.EnsureSuccessStatusCode();
     }
@@ -143,16 +143,14 @@ internal sealed class PluginApiClient : WebAssemblyBaseServiceClient<PluginApiCl
         return (result.PluginInfo, result.NeedsOverride);
     }
 
-    public async Task UpdateMcpPluginVersionAsync(Guid documentProcessId, Guid pluginId, McpPluginVersionInfo version)
+    public async Task UpdateMcpPluginAssociationAsync(Guid documentProcessId, Guid pluginId, McpPluginAssociationInfo update)
     {
-        var url = $"/api/document-processes/{documentProcessId}/mcp-plugins/{pluginId}/version";
-        var response = await SendPutRequestMessage(url, version);
-        
+        var url = $"/api/document-processes/{documentProcessId}/mcp-plugins/{pluginId}/association";
+        var response = await SendPutRequestMessage(url, update);
         if (response?.StatusCode == HttpStatusCode.NotFound)
         {
             throw new InvalidOperationException("Association not found between plugin and document process.");
         }
-        
         response?.EnsureSuccessStatusCode();
     }
 
@@ -247,5 +245,30 @@ internal sealed class PluginApiClient : WebAssemblyBaseServiceClient<PluginApiCl
             Logger.LogError(ex, $"Error getting document processes for plugin {pluginId}");
             return new List<DocumentProcessInfo>();
         }
+    }
+
+    public async Task<List<McpPluginAssociationInfo>> GetPluginAssociationsByPluginIdAsync(Guid pluginId)
+    {
+        var url = $"/api/mcp-plugins/{pluginId}/document-process-associations";
+        var response = await SendGetRequestMessage(url);
+        if (response?.StatusCode == HttpStatusCode.NotFound)
+        {
+            return new List<McpPluginAssociationInfo>();
+        }
+        response?.EnsureSuccessStatusCode();
+        return await response!.Content.ReadFromJsonAsync<List<McpPluginAssociationInfo>>() ?? new List<McpPluginAssociationInfo>();
+    }
+
+    public async Task<List<McpPluginAssociationInfo>> GetPluginAssociationsByDocumentProcessIdAsync(Guid documentProcessId)
+    {
+        // Use the correct endpoint that returns plugin associations with plugin name
+        var url = $"/api/document-processes/{documentProcessId}/mcp-plugins";
+        var response = await SendGetRequestMessage(url);
+        if (response?.StatusCode == HttpStatusCode.NotFound)
+        {
+            return new List<McpPluginAssociationInfo>();
+        }
+        response?.EnsureSuccessStatusCode();
+        return await response!.Content.ReadFromJsonAsync<List<McpPluginAssociationInfo>>() ?? new List<McpPluginAssociationInfo>();
     }
 }

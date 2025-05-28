@@ -41,5 +41,21 @@ namespace Microsoft.Greenlight.Shared.Extensions
 
             return services;
         }
+
+        /// <summary>
+        /// Adds the plugin stream notifier to listen for plugin update events
+        /// </summary>
+        /// <param name="services">The service collection</param>
+        /// <returns>The service collection</returns>
+        public static IServiceCollection AddPluginStreamNotifier(this IServiceCollection services)
+        {
+            // Register the plugin notifier
+            services.TryAddSingleton<PluginWorkStreamNotifier>();
+
+            // Also register as IWorkStreamNotifier so it's discovered by the service
+            services.TryAddEnumerable(ServiceDescriptor.Singleton<IWorkStreamNotifier, PluginWorkStreamNotifier>());
+
+            return services;
+        }
     }
 }

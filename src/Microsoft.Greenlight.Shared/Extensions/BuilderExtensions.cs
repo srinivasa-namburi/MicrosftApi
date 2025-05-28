@@ -305,6 +305,7 @@ public static class BuilderExtensions
         bool addSignalrNotifiers = false)
     {
         services.AddConfigurationStreamNotifier();
+        services.AddPluginStreamNotifier();
         services.StartOrleansStreamSubscriberService();
 
         services.AddHostedService<DatabaseConfigurationRefreshService>();

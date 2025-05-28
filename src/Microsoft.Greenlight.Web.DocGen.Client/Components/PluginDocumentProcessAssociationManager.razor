@@ -18,30 +18,33 @@
                 <HeaderContent>
                     <MudTh>@SelectionColumnLabel</MudTh>
                     <MudTh>Version</MudTh>
+                    <MudTh>Keep on Latest</MudTh>
                     <MudTh>Actions</MudTh>
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd>@context.Name</MudTd>
                     <MudTd>
-                        @if (PluginCentric)
-                        {
-                            @context.Version
-                        }
-                        else
-                        {
-                            <MudSelect T="string" @bind-Value="context.Version" Dense="true" 
-                                      OnBlur="() => UpdateAssociationVersion(context)">
-                                @if (context.AvailableVersions != null)
+                        <MudSelect T="string" Dense="true" 
+                                  Value="@context.Version" ValueChanged="@((string val) => OnVersionChanged(context, val))" Disabled="context.KeepOnLatestVersion">
+                            @if (context.AvailableVersions != null)
+                            {
+                                @foreach (var version in context.AvailableVersions)
                                 {
-                                    @foreach (var version in context.AvailableVersions)
-                                    {
-                                        <MudSelectItem Value="@version">@version</MudSelectItem>
-                                    }
+                                    <MudSelectItem Value="@version">@version</MudSelectItem>
                                 }
-                            </MudSelect>
-                        }
+                            }
+                        </MudSelect>
                     </MudTd>
                     <MudTd>
+                        <MudCheckBox Value="context.KeepOnLatestVersion" T="bool" 
+                                     ValueChanged="@((bool val) => OnKeepOnLatestChanged(context, val))" />
+                    </MudTd>
+                    <MudTd>
+                        @if (context.HasUnsavedChanges)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Save" Color="Color.Primary" 
+                                           OnClick="() => SaveAssociationChanges(context)" Size="Size.Small" />
+                        }
                         <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" 
                                      OnClick="() => ConfirmDisassociate(context)" Size="Size.Small" />
                     </MudTd>
@@ -79,55 +82,37 @@
         await RefreshAssociations();
     }
 
+    private string GetVersionString(McpPluginVersionInfo? version)
+        => version != null ? $"{version.Major}.{version.Minor}.{version.Patch}" : "Unknown Version";
+
     private async Task RefreshAssociations()
     {
         try
         {
             if (PluginCentric && PluginId.HasValue)
             {
-                // Get document processes associated with this plugin
-                var plugin = await PluginApiClient.GetMcpPluginByIdAsync(PluginId.Value);
-                
-                // Check if DocumentProcesses is available and populated
-                var associatedProcessIds = new List<Guid>();
-                
-                if (plugin?.DocumentProcesses != null && plugin.DocumentProcesses.Any())
+                var associations = await PluginApiClient.GetPluginAssociationsByPluginIdAsync(PluginId.Value);
+                AssociatedItems = associations.Select(a => new AssociationViewModel
                 {
-                    AssociatedItems = plugin.DocumentProcesses
-                        .Where(p => p.DocumentProcess != null)
-                        .Select(p => new AssociationViewModel
-                        {
-                            Id = p.DocumentProcessId,
-                            PluginId = PluginId.Value,
-                            Name = p.DocumentProcess?.ShortName ?? "Unknown Process",
-                            Version = p.Version != null ? $"{p.Version.Major}.{p.Version.Minor}.{p.Version.Patch}" : "Unknown Version"
-                        })
-                        .ToList();
-                    
-                    associatedProcessIds = AssociatedItems.Select(a => a.Id).ToList();
-                }
-                else
-                {
-                    // If DocumentProcesses property is empty, try to get them directly
-                    var associatedProcesses = await PluginApiClient.GetDocumentProcessesByPluginIdAsync(PluginId.Value);
-                    
-                    AssociatedItems = associatedProcesses.Select(p => new AssociationViewModel
-                    {
-                        Id = p.Id,
-                        PluginId = PluginId.Value,
-                        Name = p.ShortName ?? "Unknown Process",
-                        Version = "Latest Version" // Default if specific version is unknown
-                    }).ToList();
-                    
-                    associatedProcessIds = AssociatedItems.Select(a => a.Id).ToList();
-                }
-                
-                // Get all processes that are not associated for the add dialog
+                    Id = a.AssociationId,
+                    DocumentProcessId = a.DocumentProcessId,
+                    PluginId = a.PluginId,
+                    Name = a.Name,
+                    Version = a.KeepOnLatestVersion
+                        ? (a.AvailableVersions.FirstOrDefault() != null ? $"{a.AvailableVersions.First().Major}.{a.AvailableVersions.First().Minor}.{a.AvailableVersions.First().Patch}" : string.Empty)
+                        : GetVersionString(a.CurrentVersion),
+                    AvailableVersions = a.AvailableVersions.Select(v => $"{v.Major}.{v.Minor}.{v.Patch}").ToList(),
+                    KeepOnLatestVersion = a.KeepOnLatestVersion,
+                    OriginalVersion = a.KeepOnLatestVersion
+                        ? (a.AvailableVersions.FirstOrDefault() != null ? $"{a.AvailableVersions.First().Major}.{a.AvailableVersions.First().Minor}.{a.AvailableVersions.First().Patch}" : string.Empty)
+                        : GetVersionString(a.CurrentVersion),
+                    OriginalKeepOnLatestVersion = a.KeepOnLatestVersion
+                }).ToList();
+
                 var allProcesses = await DocumentProcessApiClient.GetAllDocumentProcessInfoAsync();
-                var associatedProcessIdsSet = associatedProcessIds.ToHashSet();
-                
+                var associatedProcessIds = AssociatedItems.Select(a => a.DocumentProcessId).ToHashSet();
                 AvailableItems = allProcesses
-                    .Where(p => !associatedProcessIdsSet.Contains(p.Id))
+                    .Where(p => !associatedProcessIds.Contains(p.Id))
                     .Select(p => new SelectableItem
                     {
                         Id = p.Id,
@@ -138,34 +123,26 @@
             }
             else if (!PluginCentric && DocumentProcessId.HasValue)
             {
-                // Get plugins associated with this document process
-                var plugins = await PluginApiClient.GetMcpPluginsByDocumentProcessIdAsync(DocumentProcessId.Value);
-                
-                AssociatedItems = plugins.Select(p => {
-                    var docProcess = p.DocumentProcesses?.FirstOrDefault(dp => dp.DocumentProcessId == DocumentProcessId.Value);
-                    var version = docProcess?.Version;
-                    var versionString = version != null ? $"{version.Major}.{version.Minor}.{version.Patch}" : 
-                        p.LatestVersion != null ? $"{p.LatestVersion.Major}.{p.LatestVersion.Minor}.{p.LatestVersion.Patch}" : "1.0.0";
-                    
-                    return new AssociationViewModel
-                    {
-                        Id = p.Id,
-                        PluginId = p.Id,
-                        Name = p.Name,
-                        Version = versionString,
-                        AvailableVersions = p.Versions
-                            .OrderByDescending(v => v.Major)
-                            .ThenByDescending(v => v.Minor)
-                            .ThenByDescending(v => v.Patch)
-                            .Select(v => $"{v.Major}.{v.Minor}.{v.Patch}")
-                            .ToList()
-                    };
+                var associations = await PluginApiClient.GetPluginAssociationsByDocumentProcessIdAsync(DocumentProcessId.Value);
+                AssociatedItems = associations.Select(a => new AssociationViewModel
+                {
+                    Id = a.AssociationId,
+                    DocumentProcessId = a.DocumentProcessId,
+                    PluginId = a.PluginId,
+                    Name = a.Name,
+                    Version = a.KeepOnLatestVersion
+                        ? (a.AvailableVersions.FirstOrDefault() != null ? $"{a.AvailableVersions.First().Major}.{a.AvailableVersions.First().Minor}.{a.AvailableVersions.First().Patch}" : string.Empty)
+                        : GetVersionString(a.CurrentVersion),
+                    AvailableVersions = a.AvailableVersions.Select(v => $"{v.Major}.{v.Minor}.{v.Patch}").ToList(),
+                    KeepOnLatestVersion = a.KeepOnLatestVersion,
+                    OriginalVersion = a.KeepOnLatestVersion
+                        ? (a.AvailableVersions.FirstOrDefault() != null ? $"{a.AvailableVersions.First().Major}.{a.AvailableVersions.First().Minor}.{a.AvailableVersions.First().Patch}" : string.Empty)
+                        : GetVersionString(a.CurrentVersion),
+                    OriginalKeepOnLatestVersion = a.KeepOnLatestVersion
                 }).ToList();
-                
-                // Get all plugins that are not associated for the add dialog
+
                 var allPlugins = await PluginApiClient.GetAllMcpPluginsAsync();
                 var associatedPluginIds = AssociatedItems.Select(a => a.PluginId).ToHashSet();
-                
                 AvailableItems = allPlugins
                     .Where(p => !associatedPluginIds.Contains(p.Id))
                     .Select(p => new SelectableItem
@@ -184,6 +161,34 @@
         }
     }
 
+    private async Task OnVersionChanged(AssociationViewModel association, string newValue)
+    {
+        association.Version = newValue;
+        await SaveAssociationChanges(association);
+    }
+    
+    private async Task OnKeepOnLatestChanged(AssociationViewModel association, bool newValue)
+    {
+        association.KeepOnLatestVersion = newValue;
+        if (!newValue)
+        {
+            // Set Version to the current version or first available version
+            if (!string.IsNullOrWhiteSpace(association.OriginalVersion) && association.OriginalVersion != "Unknown Version")
+            {
+                association.Version = association.OriginalVersion;
+            }
+            else if (association.AvailableVersions != null && association.AvailableVersions.Count > 0)
+            {
+                association.Version = association.AvailableVersions[0];
+            }
+            else
+            {
+                association.Version = string.Empty;
+            }
+        }
+        await SaveAssociationChanges(association);
+    }
+
     private void OpenAssociateDialog()
     {
         if (AvailableItems.Count == 0)
@@ -191,19 +196,16 @@
             Snackbar.Add($"No {(PluginCentric ? "document processes" : "plugins")} available to associate.", Severity.Info);
             return;
         }
-        
         var parameters = new DialogParameters
         {
             { "Title", PluginCentric ? "Associate Document Process" : "Associate Plugin" },
             { "Items", AvailableItems },
             { "SelectionLabel", PluginCentric ? "Document Processes" : "Plugins" }
         };
-
         var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
         var dialog = DialogService.Show<SelectItemsDialog>(
             PluginCentric ? "Associate Document Process" : "Associate Plugin", 
             parameters, options);
-
         dialog.Result.ContinueWith(async result =>
         {
             if (!result.Result.Cancelled && result.Result.Data is List<SelectableItem> selectedItems)
@@ -212,54 +214,37 @@
             }
         });
     }
-    
+
     private async Task AssociateSelectedItems(List<SelectableItem> selectedItems)
     {
         if (!selectedItems.Any()) return;
-        
         try
         {
             foreach (var item in selectedItems)
             {
                 if (PluginCentric && PluginId.HasValue)
                 {
-                    // Get the latest version of the plugin
                     var plugin = await PluginApiClient.GetMcpPluginByIdAsync(PluginId.Value);
                     var latestVersion = plugin.LatestVersion;
-                    
                     if (latestVersion == null)
                     {
                         Snackbar.Add($"Plugin {plugin.Name} has no versions.", Severity.Warning);
                         continue;
                     }
-                    
-                    // Associate plugin with document process using the latest version
-                    await PluginApiClient.AssociateMcpPluginWithDocumentProcessAsync(
-                        PluginId.Value, item.Id, latestVersion);
-                    
-                    Snackbar.Add($"Successfully associated '{plugin.Name}' with document process.", Severity.Success);
+                    await PluginApiClient.AssociateMcpPluginWithDocumentProcessAsync(PluginId.Value, item.Id, latestVersion);
                 }
                 else if (!PluginCentric && DocumentProcessId.HasValue)
                 {
-                    // Get the plugin to find its latest version
                     var plugin = await PluginApiClient.GetMcpPluginByIdAsync(item.Id);
                     var latestVersion = plugin.LatestVersion;
-                    
                     if (latestVersion == null)
                     {
                         Snackbar.Add($"Plugin {plugin.Name} has no versions.", Severity.Warning);
                         continue;
                     }
-                    
-                    // Associate plugin with document process using the latest version
-                    await PluginApiClient.AssociateMcpPluginWithDocumentProcessAsync(
-                        plugin.Id, DocumentProcessId.Value, latestVersion);
-                    
-                    Snackbar.Add($"Successfully associated plugin '{plugin.Name}' with document process.", Severity.Success);
+                    await PluginApiClient.AssociateMcpPluginWithDocumentProcessAsync(plugin.Id, DocumentProcessId.Value, latestVersion);
                 }
             }
-            
-            // Refresh the associations list
             await RefreshAssociations();
             await OnAssociationChanged.InvokeAsync();
             StateHasChanged();
@@ -270,7 +255,7 @@
             Snackbar.Add($"Error associating items: {ex.Message}", Severity.Error);
         }
     }
-    
+
     private void ConfirmDisassociate(AssociationViewModel association)
     {
         var parameters = new DialogParameters
@@ -279,10 +264,8 @@
             { "ButtonText", "Disassociate" },
             { "DialogColor", Color.Error }
         };
-
         var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
         var dialog = DialogService.Show<ConfirmationDialog>("Confirm Disassociation", parameters, options);
-
         dialog.Result.ContinueWith(async result =>
         {
             if (!result.Result.Cancelled)
@@ -299,15 +282,12 @@
         {
             if (PluginCentric)
             {
-                await PluginApiClient.DisassociateMcpPluginFromDocumentProcessAsync(
-                    PluginId.Value, association.Id);
+                await PluginApiClient.DisassociateMcpPluginFromDocumentProcessAsync(PluginId.Value, association.DocumentProcessId);
             }
             else
             {
-                await PluginApiClient.DisassociateMcpPluginFromDocumentProcessAsync(
-                    association.PluginId, DocumentProcessId.Value);
+                await PluginApiClient.DisassociateMcpPluginFromDocumentProcessAsync(association.PluginId, DocumentProcessId.Value);
             }
-
             Snackbar.Add("Successfully disassociated.", Severity.Success);
             await RefreshAssociations();
             await OnAssociationChanged.InvokeAsync();
@@ -320,55 +300,60 @@
         }
     }
 
-    private async Task UpdateAssociationVersion(AssociationViewModel association)
+    private async Task SaveAssociationChanges(AssociationViewModel association)
     {
         try
         {
-            if (!DocumentProcessId.HasValue) return;
-            
-            // Parse the version string
-            var versionParts = association.Version.Split('.');
-            if (versionParts.Length != 3 ||
-                !int.TryParse(versionParts[0], out int major) ||
-                !int.TryParse(versionParts[1], out int minor) ||
-                !int.TryParse(versionParts[2], out int patch))
+            McpPluginVersionInfo? selectedVersion = null;
+            if (!association.KeepOnLatestVersion)
             {
-                Snackbar.Add("Invalid version format. Expected format: Major.Minor.Patch", Severity.Error);
-                return;
+                var versionParts = association.Version.Split('.');
+                if (versionParts.Length != 3 ||
+                    !int.TryParse(versionParts[0], out int major) ||
+                    !int.TryParse(versionParts[1], out int minor) ||
+                    !int.TryParse(versionParts[2], out int patch))
+                {
+                    Snackbar.Add("Invalid version format. Expected format: Major.Minor.Patch", Severity.Error);
+                    return;
+                }
+                selectedVersion = new McpPluginVersionInfo { Major = major, Minor = minor, Patch = patch };
             }
-
-            // Get the plugin to find the specified version
-            var plugin = await PluginApiClient.GetMcpPluginByIdAsync(association.PluginId);
-            var version = plugin.Versions.FirstOrDefault(v => 
-                v.Major == major && v.Minor == minor && v.Patch == patch);
-                
-            if (version == null)
+            var update = new McpPluginAssociationInfo
             {
-                Snackbar.Add("Selected version not found for this plugin.", Severity.Error);
-                return;
-            }
-
-            // Update the association with the new version
-            await PluginApiClient.UpdateMcpPluginVersionAsync(DocumentProcessId.Value, association.PluginId, version);
-            
-            Snackbar.Add("Plugin version updated successfully.", Severity.Success);
+                AssociationId = association.Id,
+                PluginId = association.PluginId,
+                DocumentProcessId = association.DocumentProcessId,
+                KeepOnLatestVersion = association.KeepOnLatestVersion,
+                CurrentVersion = selectedVersion,
+                Name = association.Name
+            };
+            await PluginApiClient.UpdateMcpPluginAssociationAsync(
+                association.DocumentProcessId, association.PluginId, update);
+            association.OriginalVersion = association.Version;
+            association.OriginalKeepOnLatestVersion = association.KeepOnLatestVersion;
+            Snackbar.Add("Association updated successfully.", Severity.Success);
             await RefreshAssociations();
             await OnAssociationChanged.InvokeAsync();
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error updating plugin version");
-            Snackbar.Add($"Error updating plugin version: {ex.Message}", Severity.Error);
+            Logger.LogError(ex, "Error saving association changes");
+            Snackbar.Add($"Error saving association changes: {ex.Message}", Severity.Error);
         }
     }
 
     public class AssociationViewModel
     {
-        public Guid Id { get; set; } // Document Process ID or Plugin ID depending on context
-        public Guid PluginId { get; set; } // Always Plugin ID
+        public Guid Id { get; set; }
+        public Guid PluginId { get; set; }
+        public Guid DocumentProcessId { get; set; }
         public string Name { get; set; } = string.Empty;
         public string Version { get; set; } = string.Empty;
         public List<string>? AvailableVersions { get; set; }
+        public bool KeepOnLatestVersion { get; set; } = false;
+        public string? OriginalVersion { get; set; }
+        public bool OriginalKeepOnLatestVersion { get; set; }
+        public bool HasUnsavedChanges => Version != OriginalVersion || KeepOnLatestVersion != OriginalKeepOnLatestVersion;
     }
 
     public class SelectableItem
