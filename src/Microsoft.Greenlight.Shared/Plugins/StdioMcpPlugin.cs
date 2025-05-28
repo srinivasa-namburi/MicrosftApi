@@ -4,6 +4,7 @@ using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.SemanticKernel;
 using ModelContextProtocol.Client;
+using System.ComponentModel;
 using System.Text.RegularExpressions;
 
 namespace Microsoft.Greenlight.Shared.Plugins
@@ -191,107 +192,98 @@ namespace Microsoft.Greenlight.Shared.Plugins
         /// <returns>A task representing the asynchronous operation.</returns>
         public override async Task StartAsync()
         {
-            if (_isDisposed)
-            {
-                throw new ObjectDisposedException(nameof(StdioMcpPlugin));
-            }
+            if (_isDisposed) throw new ObjectDisposedException(nameof(StdioMcpPlugin));
+            if (_isStarted) return;
 
-            // Quick check without taking a lock 
-            if (_isStarted)
-            {
-                return;
-            }
-
-            // Take the lock
             await _lock.WaitAsync();
-
-            // All work is done in a separate method to ensure lock release in finally block
             try
             {
-                // Double-check after acquiring the lock
-                if (_isStarted)
-                {
-                    return;
-                }
-
-                // Prepare everything before async operations
+                if (_isStarted) return;
                 _logger?.LogInformation("Starting MCP plugin: {PluginName} v{Version}", Name, Version);
 
-                // Determine the command path
                 string commandPath = ResolveCommandPath();
-
                 _logger?.LogDebug("MCP plugin command path: {CommandPath}", commandPath);
-                _logger?.LogDebug("MCP plugin working directory: {WorkingDirectory}", _workingDirectory);
 
-                // Create the configuration
                 var stdioConfig = PrepareStdioConfig(commandPath);
 
-                // Release the lock before the async operation
+                // Release lock before async launch
                 _lock.Release();
 
+                StdioClientTransportOptions transportOptions = stdioConfig;
+                IMcpClient mcpClient;
+
+                // --- TRY: normal launch ---
                 try
                 {
-                    // Create the MCP client using the StdioClientTransport - this is async and should run without holding the lock
-                    var mcpClient = await McpClientFactory.CreateAsync(new StdioClientTransport(stdioConfig));
-
-                    // Take the lock again to update the state
-                    await _lock.WaitAsync();
-                    try
-                    {
-                        // Make sure we haven't been disposed or started in the meantime
-                        if (_isDisposed)
-                        {
-                            await mcpClient.DisposeAsync();
-                            throw new ObjectDisposedException(nameof(StdioMcpPlugin));
-                        }
-
-                        if (!_isStarted)
-                        {
-                            McpClient = mcpClient;
-                            _isStarted = true;
-                            _logger?.LogInformation("MCP plugin started: {PluginName} v{Version}", Name, Version);
-                        }
-                        else
-                        {
-                            // Another thread already started the plugin
-                            await mcpClient.DisposeAsync();
-                        }
-                    }
-                    finally
-                    {
-                        _lock.Release();
-                    }
+                    mcpClient = await McpClientFactory.CreateAsync(new StdioClientTransport(transportOptions));
                 }
-                catch (Exception ex)
+                // Catch the *specific* IOException that is triggered when an execute bit is not set (EACCES on Unix systems)
+                catch (IOException ioe)
+                    when (ioe.InnerException is Win32Exception { NativeErrorCode: 13 })
                 {
-                    _logger?.LogError(ex, "Error creating MCP client for plugin: {PluginName}", Name);
+                    _logger?.LogInformation(
+                        "Permission denied when launching '{CommandPath}'. Will try chmod +x to set execute bit and retry once.",
+                        commandPath);
 
-                    // Take the lock again to update the state
-                    await _lock.WaitAsync();
-                    try
+                    // Only chmod if it's a file in a folder (skip plain names like "dotnet")
+                    if (!OperatingSystem.IsWindows()
+                        && Path.GetDirectoryName(commandPath) is { Length: > 0 })
                     {
-                        McpClient = null;
+                        try
+                        {
+                            var currentMode = File.GetUnixFileMode(commandPath);
+                            File.SetUnixFileMode(commandPath, currentMode
+                                | UnixFileMode.UserExecute
+                                | UnixFileMode.GroupExecute
+                                | UnixFileMode.OtherExecute);
+                            _logger?.LogInformation("Applied +x to {CommandPath}", commandPath);
+                        }
+                        catch (Exception chmodEx)
+                        {
+                            _logger?.LogError(chmodEx,
+                                "Failed to chmod +x '{CommandPath}'. Plugin may still not start.",
+                                commandPath);
+                        }
                     }
-                    finally
+                    else
                     {
-                        _lock.Release();
+                        _logger?.LogDebug(
+                            "Skipping chmod on '{CommandPath}' (no directory component).",
+                            commandPath);
                     }
-                    throw;
+
+                    // --- RETRY ---
+                    mcpClient = await McpClientFactory.CreateAsync(new StdioClientTransport(transportOptions));
+                }
+
+                // Re-acquire lock to set state
+                await _lock.WaitAsync();
+                try
+                {
+                    if (_isDisposed)
+                    {
+                        await mcpClient.DisposeAsync();
+                        throw new ObjectDisposedException(nameof(StdioMcpPlugin));
+                    }
+
+                    McpClient = mcpClient;
+                    _isStarted = true;
+                    _logger?.LogInformation("MCP plugin started: {PluginName} v{Version}", Name, Version);
+                }
+                finally
+                {
+                    _lock.Release();
                 }
             }
             catch (Exception ex)
             {
                 _logger?.LogError(ex, "Error starting MCP plugin: {PluginName}", Name);
                 McpClient = null;
-
-                // Make sure the lock is released
-                if (_lock.CurrentCount == 0)
-                {
-                    _lock.Release();
-                }
+                if (_lock.CurrentCount == 0) _lock.Release();
                 throw;
             }
         }
+
 
         /// <summary>
         /// Resolves the command path based on the manifest command.
