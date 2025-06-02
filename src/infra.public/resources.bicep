@@ -42,6 +42,7 @@ resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2022-10
   name: 'law-${resourceToken}'
   location: location
   properties: {
+    retentionInDays: 7
     sku: {
       name: 'PerGB2018'
     }

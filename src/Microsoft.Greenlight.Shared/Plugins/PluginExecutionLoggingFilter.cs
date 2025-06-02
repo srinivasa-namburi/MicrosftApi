@@ -11,7 +11,7 @@ namespace Microsoft.Greenlight.Shared.Plugins;
 /// </summary>
 public class PluginExecutionLoggingFilter : IFunctionInvocationFilter
 {
-    private const int MaxLogLength = 2048;
+    private const int MaxLogLength = 1024;
     private readonly ILogger<PluginExecutionLoggingFilter> _logger;
 
     public PluginExecutionLoggingFilter(ILogger<PluginExecutionLoggingFilter> logger)
@@ -22,7 +22,8 @@ public class PluginExecutionLoggingFilter : IFunctionInvocationFilter
     /// <inheritdoc/>
     public async Task OnFunctionInvocationAsync(FunctionInvocationContext context, Func<FunctionInvocationContext, Task> next)
     {
-        if (context.Function.Name != null && context.Function.Name.StartsWith("InvokePrompt", StringComparison.Ordinal))
+        if ((context.Function.Name.StartsWith("InvokePrompt", StringComparison.OrdinalIgnoreCase)))
+             
         {
             await next(context);
             return;
@@ -37,7 +38,12 @@ public class PluginExecutionLoggingFilter : IFunctionInvocationFilter
             await next(context);
             // Try to get the output from the context if available
             string? outputString = null;
-            if (context.Result is not null)
+            if (context.Function.PluginName != null && (context.Function.PluginName.StartsWith("DocumentHistory", StringComparison.OrdinalIgnoreCase) ||
+                                                        context.Function.PluginName.StartsWith("ContentState", StringComparison.OrdinalIgnoreCase)))
+            {
+                outputString = "Executed successfully";
+            }
+            else
             {
                 outputString = Truncate(context.Result.ToString(), MaxLogLength / 2);
             }

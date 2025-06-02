@@ -16,6 +16,7 @@ using Microsoft.SemanticKernel.ChatCompletion;
 using Scriban;
 using System.Text;
 using Microsoft.Greenlight.Grains.Document.Contracts;
+using Microsoft.Greenlight.Shared.Prompts;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 
 namespace Microsoft.Greenlight.Shared.DocumentProcess.Shared.Generation.Agentic
@@ -201,7 +202,7 @@ namespace Microsoft.Greenlight.Shared.DocumentProcess.Shared.Generation.Agentic
         {
             // Use the new SectionGenerationAgenticMainPrompt
             var mainPromptInfo = await _promptInfoService.GetPromptByShortCodeAndProcessNameAsync(
-                "SectionGenerationAgenticMainPrompt",
+                PromptNames.SectionGenerationAgenticMainPrompt,
                 documentProcessName
             );
             var mainPromptTemplate = mainPromptInfo?.Text;

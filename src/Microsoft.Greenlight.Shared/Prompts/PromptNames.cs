@@ -54,4 +54,9 @@ public static class PromptNames
     /// Gets the prompt used to provide a sentiment score for the review answer.
     /// </summary>
     public const string ReviewSentimentAnalysisScorePrompt = "ReviewSentimentAnalysisScorePrompt";
+
+    /// <summary>
+    /// Gets the prompt used to generate a section with an agentic approach (ContentWriter Agent).
+    /// </summary>
+    public const string SectionGenerationAgenticMainPrompt = "SectionGenerationAgenticMainPrompt";
 }
