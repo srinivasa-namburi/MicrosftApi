@@ -2,6 +2,9 @@
 @inject IContentReferenceApiClient ContentReferenceApiClient
 @inject ISnackbar Snackbar
 
+@using System.Text.Json
+@using System.Text.RegularExpressions
+
 <div class="chat-input-row" style="position: relative;">
     <MudTextField @ref="_mudChatTextField" T="string"
                   OnKeyDown="OnChatTextKeyDown"
@@ -269,9 +272,17 @@
             {
                 AllReferences = await ContentReferenceApiClient.GetAllReferencesAsync();
             }
+            catch (JsonException jsonEx)
+            {
+                Console.Error.WriteLine($"JSON Deserialization error loading references: {jsonEx.Message}");
+                Console.Error.WriteLine($"Path: {jsonEx.Path}, Line: {jsonEx.LineNumber}, Position: {jsonEx.BytePositionInLine}");
+                AllReferences = new List<ContentReferenceItemInfo>();
+            }
             catch (Exception ex)
             {
                 Console.Error.WriteLine($"Error loading references: {ex.Message}");
+                Console.Error.WriteLine($"Exception type: {ex.GetType().Name}");
+                Console.Error.WriteLine($"Stack trace: {ex.StackTrace}");
                 AllReferences = new List<ContentReferenceItemInfo>();
             }
             StateHasChanged();
