@@ -197,9 +197,18 @@ public class EnhancedTextExtractionService : ITextExtractionService
                         }
                     }
 
+                    // Append page text (if any)
                     if (!string.IsNullOrWhiteSpace(pageText))
                     {
                         sb.AppendLine(pageText);
+                    }
+
+                    // Insert an explicit page break delimiter so downstream ingestion can detect page boundaries reliably.
+                    // Use form-feed (\f) which is searched by the vector store ingestion to compute SourceDocumentSourcePage.
+                    if (pageNumber < document.NumberOfPages)
+                    {
+                        sb.Append('\f');
+                        sb.AppendLine();
                     }
                 }
             }

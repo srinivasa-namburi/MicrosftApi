@@ -1,0 +1,342 @@
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Document
+@using Microsoft.Greenlight.Shared.Contracts
+@using Microsoft.Greenlight.Shared.Enums
+@inject IVectorStoreApiClient VectorStoreApiClient
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+
+<MudDialog>
+    <DialogContent>
+        <MudPaper Class="pa-3 vector-dialog" Elevation="1">
+            <MudStack Spacing="2">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudTextField @bind-Value="_query" Placeholder="Search vector store..." Class="mud-width-full" Immediate="true" OnKeyDown="OnKeyDown" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Search" OnClick="SearchAsync" Color="Color.Primary" Variant="Variant.Filled" />
+                    @if (_isSearching)
+                    {
+                        <MudProgressCircular Size="Size.Small" Class="ml-2" Indeterminate="true" />
+                    }
+                </MudStack>
+
+                <MudExpansionPanels Elevation="0">
+                    <MudExpansionPanel>
+                        <TitleContent>
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="min-height:44px;">
+                                <MudText Typo="Typo.subtitle1">Current search options</MudText>
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="options-summary">
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@GetOptionsSummary()</MudText>
+                                    @if (IsCustomized)
+                                    {
+                                        <MudChip Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined">Custom</MudChip>
+                                    }
+                                    else
+                                    {
+                                        <div class="options-placeholder"></div>
+                                    }
+                                </MudStack>
+                            </MudStack>
+                        </TitleContent>
+                        <ChildContent>
+                            <MudStack Spacing="2">
+                                <MudGrid>
+                                    <MudItem xs="12" md="3">
+                                        <MudNumericField @bind-Value="_editableOptions.Top" Min="1" Max="100" Label="# Results (Top)" Immediate="true" />
+                                    </MudItem>
+                                    <MudItem xs="12" md="3">
+                                        <MudNumericField @bind-Value="_editableOptions.PrecedingPartitionCount" Min="0" Max="10" Label="Preceding Partitions" Immediate="true" />
+                                    </MudItem>
+                                    <MudItem xs="12" md="3">
+                                        <MudNumericField @bind-Value="_editableOptions.FollowingPartitionCount" Min="0" Max="10" Label="Following Partitions" Immediate="true" />
+                                    </MudItem>
+                                    <MudItem xs="12" md="3">
+                                        <MudSlider T="double" @bind-Value="_editableOptions.MinRelevance" Min="0" Max="1" Step="0.05" TickMarks="true" ValueLabel="true">Min Relevance</MudSlider>
+                                    </MudItem>
+                                </MudGrid>
+                                <MudStack Row="true" Spacing="2">
+                                    <MudCheckBox @bind-Checked="_editableOptions.EnableProgressiveSearch" Label="Enable progressive search" />
+                                    <MudCheckBox @bind-Checked="_editableOptions.EnableKeywordFallback" Label="Enable keyword fallback" />
+                                </MudStack>
+                                <MudStack Row="true" Spacing="2">
+                                    <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="@ResetOptions">Reset to defaults</MudButton>
+                                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SearchAsync">Search with these options</MudButton>
+                                </MudStack>
+                            </MudStack>
+                        </ChildContent>
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
+
+                <MudGrid>
+                    <MudItem xs="12" md="4">
+                        <MudPaper Class="pa-2" Outlined="true" Style="height:420px; overflow:auto;">
+                            @if (_fileGroups.Count == 0)
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">No results. Enter a query and search.</MudText>
+                            }
+                            else
+                            {
+                                <MudTable T="FileGroup" Items="_fileGroups" Dense="true" Hover="true" Striped="true" Bordered="false"
+                                          RowClassFunc="RowClass"
+                                          SelectedItem="_selectedFile"
+                                          SelectedItemChanged="OnSelectedFileChanged">
+                                    <HeaderContent>
+                                        <MudTh>File</MudTh>
+                                        <MudTh>Details</MudTh>
+                                    </HeaderContent>
+                                    <RowTemplate>
+                                        <MudTd DataLabel="File">
+                                            <MudStack Spacing="1">
+                                                <MudText Typo="Typo.body1" Class="file-name">@context.FileName</MudText>
+                                                @if (!string.IsNullOrWhiteSpace(context.SourceLink))
+                                                {
+                                                    <MudLink Href="@BuildMainDeepLink(context)" Target="_blank" Color="Color.Primary">
+                                                        <MudIcon Icon="@Icons.Material.Filled.Link" Size="Size.Small" Class="mr-1" />
+                                                        Open source
+                                                    </MudLink>
+                                                }
+                                            </MudStack>
+                                        </MudTd>
+                                        <MudTd DataLabel="Details">
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">@context.FileType — @context.IngestedDate.ToString("yyyy-MM-dd")</MudText>
+                                        </MudTd>
+                                    </RowTemplate>
+                                </MudTable>
+                            }
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="12" md="8">
+                        <VectorStoreReferencesList Items="@(_selectedFile?.AsVsItems() ?? new List<VectorStoreSourceReferenceItemInfo>())" ShowHeader="false" ExpandPanelsByDefault="true" ForceMainLinkFirstPage="true" />
+                    </MudItem>
+                </MudGrid>
+            </MudStack>
+        </MudPaper>
+    </DialogContent>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+
+    // Scope parameters
+    [Parameter] public bool IsLibraryScope { get; set; }
+    [Parameter] public string ScopeShortName { get; set; } = string.Empty; // library short name or process short name
+
+    private DocumentLibraryType ScopeType => IsLibraryScope ? DocumentLibraryType.AdditionalDocumentLibrary : DocumentLibraryType.PrimaryDocumentProcessLibrary;
+
+    private string _query = string.Empty;
+    private bool _isSearching;
+
+    private readonly List<FileGroup> _fileGroups = new();
+    private FileGroup? _selectedFile;
+
+    private ConsolidatedSearchOptions? _options;          // fetched defaults
+    private ConsolidatedSearchOptions _editableOptions = new() { DocumentLibraryType = DocumentLibraryType.PrimaryDocumentProcessLibrary, IndexName = "default" }; // editable copy
+
+    private bool IsCustomized => _options != null && !AreEqual(_options, _editableOptions);
+
+    private string GetOptionsSummary()
+    {
+        var o = _editableOptions ?? _options;
+        if (o == null)
+        {
+            return string.Empty;
+        }
+        return $"Top {o.Top} — Min {o.MinRelevance:F2} — Prev {o.PrecedingPartitionCount} — Next {o.FollowingPartitionCount}";
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _fileGroups.Clear();
+        _selectedFile = null;
+
+        _options = await VectorStoreApiClient.GetOptionsAsync(ScopeType, ScopeShortName);
+
+        if (_options != null)
+        {
+            _editableOptions = new ConsolidatedSearchOptions
+            {
+                DocumentLibraryType = _options.DocumentLibraryType,
+                IndexName = _options.IndexName,
+                Top = _options.Top,
+                MinRelevance = _options.MinRelevance,
+                PrecedingPartitionCount = _options.PrecedingPartitionCount,
+                FollowingPartitionCount = _options.FollowingPartitionCount,
+                EnableProgressiveSearch = _options.EnableProgressiveSearch,
+                ProgressiveRelevanceThresholds = _options.ProgressiveRelevanceThresholds,
+                EnableKeywordFallback = _options.EnableKeywordFallback,
+                ParametersExactMatch = _options.ParametersExactMatch?.ToDictionary(k => k.Key, v => v.Value) ?? new()
+            };
+        }
+    }
+
+    private async Task SearchAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_query))
+        {
+            _fileGroups.Clear();
+            _selectedFile = null;
+            return;
+        }
+
+        _isSearching = true;
+        try
+        {
+            List<VectorStoreSourceReferenceItemInfo> results = (IsCustomized && _options != null)
+                ? await VectorStoreApiClient.SearchAsync(ScopeType, ScopeShortName, _query, _editableOptions)
+                : await VectorStoreApiClient.SearchAsync(ScopeType, ScopeShortName, _query);
+
+            var groups = results
+                .GroupBy(r => (r.FileName, r.IndexName))
+                .Select(g => new FileGroup
+                {
+                    FileName = g.Key.FileName,
+                    IndexName = g.Key.IndexName,
+                    FileType = GuessFileType(g.Key.FileName),
+                    IngestedDate = GuessIngestedDate(g),
+                    SourceLink = g.Select(x => x.SourceReferenceLink).FirstOrDefault(s => !string.IsNullOrWhiteSpace(s)),
+                    Items = g.ToList()
+                })
+                .OrderByDescending(g => g.Items.Sum(i => i.Chunks?.Count ?? 0))
+                .ToList();
+
+            _fileGroups.Clear();
+            _fileGroups.AddRange(groups);
+
+            _selectedFile = _fileGroups.FirstOrDefault();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Search failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isSearching = false;
+        }
+    }
+
+    private Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            return SearchAsync();
+        }
+        return Task.CompletedTask;
+    }
+
+    private void OnSelectedFileChanged(FileGroup? fg)
+    {
+        _selectedFile = fg;
+    }
+
+    private string? RowClass(FileGroup item, int index)
+    {
+        return item == _selectedFile ? "selected-row" : null;
+    }
+
+    private void ResetOptions()
+    {
+        if (_options == null)
+        {
+            return;
+        }
+
+        _editableOptions = new ConsolidatedSearchOptions
+        {
+            DocumentLibraryType = _options.DocumentLibraryType,
+            IndexName = _options.IndexName,
+            Top = _options.Top,
+            MinRelevance = _options.MinRelevance,
+            PrecedingPartitionCount = _options.PrecedingPartitionCount,
+            FollowingPartitionCount = _options.FollowingPartitionCount,
+            EnableProgressiveSearch = _options.EnableProgressiveSearch,
+            ProgressiveRelevanceThresholds = _options.ProgressiveRelevanceThresholds,
+            EnableKeywordFallback = _options.EnableKeywordFallback,
+            ParametersExactMatch = _options.ParametersExactMatch?.ToDictionary(k => k.Key, v => v.Value) ?? new()
+        };
+    }
+
+    private static bool AreEqual(ConsolidatedSearchOptions a, ConsolidatedSearchOptions b)
+        => a.Top == b.Top
+            && Math.Abs(a.MinRelevance - b.MinRelevance) < 0.0001
+            && a.PrecedingPartitionCount == b.PrecedingPartitionCount
+            && a.FollowingPartitionCount == b.FollowingPartitionCount
+            && a.EnableProgressiveSearch == b.EnableProgressiveSearch
+            && a.EnableKeywordFallback == b.EnableKeywordFallback;
+
+    private static string GuessFileType(string fileName)
+    {
+        var ext = System.IO.Path.GetExtension(fileName).ToLowerInvariant();
+        return ext switch
+        {
+            ".pdf" => "PDF",
+            ".doc" or ".docx" => "Word",
+            ".txt" => "Text",
+            _ => ext.TrimStart('.')
+        };
+    }
+
+    private static DateTime GuessIngestedDate(IEnumerable<VectorStoreSourceReferenceItemInfo> items)
+    {
+        var ticks = items.SelectMany(i => i.Chunks).Select(c => (long?)c.LastUpdate.Ticks)
+            .Where(t => t.HasValue).Select(t => t!.Value)
+            .DefaultIfEmpty(0).Max();
+        return ticks > 0 ? new DateTime(ticks, DateTimeKind.Utc) : DateTime.UtcNow;
+    }
+
+    private static string BuildMainDeepLink(FileGroup fg)
+    {
+        if (string.IsNullOrWhiteSpace(fg.SourceLink)) return string.Empty;
+        var url = fg.SourceLink!;
+        // Strip any fragment first
+        var hashIndex = url.IndexOf('#');
+        if (hashIndex >= 0)
+        {
+            url = url.Substring(0, hashIndex);
+        }
+        // Remove existing page query if present, then add page=1 and #page=1
+        url = RemoveQueryParameter(url, "page");
+        url += (url.Contains('?') ? "&" : "?") + "page=1";
+        url += "#page=1";
+        return url;
+    }
+
+    private static string RemoveQueryParameter(string url, string paramName)
+    {
+        var qIndex = url.IndexOf('?');
+        if (qIndex < 0)
+        {
+            return url;
+        }
+        var basePart = url.Substring(0, qIndex);
+        var query = url.Substring(qIndex + 1);
+        var parts = query.Split('&', StringSplitOptions.RemoveEmptyEntries).ToList();
+        parts = parts.Where(p => !p.StartsWith(paramName + "=", StringComparison.OrdinalIgnoreCase) && !string.Equals(p, paramName, StringComparison.OrdinalIgnoreCase)).ToList();
+        return parts.Count > 0 ? basePart + "?" + string.Join('&', parts) : basePart;
+    }
+
+    private sealed class FileGroup
+    {
+        public string FileName { get; set; } = string.Empty;
+        public string IndexName { get; set; } = string.Empty;
+        public string FileType { get; set; } = string.Empty;
+        public DateTime IngestedDate { get; set; }
+        public string? SourceLink { get; set; }
+        public List<VectorStoreSourceReferenceItemInfo> Items { get; set; } = new();
+
+        public List<VectorStoreSourceReferenceItemInfo> AsVsItems() => Items;
+    }
+}
+
+<style>
+    .vector-dialog { background-color: var(--mud-palette-background) }
+    .vector-dialog .options-summary { min-height: 24px; }
+    .vector-dialog .options-placeholder { width: 64px; height: 24px; }
+
+    /* Selected row visibility */
+    .vector-dialog .mud-table-row.selected-row {
+        background-color: rgba(var(--mud-palette-primary-rgb), .10) !important;
+        box-shadow: inset 4px 0 0 0 var(--mud-palette-primary);
+    }
+    .vector-dialog .mud-table-row.selected-row .file-name {
+        font-weight: 600;
+        color: var(--mud-palette-primary-darken);
+    }
+</style>

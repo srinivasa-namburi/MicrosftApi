@@ -1,4 +1,6 @@
 ﻿@using System.Net
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.Greenlight.Shared.Contracts.Messages.Reindexing.Events
 @inject IDocumentLibraryApiClient DocumentLibraryApiClient
 @inject IDocumentProcessApiClient DocumentProcessApiClient
 @inject IFileApiClient FileApiClient
@@ -6,52 +8,45 @@
 @inject IDialogService DialogService
 @inject NavigationManager NavigationManager
 @inject IDocumentReindexApiClient DocumentReindexApiClient
+@inject SignalRConnectionService SignalRConnectionService
+@inject SignalRSubscriptionFactory SignalRSubscriptionFactory
 @using Microsoft.Greenlight.Shared.Enums
 @using Microsoft.Greenlight.Shared.Contracts.DTO
+@implements IAsyncDisposable
 
 <MudPaper Class="pa-4">
     <MudGrid>
         <MudItem xs="12">
             <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
                 <MudText Typo="Typo.h6">@FormTitle</MudText>
-                <MudText Typo="Typo.body2" Class="text-right">
-                    <strong>Logic Type:</strong> @DocumentLibraryInfo.LogicType.ToString()
-                </MudText>
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.body2" Class="text-right">
+                        <strong>Logic Type:</strong> @DocumentLibraryInfo.LogicType.ToString()
+                    </MudText>
+                    @if (IsEditMode && DocumentLibraryInfo.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
+                    {
+                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" OnClick="OpenVectorSearchDialog">
+                            <MudIcon Icon="@Icons.Material.Filled.Search" Class="mr-1" />
+                            Search Vector Store
+                        </MudButton>
+                    }
+                </MudStack>
             </MudStack>
         </MudItem>
     </MudGrid>
 
-    @if (IsEditMode)
+    @if (IsEditMode && ShouldShowLibraryBanner)
     {
-        <!-- Inline Reindex Status for this library and associated processes -->
+        <!-- Inline Reindex Status for this library when actively running, or completed if seen in-session -->
         <MudGrid Class="mb-2">
             <MudItem xs="12">
                 <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
                     <MudText Typo="Typo.subtitle2">Reindexing Status:</MudText>
 
-                    @if (_libraryReindexStatus != null)
-                    {
-                        <MudChip Color="@GetStatusColor(_libraryReindexStatus.Status)" Variant="Variant.Filled">
-                            Library: @_libraryReindexStatus.Status.ToString() (@_libraryReindexStatus.ProcessedDocuments/@_libraryReindexStatus.TotalDocuments)
-                        </MudChip>
-                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="OpenLibraryReindexProgress">View details</MudButton>
-                    }
-                    else
-                    {
-                        <MudChip Color="Color.Default" Variant="Variant.Outlined">No active reindex for library</MudChip>
-                    }
-
-                    @if (_processReindexStatuses.Any())
-                    {
-                        <MudDivider Vertical="true" Class="mx-2" />
-                        @foreach (var kvp in _processReindexStatuses)
-                        {
-                            <MudChip Color="@GetStatusColor(kvp.Value.Status)" Variant="Variant.Filled" Class="mr-1">
-                                Associated Document Process @kvp.Key: @kvp.Value.Status.ToString() (@kvp.Value.ProcessedDocuments/@kvp.Value.TotalDocuments)
-                            </MudChip>
-                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="() => OpenProcessReindexProgress(kvp.Key)">View</MudButton>
-                        }
-                    }
+                    <MudChip Color="@GetStatusColor(_libraryReindexStatus!.Status)" Variant="Variant.Filled">
+                        Library: @_libraryReindexStatus!.Status.ToString() (@_libraryReindexStatus!.ProcessedDocuments/@_libraryReindexStatus!.TotalDocuments)
+                    </MudChip>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="OpenLibraryReindexProgress">View details</MudButton>
 
                     <MudSpacer />
                     <MudIconButton Icon="@Icons.Material.Filled.Refresh" Title="Refresh reindex status" OnClick="RefreshReindexStatusesAsync" />
@@ -64,8 +59,8 @@
         <MudTextField Label="Short Name" @bind-Value="DocumentLibraryInfo.ShortName" For="@(() => DocumentLibraryInfo.ShortName)" Required="true" OnBlur="ValidateAndFormatShortName" />
         <MudTextField Label="Description of Contents" @bind-Value="DocumentLibraryInfo.DescriptionOfContents" For="@(() => DocumentLibraryInfo.DescriptionOfContents)" Required="true" Lines="3" TextArea="true" />
         <MudTextField Label="Description of When to Use" @bind-Value="DocumentLibraryInfo.DescriptionOfWhenToUse" For="@(() => DocumentLibraryInfo.DescriptionOfWhenToUse)" Required="true" Lines="3" TextArea="true" />
-        <MudTextField Label="Index Name" @bind-Value="DocumentLibraryInfo.IndexName" For="@(() => DocumentLibraryInfo.IndexName)" Required="true" />
-        <MudTextField Label="Blob Storage Container Name" @bind-Value="DocumentLibraryInfo.BlobStorageContainerName" For="@(() => DocumentLibraryInfo.BlobStorageContainerName)" Required="true" />
+        <MudTextField Label="Index Name" @bind-Value="DocumentLibraryInfo.IndexName" For="@(() => DocumentLibraryInfo.IndexName)" Required="true" Disabled="IsEditMode" />
+        <MudTextField Label="Blob Storage Container Name" @bind-Value="DocumentLibraryInfo.BlobStorageContainerName" For="@(() => DocumentLibraryInfo.BlobStorageContainerName)" Required="true" Disabled="IsEditMode" />
         <MudTextField Label="Blob Storage Auto Import Folder Name" @bind-Value="DocumentLibraryInfo.BlobStorageAutoImportFolderName" For="@(() => DocumentLibraryInfo.BlobStorageAutoImportFolderName)" />
         
         @if (DocumentLibraryInfo.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
@@ -178,7 +173,17 @@
     // Reindex status state
     private string LibraryOrchestrationId => string.IsNullOrWhiteSpace(DocumentLibraryInfo?.ShortName) ? string.Empty : $"library-{DocumentLibraryInfo.ShortName}";
     private DocumentReindexStateInfo? _libraryReindexStatus;
-    private Dictionary<string, DocumentReindexStateInfo> _processReindexStatuses = new();
+    private bool _sawLibraryRunThisSession; // true after a Running/Progress event this session
+
+    // SignalR management
+    private HubConnection? _hubConnection;
+    private SignalRSubscriptionManager? _subMgr;
+
+    private bool ShouldShowLibraryBanner => _libraryReindexStatus is not null && (
+        _libraryReindexStatus.Status == ReindexOrchestrationState.ClearingVectorStore ||
+        _libraryReindexStatus.Status == ReindexOrchestrationState.Running ||
+        (_libraryReindexStatus.Status == ReindexOrchestrationState.Completed && _sawLibraryRunThisSession)
+    );
 
     protected override async Task OnInitializedAsync()
     {
@@ -186,8 +191,85 @@
         {
             await LoadAssociatedDocumentProcesses();
             await LoadAvailableDocumentProcesses();
+            // Seed status once, but do not show completed-from-previous-session banner
             await RefreshReindexStatusesAsync();
+            await InitializeSignalRAsync();
         }
+    }
+
+    private async Task InitializeSignalRAsync()
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(LibraryOrchestrationId))
+            {
+                return;
+            }
+
+            _hubConnection ??= await SignalRConnectionService.GetOrCreateAsync();
+            _subMgr ??= SignalRSubscriptionFactory.Create(_hubConnection);
+
+            _subMgr.RegisterHandlerOnce<DocumentReindexStartedNotification>("ReceiveDocumentReindexStartedNotification", async n =>
+            {
+                if (n.OrchestrationId == LibraryOrchestrationId)
+                {
+                    _sawLibraryRunThisSession = true;
+                    await RefreshReindexStatusesAsync();
+                }
+            });
+            _subMgr.RegisterHandlerOnce<DocumentReindexProgressNotification>("ReceiveDocumentReindexProgressNotification", async n =>
+            {
+                if (n.OrchestrationId == LibraryOrchestrationId)
+                {
+                    _sawLibraryRunThisSession = true;
+                    _libraryReindexStatus ??= new DocumentReindexStateInfo();
+                    _libraryReindexStatus.Status = ReindexOrchestrationState.Running;
+                    _libraryReindexStatus.TotalDocuments = n.TotalDocuments;
+                    _libraryReindexStatus.ProcessedDocuments = n.ProcessedDocuments;
+                    _libraryReindexStatus.FailedDocuments = n.FailedDocuments;
+                    await InvokeAsync(StateHasChanged);
+                }
+            });
+            _subMgr.RegisterHandlerOnce<DocumentReindexCompletedNotification>("ReceiveDocumentReindexCompletedNotification", async n =>
+            {
+                if (n.OrchestrationId == LibraryOrchestrationId)
+                {
+                    _libraryReindexStatus ??= new DocumentReindexStateInfo();
+                    _libraryReindexStatus.Status = ReindexOrchestrationState.Completed;
+                    _libraryReindexStatus.TotalDocuments = n.TotalDocuments;
+                    _libraryReindexStatus.ProcessedDocuments = n.ProcessedDocuments;
+                    _libraryReindexStatus.FailedDocuments = n.FailedDocuments;
+                    await InvokeAsync(StateHasChanged);
+                }
+            });
+            _subMgr.RegisterHandlerOnce<DocumentReindexFailedNotification>("ReceiveDocumentReindexFailedNotification", async n =>
+            {
+                if (n.OrchestrationId == LibraryOrchestrationId)
+                {
+                    _libraryReindexStatus ??= new DocumentReindexStateInfo();
+                    _libraryReindexStatus.Status = ReindexOrchestrationState.Failed;
+                    await InvokeAsync(StateHasChanged);
+                }
+            });
+
+            await _subMgr.EnsureConnectedAsync();
+            await _subMgr.JoinGroupAsync(LibraryOrchestrationId);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"SignalR init failed: {ex.Message}");
+        }
+    }
+
+    private async Task OpenVectorSearchDialog()
+    {
+        var parameters = new DialogParameters
+        {
+            ["IsLibraryScope"] = true,
+            ["ScopeShortName"] = DocumentLibraryInfo.ShortName
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Large, FullWidth = true };
+        await DialogService.ShowAsync<VectorStoreSearchDialog>("Search Vector Store", parameters, options);
     }
 
     private Color GetStatusColor(ReindexOrchestrationState status) => status switch
@@ -195,6 +277,7 @@
         ReindexOrchestrationState.Running => Color.Info,
         ReindexOrchestrationState.Completed => Color.Success,
         ReindexOrchestrationState.Failed => Color.Error,
+        ReindexOrchestrationState.ClearingVectorStore => Color.Warning,
         _ => Color.Default
     };
 
@@ -203,20 +286,14 @@
         try
         {
             _libraryReindexStatus = null;
-            _processReindexStatuses.Clear();
 
             if (!string.IsNullOrWhiteSpace(LibraryOrchestrationId))
             {
                 _libraryReindexStatus = await DocumentReindexApiClient.GetReindexingStatusAsync(LibraryOrchestrationId);
-            }
-
-            foreach (var proc in AssociatedDocumentProcesses)
-            {
-                var procOrchId = $"process-{proc.ShortName}";
-                var status = await DocumentReindexApiClient.GetReindexingStatusAsync(procOrchId);
-                if (status != null && status.Status != ReindexOrchestrationState.NotStarted)
+                // If we're just landing on the page and it's already completed from earlier, do not flip the session flag
+                if (_libraryReindexStatus?.Status == ReindexOrchestrationState.Running || _libraryReindexStatus?.Status == ReindexOrchestrationState.ClearingVectorStore)
                 {
-                    _processReindexStatuses[proc.ShortName] = status;
+                    _sawLibraryRunThisSession = true;
                 }
             }
 
@@ -230,26 +307,16 @@
 
     private async Task OpenLibraryReindexProgress()
     {
-        if (string.IsNullOrWhiteSpace(LibraryOrchestrationId)) return;
+        if (string.IsNullOrWhiteSpace(LibraryOrchestrationId))
+        {
+            return;
+        }
 
         var parameters = new DialogParameters
         {
             { "OrchestrationId", LibraryOrchestrationId },
             { "TargetName", DocumentLibraryInfo.ShortName },
             { "Reason", _libraryReindexStatus?.Reason ?? string.Empty }
-        };
-        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
-        await DialogService.ShowAsync<DocumentReindexProgressDisplay>("Reindexing Progress", parameters, options);
-    }
-
-    private async Task OpenProcessReindexProgress(string processShortName)
-    {
-        var orchestrationId = $"process-{processShortName}";
-        var parameters = new DialogParameters
-        {
-            { "OrchestrationId", orchestrationId },
-            { "TargetName", processShortName },
-            { "Reason", _processReindexStatuses.TryGetValue(processShortName, out var st) ? (st.Reason ?? string.Empty) : string.Empty }
         };
         var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
         await DialogService.ShowAsync<DocumentReindexProgressDisplay>("Reindexing Progress", parameters, options);
@@ -275,8 +342,11 @@
             return;
         }
 
-        // After formatting ShortName, update IndexName and BlobStorageContainerName
-        UpdateIndexAndBlobNames();
+        // After formatting ShortName, update IndexName and BlobStorageContainerName for new libraries only
+        if (!IsEditMode)
+        {
+            UpdateIndexAndBlobNames();
+        }
     }
 
     private void UpdateIndexAndBlobNames()
@@ -443,5 +513,21 @@
         };
         var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
         await DialogService.ShowAsync<DocumentReindexConfirmationDialog>("Reindex Documents", parameters, options);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_subMgr != null)
+        {
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(LibraryOrchestrationId))
+                {
+                    await _subMgr.LeaveGroupAsync(LibraryOrchestrationId);
+                }
+            }
+            catch { }
+            await _subMgr.DisposeAsync();
+        }
     }
 }

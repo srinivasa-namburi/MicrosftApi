@@ -1,0 +1,216 @@
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Document
+@inject Microsoft.Greenlight.Web.Shared.ServiceClients.IContentNodeApiClient ContentNodeApi
+
+<MudPaper Class="pa-2 mb-2" Outlined="true">
+    @if (ShowHeader && !string.IsNullOrWhiteSpace(Title))
+    {
+        <MudText Typo="Typo.subtitle1">@Title</MudText>
+    }
+
+    @if (Items is null || Items.Count == 0)
+    {
+        <MudText Typo="Typo.caption" Color="Color.Secondary">No references available.</MudText>
+    }
+    else
+    {
+        <MudExpansionPanels Elevation="0">
+            @foreach (var vsItem in Items)
+            {
+                var header = $"{vsItem.FileName} (Index: {vsItem.IndexName}, Score: {vsItem.Score:F3})";
+                <MudExpansionPanel Text="@header"
+                                   IsExpanded="@GetExpanded(vsItem.Id)"
+                                   IsExpandedChanged="@(val => SetExpanded(vsItem.Id, val))">
+                    @if (!string.IsNullOrWhiteSpace(vsItem.SourceReferenceLink))
+                    {
+                        <MudText Typo="Typo.caption" Class="mb-1">
+                            <MudLink Href="@BuildMainLink(vsItem.SourceReferenceLink)" Target="_blank" Underline="Underline.Hover">
+                                Open source document
+                            </MudLink>
+                        </MudText>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(vsItem.Description))
+                    {
+                        <MudText Typo="Typo.body2" Class="mb-2"><em>@vsItem.Description</em></MudText>
+                    }
+
+                    <MudText Typo="Typo.subtitle2">Chunks (@vsItem.Chunks.Count)</MudText>
+
+                    @if (vsItem.Chunks != null && vsItem.Chunks.Count > 0)
+                    {
+                        @foreach (var chunk in vsItem.Chunks.OrderByDescending(c => c.Relevance))
+                        {
+                            var page = TryGetPage(chunk?.Tags);
+                            <MudCard Outlined="true" Class="mb-2">
+                                <MudCardHeader>
+                                    <CardHeaderContent>
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                            <MudIcon Icon="@Icons.Material.Filled.Article" Color="Color.Primary" />
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">Score: @chunk.Relevance.ToString("F3") • Part @chunk.PartitionNumber • Size @chunk.SizeInBytes bytes</MudText>
+                                            @if (page.HasValue)
+                                            {
+                                                <MudChip Href="@BuildChunkLink(vsItem.SourceReferenceLink, chunk, vsItem.Chunks)" Target="_blank" Size="Size.Small" Color="Color.Secondary" Variant="Variant.Outlined" Class="ml-2">Page @(page.Value)&nbsp;<MudIcon Icon="@Icons.Material.Filled.OpenInNew" /> </MudChip>
+                                            }
+                                        </MudStack>
+                                    </CardHeaderContent>
+                                    <CardHeaderActions>
+                                        @if (!string.IsNullOrWhiteSpace(vsItem.SourceReferenceLink))
+                                        {
+                                            <MudLink Href="@BuildChunkLink(vsItem.SourceReferenceLink, chunk, vsItem.Chunks)" Target="_blank" Class="mr-1" Title="Open source">
+                                                <MudIcon Icon="@Icons.Material.Filled.OpenInNew" />
+                                            </MudLink>
+                                        }
+                                    </CardHeaderActions>
+                                </MudCardHeader>
+                                <MudCardContent>
+                                    @if (!string.IsNullOrWhiteSpace(chunk.Text))
+                                    {
+                                        <RenderMultilineText Value="@chunk.Text" />
+                                    }
+                                </MudCardContent>
+                            </MudCard>
+                        }
+                    }
+
+                    @if ((vsItem.Chunks == null || vsItem.Chunks.Count == 0) && !string.IsNullOrWhiteSpace(vsItem.StoredPartitionNumbers))
+                    {
+                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" OnClick="async () => await LoadVectorChunksAsync(vsItem)">Load chunks</MudButton>
+                    }
+                </MudExpansionPanel>
+            }
+        </MudExpansionPanels>
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public List<VectorStoreSourceReferenceItemInfo> Items { get; set; } = new();
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public bool ShowHeader { get; set; } = true;
+    [Parameter] public bool ExpandPanelsByDefault { get; set; } = false;
+    [Parameter] public bool ForceMainLinkFirstPage { get; set; } = true;
+
+    // Track expanded state per item to allow user toggling regardless of default
+    private readonly HashSet<Guid> _expanded = new();
+    private string _itemsKey = string.Empty;
+
+    protected override void OnParametersSet()
+    {
+        var currentIds = (Items?.Select(i => i.Id.ToString()) ?? Enumerable.Empty<string>()).ToArray();
+        var newKey = string.Join('|', currentIds);
+        if (!string.Equals(newKey, _itemsKey, StringComparison.Ordinal))
+        {
+            _itemsKey = newKey;
+            _expanded.Clear();
+            if (ExpandPanelsByDefault && Items != null)
+            {
+                foreach (var id in Items.Select(i => i.Id))
+                {
+                    _expanded.Add(id);
+                }
+            }
+        }
+    }
+
+    private bool GetExpanded(Guid id) => _expanded.Contains(id);
+    private void SetExpanded(Guid id, bool value)
+    {
+        if (value)
+        {
+            _expanded.Add(id);
+        }
+        else
+        {
+            _expanded.Remove(id);
+        }
+    }
+
+    private static int? TryGetPage(Dictionary<string, List<string?>>? tags)
+    {
+        if (tags != null && tags.TryGetValue("SourceDocumentSourcePage", out var vals) && vals is { Count: > 0 } && int.TryParse(vals[0], out var p))
+        {
+            return p;
+        }
+        return null;
+    }
+
+    private string BuildMainLink(string? sourceLink)
+    {
+        if (string.IsNullOrWhiteSpace(sourceLink)) { return string.Empty; }
+        var url = sourceLink!;
+        if (ForceMainLinkFirstPage)
+        {
+            // Strip existing fragment
+            var hashIndex = url.IndexOf('#');
+            if (hashIndex >= 0)
+            {
+                url = url.Substring(0, hashIndex);
+            }
+            // Remove page query if present
+            url = RemoveQueryParameter(url, "page");
+            // Add both ?page=1 and #page=1 for Edge to reliably reset
+            url += (url.Contains('?') ? "&" : "?") + "page=1";
+            url += "#page=1";
+        }
+        return url;
+    }
+
+    private static string BuildChunkLink(string? sourceLink, VectorStoreDocumentChunkInfo? chunk, IEnumerable<VectorStoreDocumentChunkInfo>? allChunks = null)
+    {
+        if (string.IsNullOrWhiteSpace(sourceLink)) { return string.Empty; }
+
+        int? page = TryGetPage(chunk?.Tags);
+        if (!page.HasValue && allChunks != null)
+        {
+            foreach (var c in allChunks)
+            {
+                page = TryGetPage(c.Tags);
+                if (page.HasValue) break;
+            }
+        }
+        if (!page.HasValue) return sourceLink!;
+
+        var url = sourceLink!;
+        // Always use #page=N. If any fragment exists, replace it entirely.
+        var hashIndex = url.IndexOf('#');
+        if (hashIndex >= 0)
+        {
+            url = url.Substring(0, hashIndex);
+        }
+        return url + "#page=" + page.Value;
+    }
+
+    private static string RemoveQueryParameter(string url, string paramName)
+    {
+        var qIndex = url.IndexOf('?');
+        if (qIndex < 0)
+        {
+            return url;
+        }
+        var basePart = url.Substring(0, qIndex);
+        var query = url.Substring(qIndex + 1);
+        var parts = query.Split('&', StringSplitOptions.RemoveEmptyEntries).ToList();
+        parts = parts.Where(p => !p.StartsWith(paramName + "=", StringComparison.OrdinalIgnoreCase) && !string.Equals(p, paramName, StringComparison.OrdinalIgnoreCase)).ToList();
+        return parts.Count > 0 ? basePart + "?" + string.Join('&', parts) : basePart;
+    }
+
+    private async Task LoadVectorChunksAsync(VectorStoreSourceReferenceItemInfo vsItem)
+    {
+        if (string.IsNullOrWhiteSpace(vsItem.StoredPartitionNumbers))
+        {
+            return;
+        }
+        var list = await ContentNodeApi.GetVectorChunksAsync(vsItem.IndexName, vsItem.DocumentId, vsItem.StoredPartitionNumbers!);
+        if (list != null && list.Count > 0)
+        {
+            var existing = vsItem.Chunks?.Select(c => c.PartitionNumber).ToHashSet() ?? new HashSet<int>();
+            foreach (var c in list)
+            {
+                if (!existing.Contains(c.PartitionNumber))
+                {
+                    vsItem.Chunks.Add(c);
+                }
+            }
+            StateHasChanged();
+        }
+    }
+}

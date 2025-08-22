@@ -122,6 +122,11 @@ builder.Services.AddHttpClient<IDocumentReindexApiClient, DocumentReindexApiClie
     client.BaseAddress = serverBaseAddress;
 });
 
+builder.Services.AddHttpClient<IVectorStoreApiClient, VectorStoreApiClient>(client =>
+{
+    client.BaseAddress = serverBaseAddress;
+});
+
 // Service used to aid in constructing editors
 builder.Services.AddScoped<ValidationEditorService>();
 

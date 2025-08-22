@@ -70,16 +70,75 @@ public class SemanticKernelVectorStoreRepository : IDocumentRepository
         var fullText = await _textExtractionService.ExtractTextAsync(fileStream, fileName);
         var effectiveChunkSize = _processOptions?.GetEffectiveChunkSize() ?? (_options.ChunkSize <= 0 ? 1000 : _options.ChunkSize);
         var effectiveChunkOverlap = _processOptions?.GetEffectiveChunkOverlap() ?? (_options.ChunkOverlap <= 0 ? 100 : _options.ChunkOverlap);
-        var chunkTexts = _textChunkingService.ChunkText(fullText, effectiveChunkSize, effectiveChunkOverlap);
-        _logger.LogDebug("Chunking document {FileName} with chunk size {ChunkSize} and overlap {ChunkOverlap}, produced {ChunkCount} chunks", fileName, effectiveChunkSize, effectiveChunkOverlap, chunkTexts.Count);
-        if (chunkTexts.Count > 0) _logger.LogInformation("[VectorStore] Starting embedding generation for {ChunkCount} chunks (file={File}, index={Index})", chunkTexts.Count, fileName, indexName);
+
+        // Build page map (start indices) when PDF so we can tag starting page for a chunk without constraining chunking.
+        var isPdf = fileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
+        List<int> pageStarts = new() { 0 }; // page 1 starts at 0
+        if (isPdf)
+        {
+            for (int i = 0; i < fullText.Length; i++)
+            {
+                if (fullText[i] == '\f')
+                {
+                    // Next page starts after the form-feed character
+                    pageStarts.Add(i + 1);
+                }
+            }
+        }
+
+        // 1) Chunk across the full text (not page-bounded), preserving overlap
+        var chunkStrings = _textChunkingService.ChunkText(fullText, effectiveChunkSize, effectiveChunkOverlap);
+
+        // 2) Compute approximate starting index for each chunk so we can resolve a starting page
+        var chunkPositions = new List<(string Text, int StartIndex, int? StartPage)>();
+        int searchFrom = 0;
+        foreach (var c in chunkStrings)
+        {
+            // Try to find the exact occurrence of the chunk from the running position
+            var idx = fullText.IndexOf(c, searchFrom, StringComparison.Ordinal);
+            if (idx < 0)
+            {
+                // If verbatim chunk isn't found (e.g., whitespace normalization during chunking),
+                // probe using a small prefix near the expected position. If still not found, fall back
+                // to the running position instead of 0, so the computed page is approximately correct.
+                var probeLen = Math.Min(64, c.Length);
+                var prefix = c.AsSpan(0, probeLen).ToString();
+                var probeIdx = fullText.IndexOf(prefix, searchFrom, StringComparison.Ordinal);
+                if (probeIdx >= 0)
+                {
+                    idx = probeIdx;
+                }
+                else
+                {
+                    idx = Math.Clamp(searchFrom, 0, Math.Max(0, fullText.Length - 1));
+                }
+            }
+
+            int? page = null;
+            if (isPdf && pageStarts.Count > 1)
+            {
+                // Find the page whose start is <= idx (linear scan is fine; counts are small). Use binary search if needed later.
+                int p = 0;
+                while (p + 1 < pageStarts.Count && pageStarts[p + 1] <= idx) p++;
+                page = p + 1; // 1-based page number
+            }
+
+            chunkPositions.Add((c, idx, page));
+
+            // Advance searchFrom taking overlap into account
+            var advance = Math.Max(1, c.Length - effectiveChunkOverlap);
+            searchFrom = Math.Min(fullText.Length, idx + advance);
+        }
+
+        _logger.LogDebug("Chunking document {FileName} with chunk size {ChunkSize} and overlap {ChunkOverlap}, produced {ChunkCount} chunks", fileName, effectiveChunkSize, effectiveChunkOverlap, chunkPositions.Count);
+        if (chunkPositions.Count > 0) _logger.LogInformation("[VectorStore] Starting embedding generation for {ChunkCount} chunks (file={File}, index={Index})", chunkPositions.Count, fileName, indexName);
         var progressMilestones = new List<int>();
-        if (chunkTexts.Count > 0)
+        if (chunkPositions.Count > 0)
         {
             for (int p = 20; p <= 100; p += 20)
             {
-                var at = (int)Math.Ceiling(chunkTexts.Count * (p / 100.0));
-                if (at > 0 && at <= chunkTexts.Count && !progressMilestones.Contains(at)) progressMilestones.Add(at);
+                var at = (int)Math.Ceiling(chunkPositions.Count * (p / 100.0));
+                if (at > 0 && at <= chunkPositions.Count && !progressMilestones.Contains(at)) progressMilestones.Add(at);
             }
         }
         int nextMilestoneIndex = 0;
@@ -87,32 +146,38 @@ public class SemanticKernelVectorStoreRepository : IDocumentRepository
         var documentId = Base64UrlEncode(fileName);
         var chunkRecords = new List<SkVectorChunkRecord>();
         var now = DateTimeOffset.UtcNow; var partition = 0;
-        foreach (var chunk in chunkTexts)
+        foreach (var chunk in chunkPositions)
         {
-            var embedding = await _embeddingService.GenerateEmbeddingsAsync(chunk);
+            var embedding = await _embeddingService.GenerateEmbeddingsAsync(chunk.Text);
+            var tags = BuildTags(documentLibraryName, documentId, fileName, documentUrl, userId, additionalTags);
+            if (isPdf && chunk.StartPage.HasValue)
+            {
+                // Store starting page number as agreed tag name
+                tags["SourceDocumentSourcePage"] = [chunk.StartPage.Value.ToString()];
+            }
             chunkRecords.Add(new SkVectorChunkRecord
             {
                 DocumentId = documentId,
                 FileName = fileName,
                 OriginalDocumentUrl = documentUrl,
-                ChunkText = chunk,
+                ChunkText = chunk.Text,
                 Embedding = embedding,
                 PartitionNumber = partition++,
                 IngestedAt = now,
-                Tags = BuildTags(documentLibraryName, documentId, fileName, documentUrl, userId, additionalTags)
+                Tags = tags
             });
             var processed = chunkRecords.Count;
             if (nextMilestoneIndex < progressMilestones.Count && processed >= progressMilestones[nextMilestoneIndex])
             {
-                var percent = (int)Math.Round((processed / (double)chunkTexts.Count) * 100, MidpointRounding.AwayFromZero);
-                _logger.LogInformation("[VectorStore] Embedding progress {Percent}% ({Processed}/{Total}) for file {File} (index={Index})", percent, processed, chunkTexts.Count, fileName, indexName);
+                var percent = (int)Math.Round((processed / (double)chunkPositions.Count) * 100, MidpointRounding.AwayFromZero);
+                _logger.LogInformation("[VectorStore] Embedding progress {Percent}% ({Processed}/{Total}) for file {File} (index={Index})", percent, processed, chunkPositions.Count, fileName, indexName);
                 nextMilestoneIndex++;
             }
         }
-        if (chunkTexts.Count > 0) _logger.LogInformation("[VectorStore] Completed embedding generation for {ChunkCount} chunks (file={File}, index={Index})", chunkTexts.Count, fileName, indexName);
+        if (chunkPositions.Count > 0) _logger.LogInformation("[VectorStore] Completed embedding generation for {ChunkCount} chunks (file={File}, index={Index})", chunkPositions.Count, fileName, indexName);
         await _provider.EnsureCollectionAsync(indexName);
         await _provider.UpsertAsync(indexName, chunkRecords);
-        _logger.LogInformation("Ingested {ChunkCount} chunks into vector index {Index} for file {File}", chunkTexts.Count, indexName, fileName);
+        _logger.LogInformation("Ingested {ChunkCount} chunks into vector index {Index} for file {File}", chunkPositions.Count, indexName, fileName);
     }
 
     /// <inheritdoc />

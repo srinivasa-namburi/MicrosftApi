@@ -52,6 +52,7 @@ public class FileController : BaseController
     /// <param name="fileUrl">The URL of the file to download.</param>
     /// <param name="disposition">Optional content-disposition behavior: 'inline' or 'attachment'. Defaults to current behavior (attachment with filename).</param>
     /// <param name="contentTypeOverride">Optional explicit content-type override (e.g., application/pdf). If not supplied, detected from file name.</param>
+    /// <param name="page">Optional page hint for clients/viewers (ignored by server). Present for compatibility with deep-linking like '#page=n'.</param>
     /// <returns>The file stream if found
     /// Produces Status Codes:
     ///     200 OK: When completed sucessfully
@@ -61,7 +62,7 @@ public class FileController : BaseController
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/octet-stream")]
-    public async Task<IActionResult> DownloadFile(string fileUrl, [FromQuery] string? disposition = null, [FromQuery] string? contentTypeOverride = null)
+    public async Task<IActionResult> DownloadFile(string fileUrl, [FromQuery] string? disposition = null, [FromQuery] string? contentTypeOverride = null, [FromQuery] int? page = null)
     {
         var decodedFileUrl = Uri.UnescapeDataString(fileUrl);
 
@@ -80,7 +81,7 @@ public class FileController : BaseController
         // If inline requested, return FileStreamResult without forcing download header
         if (!string.IsNullOrWhiteSpace(disposition) && disposition.Equals("inline", StringComparison.OrdinalIgnoreCase))
         {
-            // For inline, do not pass the download file name to avoid attachment disposition; set content-type only
+            // The optional 'page' query is intentionally ignored by the server; viewers can use URL fragments.
             return File(stream, contentType);
         }
 
@@ -94,6 +95,7 @@ public class FileController : BaseController
     /// <param name="linkId">The link ID of the file to download.</param>
     /// <param name="disposition">Optional content-disposition behavior: 'inline' or 'attachment'. Defaults to current behavior (attachment with filename).</param>
     /// <param name="contentTypeOverride">Optional explicit content-type override (e.g., application/pdf). If not supplied, detected from file name.</param>
+    /// <param name="page">Optional page hint for clients/viewers (ignored by server). Present for compatibility with deep-linking like '#page=n'.</param>
     /// <returns>The file stream if found
     /// Produces Status Codes:
     ///     200 OK: When completed sucessfully
@@ -103,7 +105,7 @@ public class FileController : BaseController
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/octet-stream")]
-    public async Task<IActionResult> DownloadFileById(string linkId, [FromQuery] string? disposition = null, [FromQuery] string? contentTypeOverride = null)
+    public async Task<IActionResult> DownloadFileById(string linkId, [FromQuery] string? disposition = null, [FromQuery] string? contentTypeOverride = null, [FromQuery] int? page = null)
     {
         var file = _dbContext.ExportedDocumentLinks.FirstOrDefault(edl => edl.Id == new Guid(linkId));
         if (file == null)
@@ -126,6 +128,7 @@ public class FileController : BaseController
 
         if (!string.IsNullOrWhiteSpace(disposition) && disposition.Equals("inline", StringComparison.OrdinalIgnoreCase))
         {
+            // The optional 'page' query is intentionally ignored by the server; viewers can use URL fragments.
             return File(stream, contentType);
         }
 

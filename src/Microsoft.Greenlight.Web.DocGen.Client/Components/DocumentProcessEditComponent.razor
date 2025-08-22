@@ -1,4 +1,5 @@
 @using System.Net
+@using Microsoft.AspNetCore.SignalR.Client
 @using Microsoft.Greenlight.Shared.Contracts.DTO.Configuration
 @using Microsoft.Greenlight.Shared.Enums
 @using Microsoft.Greenlight.Shared.Contracts.DTO
@@ -11,6 +12,10 @@
 @inject IDocumentReindexApiClient DocumentReindexApiClient
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
+@inject SignalRConnectionService SignalRConnectionService
+@inject SignalRSubscriptionFactory SignalRSubscriptionFactory
+@using Microsoft.Greenlight.Shared.Contracts.Messages.Reindexing.Events
+@implements IAsyncDisposable
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
     @if (_isLoading)
@@ -28,44 +33,34 @@
                 <MudItem xs="12">
                     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
                         <MudText Typo="Typo.h6">Basic Information</MudText>
-                        <MudText Typo="Typo.body2" Class="text-right">
-                            <strong>Logic Type:</strong> @_process.LogicType.ToString()
-                        </MudText>
+                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                            <MudText Typo="Typo.body2" Class="text-right">
+                                <strong>Logic Type:</strong> @_process.LogicType.ToString()
+                            </MudText>
+                            @if (_isEditMode && _process.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
+                            {
+                                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" OnClick="OpenVectorSearchDialog">
+                                    <MudIcon Icon="@Icons.Material.Filled.Search" Class="mr-1" />
+                                    Search Vector Store
+                                </MudButton>
+                            }
+                        </MudStack>
                     </MudStack>
                 </MudItem>
             </MudGrid>
 
             <!-- Inline Reindex Status -->
-            @if (_isEditMode)
+            @if (_isEditMode && ShouldShowProcessBanner)
             {
                 <MudGrid Class="mb-2">
                     <MudItem xs="12">
                         <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
                             <MudText Typo="Typo.subtitle2">Reindexing Status:</MudText>
 
-                            @if (_processReindexStatus != null)
-                            {
-                                <MudChip Color="@GetStatusColor(_processReindexStatus.Status)" Variant="Variant.Filled">
-                                    Process: @_processReindexStatus.Status.ToString() (@_processReindexStatus.ProcessedDocuments/@_processReindexStatus.TotalDocuments)
-                                </MudChip>
-                                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="OpenProcessReindexProgress">View details</MudButton>
-                            }
-                            else
-                            {
-                                <MudChip Color="Color.Default" Variant="Variant.Outlined">No active reindex for process</MudChip>
-                            }
-
-                            @if (_libraryReindexStatuses.Any())
-                            {
-                                <MudDivider Vertical="true" Class="mx-2" />
-                                @foreach (var kvp in _libraryReindexStatuses)
-                                {
-                                    <MudChip Color="@GetStatusColor(kvp.Value.Status)" Variant="Variant.Filled" Class="mr-1">
-                                        Library @kvp.Key: @kvp.Value.Status.ToString() (@kvp.Value.ProcessedDocuments/@kvp.Value.TotalDocuments)
-                                    </MudChip>
-                                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="() => OpenLibraryReindexProgress(kvp.Key)">View</MudButton>
-                                }
-                            }
+                            <MudChip Color="@GetStatusColor(_processReindexStatus!.Status)" Variant="Variant.Filled">
+                                Process: @_processReindexStatus!.Status.ToString() (@_processReindexStatus!.ProcessedDocuments/@_processReindexStatus!.TotalDocuments)
+                            </MudChip>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="OpenProcessReindexProgress">View details</MudButton>
                             <MudSpacer />
                             <MudIconButton Icon="@Icons.Material.Filled.Refresh" Title="Refresh reindex status" OnClick="RefreshReindexStatusesAsync" />
                         </MudStack>
@@ -77,7 +72,7 @@
                 <MudItem xs="12" md="6">
                     <MudTextField @bind-Value="_process.ShortName" Label="Short Name" Disabled="_isEditMode" OnBlur="ValidateAndFormatShortName" />
                     <MudTextField @bind-Value="_process.Description" Label="Description" />
-                    <MudTextField @bind-Value="_process.BlobStorageContainerName" Label="Blob Storage Container Name" />
+                    <MudTextField @bind-Value="_process.BlobStorageContainerName" Label="Blob Storage Container Name" Disabled="_isEditMode" />
                     <MudTextField @bind-Value="_process.BlobStorageAutoImportFolderName" Label="Auto Import Folder Name" />
                     <MudTextField @bind-Value="_indexName"
                                   Label="Repository Index Name"
@@ -333,14 +328,25 @@
         set
         {
             if (_process != null)
+            {
                 _process.MinimumRelevanceForCitations = value / 100;
+            }
         }
     }
 
     // Reindex status state
     private string ProcessOrchestrationId => string.IsNullOrWhiteSpace(_process?.ShortName) ? string.Empty : $"process-{_process.ShortName}";
     private DocumentReindexStateInfo? _processReindexStatus;
-    private Dictionary<string, DocumentReindexStateInfo> _libraryReindexStatuses = new();
+    private bool _sawProcessRunThisSession; // true after a Running/Progress event this session
+
+    // SignalR management
+    private HubConnection? _hubConnection;
+    private SignalRSubscriptionManager? _subMgr;
+
+    private bool ShouldShowProcessBanner => _processReindexStatus is not null && (
+        _processReindexStatus.Status == ReindexOrchestrationState.Running ||
+        (_processReindexStatus.Status == ReindexOrchestrationState.Completed && _sawProcessRunThisSession)
+    );
 
     protected override async Task OnInitializedAsync()
     {
@@ -418,6 +424,7 @@
 
                 // Refresh reindexing statuses
                 await RefreshReindexStatusesAsync();
+                await InitializeSignalRAsync();
             }
             else
             {
@@ -440,6 +447,86 @@
         }
     }
 
+    private async Task InitializeSignalRAsync()
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(ProcessOrchestrationId))
+            {
+                return;
+            }
+
+            _hubConnection ??= await SignalRConnectionService.GetOrCreateAsync();
+            _subMgr ??= SignalRSubscriptionFactory.Create(_hubConnection);
+
+            _subMgr.RegisterHandlerOnce<DocumentReindexStartedNotification>("ReceiveDocumentReindexStartedNotification", async n =>
+            {
+                if (n.OrchestrationId == ProcessOrchestrationId)
+                {
+                    _sawProcessRunThisSession = true;
+                    await RefreshReindexStatusesAsync();
+                }
+            });
+            _subMgr.RegisterHandlerOnce<DocumentReindexProgressNotification>("ReceiveDocumentReindexProgressNotification", async n =>
+            {
+                if (n.OrchestrationId == ProcessOrchestrationId)
+                {
+                    _sawProcessRunThisSession = true;
+                    _processReindexStatus ??= new DocumentReindexStateInfo();
+                    _processReindexStatus.Status = ReindexOrchestrationState.Running;
+                    _processReindexStatus.TotalDocuments = n.TotalDocuments;
+                    _processReindexStatus.ProcessedDocuments = n.ProcessedDocuments;
+                    _processReindexStatus.FailedDocuments = n.FailedDocuments;
+                    await InvokeAsync(StateHasChanged);
+                }
+            });
+            _subMgr.RegisterHandlerOnce<DocumentReindexCompletedNotification>("ReceiveDocumentReindexCompletedNotification", async n =>
+            {
+                if (n.OrchestrationId == ProcessOrchestrationId)
+                {
+                    _processReindexStatus ??= new DocumentReindexStateInfo();
+                    _processReindexStatus.Status = ReindexOrchestrationState.Completed;
+                    _processReindexStatus.TotalDocuments = n.TotalDocuments;
+                    _processReindexStatus.ProcessedDocuments = n.ProcessedDocuments;
+                    _processReindexStatus.FailedDocuments = n.FailedDocuments;
+                    await InvokeAsync(StateHasChanged);
+                }
+            });
+            _subMgr.RegisterHandlerOnce<DocumentReindexFailedNotification>("ReceiveDocumentReindexFailedNotification", async n =>
+            {
+                if (n.OrchestrationId == ProcessOrchestrationId)
+                {
+                    _processReindexStatus ??= new DocumentReindexStateInfo();
+                    _processReindexStatus.Status = ReindexOrchestrationState.Failed;
+                    await InvokeAsync(StateHasChanged);
+                }
+            });
+
+            await _subMgr.EnsureConnectedAsync();
+            await _subMgr.JoinGroupAsync(ProcessOrchestrationId);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"SignalR init failed: {ex.Message}");
+        }
+    }
+
+    private async Task OpenVectorSearchDialog()
+    {
+        if (!_isEditMode)
+        {
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            ["IsLibraryScope"] = false,
+            ["ScopeShortName"] = _process.ShortName
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Large, FullWidth = true };
+        await DialogService.ShowAsync<VectorStoreSearchDialog>("Search Vector Store", parameters, options);
+    }
+
     private Color GetStatusColor(ReindexOrchestrationState status) => status switch
     {
         ReindexOrchestrationState.Running => Color.Info,
@@ -453,21 +540,13 @@
         try
         {
             _processReindexStatus = null;
-            _libraryReindexStatuses.Clear();
 
             if (!string.IsNullOrWhiteSpace(ProcessOrchestrationId))
             {
                 _processReindexStatus = await DocumentReindexApiClient.GetReindexingStatusAsync(ProcessOrchestrationId);
-            }
-
-            // For associated libraries, check each deterministic orchestration id
-            foreach (var lib in _associatedLibraries)
-            {
-                var libOrchId = $"library-{lib.ShortName}";
-                var status = await DocumentReindexApiClient.GetReindexingStatusAsync(libOrchId);
-                if (status != null && status.Status != ReindexOrchestrationState.NotStarted)
+                if (_processReindexStatus?.Status == ReindexOrchestrationState.Running)
                 {
-                    _libraryReindexStatuses[lib.ShortName] = status;
+                    _sawProcessRunThisSession = true;
                 }
             }
 
@@ -481,26 +560,16 @@
 
     private async Task OpenProcessReindexProgress()
     {
-        if (string.IsNullOrWhiteSpace(ProcessOrchestrationId)) return;
+        if (string.IsNullOrWhiteSpace(ProcessOrchestrationId))
+        {
+            return;
+        }
 
         var parameters = new DialogParameters
         {
             { "OrchestrationId", ProcessOrchestrationId },
             { "TargetName", _process.ShortName },
             { "Reason", _processReindexStatus?.Reason ?? "" }
-        };
-        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
-        await DialogService.ShowAsync<DocumentReindexProgressDisplay>("Reindexing Progress", parameters, options);
-    }
-
-    private async Task OpenLibraryReindexProgress(string libraryShortName)
-    {
-        var orchestrationId = $"library-{libraryShortName}";
-        var parameters = new DialogParameters
-        {
-            { "OrchestrationId", orchestrationId },
-            { "TargetName", libraryShortName },
-            { "Reason", _libraryReindexStatuses.TryGetValue(libraryShortName, out var st) ? (st.Reason ?? "") : "" }
         };
         var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
         await DialogService.ShowAsync<DocumentReindexProgressDisplay>("Reindexing Progress", parameters, options);
@@ -587,7 +656,9 @@
     private async Task LoadAssociatedLibraries()
     {
         if (_process == null)
+        {
             return;
+        }
 
         _associatedLibraries = await DocumentLibraryApiClient.GetDocumentLibrariesByProcessIdAsync(_process.Id);
     }
@@ -709,10 +780,12 @@
                 await LoadPrompts();
 
                 Snackbar.Add("Document process created successfully.", Severity.Success);
+
+                // Navigate back to list for new process creation
+                await OnProcessSaved.InvokeAsync();
             }
         }
 
-        await OnProcessSaved.InvokeAsync();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -848,7 +921,9 @@
     private async Task DisassociateLibrary(Guid libraryId)
     {
         if (_process == null)
+        {
             return;
+        }
 
         try
         {
@@ -895,5 +970,21 @@
     {
     public McpPluginInfo Plugin { get; set; } = new();
     public string Version { get; set; } = string.Empty;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_subMgr != null)
+        {
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(ProcessOrchestrationId))
+                {
+                    await _subMgr.LeaveGroupAsync(ProcessOrchestrationId);
+                }
+            }
+            catch { }
+            await _subMgr.DisposeAsync();
+        }
     }
 }

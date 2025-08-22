@@ -4,37 +4,40 @@
 @using Microsoft.Greenlight.Shared.Enums
 
 <MudPaper Class="pa-4">
-    <MudText Typo="Typo.h5">Document Libraries</MudText>
-
-    <MudButton OnClick="@CreateNew" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add">
-        Create New Document Library
-    </MudButton>
-
     @if (DocumentLibraries == null)
     {
         <MudProgressCircular Indeterminate="true" Class="my-4" />
     }
     else
     {
-        <MudTable Items="DocumentLibraries" Hover="true">
-            <HeaderContent>
-                <MudTh>Short Name</MudTh>
-                <MudTh>Description</MudTh>
-                <MudTh>Logic Type</MudTh>
-                <MudTh>Index Name</MudTh>
-                <MudTh>Actions</MudTh>
-            </HeaderContent>
-            <RowTemplate>
-                <MudTd DataLabel="Short Name">@context.ShortName</MudTd>
-                <MudTd DataLabel="Description">@context.DescriptionOfContents</MudTd>
-                <MudTd DataLabel="Logic Type">@context.LogicType.ToString()</MudTd>
-                <MudTd DataLabel="Index Name">@context.IndexName</MudTd>
-                <MudTd DataLabel="Actions">
-                    <MudIconButton Color="Color.Default" Icon="@Icons.Material.Filled.StickyNote2" Size="Size.Small" OnClick="@(()=>EditLibrary(context.Id))"></MudIconButton>
-                    <MudIconButton Color="Color.Error" Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => DeleteLibrary(context.Id))"/>
-                </MudTd>
-            </RowTemplate>
-        </MudTable>
+        <MudDataGrid Items="DocumentLibraries"
+                     T="DocumentLibraryInfo"
+                     Hover="true"
+                     Filterable="false"
+                     SortMode="SortMode.Single"
+                     Groupable="false"
+                     RowClick="@RowClicked"
+                     Dense="true">
+            <ToolBarContent>
+                <MudText Typo="Typo.h6">Document Libraries</MudText>
+                <MudSpacer />
+                <MudButton OnClick="@CreateNew" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add">
+                    Create New Document Library
+                </MudButton>
+            </ToolBarContent>
+            <Columns>
+                <PropertyColumn Property="x => x.ShortName" Title="Short Name" />
+                <PropertyColumn Property="x => x.DescriptionOfContents" Title="Description" />
+                <PropertyColumn Property="x => x.LogicType" Title="Logic Type" />
+                <PropertyColumn Property="x => x.IndexName" Title="Index Name" />
+                <TemplateColumn Title="Actions" CellClass="d-flex justify-end">
+                    <CellTemplate>
+                        <MudIconButton Color="Color.Default" Icon="@Icons.Material.Filled.StickyNote2" Size="Size.Small" OnClick="@(()=>EditLibrary(context.Item.Id))"></MudIconButton>
+                        <MudIconButton Color="Color.Error" Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => DeleteLibrary(context.Item.Id))"/>
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
     }
 </MudPaper>
 
@@ -71,7 +74,7 @@
         }
     }
 
-    private void RowClicked(TableRowClickEventArgs<DocumentLibraryInfo> obj)
+    private void RowClicked(DataGridRowClickEventArgs<DocumentLibraryInfo> obj)
     {
         EditLibrary(obj.Item.Id);
     }

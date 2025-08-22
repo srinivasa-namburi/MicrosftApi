@@ -45,6 +45,11 @@
             _expandedPluginOutputs.Add(id);
         }
     }
+
+    private static List<VectorStoreSourceReferenceItemInfo> AsVectorItems(ContentNodeSystemItemInfo item)
+    {
+        return item.SourceReferences.OfType<VectorStoreSourceReferenceItemInfo>().ToList();
+    }
 }
 
 @if (SystemItem != null)
@@ -105,55 +110,11 @@
                     </MudPaper>
                 }
 
-                @* Vector Store References *@
+                @* Vector Store References (reused component) *@
                 @if (SystemItem.SourceReferences.OfType<VectorStoreSourceReferenceItemInfo>().Any())
                 {
-                    <MudPaper Class="pa-2 mb-2" Outlined="true">
-                        <MudText Typo="Typo.subtitle1">Vector Store Document References</MudText>
-                        <MudExpansionPanels Elevation="0">
-                            @foreach (var vsItem in SystemItem.SourceReferences.OfType<VectorStoreSourceReferenceItemInfo>())
-                            {
-                                var header = $"{vsItem.FileName} (Index: {vsItem.IndexName}, Score: {vsItem.Score:F3})";
-                                <MudExpansionPanel Text="@header">
-                                    @if (!string.IsNullOrWhiteSpace(vsItem.SourceReferenceLink))
-                                    {
-                                        <MudText Typo="Typo.caption" Class="mb-1">
-                                            <MudLink Href="@vsItem.SourceReferenceLink" Target="_blank" Underline="Underline.Hover">Open source document</MudLink>
-                                        </MudText>
-                                    }
-
-                                    @if (!string.IsNullOrWhiteSpace(vsItem.Description))
-                                    {
-                                        <MudText Typo="Typo.body2" Class="mb-2"><em>@vsItem.Description</em></MudText>
-                                    }
-
-                                    <MudText Typo="Typo.subtitle2">Chunks (@vsItem.Chunks.Count)</MudText>
-                                    <MudList Dense="true">
-                                        @foreach (var chunk in vsItem.Chunks.OrderByDescending(c => c.Relevance))
-                                        {
-                                            <MudListItem>
-                                                <MudStack Spacing="1">
-                                                    <MudText Typo="Typo.caption">
-                                                        <strong>Score:</strong> @chunk.Relevance.ToString("F3") | <strong>Partition:</strong> @chunk.PartitionNumber | <strong>Size:</strong> @chunk.SizeInBytes bytes
-                                                    </MudText>
-                                                    @if (!string.IsNullOrWhiteSpace(chunk.Text))
-                                                    {
-                                                        <RenderMultilineText Value="@chunk.Text" />
-                                                    }
-                                                </MudStack>
-                                            </MudListItem>
-                                        }
-                                    </MudList>
-
-                                    @* Passive load button: render only when nothing loaded but we have identifiers *@
-                                    @if ((vsItem.Chunks == null || vsItem.Chunks.Count == 0) && !string.IsNullOrWhiteSpace(vsItem.StoredPartitionNumbers))
-                                    {
-                                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" OnClick="async () => await LoadVectorChunksAsync(vsItem)">Load chunks</MudButton>
-                                    }
-                                </MudExpansionPanel>
-                            }
-                        </MudExpansionPanels>
-                    </MudPaper>
+                    var vectorItems = AsVectorItems(SystemItem);
+                    <VectorStoreReferencesList Items="@vectorItems" Title="Vector Store Document References"/>
                 }
 
                 @* Plugin Execution References *@

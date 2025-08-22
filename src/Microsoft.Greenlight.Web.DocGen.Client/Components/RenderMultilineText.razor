@@ -10,9 +10,12 @@
 }
 
 @{
+    // Clean control characters we don't want to render (e.g., form-feed used as page delimiters)
+    var cleaned = (Value ?? string.Empty).Replace('\f', ' ');
+
     //We're not encoding the value here because we want to allow HTML in the markdown
     //var encodedValue = HttpUtility.HtmlEncode(Value ?? string.Empty);
-    var encodedValue = Value;
+    var encodedValue = cleaned;
     var markdownPipeline = new MarkdownPipelineBuilder()
                                     .UseAdvancedExtensions()
                                     .UseEmojiAndSmiley()
@@ -25,7 +28,7 @@
                                             })
                                     .Build();
 
-    MarkdownDocument document = Markdown.Parse(Value, markdownPipeline);
+    MarkdownDocument document = Markdown.Parse(encodedValue, markdownPipeline);
 
     foreach (LinkInline link in document.Descendants<LinkInline>())
     {
