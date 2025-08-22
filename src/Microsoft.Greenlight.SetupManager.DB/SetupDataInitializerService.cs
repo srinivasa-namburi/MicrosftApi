@@ -450,29 +450,29 @@ public class SetupDataInitializerService(
         dbContext.DynamicDocumentProcessDefinitions.Add(documentProcess);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        // Create a default sequential validation pipeline
-        var pipelineId = Guid.NewGuid();
-        var pipeline = new DocumentProcessValidationPipeline
-        {
-            Id = pipelineId,
-            DocumentProcessId = _nrcEnvironmentalReportId,
-            RunValidationAutomatically = false,
-            ValidationPipelineSteps =
-            [
-                new DocumentProcessValidationPipelineStep
-            {
-                Id = Guid.NewGuid(),
-                DocumentProcessValidationPipelineId = pipelineId,
-                PipelineExecutionType = ValidationPipelineExecutionType.SequentialFullDocument,
-                Order = 0
-            }
-            ]
-        };
+        //// Create a default sequential validation pipeline
+        //var pipelineId = Guid.NewGuid();
+        //var pipeline = new DocumentProcessValidationPipeline
+        //{
+        //    Id = pipelineId,
+        //    DocumentProcessId = _nrcEnvironmentalReportId,
+        //    RunValidationAutomatically = false,
+        //    ValidationPipelineSteps =
+        //    [
+        //        new DocumentProcessValidationPipelineStep
+        //    {
+        //        Id = Guid.NewGuid(),
+        //        DocumentProcessValidationPipelineId = pipelineId,
+        //        PipelineExecutionType = ValidationPipelineExecutionType.SequentialFullDocument,
+        //        Order = 0
+        //    }
+        //    ]
+        //};
 
-        // Associate the validation pipeline with the document process
-        documentProcess.ValidationPipelineId = pipelineId;
+        //// Associate the validation pipeline with the document process
+        //documentProcess.ValidationPipelineId = pipelineId;
 
-        dbContext.DocumentProcessValidationPipelines.Add(pipeline);
+        //dbContext.DocumentProcessValidationPipelines.Add(pipeline);
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
