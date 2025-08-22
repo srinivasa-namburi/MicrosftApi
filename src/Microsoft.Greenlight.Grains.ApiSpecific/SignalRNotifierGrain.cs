@@ -4,6 +4,7 @@ using Microsoft.Greenlight.Grains.ApiSpecific.Contracts;
 using Microsoft.Greenlight.Shared.Contracts.Messages;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Events;
 using Microsoft.Greenlight.Shared.Contracts.Messages.DocumentGeneration.Events;
+using Microsoft.Greenlight.Shared.Contracts.Messages.Reindexing.Events;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Review.Events;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Validation.Events;
 using Microsoft.Greenlight.Shared.Hubs;
@@ -373,6 +374,90 @@ namespace Microsoft.Greenlight.Grains.ApiSpecific
             {
                 _logger.LogError(ex, "Error sending import job failed notification for table {TableName}, job {JobId}",
                     notification.TableName, notification.JobId);
+            }
+        }
+
+        #endregion
+
+        #region Document Reindexing Notifications
+
+        /// <inheritdoc />
+        public async Task NotifyDocumentReindexStartedAsync(DocumentReindexStartedNotification notification)
+        {
+            try
+            {
+                string groupId = notification.OrchestrationId;
+                await _hubContext.Clients
+                    .Group(groupId)
+                    .ReceiveDocumentReindexStartedNotification(notification);
+
+                _logger.LogInformation("Sent document reindex started notification for {LibraryOrProcess}, orchestration {OrchestrationId}",
+                    notification.DocumentLibraryOrProcessName, notification.OrchestrationId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending document reindex started notification for orchestration {OrchestrationId}",
+                    notification.OrchestrationId);
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task NotifyDocumentReindexProgressAsync(DocumentReindexProgressNotification notification)
+        {
+            try
+            {
+                string groupId = notification.OrchestrationId;
+                await _hubContext.Clients
+                    .Group(groupId)
+                    .ReceiveDocumentReindexProgressNotification(notification);
+
+                _logger.LogInformation("Sent document reindex progress notification for {LibraryOrProcess}: {Processed}/{Total}",
+                    notification.DocumentLibraryOrProcessName, notification.ProcessedDocuments, notification.TotalDocuments);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending document reindex progress notification for orchestration {OrchestrationId}",
+                    notification.OrchestrationId);
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task NotifyDocumentReindexCompletedAsync(DocumentReindexCompletedNotification notification)
+        {
+            try
+            {
+                string groupId = notification.OrchestrationId;
+                await _hubContext.Clients
+                    .Group(groupId)
+                    .ReceiveDocumentReindexCompletedNotification(notification);
+
+                _logger.LogInformation("Sent document reindex completed notification for {LibraryOrProcess}, processed {Processed}/{Total}",
+                    notification.DocumentLibraryOrProcessName, notification.ProcessedDocuments, notification.TotalDocuments);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending document reindex completed notification for orchestration {OrchestrationId}",
+                    notification.OrchestrationId);
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task NotifyDocumentReindexFailedAsync(DocumentReindexFailedNotification notification)
+        {
+            try
+            {
+                string groupId = notification.OrchestrationId;
+                await _hubContext.Clients
+                    .Group(groupId)
+                    .ReceiveDocumentReindexFailedNotification(notification);
+
+                _logger.LogInformation("Sent document reindex failed notification for {LibraryOrProcess}: {Error}",
+                    notification.DocumentLibraryOrProcessName, notification.ErrorMessage);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending document reindex failed notification for orchestration {OrchestrationId}",
+                    notification.OrchestrationId);
             }
         }
 

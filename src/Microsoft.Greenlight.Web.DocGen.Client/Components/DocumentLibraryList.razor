@@ -1,6 +1,7 @@
 ﻿@inject IDocumentLibraryApiClient DocumentLibraryApiClient
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
+@using Microsoft.Greenlight.Shared.Enums
 
 <MudPaper Class="pa-4">
     <MudText Typo="Typo.h5">Document Libraries</MudText>
@@ -19,12 +20,14 @@
             <HeaderContent>
                 <MudTh>Short Name</MudTh>
                 <MudTh>Description</MudTh>
+                <MudTh>Logic Type</MudTh>
                 <MudTh>Index Name</MudTh>
                 <MudTh>Actions</MudTh>
             </HeaderContent>
             <RowTemplate>
                 <MudTd DataLabel="Short Name">@context.ShortName</MudTd>
                 <MudTd DataLabel="Description">@context.DescriptionOfContents</MudTd>
+                <MudTd DataLabel="Logic Type">@context.LogicType.ToString()</MudTd>
                 <MudTd DataLabel="Index Name">@context.IndexName</MudTd>
                 <MudTd DataLabel="Actions">
                     <MudIconButton Color="Color.Default" Icon="@Icons.Material.Filled.StickyNote2" Size="Size.Small" OnClick="@(()=>EditLibrary(context.Id))"></MudIconButton>

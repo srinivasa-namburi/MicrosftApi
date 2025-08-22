@@ -4,9 +4,12 @@ using Microsoft.Greenlight.Grains.Chat.Contracts;
 using Microsoft.Greenlight.Shared.Contracts.Chat;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Events;
 using Microsoft.Greenlight.Shared.Enums;
+using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.ChatCompletion;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 
@@ -74,7 +77,6 @@ namespace Microsoft.Greenlight.Grains.Chat
                 var chunkPrompt = CreateChunkProcessingPrompt(originalContent, userQuery);
 
                 // Process with AI
-                var kernelArguments = new KernelArguments(executionSettings);
                 _processedChunks.Clear();
 
                 // Track processed chunks by their signature to avoid duplicates
@@ -102,14 +104,20 @@ namespace Microsoft.Greenlight.Grains.Chat
 
                 try
                 {
-                    // Process streaming directly
-                    await foreach (var chunk in sk.InvokePromptStreamingAsync(chunkPrompt, kernelArguments, cancellationToken: cts.Token))
+                    // Use IChatCompletionService with ChatHistory for streaming + function auto-invocation
+                    var chatService = sk.GetRequiredService<IChatCompletionService>();
+                    var history = new ChatHistory();
+                    history.AddSystemMessage(systemPrompt);
+                    history.AddUserMessage(chunkPrompt);
+
+                    await foreach (var text in SemanticKernelStreamingHelper.StreamChatWithManualToolInvocationAsync(
+                        chatService, history, executionSettings, sk, cts.Token))
                     {
-                        responseBuilder.Append(chunk);
+                        responseBuilder.Append(text);
 
                         // Try to extract complete chunks from the response so far
                         var extractedChunks = ExtractContentChunks(responseBuilder.ToString(), originalContent);
-                        
+
                         // Filter out already processed chunks using signatures
                         var newChunks = new List<ContentChunk>();
                         foreach (var extractedChunk in extractedChunks)
@@ -119,7 +127,7 @@ namespace Microsoft.Greenlight.Grains.Chat
                             {
                                 processedChunkSignatures.Add(signature);
                                 newChunks.Add(extractedChunk);
-                                
+
                                 // Categorize the chunk
                                 CategorizeChunk(extractedChunk, chunksByType);
                             }
@@ -140,7 +148,6 @@ namespace Microsoft.Greenlight.Grains.Chat
                             // Remove processed chunks from the response buffer
                             foreach (var extractedChunk in newChunks)
                             {
-                                // Remove the chunk definition from the response buffer
                                 var chunkPattern = CreateChunkRemovalPattern(extractedChunk);
                                 var match = Regex.Match(responseBuilder.ToString(), chunkPattern);
                                 if (match.Success)
@@ -162,6 +169,16 @@ namespace Microsoft.Greenlight.Grains.Chat
 
                 // Process any remaining text for chunks
                 var remainingChunks = ExtractContentChunks(responseBuilder.ToString(), originalContent);
+
+                // If no chunks and the buffer contains text, send it as a normal assistant message update to avoid empty UI
+                if (!remainingChunks.Any() && responseBuilder.Length > 0)
+                {
+                    assistantMessage.Message = responseBuilder.ToString();
+                    assistantMessage.State = ChatMessageCreationState.Complete;
+                    await SendAssistantMessageUpdateAsync(conversationId, assistantMessage);
+                    await SendCompletionNotificationAsync(conversationId, messageId);
+                    return;
+                }
                 
                 // Filter out already processed chunks
                 var newRemainingChunks = remainingChunks

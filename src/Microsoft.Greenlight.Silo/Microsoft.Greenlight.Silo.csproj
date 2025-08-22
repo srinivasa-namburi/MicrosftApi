@@ -21,4 +21,12 @@
 		<ProjectReference Include="..\Microsoft.Greenlight.Shared\Microsoft.Greenlight.Shared.csproj" />
 		<ProjectReference Include="..\Plugins\Microsoft.Greenlight.Plugins.Default\Microsoft.Greenlight.Plugins.Default.csproj" />
 	</ItemGroup>
+
+	<!-- Ensure tessdata folder (OCR language files) is included in publish output -->
+	<ItemGroup>
+		<Content Include="tessdata\**\*">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
+		</Content>
+	</ItemGroup>
 </Project>

@@ -21,12 +21,4 @@ namespace Microsoft.Greenlight.Grains.Ingestion.Contracts.State
         public int FailedFiles { get; set; } = 0;
         public List<string> Errors { get; set; } = new List<string>();
     }
-
-    public enum IngestionOrchestrationState
-    {
-        NotStarted,
-        Running,
-        Completed,
-        Failed
-    }
 }

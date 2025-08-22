@@ -1,11 +1,14 @@
-﻿using System.ComponentModel;
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+using System.ComponentModel;
 using AutoMapper;
 using Microsoft.Greenlight.Extensions.Plugins;
+using Microsoft.Greenlight.Shared.Contracts;
 using Microsoft.Greenlight.Shared.Contracts.DTO.DocumentLibrary;
 using Microsoft.Greenlight.Shared.Models.SourceReferences;
 using Microsoft.Greenlight.Shared.Services;
-using Microsoft.Greenlight.Shared.Services.Search;
+using Microsoft.Greenlight.Shared.Services.Search; 
 using Microsoft.SemanticKernel;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Microsoft.Greenlight.Plugins.Default.DocumentLibrary;
 
@@ -13,24 +16,24 @@ public class DocumentLibraryPlugin : IPluginImplementation
 {
     private readonly IDocumentLibraryInfoService _documentLibraryInfoService;
     private readonly IDocumentProcessInfoService _documentProcessInfoService;
-    private readonly IAdditionalDocumentLibraryKernelMemoryRepository _kmRepository;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly IMapper _mapper;
 
     public DocumentLibraryPlugin(
         IDocumentLibraryInfoService documentLibraryInfoService,
         IDocumentProcessInfoService documentProcessInfoService,
-        IAdditionalDocumentLibraryKernelMemoryRepository kmRepository,
+        IServiceScopeFactory scopeFactory,
         IMapper mapper
         )
     {
         _documentLibraryInfoService = documentLibraryInfoService;
         _documentProcessInfoService = documentProcessInfoService;
-        _kmRepository = kmRepository;
+        _scopeFactory = scopeFactory;
         _mapper = mapper;
     }
     [KernelFunction("GetDocumentLibraryInfo")]
     [Description("Returns a list of all available document libraries with information about their contents and when to use them. " +
-                 "Use to determine your knowledge capabilities. For generation assistance for a particular document, use native_KmDocsPlugin.")]
+                 "Use to determine your knowledge capabilities. For generation assistance for a particular document, use native_UniversalDocsPlugin.")]
 
     public async Task<List<DocumentLibraryUsageInfo>> GetDocumentLibraryInfoAsync(
         [Description("The DocumentProcessName of the document process to filter the document libraries by. This is required.")]
@@ -79,7 +82,10 @@ public class DocumentLibraryPlugin : IPluginImplementation
             return "For assistant : Wrong Document Library ShortName provided - no valid library found. Please use the DocumentProcessShortName returned by GetDocumentLibraryInfo";
         }
 
-        var memoryAnswer = await _kmRepository.AskAsync(documentLibraryShortName, indexName, questionText);
+        using var scope = _scopeFactory.CreateScope();
+        var repositoryFactory = scope.ServiceProvider.GetRequiredService<IDocumentRepositoryFactory>();
+        var repository = await repositoryFactory.CreateForDocumentLibraryAsync(documentLibraryShortName);
+        var memoryAnswer = await repository.AskAsync(documentLibraryShortName, indexName, null, questionText);
         if (memoryAnswer?.Result == null || memoryAnswer?.Result == "INFO NOT FOUND")
         {
             return "No answer found - please try another query or reformulate to use the SearchDocumentLibrary function instead";
@@ -112,7 +118,20 @@ public class DocumentLibraryPlugin : IPluginImplementation
         }
 
 
-        var searchResults = await _kmRepository.SearchAsync(documentLibraryShortName, searchText);
+        // Create search options for document library
+        var searchOptions = new ConsolidatedSearchOptions
+        {
+            IndexName = documentLibrary.IndexName,
+            DocumentLibraryType = Shared.Enums.DocumentLibraryType.AdditionalDocumentLibrary,
+            MinRelevance = 0.7,
+            Top = 10
+        };
+
+        using var scope = _scopeFactory.CreateScope();
+        var repositoryFactory = scope.ServiceProvider.GetRequiredService<IDocumentRepositoryFactory>();
+        // Resolve repository per call to honor library-specific logic type (KM vs SK Vector Store)
+        var repository = await repositoryFactory.CreateForDocumentLibraryAsync(documentLibraryShortName);
+        var searchResults = await repository.SearchAsync(documentLibraryShortName, searchText, searchOptions);
 
         var documentLibrarySourceReferenceItems = new List<DocumentLibrarySourceReferenceItem>();
         foreach (var sourceReferenceItem in searchResults)

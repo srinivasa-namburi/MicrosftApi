@@ -8,7 +8,7 @@ using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Models;
 using Microsoft.Greenlight.Shared.Services.ContentReference;
-using Microsoft.Greenlight.Shared.Services.Search;
+// Removed legacy ReviewKernelMemoryRepository dependency
 using Orleans.Concurrency;
 using System.Security.Cryptography;
 
@@ -19,20 +19,17 @@ namespace Microsoft.Greenlight.Grains.Review
     {
         private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
         private readonly ILogger<ReviewDocumentIngestorGrain> _logger;
-        private readonly IReviewKernelMemoryRepository _reviewKmRepository;
         private readonly AzureFileHelper _fileHelper;
         private readonly IContentReferenceService _contentReferenceService;
 
         public ReviewDocumentIngestorGrain(
             IDbContextFactory<DocGenerationDbContext> dbContextFactory,
             ILogger<ReviewDocumentIngestorGrain> logger,
-            IReviewKernelMemoryRepository reviewKmRepository,
             AzureFileHelper fileHelper,
             IContentReferenceService contentReferenceService)
         {
             _dbContextFactory = dbContextFactory;
             _logger = logger;
-            _reviewKmRepository = reviewKmRepository;
             _fileHelper = fileHelper;
             _contentReferenceService = contentReferenceService;
         }
@@ -119,7 +116,7 @@ namespace Microsoft.Greenlight.Grains.Review
                         fileBlobStream.Position = 0;
                         var hashBytes = await sha256.ComputeHashAsync(fileBlobStream);
                         fileHash = BitConverter.ToString(hashBytes).Replace("-", "").ToLowerInvariant();
-                        
+
                         // Reset stream position for further use
                         fileBlobStream.Position = 0;
                     }
@@ -139,9 +136,9 @@ namespace Microsoft.Greenlight.Grains.Review
                     dbContext.ContentReferenceItems.Add(contentReference);
                     await dbContext.SaveChangesAsync();
 
-                    _logger.LogInformation("Created content reference {ContentReferenceId} for review {ReviewInstanceId}", 
+                    _logger.LogInformation("Created content reference {ContentReferenceId} for review {ReviewInstanceId}",
                         contentReference.Id, reviewInstanceId);
-                    
+
                     // Let the content reference service handle generating RAG text and embeddings
                     // We need to update the item directly here since we're only passing in the ID.
                     contentReference = await _contentReferenceService.GetOrCreateContentReferenceItemAsync(contentReference.Id, ContentReferenceType.ReviewItem);
@@ -159,7 +156,7 @@ namespace Microsoft.Greenlight.Grains.Review
                 {
                     ExportedDocumentLinkId = reviewInstance.ExportedDocumentLink.Id,
                     TotalNumberOfQuestions = totalNumberOfQuestions,
-                    DocumentProcessShortName = trackedReviewInstance.DocumentProcessShortName,
+                    DocumentProcessShortName = trackedReviewInstance.DocumentProcessShortName ?? string.Empty,
                     ContentType = ReviewContentType.ExternalFile
                 });
             }

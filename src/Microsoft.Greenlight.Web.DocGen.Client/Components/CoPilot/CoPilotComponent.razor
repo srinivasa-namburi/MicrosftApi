@@ -1,10 +1,11 @@
 @inject IChatApiClient ChatApiClient
 @inject IAuthorizationApiClient AuthorizationApiClient
-@inject IConfigurationApiClient ConfigurationApiClient
 @inject IContentReferenceApiClient ContentReferenceApiClient
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IJSRuntime JSRuntime
 @inject ISnackbar Snackbar
+@inject SignalRConnectionService SignalRConnectionService
+@inject SignalRSubscriptionFactory SignalRSubscriptionFactory
 
 @using Microsoft.AspNetCore.SignalR.Client
 @using Microsoft.Greenlight.Shared.Contracts.Chat
@@ -249,6 +250,8 @@ else
     private ContentChunkTracker _contentChunkTracker;
     private bool _isProcessingContentChunks = false;
 
+    private SignalRSubscriptionManager? _subMgr;
+
     protected override async Task OnInitializedAsync()
     {
         if (!ConversationId.HasValue && InternalConversationIdCreate)
@@ -359,51 +362,41 @@ else
     {
         if (HubConnection == null)
         {
-            var apiAddress = await AuthorizationApiClient.GetApiAddressAsync();
-            HubConnection = new HubConnectionBuilder()
-                .WithUrl($"{apiAddress}/hubs/notification-hub", options =>
-                {
-                    options.AccessTokenProvider = async () => await ConfigurationApiClient.GetAccessTokenAsync();
-                })
-                .WithStatefulReconnect()
-                .WithAutomaticReconnect()
-                .Build();
+            // Use shared connection if cascading is not provided
+            HubConnection = await SignalRConnectionService.GetOrCreateAsync();
         }
 
-        HubConnection.On<ChatMessageResponseReceived>(
+        // Use subscription manager to dedupe and manage reconnect group join
+        _subMgr ??= new SignalRSubscriptionManager(HubConnection);
+
+        _subMgr.RegisterHandlerOnce<ChatMessageResponseReceived>(
             "ReceiveChatMessageResponseReceivedNotification",
             HubReceiveChatMessageResponseReceivedNotificationHandler);
 
-        HubConnection.On<ProcessChatMessage>(
+        _subMgr.RegisterHandlerOnce<ProcessChatMessage>(
             "ReceiveProcessChatMessageReceivedNotification",
             HubReceiveProcessChatMessageReceivedNotificationHandler);
 
-        HubConnection.On<ConversationReferencesUpdatedNotification>(
+        _subMgr.RegisterHandlerOnce<ConversationReferencesUpdatedNotification>(
             "ReceiveConversationReferencesUpdatedNotification",
             HubReceiveConversationReferencesUpdatedNotificationHandler);
 
-        HubConnection.On<ContentChunkUpdate>(
+        _subMgr.RegisterHandlerOnce<ContentChunkUpdate>(
             "ReceiveContentChunkUpdateNotification",
             HubReceiveContentChunkUpdateNotificationHandler);
 
-        if (HubConnection.State == HubConnectionState.Disconnected)
-        {
-            await HubConnection.StartAsync();
-        }
+        await _subMgr.EnsureConnectedAsync();
 
-        await HubConnection.SendAsync("AddToGroup", ConversationId);
+        await _subMgr.JoinGroupAsync(ConversationId!.Value.ToString());
     }
 
     private async Task StopHubConnections()
     {
-        if (HubConnection == null) return;
+        if (_subMgr == null) return;
 
-        HubConnection.Remove("ReceiveChatMessageResponseReceivedNotification");
-        HubConnection.Remove("ReceiveProcessChatMessageReceivedNotification");
-        HubConnection.Remove("ReceiveConversationReferencesUpdatedNotification");
-        HubConnection.Remove("ReceiveContentChunkUpdateNotification");
+        await _subMgr.LeaveGroupAsync(ConversationId!.Value.ToString());
 
-        await HubConnection.SendAsync("RemoveFromGroup", ConversationId);
+        await _subMgr.DisposeAsync();
     }
 
     private async Task HubReceiveContentChunkUpdateNotificationHandler(ContentChunkUpdate update)
@@ -679,7 +672,7 @@ else
 
     public async ValueTask DisposeAsync()
     {
-        if (HubConnection != null)
+        if (_subMgr != null)
         {
             await StopHubConnections();
         }

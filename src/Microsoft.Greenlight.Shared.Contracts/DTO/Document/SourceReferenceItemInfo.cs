@@ -11,6 +11,8 @@ namespace Microsoft.Greenlight.Shared.Contracts.DTO.Document;
 [JsonDerivedType(typeof(KernelMemoryDocumentSourceReferenceItemInfo), nameof(KernelMemoryDocumentSourceReferenceItemInfo))]
 [JsonDerivedType(typeof(DocumentLibrarySourceReferenceItemInfo), nameof(DocumentLibrarySourceReferenceItemInfo))]
 [JsonDerivedType(typeof(DocumentProcessRepositorySourceReferenceItemInfo), nameof(DocumentProcessRepositorySourceReferenceItemInfo))]
+// Vector store aggregated result (Semantic Kernel vector store generic result)
+[JsonDerivedType(typeof(VectorStoreSourceReferenceItemInfo), nameof(VectorStoreSourceReferenceItemInfo))]
 public abstract class SourceReferenceItemInfo
 {
     /// <summary>

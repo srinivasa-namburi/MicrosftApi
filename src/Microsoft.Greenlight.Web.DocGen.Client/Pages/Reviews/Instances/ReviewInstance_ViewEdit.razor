@@ -10,6 +10,8 @@
 @inject IConfigurationApiClient ConfigurationApiClient
 @inject NavigationManager Navigation
 @inject IDialogService DialogService
+@inject SignalRConnectionService SignalRConnectionService
+@inject SignalRSubscriptionFactory SignalRSubscriptionFactory
 
 @* DisposeAsync - used to clean up HubConnection for SignalR *@
 @implements IAsyncDisposable
@@ -303,6 +305,7 @@
     private bool IsNewReview { get; set; } = false;
     private string ReviewExecutionMessage { get; set; } = "Please wait...";
     private int TotalReviewQuestions = 0;
+    private SignalRSubscriptionManager? _subMgr;
 
     protected override async Task OnInitializedAsync()
     {
@@ -361,32 +364,23 @@
     {
         if (HubConnection == null)
         {
-            var apiAddress = await AuthorizationApiClient.GetApiAddressAsync();
-            HubConnection = new HubConnectionBuilder()
-                .WithUrl($"{apiAddress}/hubs/notification-hub", options =>
-                {
-                    options.AccessTokenProvider = async () => await ConfigurationApiClient.GetAccessTokenAsync();
-                })
-                .WithStatefulReconnect()
-                .WithAutomaticReconnect()
-                .Build();
+            HubConnection = await SignalRConnectionService.GetOrCreateAsync();
         }
 
-        HubConnection.On<ReviewQuestionAnsweredNotification>( // CorrelationId
+        _subMgr = SignalRSubscriptionFactory.Create(HubConnection);
+
+        _subMgr.RegisterHandlerOnce<ReviewQuestionAnsweredNotification>(
             "ReceiveReviewQuestionAnsweredNotification",
             HubReceiveReviewQuestionAnsweredNotificationHandler);
 
-        HubConnection.On<BackendProcessingMessageGenerated>(
+        _subMgr.RegisterHandlerOnce<BackendProcessingMessageGenerated>(
             "ReceiveBackendProcessingMessageGeneratedNotification",
             HubReceiveBackendProcessingMessageGeneratedNotificationHandler);
 
-        if (HubConnection.State == HubConnectionState.Disconnected)
-        {
-            await HubConnection.StartAsync();
-        }
+        await _subMgr.EnsureConnectedAsync();
 
         // Add this Hub Connection to a group matching the Review Instance ID
-        await HubConnection.SendAsync("AddToGroup", ReviewInstanceString);
+        await _subMgr.JoinGroupAsync(ReviewInstanceString!);
     }
 
     private async Task InitializeReviewInstance()
@@ -501,10 +495,10 @@
 
     private async Task StopHubConnections()
     {
-        if (HubConnection == null) return;
+        if (_subMgr == null) return;
 
-        HubConnection.Remove("ReceiveReviewQuestionAnsweredNotification");
-        await HubConnection.SendAsync("RemoveFromGroup", ReviewInstanceString);
+        await _subMgr.LeaveGroupAsync(ReviewInstanceString!);
+        await _subMgr.DisposeAsync();
     }
 
     private async Task ExecuteReview()
@@ -623,7 +617,7 @@
 
     public async ValueTask DisposeAsync()
     {
-        if (HubConnection != null)
+        if (_subMgr != null)
         {
             await StopHubConnections();
         }

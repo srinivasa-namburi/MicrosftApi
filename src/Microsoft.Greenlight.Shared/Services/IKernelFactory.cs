@@ -2,6 +2,7 @@
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
+using Microsoft.Extensions.AI;
 
 namespace Microsoft.Greenlight.Shared.Services
 {
@@ -59,6 +60,13 @@ namespace Microsoft.Greenlight.Shared.Services
         /// <param name="aiTaskType"></param>
         Task<AzureOpenAIPromptExecutionSettings> GetPromptExecutionSettingsForDocumentProcessAsync(
             string documentProcessName, AiTaskType aiTaskType);
+
+        /// <summary>
+        /// Returns unified ChatOptions for a document process &amp; task type (Microsoft.Extensions.AI abstraction).
+        /// </summary>
+        /// <param name="documentProcessName">Short name of the document process.</param>
+        /// <param name="aiTaskType">Task type guiding configuration.</param>
+        Task<ChatOptions> GetChatOptionsForDocumentProcessAsync(string documentProcessName, AiTaskType aiTaskType);
 
         /// <summary>
         /// Gets a default generic kernel instance with the gpt-4o deployment for the solution

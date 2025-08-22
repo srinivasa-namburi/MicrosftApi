@@ -1,6 +1,7 @@
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Contracts.DTO.Configuration;
+using Microsoft.Greenlight.Web.Shared.ServiceClients;
 
 namespace Microsoft.Greenlight.Web.Shared.ServiceClients;
 
@@ -24,6 +25,10 @@ public interface IConfigurationApiClient : IServiceClient
     Task<AiModelDeploymentInfo> UpdateAiModelDeploymentAsync(AiModelDeploymentInfo deployment);
     Task DeleteAiModelDeploymentAsync(Guid id);
     Task<ServiceConfigurationOptions.GreenlightServicesOptions.ScalabilityOptions> GetScalabilityOptionsAsync();
+    /// <summary>
+    /// Gets the vector store options.
+    /// </summary>
+    Task<VectorStoreOptions> GetVectorStoreOptionsAsync();
 
     /// <summary>
     /// Gets the global options.
@@ -49,4 +54,10 @@ public interface IConfigurationApiClient : IServiceClient
     /// Gets the status of an import job.
     /// </summary>
     Task<IndexImportJobStatus> GetIndexImportStatusAsync(Guid jobId);
+
+    // OCR endpoints
+    Task<ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions.OcrOptions> GetOcrOptionsAsync();
+    Task<List<LanguageDisplayInfo>> GetCachedOcrLanguagesAsync();
+    Task<OcrLanguageDownloadResponse> DownloadOcrLanguageAsync(string languageCode);
+    Task<DbConfigurationInfo> SetDefaultOcrLanguagesAsync(List<string> languages);
 }

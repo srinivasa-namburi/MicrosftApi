@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+
 namespace Microsoft.Greenlight.Shared.Enums;
 
 /// <summary>
@@ -13,5 +15,10 @@ public enum DocumentProcessLogicType
     /// <summary>
     /// Classic processing logic.
     /// </summary>
-    Classic = 200
+    Classic = 200,
+
+    /// <summary>
+    /// Processing logic that uses Semantic Kernel Vector Store.
+    /// </summary>
+    SemanticKernelVectorStore = 300
 }

@@ -3,6 +3,7 @@
 @inject ILogger<MainLayout> Logger
 @inject IAuthorizationApiClient AuthorizationApiClient
 @inject IConfigurationApiClient ConfigurationApiClient
+@inject SignalRConnectionService SignalRConnectionService
 
 <MyMudThemeProvider @bind-IsDarkMode="@IsDarkMode" />
 <MyMudProviders />
@@ -71,18 +72,7 @@
 
     private async Task StartHubConnections()
     {
-        // Get the API base address by calling /api-address on the local server
-        var apiAddress = await AuthorizationApiClient.GetApiAddressAsync();
-
-        HubConnection = new HubConnectionBuilder()
-            .WithUrl($"{apiAddress}/hubs/notification-hub", options =>
-            {
-                options.AccessTokenProvider = async () => await ConfigurationApiClient.GetAccessTokenAsync();
-            })
-            .WithStatefulReconnect()
-            .WithAutomaticReconnect()
-            .Build();
-
-        await HubConnection.StartAsync();
+        // Use the shared connection service to ensure a single shared HubConnection instance
+        HubConnection = await SignalRConnectionService.GetOrCreateAsync();
     }
 }

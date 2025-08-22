@@ -1,45 +1,37 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Greenlight.Extensions.Plugins;
 using Microsoft.Greenlight.Shared.Contracts;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
-using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Models.SourceReferences;
 using Microsoft.Greenlight.Shared.Services.Search;
-using Microsoft.KernelMemory;
+using Microsoft.Greenlight.Shared.Services.Search.Abstractions;
 using Microsoft.SemanticKernel;
 using System.ComponentModel;
 
 namespace Microsoft.Greenlight.Plugins.Default.KmDocs;
 
-public class KmDocsPlugin : IPluginImplementation
+/// <summary>
+/// Enhanced document plugin that supports both Kernel Memory and Semantic Kernel Vector Store.
+/// </summary>
+public class UniversalDocsPlugin : IPluginImplementation
 {
-    private readonly IServiceProvider _serviceProvider;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly DocumentProcessInfo _documentProcess;
     private readonly ConsolidatedSearchOptions _searchOptions;
-    private IKernelMemory? _kernelMemory;
-    private IKernelMemoryRepository? _kernelMemoryRepository;
-
 
     /// <summary>
     /// This class needs to be constructed per Document Process, which is handled in the paired PluginRegistration class.
     /// </summary>
-    /// <param name="serviceProvider"></param>
-    /// <param name="documentProcess"></param>
-    /// <param name="searchOptions"></param>
-    public KmDocsPlugin(IServiceProvider serviceProvider, DocumentProcessInfo documentProcess, ConsolidatedSearchOptions searchOptions)
+    /// <param name="scopeFactory">Scope factory to resolve per-call services safely.</param>
+    /// <param name="documentProcess">The current document process info.</param>
+    /// <param name="searchOptions">Default search options for this process.</param>
+    public UniversalDocsPlugin(IServiceScopeFactory scopeFactory, DocumentProcessInfo documentProcess, ConsolidatedSearchOptions searchOptions)
     {
-        _serviceProvider = serviceProvider;
+        _scopeFactory = scopeFactory;
         _documentProcess = documentProcess;
         _searchOptions = searchOptions;
-
-        Initialize();
-    }
-
-    private void Initialize()
-    {
-        _kernelMemory = _serviceProvider.GetKeyedService<IKernelMemory>(_documentProcess.ShortName + "-IKernelMemory");
-        _kernelMemoryRepository =
-            _serviceProvider.GetRequiredServiceForDocumentProcess<IKernelMemoryRepository>(_documentProcess);
     }
 
     [KernelFunction(nameof(AskQuestionAsync))]
@@ -48,34 +40,29 @@ public class KmDocsPlugin : IPluginImplementation
         [Description("The question to ask the document repository. Make sure to format as a proper question ending with a question mark")]
         string question)
     {
-        if (_kernelMemory == null)
-        {
-            throw new InvalidOperationException("Kernel Memory not found");
-        }
-
-        var dpRelevance = _documentProcess.MinimumRelevanceForCitations;
-
         var index = _documentProcess.Repositories[0];
-        var response = await _kernelMemory.AskAsync(question, index: index, minRelevance: dpRelevance);
-        var responseText = response.Result;
 
-        return string.IsNullOrEmpty(responseText) ? "I'm sorry, I don't have an answer for that." : responseText;
+        using var scope = _scopeFactory.CreateScope();
+        var factory = scope.ServiceProvider.GetRequiredService<IDocumentRepositoryFactory>();
+        var repository = await factory.CreateForDocumentProcessAsync(_documentProcess);
+
+        var answer = await repository.AskAsync(_documentProcess.ShortName, index, null, question);
+        return answer?.Result ?? "I'm sorry, I don't have an answer for that.";
     }
 
     [KernelFunction(nameof(SearchKnowledgeBase))]
     [Description("Search the library of documents similar to the one you're working on. Prefer this over AskQuestionAsync. This knowledge base provides chunks of other documents of the same type, but they do NOT contain detail for the current document. Use for language and completeness checks for sections, but not for project details for the current project.")]
-    public async Task<List<KernelMemoryDocumentSourceReferenceItem>> SearchKnowledgeBase(
+    public async Task<List<SourceReferenceItem>> SearchKnowledgeBase(
         [Description("The search query to use")]
         string searchQuery)
     {
-        if (_kernelMemoryRepository == null)
-        {
-            throw new InvalidOperationException("Kernel Memory Repository not found");
-        }
+        using var scope = _scopeFactory.CreateScope();
+        var factory = scope.ServiceProvider.GetRequiredService<IDocumentRepositoryFactory>();
+        var repository = await factory.CreateForDocumentProcessAsync(_documentProcess);
 
-        var searchResults =
-            await _kernelMemoryRepository.SearchAsync(_documentProcess.ShortName, searchQuery, _searchOptions);
+        var searchResults = await repository.SearchAsync(_documentProcess.ShortName, searchQuery, _searchOptions);
 
+        // Return the generic SourceReferenceItem list directly
         return searchResults;
     }
 }

@@ -12,9 +12,9 @@ public class ConfigurationApiClient : BaseServiceClient<ConfigurationApiClient>,
 {
     private readonly IOptionsMonitor<ServiceConfigurationOptions> _serviceConfigurationOptions;
 
-    public ConfigurationApiClient(HttpClient httpClient, 
-        ILogger<ConfigurationApiClient> logger, 
-        AuthenticationStateProvider authStateProvider, 
+    public ConfigurationApiClient(HttpClient httpClient,
+        ILogger<ConfigurationApiClient> logger,
+        AuthenticationStateProvider authStateProvider,
         IOptionsMonitor<ServiceConfigurationOptions> serviceConfigurationOptions) : base(httpClient, logger, authStateProvider)
     {
         _serviceConfigurationOptions = serviceConfigurationOptions;
@@ -22,14 +22,14 @@ public class ConfigurationApiClient : BaseServiceClient<ConfigurationApiClient>,
 
     public async Task<string?> GetAzureMapsKeyAsync()
     {
-       var azureMapsKey = _serviceConfigurationOptions.CurrentValue.AzureMaps.Key;
-       return azureMapsKey;
+        var azureMapsKey = _serviceConfigurationOptions.CurrentValue.AzureMaps.Key;
+        return azureMapsKey;
     }
 
     public async Task<List<DocumentProcessOptions?>> GetDocumentProcessesAsync()
     {
-       var documentProcesses = _serviceConfigurationOptions.CurrentValue.GreenlightServices.DocumentProcesses;
-       return documentProcesses;
+        var documentProcesses = _serviceConfigurationOptions.CurrentValue.GreenlightServices.DocumentProcesses;
+        return documentProcesses;
     }
 
     public async Task<ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions> GetFeatureFlagsAsync()
@@ -54,7 +54,45 @@ public class ConfigurationApiClient : BaseServiceClient<ConfigurationApiClient>,
 
     public async Task<ServiceConfigurationOptions.GreenlightServicesOptions.GlobalOptions> GetGlobalOptionsAsync()
     {
-       return _serviceConfigurationOptions.CurrentValue.GreenlightServices.Global;
+        return _serviceConfigurationOptions.CurrentValue.GreenlightServices.Global;
+    }
+
+    /// <summary>
+    /// Gets the vector store options from the current configuration (server-side direct access).
+    /// </summary>
+    public async Task<VectorStoreOptions> GetVectorStoreOptionsAsync()
+    {
+        return _serviceConfigurationOptions.CurrentValue.GreenlightServices.VectorStore;
+    }
+
+    // OCR endpoints: forward to API since server-side UI may also leverage the REST flows for consistency
+    public async Task<ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions.OcrOptions> GetOcrOptionsAsync()
+    {
+        var response = await SendGetRequestMessage("/api/configuration/ocr-options");
+        response?.EnsureSuccessStatusCode();
+        return await response?.Content.ReadFromJsonAsync<ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions.OcrOptions>()
+               ?? _serviceConfigurationOptions.CurrentValue.GreenlightServices.DocumentIngestion.Ocr;
+    }
+
+    public async Task<List<LanguageDisplayInfo>> GetCachedOcrLanguagesAsync()
+    {
+        var response = await SendGetRequestMessage("/api/configuration/ocr/languages");
+        response?.EnsureSuccessStatusCode();
+        return await response?.Content.ReadFromJsonAsync<List<LanguageDisplayInfo>>() ?? new List<LanguageDisplayInfo>();
+    }
+
+    public async Task<OcrLanguageDownloadResponse> DownloadOcrLanguageAsync(string languageCode)
+    {
+        var response = await SendPostRequestMessage($"/api/configuration/ocr/download?language={Uri.EscapeDataString(languageCode)}", new { });
+        response?.EnsureSuccessStatusCode();
+        return await response?.Content.ReadFromJsonAsync<OcrLanguageDownloadResponse>() ?? new OcrLanguageDownloadResponse { Language = languageCode };
+    }
+
+    public async Task<DbConfigurationInfo> SetDefaultOcrLanguagesAsync(List<string> languages)
+    {
+        var response = await SendPostRequestMessage("/api/configuration/ocr/default-languages", languages);
+        response?.EnsureSuccessStatusCode();
+        return await response?.Content.ReadFromJsonAsync<DbConfigurationInfo>() ?? throw new IOException("No configuration info returned!");
     }
 
     /// <inheritdoc />
@@ -89,7 +127,7 @@ public class ConfigurationApiClient : BaseServiceClient<ConfigurationApiClient>,
         return await response?.Content.ReadFromJsonAsync<DbConfigurationInfo>()!;
     }
 
-    
+
     public async Task<List<AiModelInfo>> GetAiModelsAsync()
     {
         var response = await SendGetRequestMessage("/api/configuration/ai-models");
@@ -128,7 +166,7 @@ public class ConfigurationApiClient : BaseServiceClient<ConfigurationApiClient>,
         response?.EnsureSuccessStatusCode();
     }
 
-    
+
     public async Task<List<AiModelDeploymentInfo>> GetAiModelDeploymentsAsync()
     {
         var response = await SendGetRequestMessage("/api/configuration/ai-model-deployments");

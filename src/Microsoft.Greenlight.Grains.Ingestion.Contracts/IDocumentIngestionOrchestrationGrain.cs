@@ -17,5 +17,10 @@ namespace Microsoft.Greenlight.Grains.Ingestion.Contracts
 
         Task OnIngestionCompletedAsync();
         Task OnIngestionFailedAsync(string reason, bool acquired);
+
+        /// <summary>
+        /// Returns true if this orchestration is currently running or has pending work.
+        /// </summary>
+        Task<bool> IsRunningAsync();
     }
 }

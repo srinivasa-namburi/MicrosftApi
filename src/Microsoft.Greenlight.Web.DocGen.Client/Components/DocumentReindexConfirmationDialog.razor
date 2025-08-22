@@ -1,0 +1,163 @@
+@using Microsoft.Greenlight.Shared.Contracts.DTO
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@inject IDocumentReindexApiClient DocumentReindexApiClient
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Refresh" Class="mr-3" />
+            Reindex Documents
+        </MudText>
+    </TitleContent>
+    
+    <DialogContent>
+        @if (!_hasStarted)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mb-4">
+                <strong>Important:</strong> Reindexing will recreate all vector embeddings for existing documents.
+                This operation may take significant time depending on the number of documents.
+            </MudAlert>
+            
+            <MudStack>
+                <MudText Typo="Typo.body1">
+                    <strong>Target:</strong> @TargetName (@(IsDocumentProcess ? "Document Process" : "Document Library"))
+                </MudText>
+                
+                <MudText Typo="Typo.body1">
+                    <strong>Reason:</strong> @Reason
+                </MudText>
+                
+                @if (!string.IsNullOrEmpty(WarningMessage))
+                {
+                    <MudAlert Severity="Severity.Info">
+                        @WarningMessage
+                    </MudAlert>
+                }
+                
+                @if (_isProcessing)
+                {
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mt-4">
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                        <MudText>Starting reindexing operation...</MudText>
+                    </MudStack>
+                }
+            </MudStack>
+        }
+        else
+        {
+            <DocumentReindexProgressDisplay OrchestrationId="@_orchestrationId"
+                                            TargetName="@TargetName"
+                                            Reason="@Reason"
+                                            OnStatusChanged="OnProgressStatusChanged" />
+        }
+    </DialogContent>
+    
+    <DialogActions>
+        @if (!_hasStarted)
+        {
+            <MudButton OnClick="Cancel" Disabled="_isProcessing">Cancel</MudButton>
+            <MudButton Color="Color.Primary" 
+                       Variant="Variant.Filled" 
+                       OnClick="StartReindexing" 
+                       Disabled="_isProcessing"
+                       StartIcon="@Icons.Material.Filled.Refresh">
+                Start Reindexing
+            </MudButton>
+        }
+        else
+        {
+            @if (_currentStatus == ReindexOrchestrationState.Running)
+            {
+                <MudButton OnClick="CloseDialog" Variant="Variant.Text">
+                    Close (Running in Background)
+                </MudButton>
+            }
+            else
+            {
+                <MudButton OnClick="CloseDialog" Color="Color.Primary" Variant="Variant.Filled">
+                    Close
+                </MudButton>
+            }
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] 
+    MudDialogInstance MudDialog { get; set; } = null!;
+    
+    [Parameter] 
+    public string TargetName { get; set; } = string.Empty;
+    
+    [Parameter] 
+    public bool IsDocumentProcess { get; set; }
+    
+    [Parameter] 
+    public string Reason { get; set; } = "Manual reindexing";
+    
+    [Parameter] 
+    public string WarningMessage { get; set; } = string.Empty;
+    
+    private bool _isProcessing = false;
+    private bool _hasStarted = false;
+    private string _orchestrationId = string.Empty;
+    private ReindexOrchestrationState _currentStatus = ReindexOrchestrationState.NotStarted;
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+
+    private void CloseDialog()
+    {
+        MudDialog.Close(DialogResult.Ok(_orchestrationId));
+    }
+
+    private async Task StartReindexing()
+    {
+        try
+        {
+            _isProcessing = true;
+            
+            if (IsDocumentProcess)
+            {
+                _orchestrationId = await DocumentReindexApiClient.StartDocumentProcessReindexingAsync(TargetName, Reason);
+            }
+            else
+            {
+                _orchestrationId = await DocumentReindexApiClient.StartDocumentLibraryReindexingAsync(TargetName, Reason);
+            }
+            
+            _hasStarted = true;
+            Snackbar.Add("Reindexing started successfully!", Severity.Success);
+            
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error starting reindexing: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isProcessing = false;
+        }
+    }
+
+    private async Task OnProgressStatusChanged(ReindexOrchestrationState newStatus)
+    {
+        _currentStatus = newStatus;
+        
+        // Only auto-close dialog when completed successfully after it was actually running
+        if (newStatus == ReindexOrchestrationState.Completed && _currentStatus != ReindexOrchestrationState.NotStarted)
+        {
+            await Task.Delay(3000); // Wait 3 seconds to show completion message
+            if (_currentStatus == ReindexOrchestrationState.Completed) // Still completed after delay
+            {
+                MudDialog.Close(DialogResult.Ok(_orchestrationId));
+            }
+        }
+        
+        await InvokeAsync(StateHasChanged);
+    }
+}

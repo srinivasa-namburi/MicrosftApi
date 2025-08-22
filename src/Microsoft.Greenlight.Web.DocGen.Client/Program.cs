@@ -117,7 +117,18 @@ builder.Services.AddHttpClient<IDocumentValidationApiClient, DocumentValidationA
     client.BaseAddress = serverBaseAddress;
 });
 
+builder.Services.AddHttpClient<IDocumentReindexApiClient, DocumentReindexApiClient>(client =>
+{
+    client.BaseAddress = serverBaseAddress;
+});
+
 // Service used to aid in constructing editors
 builder.Services.AddScoped<ValidationEditorService>();
+
+// Shared SignalR connection provider
+builder.Services.AddSingleton<SignalRConnectionService>();
+
+// Factory for robust subscription management
+builder.Services.AddSingleton<SignalRSubscriptionFactory>();
 
 await builder.Build().RunAsync();

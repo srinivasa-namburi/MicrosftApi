@@ -1,4 +1,6 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO.DocumentLibrary;
@@ -27,6 +29,13 @@ namespace Microsoft.Greenlight.Shared.Tests.Extensions
                 {
                     EmbeddingModelDeploymentName = "test_embedding",
                     GPT4oModelDeploymentName = "test_gpt4o"
+                },
+                GreenlightServices = new ServiceConfigurationOptions.GreenlightServicesOptions
+                {
+                    Global = new ServiceConfigurationOptions.GreenlightServicesOptions.GlobalOptions
+                    {
+                        UsePostgresMemory = false
+                    }
                 }
             };
         }

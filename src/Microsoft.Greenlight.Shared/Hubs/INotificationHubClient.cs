@@ -2,6 +2,7 @@ using Microsoft.Greenlight.Shared.Contracts.Messages;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Commands;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Events;
 using Microsoft.Greenlight.Shared.Contracts.Messages.DocumentGeneration.Events;
+using Microsoft.Greenlight.Shared.Contracts.Messages.Reindexing.Events;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Review.Events;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Validation.Events;
 
@@ -123,4 +124,32 @@ public interface INotificationHubClient
     /// <param name="notification">The index import job notification.</param>
     /// <returns>A task that represents the asynchronous operation.</returns>
     Task ReceiveImportJobFailedNotification(IndexImportJobNotification notification);
+
+    /// <summary>
+    /// Receives a notification that document reindexing has started.
+    /// </summary>
+    /// <param name="notification">The document reindex started notification.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
+    Task ReceiveDocumentReindexStartedNotification(DocumentReindexStartedNotification notification);
+
+    /// <summary>
+    /// Receives a notification about document reindexing progress.
+    /// </summary>
+    /// <param name="notification">The document reindex progress notification.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
+    Task ReceiveDocumentReindexProgressNotification(DocumentReindexProgressNotification notification);
+
+    /// <summary>
+    /// Receives a notification that document reindexing has completed.
+    /// </summary>
+    /// <param name="notification">The document reindex completed notification.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
+    Task ReceiveDocumentReindexCompletedNotification(DocumentReindexCompletedNotification notification);
+
+    /// <summary>
+    /// Receives a notification that document reindexing has failed.
+    /// </summary>
+    /// <param name="notification">The document reindex failed notification.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
+    Task ReceiveDocumentReindexFailedNotification(DocumentReindexFailedNotification notification);
 }

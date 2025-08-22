@@ -4,10 +4,15 @@ using Microsoft.Greenlight.Shared.Contracts;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Models.SourceReferences;
 using Microsoft.KernelMemory;
+using Microsoft.Greenlight.Shared.Constants;
 using System.Net;
 
 namespace Microsoft.Greenlight.Shared.Services.Search;
 
+/// <summary>
+/// Repository wrapping Kernel Memory to provide unified ingest/search/ask semantics across document processes,
+/// additional document libraries (prefixed), and the Reviews library.
+/// </summary>
 public class KernelMemoryRepository : IKernelMemoryRepository
 {
     private readonly IKernelMemoryInstanceFactory _kernelMemoryInstanceFactory;
@@ -17,6 +22,9 @@ public class KernelMemoryRepository : IKernelMemoryRepository
     private readonly IDocumentProcessInfoService _documentProcessInfoService;
     private readonly IDocumentLibraryInfoService _documentLibraryInfoService;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="KernelMemoryRepository"/> class.
+    /// </summary>
     public KernelMemoryRepository(
         IServiceProvider sp,
         ILogger<KernelMemoryRepository> logger,
@@ -32,6 +40,9 @@ public class KernelMemoryRepository : IKernelMemoryRepository
         _kernelMemoryInstanceFactory = kernelMemoryInstanceFactory;
     }
 
+    /// <summary>
+    /// Stores a document's content into Kernel Memory for the given document library or process.
+    /// </summary>
     public async Task StoreContentAsync(string documentLibraryName, string indexName, Stream fileStream,
         string fileName, string? documentUrl, string? userId = null, Dictionary<string, string>? additionalTags = null)
     {
@@ -62,7 +73,7 @@ public class KernelMemoryRepository : IKernelMemoryRepository
             Index = indexName
         };
 
-        var isDocumentLibraryDocument = documentLibraryName.StartsWith("Additional-").ToString().ToLowerInvariant();
+        var isDocumentLibraryDocument = documentLibraryName.StartsWith(Microsoft.Greenlight.Shared.Constants.DocumentLibraryConstants.AdditionalPrefix, StringComparison.OrdinalIgnoreCase).ToString().ToLowerInvariant();
         var tags = new Dictionary<string, string>
         {
             {"DocumentProcessName", documentLibraryName},
@@ -97,6 +108,9 @@ public class KernelMemoryRepository : IKernelMemoryRepository
         await memory.ImportDocumentAsync(documentRequest);
     }
 
+    /// <summary>
+    /// Deletes a document from the specified Kernel Memory index.
+    /// </summary>
     public async Task DeleteContentAsync(string documentLibraryName, string indexName, string fileName)
     {
         var memory = await GetKernelMemoryForDocumentLibrary(documentLibraryName);
@@ -110,6 +124,9 @@ public class KernelMemoryRepository : IKernelMemoryRepository
         await memory.DeleteDocumentAsync(fileName, indexName);
     }
 
+    /// <summary>
+    /// Searches Kernel Memory for citations matching the provided text within the specified context.
+    /// </summary>
     public async Task<List<KernelMemoryDocumentSourceReferenceItem>> SearchAsync(
     string documentLibraryName,
     string searchText,
@@ -289,7 +306,7 @@ public class KernelMemoryRepository : IKernelMemoryRepository
                     {
                         neighborsMemoryFilters.Add(
                             MemoryFilters.ByDocument(citation.DocumentId)
-                                .ByTag(Constants.ReservedFilePartitionNumberTag,
+                                .ByTag(KernelMemoryTagConstants.FilePartitionNumberTag,
                                     precedingPartitionNumber.ToString()));
                     }
                 }
@@ -306,7 +323,7 @@ public class KernelMemoryRepository : IKernelMemoryRepository
                     {
                         neighborsMemoryFilters.Add(
                             MemoryFilters.ByDocument(citation.DocumentId)
-                                .ByTag(Constants.ReservedFilePartitionNumberTag,
+                                .ByTag(KernelMemoryTagConstants.FilePartitionNumberTag,
                                     followingPartitionNumber.ToString()));
                     }
                 }
@@ -346,6 +363,7 @@ public class KernelMemoryRepository : IKernelMemoryRepository
 
 
 
+    /// <inheritdoc />
     public async Task<MemoryAnswer?> AskAsync(string documentLibraryName, string indexName, Dictionary<string, string>? parametersExactMatch, string question)
     {
         var memory = await GetKernelMemoryForDocumentLibrary(documentLibraryName);
@@ -378,18 +396,18 @@ public class KernelMemoryRepository : IKernelMemoryRepository
 
     private async Task<IKernelMemory> GetKernelMemoryForDocumentLibrary(string documentLibraryName)
     {
-        if (documentLibraryName.StartsWith("Additional-"))
+        if (documentLibraryName.StartsWith(DocumentLibraryConstants.AdditionalPrefix, StringComparison.OrdinalIgnoreCase))
         {
             // Handle additional document libraries
-            var internalDocumentLibraryName = documentLibraryName.Replace("Additional-", "");
+            var internalDocumentLibraryName = documentLibraryName.Replace(DocumentLibraryConstants.AdditionalPrefix, "", StringComparison.OrdinalIgnoreCase);
             var memory = await _kernelMemoryInstanceFactory.GetKernelMemoryInstanceForDocumentLibrary(internalDocumentLibraryName);
             return memory;
         }
-        else if (documentLibraryName.StartsWith("Reviews"))
+        else if (documentLibraryName.StartsWith(DocumentLibraryConstants.ReviewsLibraryName, StringComparison.OrdinalIgnoreCase))
         {
             var scope = _sp.CreateScope();
 
-            var memory = scope.ServiceProvider.GetKeyedService<IKernelMemory>("Reviews-IKernelMemory");
+            var memory = scope.ServiceProvider.GetKeyedService<IKernelMemory>(DocumentLibraryConstants.ReviewsLibraryName + "-IKernelMemory");
             if (memory == null)
             {
                 _logger.LogError("Kernel Memory service not found for Reviews");

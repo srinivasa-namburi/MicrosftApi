@@ -21,6 +21,7 @@
     <File Path="../DEPLOYMENT.md" />
     <File Path=".gitignore" />
     <File Path=".github/copilot-instructions.md" />
+    <File Path=".mcp.json" />
   </Folder>
   <Folder Name="/00. Misc/Build/">
     <File Path="../.github/workflows/load-trainingdata.yml" />

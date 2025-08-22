@@ -11,7 +11,7 @@ using Microsoft.Greenlight.Shared.Models.Review;
 using Microsoft.Greenlight.Shared.Prompts;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.Shared.Services.ContentReference;
-using Microsoft.Greenlight.Shared.Services.Search;
+// Removed legacy ReviewKernelMemoryRepository dependency
 using Microsoft.Greenlight.Shared.DocumentProcess.Shared.Generation.Agentic;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Agents;
@@ -30,7 +30,6 @@ namespace Microsoft.Greenlight.Grains.Review
     {
         private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
         private readonly ILogger<ReviewQuestionAnswererGrain> _logger;
-        private readonly IReviewKernelMemoryRepository _reviewKmRepository;
         private readonly IMapper _mapper;
         private readonly IKernelFactory _kernelFactory;
         private readonly IRagContextBuilder _ragContextBuilder;
@@ -42,7 +41,6 @@ namespace Microsoft.Greenlight.Grains.Review
         public ReviewQuestionAnswererGrain(
             IDbContextFactory<DocGenerationDbContext> dbContextFactory,
             ILogger<ReviewQuestionAnswererGrain> logger,
-            IReviewKernelMemoryRepository reviewKmRepository,
             IKernelFactory kernelFactory,
             IRagContextBuilder ragContextBuilder,
             IDocumentProcessInfoService documentProcessInfoService,
@@ -53,7 +51,6 @@ namespace Microsoft.Greenlight.Grains.Review
         {
             _dbContextFactory = dbContextFactory;
             _logger = logger;
-            _reviewKmRepository = reviewKmRepository;
             _kernelFactory = kernelFactory;
             _ragContextBuilder = ragContextBuilder;
             _documentProcessInfoService = documentProcessInfoService;
@@ -83,7 +80,7 @@ namespace Microsoft.Greenlight.Grains.Review
                     return GenericResult.Failure($"Review instance {reviewInstanceId} not found");
                 }
 
-                string documentProcessShortName = reviewInstance.DocumentProcessShortName;
+                string? documentProcessShortName = reviewInstance.DocumentProcessShortName;
                 string answer;
 
                 // Try to get content reference items for this review
@@ -94,14 +91,21 @@ namespace Microsoft.Greenlight.Grains.Review
                     _logger.LogInformation("Using agentic process for review {ReviewInstanceId} with {Count} reference items",
                         reviewInstanceId, contentReferenceItems.Count);
 
-                    answer = await AnswerUsingAgenticProcessAsync(question, documentProcessShortName, contentReferenceItems);
+                    if (documentProcessShortName is null)
+                    {
+                        _logger.LogWarning("Review instance {ReviewInstanceId} has no DocumentProcessShortName; cannot answer agentically.", reviewInstanceId);
+                        answer = "No process context available to answer this question.";
+                    }
+                    else
+                    {
+                        answer = await AnswerUsingAgenticProcessAsync(question, documentProcessShortName, contentReferenceItems);
+                    }
                 }
                 else
                 {
-                    // Fall back to legacy approach if content references not found
-                    _logger.LogWarning("Falling back to Kernel Memory approach for review {ReviewInstanceId}", reviewInstanceId);
-                    var memoryAnswer = await _reviewKmRepository.AskInDocument(reviewInstanceId, _mapper.Map<ReviewQuestion>(question));
-                    answer = memoryAnswer.Result;
+                    // No content references found: report insufficient context (legacy KM fallback removed)
+                    _logger.LogWarning("No content references for review {ReviewInstanceId}; returning NOT_FOUND placeholder", reviewInstanceId);
+                    answer = "No context available to answer this question at this time.";
                 }
 
                 var answerModel = new ReviewQuestionAnswer()
@@ -203,7 +207,8 @@ namespace Microsoft.Greenlight.Grains.Review
             var contentReferenceLookupPlugin = new ContentReferenceLookupPlugin(_contentReferenceService);
             var grainFactory = _sp.GetService(typeof(IGrainFactory)) as IGrainFactory;
             var executionId = Guid.NewGuid();
-            var contentStatePlugin = new ContentStatePlugin(grainFactory, executionId, "", 100);
+            if (grainFactory is null) throw new InvalidOperationException("GrainFactory not initialized");
+            var contentStatePlugin = new ContentStatePlugin(grainFactory, executionId, string.Empty, 100);
             await contentStatePlugin.InitializeAsync();
             availablePlugins["ContentReferenceLookupPlugin"] = contentReferenceLookupPlugin;
             availablePlugins["ContentStatePlugin"] = contentStatePlugin;
@@ -220,15 +225,18 @@ namespace Microsoft.Greenlight.Grains.Review
 
             // Build the prompt using Scriban to inject context and reference IDs
             string promptTemplate;
+            if (documentProcessShortName == null)
+                throw new InvalidOperationException("DocumentProcessShortName missing for prompt retrieval.");
+            string dpShort = documentProcessShortName!; // force non-null for analyzer
             if (question.QuestionType == ReviewQuestionType.Requirement)
             {
                 promptTemplate = await _promptInfoService.GetPromptTextByShortCodeAndProcessNameAsync(
-                    nameof(DefaultPromptCatalogTypes.ReviewRequirementAnswerPrompt), documentProcessShortName);
+                    nameof(DefaultPromptCatalogTypes.ReviewRequirementAnswerPrompt), dpShort);
             }
             else
             {
                 promptTemplate = await _promptInfoService.GetPromptTextByShortCodeAndProcessNameAsync(
-                    nameof(DefaultPromptCatalogTypes.ReviewQuestionAnswerPrompt), documentProcessShortName);
+                    nameof(DefaultPromptCatalogTypes.ReviewQuestionAnswerPrompt), dpShort);
             }
             var scribanTemplate = Template.Parse(promptTemplate);
             var renderedPrompt = await scribanTemplate.RenderAsync(new
@@ -304,7 +312,7 @@ CRITICAL RULES
 {renderedPrompt}
 """,
                     AllowedPlugins = [
-                        "ContentReferenceLookupPlugin", "ContentStatePlugin", 
+                        "ContentReferenceLookupPlugin", "ContentStatePlugin",
                         "DP__DocumentLibraryPlugin", "DP__KMDocsPlugin"
                     ],
                     IsOrchestrator = false,

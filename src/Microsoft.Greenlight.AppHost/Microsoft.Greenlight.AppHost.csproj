@@ -43,6 +43,8 @@
 		<ProjectReference Include="..\Microsoft.Greenlight.Silo\Microsoft.Greenlight.Silo.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.Web.DocGen\Microsoft.Greenlight.Web.DocGen.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.Shared\Microsoft.Greenlight.Shared.csproj" IsAspireProjectResource="false" />
+		<!-- Ensure EF tooling can resolve the migrations target assembly when AppHost is the startup project -->
+		<ProjectReference Include="..\Microsoft.Greenlight.Grains.Shared\Microsoft.Greenlight.Grains.Shared.csproj" IsAspireProjectResource="false" />
 	</ItemGroup>
 	<ItemGroup>
 	  <None Update="appsettings.json">

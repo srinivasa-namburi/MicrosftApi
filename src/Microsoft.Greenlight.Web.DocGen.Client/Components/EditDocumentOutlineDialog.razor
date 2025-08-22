@@ -1,6 +1,7 @@
 @using System.Text.Json
 @inject IDocumentOutlineApiClient DocumentOutlineApiClient
 @inject IDialogService DialogService
+@inject ISnackbar Snackbar
 
 <MudDialog MaxWidth="MaxWidth.Medium">
     <TitleContent>
@@ -18,10 +19,21 @@
             @if (ShowImportSection)
             {
                 <MudPaper Class="pa-4 mt-4">
-                    <MudTextField @bind-Value="OutlineText" Label="Paste Outline Text Here" Lines="10" FullWidth="true" />
+                    <MudTextField @bind-Value="OutlineText" Label="Paste Outline Text Here" Lines="10" FullWidth="true" 
+                                  HelperText="Format: Use numbered sections like '1. Title', '1.1. Subtitle', '2.1.1. Sub-subtitle', etc." />
                     <MudStack Row="true" Spacing="2" Class="mt-2">
-                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ProcessOutlineText">Process</MudButton>
-                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="HideImportOutlineSection">Cancel</MudButton>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ProcessOutlineText" Disabled="_isProcessing">
+                            @if (_isProcessing)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                <span>Processing...</span>
+                            }
+                            else
+                            {
+                                <span>Process</span>
+                            }
+                        </MudButton>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="HideImportOutlineSection" Disabled="_isProcessing">Cancel</MudButton>
                     </MudStack>
                 </MudPaper>
             }
@@ -76,6 +88,7 @@
 
     private bool ShowImportSection { get; set; } = false;
     private bool ShowImportConfirmationSection { get; set; } = false;
+    private bool _isProcessing { get; set; } = false;
 
     private string OutlineText { get; set; } = string.Empty;
 
@@ -128,21 +141,40 @@
     {
         if (string.IsNullOrWhiteSpace(OutlineText))
         {
+            Snackbar.Add("Please enter some outline text to process.", Severity.Warning);
             return;
         }
 
-        var newOutlineItems = await DocumentOutlineApiClient.GenerateOutlineFromTextAsync(OutlineText);
+        _isProcessing = true;
+        StateHasChanged();
 
-        if (newOutlineItems != null && newOutlineItems.Any())
+        try
         {
-            ImportedOutlineItems = newOutlineItems;
-            TotalImportedItems = CountTotalItems(ImportedOutlineItems);
-            ShowImportConfirmationSection = true;
+            var newOutlineItems = await DocumentOutlineApiClient.GenerateOutlineFromTextAsync(OutlineText);
+
+            if (newOutlineItems != null && newOutlineItems.Any())
+            {
+                ImportedOutlineItems = newOutlineItems;
+                TotalImportedItems = CountTotalItems(ImportedOutlineItems);
+                ShowImportConfirmationSection = true;
+                ShowImportSection = false;
+                Snackbar.Add($"Successfully parsed {TotalImportedItems} outline sections.", Severity.Success);
+            }
+            else
+            {
+                ShowImportSection = false;
+                Snackbar.Add("Unable to parse the outline text. Please check the format and try again. Use numbered sections like '1. Title', '1.1. Subtitle', etc.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error processing outline text: {ex.Message}", Severity.Error);
             ShowImportSection = false;
         }
-        else
+        finally
         {
-            ShowImportSection = false;
+            _isProcessing = false;
+            StateHasChanged();
         }
     }
 

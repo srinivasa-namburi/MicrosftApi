@@ -1,17 +1,13 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
-using System;
-using System.IO;
-using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Grains.Ingestion.Contracts;
-using Microsoft.Greenlight.Shared.Contracts.DTO.Document;
+using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
-using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Services;
-using Microsoft.Greenlight.Shared.Services.Search;
+using Microsoft.Greenlight.Shared.Services.Search.Abstractions;
 using Orleans.Concurrency;
 
 namespace Microsoft.Greenlight.Grains.Ingestion;
@@ -22,19 +18,22 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
     private readonly ILogger<DocumentProcessorGrain> _logger;
     private readonly IDocumentProcessInfoService _documentProcessInfoService;
     private readonly IServiceProvider _serviceProvider;
-    private readonly IDbContextFactory<Microsoft.Greenlight.Shared.Data.Sql.DocGenerationDbContext> _dbContextFactory;
+    private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
+    private readonly IDocumentIngestionService _documentIngestionService;
     private bool _isRunning; // In-memory, not persisted
-    
+
     public DocumentProcessorGrain(
         ILogger<DocumentProcessorGrain> logger,
         IDocumentProcessInfoService documentProcessInfoService,
         IServiceProvider serviceProvider,
-        IDbContextFactory<Microsoft.Greenlight.Shared.Data.Sql.DocGenerationDbContext> dbContextFactory)
+        IDbContextFactory<DocGenerationDbContext> dbContextFactory,
+        IDocumentIngestionService documentIngestionService)
     {
         _logger = logger;
         _documentProcessInfoService = documentProcessInfoService;
         _serviceProvider = serviceProvider;
         _dbContextFactory = dbContextFactory;
+        _documentIngestionService = documentIngestionService;
     }
 
     public async Task<DocumentProcessResult> ProcessDocumentAsync(Guid documentId)
@@ -54,76 +53,96 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
                 _logger.LogError("IngestedDocument with Id {Id} not found in DB for processing.", documentId);
                 return DocumentProcessResult.Fail($"IngestedDocument with Id {documentId} not found in DB.");
             }
+
             string fileName = entity.FileName;
             string documentUrl = entity.FinalBlobUrl ?? entity.OriginalDocumentUrl;
             string documentLibraryShortName = entity.DocumentLibraryOrProcessName ?? string.Empty;
             DocumentLibraryType documentLibraryType = entity.DocumentLibraryType;
             string? uploadedByUserOid = entity.UploadedByUserOid;
+
+            // Track vector store processing start
+            entity.IngestionState = IngestionState.Processing;
+            await db.SaveChangesAsync();
+
+            string indexName;
+            string vectorStoreDocumentId = SanitizeFileName(fileName); // Standard vector store document ID
+
             if (documentLibraryType == DocumentLibraryType.PrimaryDocumentProcessLibrary)
             {
                 var documentProcess = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentLibraryShortName);
                 if (documentProcess == null)
                 {
                     _logger.LogError("Document process {DocumentProcessName} not found", documentLibraryShortName);
+                    await UpdateIngestionFailureAsync(entity, $"Document process {documentLibraryShortName} not found");
                     return DocumentProcessResult.Fail($"Document process {documentLibraryShortName} not found");
                 }
-                var repositoryName = documentProcess.Repositories.FirstOrDefault() ?? documentLibraryShortName;
-                var kernelMemoryRepository = _serviceProvider.GetServiceForDocumentProcess<IKernelMemoryRepository>(documentLibraryShortName);
-                if (kernelMemoryRepository == null)
-                {
-                    _logger.LogError("Failed to get Kernel Memory repository for document process {DocumentProcessName}", documentLibraryShortName);
-                    return DocumentProcessResult.Fail($"Failed to get Kernel Memory repository for {documentLibraryShortName}");
-                }
-                await using var fileStream = await GetDocumentStreamAsync(documentUrl);
-                if (fileStream == null)
-                {
-                    _logger.LogError("Failed to get document stream for {DocumentUrl}", documentUrl);
-                    return DocumentProcessResult.Fail($"Failed to get document stream for {documentUrl}");
-                }
-                await kernelMemoryRepository.StoreContentAsync(
-                    documentLibraryShortName,
-                    repositoryName,
-                    fileStream,
-                    fileName,
-                    documentUrl,
-                    uploadedByUserOid);
+                indexName = documentProcess.Repositories.FirstOrDefault() ?? documentLibraryShortName;
             }
             else // AdditionalDocumentLibrary
             {
-                var documentLibraryRepository = _serviceProvider.GetService<IAdditionalDocumentLibraryKernelMemoryRepository>();
-                if (documentLibraryRepository == null)
-                {
-                    _logger.LogError("Additional Document Library KM Repository not found");
-                    return DocumentProcessResult.Fail("Additional Document Library KM Repository not found");
-                }
-                await using var fileStream = await GetDocumentStreamAsync(documentUrl);
-                if (fileStream == null)
-                {
-                    _logger.LogError("Failed to get document stream for {DocumentUrl}", documentUrl);
-                    return DocumentProcessResult.Fail($"Failed to get document stream for {documentUrl}");
-                }
                 using var scope = _serviceProvider.CreateScope();
                 var documentLibraryInfoService = scope.ServiceProvider.GetRequiredService<IDocumentLibraryInfoService>();
                 var documentLibrary = await documentLibraryInfoService.GetDocumentLibraryByShortNameAsync(documentLibraryShortName);
                 if (documentLibrary == null)
                 {
                     _logger.LogError("Document library {DocumentLibraryName} not found", documentLibraryShortName);
+                    await UpdateIngestionFailureAsync(entity, $"Document library {documentLibraryShortName} not found");
                     return DocumentProcessResult.Fail($"Document library {documentLibraryShortName} not found");
                 }
-                await documentLibraryRepository.StoreContentAsync(
-                    documentLibraryShortName,
-                    documentLibrary.IndexName,
-                    fileStream,
-                    fileName,
-                    documentUrl,
-                    uploadedByUserOid);
+                indexName = documentLibrary.IndexName;
             }
-            _logger.LogInformation("Successfully processed document {FileName} for {DocumentLibraryType} {DocumentLibraryName}", fileName, documentLibraryType, documentLibraryShortName);
+
+            await using var fileStream = await GetDocumentStreamAsync(documentUrl);
+            if (fileStream == null)
+            {
+                _logger.LogError("Failed to get document stream for {DocumentUrl}", documentUrl);
+                await UpdateIngestionFailureAsync(entity, $"Failed to get document stream for {documentUrl}");
+                return DocumentProcessResult.Fail($"Failed to get document stream for {documentUrl}");
+            }
+
+            // Use the document ingestion service
+            var result = await _documentIngestionService.IngestDocumentAsync(
+                documentId,
+                fileStream,
+                fileName,
+                documentUrl,
+                documentLibraryShortName,
+                indexName,
+                uploadedByUserOid);
+
+            if (!result.Success)
+            {
+                _logger.LogError("Failed to ingest document {DocumentId}: {Error}", documentId, result.ErrorMessage);
+                await UpdateIngestionFailureAsync(entity, result.ErrorMessage ?? "Document ingestion failed");
+                return DocumentProcessResult.Fail(result.ErrorMessage ?? "Document ingestion failed");
+            }
+
+            // Update IngestedDocument with vector store tracking information
+            await UpdateIngestionSuccessAsync(entity, vectorStoreDocumentId, indexName, result.ChunkCount);
+
+            _logger.LogInformation("Successfully processed document {FileName} for {DocumentLibraryType} {DocumentLibraryName} - {ChunkCount} chunks indexed",
+                fileName, documentLibraryType, documentLibraryShortName, result.ChunkCount);
             return DocumentProcessResult.Ok();
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to process document {DocumentId}", documentId);
+
+            // Fallback: Update entity state if possible
+            try
+            {
+                await using var db = await _dbContextFactory.CreateDbContextAsync();
+                var entity = await db.IngestedDocuments.FindAsync(documentId);
+                if (entity != null)
+                {
+                    await UpdateIngestionFailureAsync(entity, $"Failed to process document: {ex.Message}");
+                }
+            }
+            catch (Exception dbEx)
+            {
+                _logger.LogError(dbEx, "Failed to update document state after processing failure for {DocumentId}", documentId);
+            }
+
             return DocumentProcessResult.Fail($"Failed to process document: {ex.Message}");
         }
         finally
@@ -132,18 +151,153 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
         }
     }
 
-    private async Task<Stream> GetDocumentStreamAsync(string documentUrl)
+    /// <summary>
+    /// Updates the IngestedDocument entity after successful vector store ingestion.
+    /// Includes fallback logic to ensure critical operations don't fail due to tracking updates.
+    /// </summary>
+    /// <param name="entity">The IngestedDocument entity to update.</param>
+    /// <param name="vectorStoreDocumentId">The document ID used in the vector store.</param>
+    /// <param name="indexName">The vector store index name.</param>
+    /// <param name="chunkCount">Number of chunks created.</param>
+    private async Task UpdateIngestionSuccessAsync(
+        Microsoft.Greenlight.Shared.Models.IngestedDocument entity,
+        string vectorStoreDocumentId,
+        string indexName,
+        int chunkCount)
     {
         try
         {
+            await using var db = await _dbContextFactory.CreateDbContextAsync();
+            var trackedEntity = await db.IngestedDocuments.FindAsync(entity.Id);
+            
+            if (trackedEntity != null)
+            {
+                // Update core ingestion state
+                trackedEntity.IngestionState = IngestionState.Complete;
+                trackedEntity.Error = null;
+
+                // Update vector store tracking properties with fallback values
+                trackedEntity.VectorStoreDocumentId = !string.IsNullOrWhiteSpace(vectorStoreDocumentId) 
+                    ? vectorStoreDocumentId 
+                    : SanitizeFileName(trackedEntity.FileName); // Fallback to sanitized filename
+                
+                trackedEntity.VectorStoreIndexName = !string.IsNullOrWhiteSpace(indexName) 
+                    ? indexName 
+                    : trackedEntity.DocumentLibraryOrProcessName; // Fallback to library name
+                
+                trackedEntity.VectorStoreChunkCount = chunkCount > 0 ? chunkCount : 0; // Fallback to 0 if invalid
+                trackedEntity.VectorStoreIndexedDate = DateTime.UtcNow;
+                trackedEntity.IsVectorStoreIndexed = true;
+
+                await db.SaveChangesAsync();
+
+                _logger.LogDebug("Updated vector store tracking for document {DocumentId}: DocumentId={VectorStoreDocumentId}, Index={IndexName}, Chunks={ChunkCount}",
+                    entity.Id, trackedEntity.VectorStoreDocumentId, trackedEntity.VectorStoreIndexName, trackedEntity.VectorStoreChunkCount);
+            }
+            else
+            {
+                _logger.LogWarning("Could not find IngestedDocument {DocumentId} to update vector store tracking", entity.Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Don't fail the entire ingestion process due to tracking update failures
+            _logger.LogWarning(ex, "Failed to update vector store tracking for document {DocumentId}, but ingestion succeeded", entity.Id);
+        }
+    }
+
+    /// <summary>
+    /// Updates the IngestedDocument entity after ingestion failure.
+    /// Includes fallback logic to ensure state updates don't fail silently.
+    /// </summary>
+    /// <param name="entity">The IngestedDocument entity to update.</param>
+    /// <param name="errorMessage">The error message to record.</param>
+    private async Task UpdateIngestionFailureAsync(
+        Microsoft.Greenlight.Shared.Models.IngestedDocument entity,
+        string errorMessage)
+    {
+        try
+        {
+            await using var db = await _dbContextFactory.CreateDbContextAsync();
+            var trackedEntity = await db.IngestedDocuments.FindAsync(entity.Id);
+            
+            if (trackedEntity != null)
+            {
+                trackedEntity.IngestionState = IngestionState.Failed;
+                trackedEntity.Error = !string.IsNullOrWhiteSpace(errorMessage) 
+                    ? errorMessage 
+                    : "Unknown ingestion error"; // Fallback error message
+                
+                // Reset vector store tracking on failure
+                trackedEntity.IsVectorStoreIndexed = false;
+                trackedEntity.VectorStoreIndexedDate = null;
+
+                await db.SaveChangesAsync();
+
+                _logger.LogDebug("Updated ingestion failure state for document {DocumentId}: {ErrorMessage}", entity.Id, errorMessage);
+            }
+            else
+            {
+                _logger.LogWarning("Could not find IngestedDocument {DocumentId} to update failure state", entity.Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to update ingestion failure state for document {DocumentId}", entity.Id);
+        }
+    }
+
+    /// <summary>
+    /// Gets the document stream with fallback logic and proper error handling.
+    /// </summary>
+    /// <param name="documentUrl">The document URL to retrieve.</param>
+    /// <returns>Document stream or null if failed.</returns>
+    private async Task<Stream?> GetDocumentStreamAsync(string documentUrl)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(documentUrl))
+            {
+                _logger.LogWarning("Document URL is null or empty");
+                return null;
+            }
+
             using var scope = _serviceProvider.CreateScope();
             var azureFileHelper = scope.ServiceProvider.GetRequiredService<AzureFileHelper>();
             return await azureFileHelper.GetFileAsStreamFromFullBlobUrlAsync(documentUrl);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting document stream for {DocumentUrl}", documentUrl);
+            _logger.LogError(ex, "Error getting document stream for {DocumentUrl}", documentUrl ?? "null");
             return null;
         }
+    }
+
+    /// <summary>
+    /// Sanitizes a file name for use as a vector store document ID.
+    /// Provides consistent sanitization logic with fallback.
+    /// </summary>
+    /// <param name="fileName">The original file name.</param>
+    /// <returns>Sanitized file name suitable for vector store document ID.</returns>
+    private static string SanitizeFileName(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return $"unknown_file_{Guid.NewGuid():N}"; // Fallback for missing filename
+        }
+
+        return fileName
+            .Replace(" ", "_")
+            .Replace("+", "_")
+            .Replace("~", "_")
+            .Replace("/", "_")
+            .Replace("\\", "_")
+            .Replace(":", "_")
+            .Replace("*", "_")
+            .Replace("?", "_")
+            .Replace("\"", "_")
+            .Replace("<", "_")
+            .Replace(">", "_")
+            .Replace("|", "_");
     }
 }

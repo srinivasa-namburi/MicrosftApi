@@ -228,51 +228,70 @@ public class DocumentOutlineController : BaseController
     /// Produces Status Codes:
     ///     200 OK: When completed sucessfully
     ///     400 Bad Request: When there is no Text provided in the SimpleTextDTO object provided
+    ///     500 Internal Server Error: When an unexpected error occurs during processing
     /// </returns>
     [HttpPost("generate-from-text")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     [Consumes("application/json")]
     [Produces("application/json")]
     [Produces<List<DocumentOutlineItemInfo>>]
     public ActionResult<List<DocumentOutlineItemInfo>> GenerateOutlineFromText(SimpleTextDTO textDto)
     {
-        var outlineText = textDto.Text;
-
-        if (string.IsNullOrWhiteSpace(outlineText))
+        try
         {
-            return BadRequest("Outline text cannot be empty.");
+            var outlineText = textDto.Text;
+
+            if (string.IsNullOrWhiteSpace(outlineText))
+            {
+                return BadRequest("Outline text cannot be empty.");
+            }
+
+            // the outline text is a json string with \n for line feeds that need to be turned into a regular string with regular line feeds
+            outlineText = outlineText.Replace("\\n", "\n");
+
+            var documentOutlineLines = outlineText.Split("\n").ToList();
+
+            // Foreach line in the lines List, remove quotes as well as leading and trailing whitespace
+            documentOutlineLines = documentOutlineLines.Select(x => x.Trim([' ', '"', '-'])
+                    .Replace("[", "")
+                    .Replace("]", ""))
+                .ToList();
+
+            // Remove any empty lines
+            documentOutlineLines = documentOutlineLines.Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
+
+            // Re-create the string with the outline text - each line separated by a newline
+            outlineText = string.Join("\n", documentOutlineLines);
+
+            // This renders the Outline Items based on the text
+            var outline = new DocumentOutline
+            {
+                FullText = outlineText
+            };
+
+            if (outline.OutlineItems == null || outline.OutlineItems.Count == 0)
+            {
+                return BadRequest("Unable to parse the outline text. Please ensure it follows the expected format (e.g., '1. Title', '1.1. Subtitle', etc.).");
+            }
+
+            var infoOutline = _mapper.Map<List<DocumentOutlineItemInfo>>(outline.OutlineItems);
+
+            CleanSectionTitles(infoOutline);
+            SetOrderAndLevelProperties(infoOutline);
+
+            return Ok(infoOutline);
         }
-
-        // the outline text is a json string with \n for line feeds that need to be turned into a regular string with regular line feeds
-        outlineText = outlineText.Replace("\\n", "\n");
-
-        var documentOutlineLines = outlineText.Split("\n").ToList();
-
-        // Foreach line in the lines List, remove quotes as well as leading and trailing whitespace
-        documentOutlineLines = documentOutlineLines.Select(x => x.Trim([' ', '"', '-'])
-                .Replace("[", "")
-                .Replace("]", ""))
-            .ToList();
-
-        // Remove any empty lines
-        documentOutlineLines = documentOutlineLines.Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
-
-        // Re-create the string with the outline text - each line separated by a newline
-        outlineText = string.Join("\n", documentOutlineLines);
-
-        // This renders the Outline Items based on the text
-        var outline = new DocumentOutline
+        catch (Exception ex)
         {
-            FullText = outlineText
-        };
-
-        var infoOutline = _mapper.Map<List<DocumentOutlineItemInfo>>(outline.OutlineItems);
-
-        CleanSectionTitles(infoOutline);
-        SetOrderAndLevelProperties(infoOutline);
-
-        return Ok(infoOutline);
+            // Log the error details for debugging
+            Console.WriteLine($"Error generating outline from text: {ex.Message}");
+            Console.WriteLine($"Stack trace: {ex.StackTrace}");
+            Console.WriteLine($"Input text length: {textDto?.Text?.Length ?? 0}");
+            
+            return StatusCode(500, $"An error occurred while processing the outline text: {ex.Message}");
+        }
     }
 
     /// <summary>

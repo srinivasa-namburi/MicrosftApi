@@ -38,7 +38,6 @@ public class SetupDataInitializerService(
 
     private readonly Guid _gpt4OModelId = Guid.Parse("f7ece6e1-af11-4f90-a69f-c77fcef73486", CultureInfo.InvariantCulture);
     private readonly Guid _gpt4OModelDeploymentId = Guid.Parse("453a06c4-3ce8-4468-a7a8-7444f8352aa6", CultureInfo.InvariantCulture);
-    private readonly Guid _o3MiniModelId = Guid.Parse("656d6371-8d78-4c4b-be7b-05254ff4045a", CultureInfo.InvariantCulture);
 
     private readonly Guid _nrcEnvironmentalReportId = Guid.Parse("88ffae0a-22a3-42e0-a538-72dd1a589216", CultureInfo.InvariantCulture);
 
@@ -252,7 +251,7 @@ public class SetupDataInitializerService(
         section14.RenderTitleOnly = true;
         section15.RenderTitleOnly = true;
         section16.RenderTitleOnly = true;
-        
+
         // Add top-level items to the outline
         documentOutline.OutlineItems.Add(section1);
         documentOutline.OutlineItems.Add(section2);
@@ -430,7 +429,7 @@ public class SetupDataInitializerService(
             Description = "NRC Environmental Review",
             BlobStorageContainerName = containerName,
             BlobStorageAutoImportFolderName = autoImportFolderName,
-            LogicType = DocumentProcessLogicType.KernelMemory,
+            LogicType = DocumentProcessLogicType.SemanticKernelVectorStore,
             Status = DocumentProcessStatus.Created,
             CompletionServiceType = DocumentProcessCompletionServiceType.GenericAiCompletionService,
             ClassifyDocuments = false,
@@ -498,7 +497,7 @@ public class SetupDataInitializerService(
     {
         // Set order based on section number
         int orderIndex = 0;
-    
+
         if (!string.IsNullOrEmpty(sectionNumber))
         {
             // Parse the section number for ordering
@@ -508,7 +507,7 @@ public class SetupDataInitializerService(
                 orderIndex = lastNumber;
             }
         }
-    
+
         var item = new DocumentOutlineItem
         {
             Id = Guid.NewGuid(),
@@ -846,32 +845,6 @@ public class SetupDataInitializerService(
             _logger.LogInformation("GPT-4o model deployment already exists. Skipping seeding logic.");
         }
 
-        // Check if the o3-mini model exists
-        var o3MiniAiModel = await dbContext.AiModels.FindAsync([_o3MiniModelId], cancellationToken);
-        if (o3MiniAiModel == null)
-        {
-            o3MiniAiModel = new AiModel
-            {
-                Id = _o3MiniModelId,
-                Name = "o3-mini",
-                TokenSettings = new AiModelMaxTokenSettings
-                {
-                    MaxTokensForContentGeneration = 90000,
-                    MaxTokensForSummarization = 4000,
-                    MaxTokensForValidation = 90000,
-                    MaxTokensForChatReplies = 4000,
-                    MaxTokensForQuestionAnswering = 7000,
-                    MaxTokensGeneral = 1024
-                },
-                IsReasoningModel = true
-            };
-            dbContext.AiModels.Add(o3MiniAiModel);
-        }
-        else
-        {
-            _logger.LogInformation("o3-mini model already exists. Skipping seeding logic.");
-        }
-
         // Only save changes if we've made changes
         if (dbContext.ChangeTracker.HasChanges())
         {
@@ -923,7 +896,7 @@ public class SetupDataInitializerService(
 
     }
 
-   
+
     private async Task Seed2024_05_24_OrphanedChatMessagesCleanup(DocGenerationDbContext dbContext,
         CancellationToken cancellationToken)
     {

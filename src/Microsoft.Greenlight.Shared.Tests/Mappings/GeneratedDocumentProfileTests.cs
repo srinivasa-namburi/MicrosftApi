@@ -128,6 +128,59 @@ namespace Microsoft.Greenlight.Shared.Tests.Mappings
                 SOURCE_NAME, 
                 kernelMemoryDocumentSourceReferenceItemInfo.Citations.First().SourceName);
         }
+
+        [Fact]
+        public void Should_Map_VectorStoreAggregatedSourceReferenceItem_To_VectorStoreSourceReferenceItemInfo()
+        {
+            // Arrange
+            var aggregated = new VectorStoreAggregatedSourceReferenceItem
+            {
+                IndexName = "libindex",
+                DocumentId = "doc123",
+                FileName = "file.txt",
+                Score = 0.92,
+            };
+            aggregated.SetBasicParameters();
+            aggregated.Chunks.Add(new DocumentChunk
+            {
+                Text = "First chunk text",
+                Relevance = 0.91,
+                PartitionNumber = 0,
+                SizeInBytes = 17,
+                Tags = new Dictionary<string, List<string?>>
+                {
+                    ["DocumentId"] = ["doc123"],
+                    ["FileName"] = ["file.txt"],
+                },
+                LastUpdate = DateTimeOffset.UtcNow
+            });
+            aggregated.Chunks.Add(new DocumentChunk
+            {
+                Text = "Second chunk text",
+                Relevance = 0.85,
+                PartitionNumber = 1,
+                SizeInBytes = 18,
+                Tags = new Dictionary<string, List<string?>>
+                {
+                    ["DocumentId"] = ["doc123"],
+                    ["FileName"] = ["file.txt"],
+                },
+                LastUpdate = DateTimeOffset.UtcNow
+            });
+
+            // Act
+            var dto = _mapper.Map<VectorStoreSourceReferenceItemInfo>(aggregated);
+
+            // Assert
+            Assert.Equal(aggregated.IndexName, dto.IndexName);
+            Assert.Equal(aggregated.DocumentId, dto.DocumentId);
+            Assert.Equal(aggregated.FileName, dto.FileName);
+            Assert.Equal(aggregated.Score, dto.Score);
+            Assert.Equal(aggregated.Chunks.Count, dto.Chunks.Count);
+            Assert.Equal(aggregated.Chunks[0].Text, dto.Chunks[0].Text);
+            Assert.Equal(aggregated.Chunks[0].PartitionNumber, dto.Chunks[0].PartitionNumber);
+            Assert.Equal(aggregated.Chunks[1].Relevance, dto.Chunks[1].Relevance);
+        }
     }
 
     public class KernelMemoryDocumentSourceReferenceItemImplementation : KernelMemoryDocumentSourceReferenceItem

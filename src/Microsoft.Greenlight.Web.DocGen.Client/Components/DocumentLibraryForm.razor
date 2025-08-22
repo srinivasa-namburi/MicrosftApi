@@ -5,17 +5,106 @@
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @inject NavigationManager NavigationManager
+@inject IDocumentReindexApiClient DocumentReindexApiClient
+@using Microsoft.Greenlight.Shared.Enums
+@using Microsoft.Greenlight.Shared.Contracts.DTO
 
 <MudPaper Class="pa-4">
-    <MudForm @ref="form" Model="DocumentLibraryInfo">
-        <MudText Typo="Typo.h6">@FormTitle</MudText>
+    <MudGrid>
+        <MudItem xs="12">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.h6">@FormTitle</MudText>
+                <MudText Typo="Typo.body2" Class="text-right">
+                    <strong>Logic Type:</strong> @DocumentLibraryInfo.LogicType.ToString()
+                </MudText>
+            </MudStack>
+        </MudItem>
+    </MudGrid>
 
+    @if (IsEditMode)
+    {
+        <!-- Inline Reindex Status for this library and associated processes -->
+        <MudGrid Class="mb-2">
+            <MudItem xs="12">
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.subtitle2">Reindexing Status:</MudText>
+
+                    @if (_libraryReindexStatus != null)
+                    {
+                        <MudChip Color="@GetStatusColor(_libraryReindexStatus.Status)" Variant="Variant.Filled">
+                            Library: @_libraryReindexStatus.Status.ToString() (@_libraryReindexStatus.ProcessedDocuments/@_libraryReindexStatus.TotalDocuments)
+                        </MudChip>
+                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="OpenLibraryReindexProgress">View details</MudButton>
+                    }
+                    else
+                    {
+                        <MudChip Color="Color.Default" Variant="Variant.Outlined">No active reindex for library</MudChip>
+                    }
+
+                    @if (_processReindexStatuses.Any())
+                    {
+                        <MudDivider Vertical="true" Class="mx-2" />
+                        @foreach (var kvp in _processReindexStatuses)
+                        {
+                            <MudChip Color="@GetStatusColor(kvp.Value.Status)" Variant="Variant.Filled" Class="mr-1">
+                                Associated Document Process @kvp.Key: @kvp.Value.Status.ToString() (@kvp.Value.ProcessedDocuments/@kvp.Value.TotalDocuments)
+                            </MudChip>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="() => OpenProcessReindexProgress(kvp.Key)">View</MudButton>
+                        }
+                    }
+
+                    <MudSpacer />
+                    <MudIconButton Icon="@Icons.Material.Filled.Refresh" Title="Refresh reindex status" OnClick="RefreshReindexStatusesAsync" />
+                </MudStack>
+            </MudItem>
+        </MudGrid>
+    }
+    
+    <MudForm @ref="form" Model="DocumentLibraryInfo">
         <MudTextField Label="Short Name" @bind-Value="DocumentLibraryInfo.ShortName" For="@(() => DocumentLibraryInfo.ShortName)" Required="true" OnBlur="ValidateAndFormatShortName" />
         <MudTextField Label="Description of Contents" @bind-Value="DocumentLibraryInfo.DescriptionOfContents" For="@(() => DocumentLibraryInfo.DescriptionOfContents)" Required="true" Lines="3" TextArea="true" />
         <MudTextField Label="Description of When to Use" @bind-Value="DocumentLibraryInfo.DescriptionOfWhenToUse" For="@(() => DocumentLibraryInfo.DescriptionOfWhenToUse)" Required="true" Lines="3" TextArea="true" />
         <MudTextField Label="Index Name" @bind-Value="DocumentLibraryInfo.IndexName" For="@(() => DocumentLibraryInfo.IndexName)" Required="true" />
         <MudTextField Label="Blob Storage Container Name" @bind-Value="DocumentLibraryInfo.BlobStorageContainerName" For="@(() => DocumentLibraryInfo.BlobStorageContainerName)" Required="true" />
         <MudTextField Label="Blob Storage Auto Import Folder Name" @bind-Value="DocumentLibraryInfo.BlobStorageAutoImportFolderName" For="@(() => DocumentLibraryInfo.BlobStorageAutoImportFolderName)" />
+        
+        @if (DocumentLibraryInfo.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
+        {
+            <MudSelect T="TextChunkingMode?" @bind-Value="DocumentLibraryInfo.VectorStoreChunkingMode" Label="Chunking Mode">
+                @foreach (var mode in Enum.GetValues<TextChunkingMode>())
+                {
+                    <MudSelectItem Value="@(mode as TextChunkingMode?)">@mode.ToString()</MudSelectItem>
+                }
+            </MudSelect>
+            
+            <MudNumericField T="int?" @bind-Value="DocumentLibraryInfo.VectorStoreChunkSize" 
+                           Label="Chunk Size (tokens)" 
+                           HelperText="Number of tokens per chunk. Leave empty to use global default."
+                           Min="100" Max="8000" />
+            
+            <MudNumericField T="int?" @bind-Value="DocumentLibraryInfo.VectorStoreChunkOverlap" 
+                           Label="Chunk Overlap (tokens)" 
+                           HelperText="Number of overlapping tokens between chunks. Leave empty to use global default."
+                           Min="0" Max="2000" />
+                           
+            <MudAlert Severity="Severity.Info" Class="mt-2">
+                <strong>Note:</strong> Changing chunk size or overlap will only apply to newly ingested documents. 
+                Existing documents in the index will retain their original chunking. 
+                You can reindex existing documents to apply new chunk settings.
+            </MudAlert>
+        }
+
+        @if (IsEditMode && DocumentLibraryInfo.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
+        {
+            <MudStack Class="mt-4" Spacing="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Warning" StartIcon="@Icons.Material.Filled.Refresh" OnClick="ShowReindexDialog">
+                    Reindex Documents
+                </MudButton>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    This will recreate vector embeddings for all previously ingested documents in this library (using the currently set chunk size)
+                </MudText>
+            </MudStack>
+        }
 
         <MudDivider Class="my-2" />
 
@@ -86,13 +175,84 @@
     private List<DocumentProcessInfo> AssociatedDocumentProcesses = new();
     private List<DocumentProcessInfo> AvailableDocumentProcesses = new();
 
+    // Reindex status state
+    private string LibraryOrchestrationId => string.IsNullOrWhiteSpace(DocumentLibraryInfo?.ShortName) ? string.Empty : $"library-{DocumentLibraryInfo.ShortName}";
+    private DocumentReindexStateInfo? _libraryReindexStatus;
+    private Dictionary<string, DocumentReindexStateInfo> _processReindexStatuses = new();
+
     protected override async Task OnInitializedAsync()
     {
         if (IsEditMode)
         {
             await LoadAssociatedDocumentProcesses();
             await LoadAvailableDocumentProcesses();
+            await RefreshReindexStatusesAsync();
         }
+    }
+
+    private Color GetStatusColor(ReindexOrchestrationState status) => status switch
+    {
+        ReindexOrchestrationState.Running => Color.Info,
+        ReindexOrchestrationState.Completed => Color.Success,
+        ReindexOrchestrationState.Failed => Color.Error,
+        _ => Color.Default
+    };
+
+    private async Task RefreshReindexStatusesAsync()
+    {
+        try
+        {
+            _libraryReindexStatus = null;
+            _processReindexStatuses.Clear();
+
+            if (!string.IsNullOrWhiteSpace(LibraryOrchestrationId))
+            {
+                _libraryReindexStatus = await DocumentReindexApiClient.GetReindexingStatusAsync(LibraryOrchestrationId);
+            }
+
+            foreach (var proc in AssociatedDocumentProcesses)
+            {
+                var procOrchId = $"process-{proc.ShortName}";
+                var status = await DocumentReindexApiClient.GetReindexingStatusAsync(procOrchId);
+                if (status != null && status.Status != ReindexOrchestrationState.NotStarted)
+                {
+                    _processReindexStatuses[proc.ShortName] = status;
+                }
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error refreshing reindex statuses: {ex.Message}");
+        }
+    }
+
+    private async Task OpenLibraryReindexProgress()
+    {
+        if (string.IsNullOrWhiteSpace(LibraryOrchestrationId)) return;
+
+        var parameters = new DialogParameters
+        {
+            { "OrchestrationId", LibraryOrchestrationId },
+            { "TargetName", DocumentLibraryInfo.ShortName },
+            { "Reason", _libraryReindexStatus?.Reason ?? string.Empty }
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        await DialogService.ShowAsync<DocumentReindexProgressDisplay>("Reindexing Progress", parameters, options);
+    }
+
+    private async Task OpenProcessReindexProgress(string processShortName)
+    {
+        var orchestrationId = $"process-{processShortName}";
+        var parameters = new DialogParameters
+        {
+            { "OrchestrationId", orchestrationId },
+            { "TargetName", processShortName },
+            { "Reason", _processReindexStatuses.TryGetValue(processShortName, out var st) ? (st.Reason ?? string.Empty) : string.Empty }
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        await DialogService.ShowAsync<DocumentReindexProgressDisplay>("Reindexing Progress", parameters, options);
     }
 
     private void ValidateAndFormatShortName()
@@ -170,6 +330,7 @@
             {
                 await LoadAssociatedDocumentProcesses();
                 await LoadAvailableDocumentProcesses();
+                await RefreshReindexStatusesAsync();
             }
         }
     }
@@ -192,10 +353,11 @@
 
         dialog.Result.ContinueWith(async result =>
         {
-            if (!result.Result.Cancelled)
+            if (!result.Result.Canceled)
             {
                 await LoadAssociatedDocumentProcesses();
                 await LoadAvailableDocumentProcesses();
+                await RefreshReindexStatusesAsync();
                 StateHasChanged();
             }
         });
@@ -215,9 +377,10 @@
 
         dialog.Result.ContinueWith(async result =>
         {
-            if (!result.Result.Cancelled)
+            if (!result.Result.Canceled)
             {
                 await DisassociateProcess(processId);
+                await RefreshReindexStatusesAsync();
                 StateHasChanged();
             }
         });
@@ -232,7 +395,6 @@
 
             await LoadAssociatedDocumentProcesses();
             await LoadAvailableDocumentProcesses();
-            StateHasChanged();
         }
         catch (Exception ex)
         {
@@ -263,5 +425,23 @@
                 Snackbar.Add($"Error uploading file '{file.Name}': {ex.Message}", Severity.Error);
             }
         }
+    }
+
+    private async Task ShowReindexDialog()
+    {
+        if (!IsEditMode || DocumentLibraryInfo.LogicType != DocumentProcessLogicType.SemanticKernelVectorStore)
+        {
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            { "TargetName", DocumentLibraryInfo.ShortName },
+            { "IsDocumentProcess", false },
+            { "Reason", "Manual reindexing" },
+            { "WarningMessage", "This will delete and rebuild the library repository index." }
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        await DialogService.ShowAsync<DocumentReindexConfirmationDialog>("Reindex Documents", parameters, options);
     }
 }

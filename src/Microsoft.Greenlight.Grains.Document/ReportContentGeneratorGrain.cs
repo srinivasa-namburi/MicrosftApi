@@ -89,24 +89,41 @@ public class ReportContentGeneratorGrain : Grain, IReportContentGeneratorGrain
             
             foreach ((ContentNode node, string outlineJson) in generationMessages)
             {
-                await _throttleSemaphore.WaitAsync(15.Minutes());
+                bool semaphoreAcquired = false;
+                try
+                {
+                    await _throttleSemaphore.WaitAsync(15.Minutes());
+                    semaphoreAcquired = true;
 
-                var sectionGeneratorGrain = GrainFactory.GetGrain<IReportTitleSectionGeneratorGrain>(Guid.NewGuid());
-                var contentNodeJson = JsonSerializer.Serialize(node);
+                    var sectionGeneratorGrain = GrainFactory.GetGrain<IReportTitleSectionGeneratorGrain>(Guid.NewGuid());
+                    var contentNodeJson = JsonSerializer.Serialize(node);
 
-                // Introduce a half second delay to stagger execution to resolve all dependencies
-                await Task.Delay(500);
+                    // Introduce a half second delay to stagger execution to resolve all dependencies
+                    await Task.Delay(500);
 
-                _ = sectionGeneratorGrain.GenerateSectionAsync(
-                        documentId, authorOid, contentNodeJson, outlineJson, metadataId)
-                    .ContinueWith(t =>
-                    {
-                        if (t.IsFaulted)
+                    _ = sectionGeneratorGrain.GenerateSectionAsync(
+                            documentId, authorOid, contentNodeJson, outlineJson, metadataId)
+                        .ContinueWith(t =>
                         {
-                            _logger.LogError(t.Exception, "Error generating section for document {DocumentId}", documentId);
-                        }
+                            if (t.IsFaulted)
+                            {
+                                _logger.LogError(t.Exception, "Error generating section for document {DocumentId}", documentId);
+                            }
+                            if (semaphoreAcquired)
+                            {
+                                _throttleSemaphore.Release();
+                            }
+                        });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error waiting for semaphore for document {DocumentId}", documentId);
+                    if (semaphoreAcquired)
+                    {
                         _throttleSemaphore.Release();
-                    });
+                    }
+                    throw;
+                }
             }
 
         }

@@ -1,6 +1,7 @@
 ﻿using Microsoft.Greenlight.Shared.Contracts.Messages;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Events;
 using Microsoft.Greenlight.Shared.Contracts.Messages.DocumentGeneration.Events;
+using Microsoft.Greenlight.Shared.Contracts.Messages.Reindexing.Events;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Review.Events;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Validation.Events;
 using Orleans;
@@ -80,5 +81,11 @@ namespace Microsoft.Greenlight.Grains.ApiSpecific.Contracts
         Task NotifyExportJobFailedAsync(string userGroup, IndexExportJobNotification notification);
         Task NotifyImportJobCompletedAsync(string userGroup, IndexImportJobNotification notification);
         Task NotifyImportJobFailedAsync(string userGroup, IndexImportJobNotification notification);
+
+        // Document reindexing notifications
+        Task NotifyDocumentReindexStartedAsync(DocumentReindexStartedNotification notification);
+        Task NotifyDocumentReindexProgressAsync(DocumentReindexProgressNotification notification);
+        Task NotifyDocumentReindexCompletedAsync(DocumentReindexCompletedNotification notification);
+        Task NotifyDocumentReindexFailedAsync(DocumentReindexFailedNotification notification);
     }
 }

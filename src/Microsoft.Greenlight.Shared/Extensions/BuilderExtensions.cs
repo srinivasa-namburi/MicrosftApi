@@ -35,10 +35,21 @@ using Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.Shared.Services.ContentReference;
 using Microsoft.Greenlight.Shared.Services.Search;
 using Microsoft.Greenlight.Shared.Services.Validation;
+using Microsoft.Greenlight.Shared.Services.Search.Abstractions;
+using Microsoft.Greenlight.Shared.Services.Search.Extensions;
+using Microsoft.Greenlight.Shared.Services.Search.Providers;
 using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.ChatCompletion;
-using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
-using Microsoft.SemanticKernel.Embeddings;
+using Microsoft.SemanticKernel.ChatCompletion; // legacy SK chat service still used in some factories
+using Microsoft.SemanticKernel.Connectors.AzureOpenAI; // legacy SK connectors
+using Microsoft.SemanticKernel.Embeddings; // legacy SK embeddings (to be removed later)
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.VectorData;
+using Azure;
+using Azure.Identity;
+using Azure.Search.Documents;
+using Azure.Search.Documents.Indexes;
+using Microsoft.Extensions.Azure;
+using Azure.Core.Extensions;
 using Npgsql;
 using Orleans.Configuration;
 using Orleans.Serialization;
@@ -107,8 +118,8 @@ public static class BuilderExtensions
                 dataSourceBuilder.UseVector();
             });
         }
-       
-        
+
+
         return builder;
     }
 
@@ -127,10 +138,25 @@ public static class BuilderExtensions
         builder.AddGreenLightRedisClient("redis", credentialHelper, serviceConfigurationOptions);
 
         // Common services and dependencies
-        builder.AddAzureSearchClient("aiSearch", configureSettings: delegate (AzureSearchSettings settings)
-        {
-            settings.Credential = credentialHelper.GetAzureCredential();
-        });
+        builder.AddAzureSearchClient("aiSearch",
+            configureSettings: delegate (AzureSearchSettings settings)
+            {
+                settings.Credential = credentialHelper.GetAzureCredential();
+            },
+            configureClientBuilder: delegate (IAzureClientBuilder<SearchIndexClient, SearchClientOptions> clientBuilder)
+            {
+                // Configure audience for Azure Government if using Azure Government authority
+                var azureInstance = builder.Configuration["AzureAd:Instance"];
+                if (!string.IsNullOrEmpty(azureInstance) &&
+                    azureInstance.Contains(AzureAuthorityHosts.AzureGovernment.ToString(), StringComparison.OrdinalIgnoreCase))
+                {
+                    // Set Azure Government audience for Azure AI Search
+                    clientBuilder.ConfigureOptions(options =>
+                    {
+                        options.Audience = SearchAudience.AzureGovernment;
+                    });
+                }
+            });
 
         builder.AddKeyedAzureBlobClient("blob-docing", configureSettings: delegate (AzureStorageBlobsSettings settings)
         {
@@ -171,38 +197,29 @@ public static class BuilderExtensions
 
 
         builder.Services.AddKeyedSingleton<AzureOpenAIClient>("openai-planner", (sp, obj) =>
-        {
-            // Here's the connection string format. Parse this for endpoint and key
-            // Endpoint=https://pvico-oai-swedencentral.openai.azure.com/;Key=sdfsdfsdfsdfsdfsdfsdf
+            {
+                // Here's the connection string format. Parse this for endpoint and key
+                // Endpoint=https://pvico-oai-swedencentral.openai.azure.com/;Key=sdfsdfsdfsdfsdfsdfsdf
 
-            var connectionString = builder.Configuration.GetConnectionString("openai-planner");
-            var endpoint = connectionString!.Split(';')[0].Split('=')[1];
-            var key = connectionString!.Split(';')[1].Split('=')[1];
+                var connectionString = builder.Configuration.GetConnectionString("openai-planner");
+                var endpoint = connectionString!.Split(';')[0].Split('=')[1];
+                var key = connectionString!.Split(';')[1].Split('=')[1];
 
-            // If the connection string doesn't contain a Key, use credentialHelper.GetAzureCredential() method.
-            // Otherwise, use the key with an ApiKeyCredential.
-            return string.IsNullOrEmpty(key)
-                ? new AzureOpenAIClient(new Uri(endpoint), credentialHelper.GetAzureCredential(), new AzureOpenAIClientOptions()
-                {
-                    NetworkTimeout = 30.Minutes()
-                })
-                : new AzureOpenAIClient(new Uri(endpoint), new ApiKeyCredential(key), new AzureOpenAIClientOptions()
-                {
-                    NetworkTimeout = 30.Minutes()
-                });
-        });
+                // If the connection string doesn't contain a Key, use credentialHelper.GetAzureCredential() method.
+                // Otherwise, use the key with an ApiKeyCredential.
+                return string.IsNullOrEmpty(key)
+                    ? new AzureOpenAIClient(new Uri(endpoint), credentialHelper.GetAzureCredential(), new AzureOpenAIClientOptions()
+                    {
+                        NetworkTimeout = 30.Minutes()
+                    })
+                    : new AzureOpenAIClient(new Uri(endpoint), new ApiKeyCredential(key), new AzureOpenAIClientOptions()
+                    {
+                        NetworkTimeout = 30.Minutes()
+                    });
+            });
 
-        builder.Services.AddTransient<IChatCompletionService>(service =>
-            new AzureOpenAIChatCompletionService(serviceConfigurationOptions.OpenAi.Gpt4o_Or_Gpt4128KDeploymentName,
-                service.GetRequiredKeyedService<AzureOpenAIClient>("openai-planner"), "openai-chatcompletion")
-        );
-
-
-        builder.Services.AddTransient<ITextEmbeddingGenerationService>(service =>
-            new AzureOpenAITextEmbeddingGenerationService(
-                serviceConfigurationOptions.OpenAi.EmbeddingModelDeploymentName,
-                service.GetRequiredKeyedService<AzureOpenAIClient>("openai-planner"), "openai-embeddinggeneration")
-        );
+        // NOTE: Microsoft.Extensions.AI OpenAI convenience adapters not available in current package version.
+        // Keep legacy SK chat service registration inside SemanticKernelFactory until upgraded.
 
 
         builder.Services.AddTransient<DynamicDocumentProcessServiceFactory>();
@@ -230,6 +247,30 @@ public static class BuilderExtensions
 
         builder.Services.AddKeyedTransient<IFunctionInvocationFilter, PluginExecutionLoggingFilter>(
             "PluginExecutionLoggingFilter");
+
+        // Vector store provider selection based on UsePostgresMemory flag
+
+        // Register the appropriate VectorStore implementation based on UsePostgresMemory
+        if (serviceConfigurationOptions.GreenlightServices.Global.UsePostgresMemory)
+        {
+            // Register PostgreSQL VectorStore - use the kmvectordb connection
+            builder.Services.AddPostgresVectorStore(connectionString =>
+            {
+                return builder.Configuration.GetConnectionString("kmvectordb") ??
+                       throw new InvalidOperationException("kmvectordb connection string is required for PostgreSQL vector store");
+            });
+        }
+        else
+        {
+            // Register Azure AI Search VectorStore - use the existing configured SearchIndexClient
+            // This leverages the already configured "aiSearch" client with proper Azure credentials (including Azure US Government support)
+            builder.Services.AddAzureAISearchVectorStore();
+        }
+
+        builder.Services.AddTransient<ISemanticKernelVectorStoreProvider, SemanticKernelVectorStoreProvider>();
+
+        // Document ingestion services for Semantic Kernel Vector Store
+        builder.Services.AddVectorStoreServices();
 
         builder.AddRepositories();
 
@@ -281,9 +322,7 @@ public static class BuilderExtensions
             "Dynamic-IDocumentOutlineService");
         builder.Services.AddTransient<IDocumentOutlineService, DynamicDocumentOutlineService>();
 
-        // Register the ReviewKernelMemoryRepository
-        builder.Services.AddKeyedTransient<IKernelMemoryRepository, KernelMemoryRepository>("Reviews-IKernelMemoryRepository");
-        builder.Services.AddTransient<IReviewKernelMemoryRepository, ReviewKernelMemoryRepository>();
+        // ReviewKernelMemoryRepository deprecated: Reviews now use ContentReference pipeline exclusively.
 
         // Review services
         builder.Services.AddTransient<IReviewService, ReviewService>();
@@ -394,7 +433,7 @@ public static class BuilderExtensions
 
                 // Is there a way to add Orleans Serializers for referenced assemblies?
                 serializerBuilder.AddAssembly(typeof(ChatMessageDTO).Assembly);
-                serializerBuilder.AddAssembly(typeof(ChatMessage).Assembly);
+                serializerBuilder.AddAssembly(typeof(Microsoft.Greenlight.Shared.Models.ChatMessage).Assembly);
                 serializerBuilder.AddAssembly(currentAssembly);
             });
 
@@ -546,7 +585,7 @@ public static class BuilderExtensions
 
                 // Is there a way to add Orleans Serializers for referenced assemblies?
                 serializerBuilder.AddAssembly(typeof(ChatMessageDTO).Assembly);
-                serializerBuilder.AddAssembly(typeof(ChatMessage).Assembly);
+                serializerBuilder.AddAssembly(typeof(Microsoft.Greenlight.Shared.Models.ChatMessage).Assembly);
 
                 // Get the currently executing assembly and add it
                 var executingAssembly = Assembly.GetExecutingAssembly();
@@ -640,7 +679,7 @@ public static class BuilderExtensions
     /// <param name="documentProcessName">The name of the document process.</param>
     /// <returns>The service instance if found; otherwise, throws an InvalidOperationException.</returns>
     /// <exception cref="InvalidOperationException">Thrown when the service is not found for the specified document process.</exception>
-    public static T GetRequiredServiceForDocumentProcess<T>(this IServiceProvider sp, string documentProcessName)
+    private static T GetRequiredServiceForDocumentProcess<T>(this IServiceProvider sp, string documentProcessName)
     {
         var service = sp.GetServiceForDocumentProcess<T>(documentProcessName);
         if (service == null)
@@ -659,7 +698,7 @@ public static class BuilderExtensions
     /// <param name="documentProcessName">The name of the document process.</param>
     /// <returns>The service instance if found; otherwise, null.</returns>
     /// <exception cref="InvalidOperationException">Thrown when the document process info is not found and the document process name is not "Reviews".</exception>
-    public static T? GetServiceForDocumentProcess<T>(this IServiceProvider sp, string documentProcessName)
+    private static T? GetServiceForDocumentProcess<T>(this IServiceProvider sp, string documentProcessName)
     {
         T? service = default;
 
@@ -698,7 +737,72 @@ public static class BuilderExtensions
         {
             using var scope = sp.CreateScope();
             var factory = scope.ServiceProvider.GetRequiredService<DynamicDocumentProcessServiceFactory>();
-            service = factory.GetService<T>(documentProcessName);
+
+            service = factory.GetServiceAsync<T>(documentProcessName).ConfigureAwait(false).GetAwaiter().GetResult();
+        }
+
+        // If we didn't find the service in the factory, we try to get it from the scope in descending order of specificity
+        if (service == null)
+        {
+            // Try to get a scoped service for the specific document process,
+            // then the dynamic service, then the default service,
+            // then finally a service with no key.
+            service = sp.GetKeyedService<T>(documentProcessServiceKey) ??
+                      sp.GetKeyedService<T>(dynamicServiceKey) ??
+                      sp.GetKeyedService<T>($"Default-{typeof(T).Name}") ??
+                      sp.GetService<T>();
+        }
+
+        return service;
+    }
+
+    /// <summary>
+    /// Gets a service for the specified document process asynchronously.
+    /// </summary>
+    /// <typeparam name="T">The type of the service to get.</typeparam>
+    /// <param name="sp">The service provider.</param>
+    /// <param name="documentProcessName">The name of the document process.</param>
+    /// <returns>The service instance if found; otherwise, null.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the document process info is not found and the document process name is not "Reviews".</exception>
+    public static async Task<T?> GetServiceForDocumentProcessAsync<T>(this IServiceProvider sp, string documentProcessName)
+    {
+        T? service = default;
+
+        var documentProcessInfoService = sp.GetRequiredService<IDocumentProcessInfoService>();
+        var dbContext = sp.GetRequiredService<DocGenerationDbContext>();
+        var mapper = sp.GetRequiredService<IMapper>();
+
+        DocumentProcessInfo? documentProcessInfo = null;
+        try
+        {
+            documentProcessInfo = await documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentProcessName);
+        }
+        catch
+        {
+            var dynamicDocumentProcess = await dbContext.DynamicDocumentProcessDefinitions
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.ShortName == documentProcessName);
+
+            if (dynamicDocumentProcess != null)
+            {
+                documentProcessInfo = mapper.Map<DocumentProcessInfo>(dynamicDocumentProcess);
+            }
+        }
+
+        if (documentProcessInfo == null && documentProcessName != "Reviews")
+        {
+            throw new InvalidOperationException($"Document process info not found for {documentProcessName}");
+        }
+
+        var dynamicServiceKey = $"Dynamic-{typeof(T).Name}";
+        var documentProcessServiceKey = $"{documentProcessName}-{typeof(T).Name}";
+
+        // We try to get service for the specific document process first from the DynamicDocumentProcessServiceFactory
+        if (documentProcessInfo?.Source == ProcessSource.Dynamic)
+        {
+            using var scope = sp.CreateScope();
+            var factory = scope.ServiceProvider.GetRequiredService<DynamicDocumentProcessServiceFactory>();
+            service = await factory.GetServiceAsync<T>(documentProcessName);
         }
 
         // If we didn't find the service in the factory, we try to get it from the scope in descending order of specificity

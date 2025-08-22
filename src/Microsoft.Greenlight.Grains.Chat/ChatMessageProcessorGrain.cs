@@ -7,12 +7,15 @@ using Microsoft.Greenlight.Shared.Contracts.Chat;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Events;
 using Microsoft.Greenlight.Shared.Enums;
+using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Models;
 using Microsoft.Greenlight.Shared.Prompts;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.Shared.Services.ContentReference;
 using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.ChatCompletion; // Added for IChatCompletionService, ChatHistory
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 /// <summary>
@@ -385,11 +388,6 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
             var openAiSettings = await _kernelFactory.GetPromptExecutionSettingsForDocumentProcessAsync(
                 documentProcessInfo, AiTaskType.ChatReplies);
 
-#pragma warning disable SKEXP0010
-            openAiSettings.ChatDeveloperPrompt = systemPrompt;
-#pragma warning restore SKEXP0010
-
-
             // Prepare chat history and summaries
             var chatHistoryString = CreateChatHistoryString(conversationMessages, 10);
             var previousSummariesString = GetSummariesString(conversationSummaries);
@@ -402,39 +400,36 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
                 documentProcessName,
                 contextString);
 
-            var kernelArguments = new KernelArguments(openAiSettings);
+            // Use IChatCompletionService with ChatHistory and centralized manual tool invocation
+            var chatService = sk.GetRequiredService<IChatCompletionService>();
+            var history = new ChatHistory();
+            history.AddSystemMessage(systemPrompt);
+            history.AddUserMessage(userPrompt);
 
             var updateBlock = "";
             var responseDateSet = false;
 
             await SendStatusNotificationAsync(userMessageDto.Id, "Responding...", false, true);
 
-            // Stream the response with timeout protection
             using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(7));
-            try
-            {
-                await foreach (var response in sk.InvokePromptStreamingAsync(userPrompt, kernelArguments, cancellationToken: cts.Token))
-                {
-                    updateBlock += response;
-                    if (updateBlock.Length > 80)
-                    {
-                        if (!responseDateSet)
-                        {
-                            assistantMessageDto.CreatedUtc = DateTime.UtcNow;
-                            assistantMessageDto.State = ChatMessageCreationState.InProgress;
-                            responseDateSet = true;
-                        }
 
-                        assistantMessageDto.Message += updateBlock;
-                        await SendResponseReceivedNotificationAsync(userMessageDto.ConversationId, assistantMessageDto, updateBlock);
-                        updateBlock = "";
-                    }
-                }
-            }
-            catch (OperationCanceledException)
+            await foreach (var text in SemanticKernelStreamingHelper.StreamChatWithManualToolInvocationAsync(
+                chatService, history, openAiSettings, sk, cts.Token))
             {
-                _logger.LogWarning("Response generation timed out for message {MessageId}", userMessageDto.Id);
-                assistantMessageDto.Message += "\n\n[The response generation timed out. This is what I was able to generate so far.]";
+                updateBlock += text;
+                if (updateBlock.Length > 80)
+                {
+                    if (!responseDateSet)
+                    {
+                        assistantMessageDto.CreatedUtc = DateTime.UtcNow;
+                        assistantMessageDto.State = ChatMessageCreationState.InProgress;
+                        responseDateSet = true;
+                    }
+
+                    assistantMessageDto.Message += updateBlock;
+                    await SendResponseReceivedNotificationAsync(userMessageDto.ConversationId, assistantMessageDto, updateBlock);
+                    updateBlock = "";
+                }
             }
 
             if (updateBlock.Length > 0)
@@ -443,7 +438,10 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
             }
 
             assistantMessageDto.State = ChatMessageCreationState.Complete;
-            await SendResponseReceivedNotificationAsync(userMessageDto.ConversationId, assistantMessageDto, updateBlock);
+
+            // Ensure the UI receives text even if no incremental updates were sent (e.g., total text < threshold)
+            var finalBlock = responseDateSet ? updateBlock : assistantMessageDto.Message;
+            await SendResponseReceivedNotificationAsync(userMessageDto.ConversationId, assistantMessageDto, finalBlock);
         }
         catch (Exception ex)
         {

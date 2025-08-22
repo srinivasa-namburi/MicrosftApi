@@ -9,8 +9,6 @@ using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Plugins;
 using Microsoft.Extensions.Logging;
-using Microsoft.Greenlight.Shared.Services;
-using ModelContextProtocol.Client;
 using System.Text.RegularExpressions;
 
 namespace Microsoft.Greenlight.Shared.Extensions
@@ -170,8 +168,8 @@ namespace Microsoft.Greenlight.Shared.Extensions
                     continue;
                 }
 
-                // Ensure only the relevant KmDocsPlugin for the specific DocumentProcess is added
-                if (pluginEntry.Key.Contains("KmDocsPlugin"))
+                // Ensure only the relevant UniversalDocsPlugin for the specific DocumentProcess is added
+                if (pluginEntry.Key.Contains("UniversalDocsPlugin"))
                 {
                     // Get the document process name from the plugin key
                     var pluginDocumentProcessName = pluginEntry.Key.Split('-')[0];
@@ -294,9 +292,20 @@ namespace Microsoft.Greenlight.Shared.Extensions
         /// documents from the main repository are retrieved ahead of execution.
         /// </summary>
         /// <param name="kernel">The Semantic Kernel instance (must be instantiated).</param>
-        /// <param name="documentProcessName">Document Process to remove KmDocs plugin for. We want to keep other instances.</param>
+        /// <param name="documentProcessName">Document Process to remove UniversalDocs plugin for. We want to keep other instances.</param>
         public static void PrepareSemanticKernelInstanceForGeneration(this Kernel kernel, string documentProcessName)
         {
+            var universalDocsPlugins = kernel.Plugins.Where(x => x.Name.Contains("UniversalDocsPlugin")).ToList();
+
+            foreach (var universalDocsPlugin in universalDocsPlugins
+                         .Where(universalDocsPlugin => universalDocsPlugin.Name.Contains(documentProcessName) ||
+                                                universalDocsPlugin.Name.Contains("native") ||
+                                                universalDocsPlugin.Name.ToLower() == "universaldocsplugin"))
+            {
+                kernel.Plugins.Remove(universalDocsPlugin);
+            }
+            
+            // Also remove old KmDocsPlugin references for backward compatibility
             var kmDocsPlugins = kernel.Plugins.Where(x => x.Name.Contains("KmDocsPlugin")).ToList();
 
             foreach (var kmDocsPlugin in kmDocsPlugins

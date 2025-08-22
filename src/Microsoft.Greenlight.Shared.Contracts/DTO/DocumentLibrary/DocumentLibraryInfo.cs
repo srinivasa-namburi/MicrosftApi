@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using Microsoft.Greenlight.Shared.Enums;
 
 namespace Microsoft.Greenlight.Shared.Contracts.DTO.DocumentLibrary;
 
@@ -49,7 +50,27 @@ public class DocumentLibraryInfo
     public string BlobStorageAutoImportFolderName { get; set; } = "ingest-auto";
 
     /// <summary>
+    /// Logic type used for the document library.
+    /// </summary>
+    public DocumentProcessLogicType LogicType { get; set; } = DocumentProcessLogicType.SemanticKernelVectorStore;
+
+    /// <summary>
     /// Document process associations of the document library.
     /// </summary>
     public List<DocumentLibraryDocumentProcessAssociationInfo> DocumentProcessAssociations { get; set; } = [];
+
+    /// <summary>
+    /// Vector store chunking mode (only applies when LogicType is SemanticKernelVectorStore). Defaults to Simple.
+    /// </summary>
+    public TextChunkingMode? VectorStoreChunkingMode { get; set; } = TextChunkingMode.Simple;
+
+    /// <summary>
+    /// Vector store chunk size in tokens (only applies when LogicType is SemanticKernelVectorStore). If null, global VectorStoreOptions.ChunkSize is used.
+    /// </summary>
+    public int? VectorStoreChunkSize { get; set; }
+
+    /// <summary>
+    /// Vector store chunk overlap in tokens (only applies when LogicType is SemanticKernelVectorStore). If null, global VectorStoreOptions.ChunkOverlap is used.
+    /// </summary>
+    public int? VectorStoreChunkOverlap { get; set; }
 }

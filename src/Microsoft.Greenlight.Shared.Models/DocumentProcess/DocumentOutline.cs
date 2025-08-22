@@ -49,72 +49,186 @@ public class DocumentOutline : EntityBase
     {
         // Parse the full text into outline items
         OutlineItems = new List<DocumentOutlineItem>();
-        var lines = value.Split('\n');
+        
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        var lines = value.Split('\n', StringSplitOptions.RemoveEmptyEntries);
         var parentStack = new Stack<DocumentOutlineItem>();
         int orderIndex = 0;
 
         foreach (var line in lines)
         {
-            var match = Regex.Match(line, @"^(\d+(\.\d+)*\.?)|(\#+) ");
+            var trimmedLine = line.Trim();
+            if (string.IsNullOrWhiteSpace(trimmedLine))
+            {
+                continue;
+            }
+
+            // Updated regex to handle various numbering formats and markdown-style headers
+            var match = Regex.Match(trimmedLine, @"^((\d+(\.\d+)*\.?)\s+)|(\#+)\s+");
+            
             if (match.Success)
             {
                 int level;
                 string sectionNumber;
-                if (match.Groups[1].Success)
+                string sectionTitle;
+
+                if (match.Groups[2].Success)
                 {
                     // Numbering (1, 1.1, 1.1.1, etc.)
-                    level = match.Groups[1].Value.Count(c => c == '.');
-                    sectionNumber = match.Groups[1].Value.TrimEnd('.'); // Strip trailing periods if present
+                    var numberPart = match.Groups[2].Value.TrimEnd('.');
+                    sectionNumber = numberPart;
+                    
+                    // Calculate level based on number of dots
+                    level = numberPart.Count(c => c == '.');
+                    
+                    // Extract title (everything after the number and optional dot + space)
+                    sectionTitle = trimmedLine.Substring(match.Length).Trim();
+                }
+                else if (match.Groups[4].Success)
+                {
+                    // Hashes (#, ##, ###, etc.)
+                    var hashPart = match.Groups[4].Value;
+                    level = hashPart.Length - 1;
+                    sectionNumber = hashPart;
+                    
+                    // Extract title (everything after the hashes + space)
+                    sectionTitle = trimmedLine.Substring(match.Length).Trim();
                 }
                 else
                 {
-                    // Hashes (#, ##, ###, etc.)
-                    level = match.Groups[3].Value.Length - 1;
-                    sectionNumber = match.Groups[3].Value; // Store the hashes as the section number
+                    // Fallback - shouldn't happen with current regex, but for safety
+                    continue;
                 }
 
-                // Adjust sectionTitle to exclude any leading space or period
-                var sectionTitle = line.Substring(match.Length).TrimStart(' ', '.').Trim();
-
+                // Create the outline item
                 var outlineItem = new DocumentOutlineItem
                 {
+                    Id = Guid.NewGuid(),
                     Level = level,
                     SectionNumber = sectionNumber,
                     SectionTitle = sectionTitle,
-                    OrderIndex = orderIndex++ // Preserve the order from the input text
+                    OrderIndex = orderIndex++,
+                    Children = new List<DocumentOutlineItem>()
                 };
 
                 if (level == 0)
                 {
+                    // Top-level item
                     OutlineItems.Add(outlineItem);
                     parentStack.Clear();
                     parentStack.Push(outlineItem);
                 }
                 else
                 {
-                    while (parentStack.Count > level)
+                    // Child item - find appropriate parent
+                    while (parentStack.Count > 0 && parentStack.Peek().Level >= level)
                     {
                         parentStack.Pop();
                     }
 
-                    var parent = parentStack.Peek();
-                    outlineItem.ParentId = parent.Id;
-                    parent.Children.Add(outlineItem);
+                    if (parentStack.Count > 0)
+                    {
+                        var parent = parentStack.Peek();
+                        outlineItem.ParentId = parent.Id;
+                        parent.Children.Add(outlineItem);
+                    }
+                    else
+                    {
+                        // No appropriate parent found - treat as top-level
+                        OutlineItems.Add(outlineItem);
+                    }
+                    
                     parentStack.Push(outlineItem);
                 }
             }
+            else
+            {
+                // Line doesn't match expected format - could be a simple text line
+                // Try to handle it as a simple numbered or bulleted item
+                var simpleMatch = Regex.Match(trimmedLine, @"^(\d+\.?\d*\.?\d*)\s+(.+)$");
+                if (simpleMatch.Success)
+                {
+                    var numberPart = simpleMatch.Groups[1].Value.TrimEnd('.');
+                    var titlePart = simpleMatch.Groups[2].Value.Trim();
+                    
+                    var level = numberPart.Count(c => c == '.');
+                    
+                    var outlineItem = new DocumentOutlineItem
+                    {
+                        Id = Guid.NewGuid(),
+                        Level = level,
+                        SectionNumber = numberPart,
+                        SectionTitle = titlePart,
+                        OrderIndex = orderIndex++,
+                        Children = new List<DocumentOutlineItem>()
+                    };
+
+                    if (level == 0)
+                    {
+                        OutlineItems.Add(outlineItem);
+                        parentStack.Clear();
+                        parentStack.Push(outlineItem);
+                    }
+                    else
+                    {
+                        while (parentStack.Count > 0 && parentStack.Peek().Level >= level)
+                        {
+                            parentStack.Pop();
+                        }
+
+                        if (parentStack.Count > 0)
+                        {
+                            var parent = parentStack.Peek();
+                            outlineItem.ParentId = parent.Id;
+                            parent.Children.Add(outlineItem);
+                        }
+                        else
+                        {
+                            OutlineItems.Add(outlineItem);
+                        }
+                        
+                        parentStack.Push(outlineItem);
+                    }
+                }
+                // If line still doesn't match, skip it
+            }
         }
 
-        // Sort the outline items by Level and OrderIndex
-        OutlineItems = OutlineItems
-            .OrderBy(item => item.Level)
-            .ThenBy(item => item.SectionNumber, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(item => item.OrderIndex)
-            .ToList();
+        // No need to sort as we're preserving order from input text
+        // Reset order indices for consistent hierarchy
+        ResetOrderIndices();
     }
 
+    /// <summary>
+    /// Resets the order indices for all outline items to ensure proper ordering.
+    /// </summary>
+    private void ResetOrderIndices()
+    {
+        int orderIndex = 0;
+        foreach (var item in OutlineItems)
+        {
+            item.OrderIndex = orderIndex++;
+            ResetOrderIndicesRecursive(item);
+        }
+    }
 
-
+    /// <summary>
+    /// Recursively resets order indices for child items.
+    /// </summary>
+    /// <param name="item">The parent item.</param>
+    private void ResetOrderIndicesRecursive(DocumentOutlineItem item)
+    {
+        int childOrderIndex = 0;
+        foreach (var child in item.Children)
+        {
+            child.OrderIndex = childOrderIndex++;
+            ResetOrderIndicesRecursive(child);
+        }
+    }
 
     private string RenderOutlineItemsAsText()
     {

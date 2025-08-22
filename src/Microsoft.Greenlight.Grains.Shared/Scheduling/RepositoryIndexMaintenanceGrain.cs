@@ -1,14 +1,16 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 using Azure.Search.Documents.Indexes;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Greenlight.Shared.Configuration;
+using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.Shared.Services.Search;
-using Microsoft.Greenlight.Shared.Configuration;
 using Orleans.Concurrency;
 using Npgsql; // Added for Postgres support
 using System.Data;
@@ -24,6 +26,7 @@ public class RepositoryIndexMaintenanceGrain : Grain, IRepositoryIndexMaintenanc
     private readonly AzureFileHelper _fileHelper;
     private readonly IOptionsSnapshot<ServiceConfigurationOptions> _optionsSnapshot;
     private readonly NpgsqlDataSource? _npgsqlDataSource; // Now optional
+    private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory; // Added for cleanup task
     private const string DummyDocumentContainer = "admin";
     private const string DummyDocumentName = "DummyDocument.pdf";
 
@@ -33,7 +36,8 @@ public class RepositoryIndexMaintenanceGrain : Grain, IRepositoryIndexMaintenanc
         SearchIndexClient searchIndexClient,
         AzureFileHelper fileHelper,
         IOptionsSnapshot<ServiceConfigurationOptions> optionsSnapshot,
-        NpgsqlDataSource? npgsqlDataSource = null) // Now optional
+        NpgsqlDataSource? npgsqlDataSource = null, // Now optional
+        IDbContextFactory<DocGenerationDbContext>? dbContextFactory = null)
     {
         _optionsSnapshot = optionsSnapshot;
         _sp = sp;
@@ -41,6 +45,7 @@ public class RepositoryIndexMaintenanceGrain : Grain, IRepositoryIndexMaintenanc
         _searchIndexClient = searchIndexClient;
         _fileHelper = fileHelper;
         _npgsqlDataSource = npgsqlDataSource; // Now optional
+        _dbContextFactory = dbContextFactory ?? _sp.GetRequiredService<IDbContextFactory<DocGenerationDbContext>>();
     }
 
     /// <inheritdoc/>
@@ -57,7 +62,7 @@ public class RepositoryIndexMaintenanceGrain : Grain, IRepositoryIndexMaintenanc
             if (_npgsqlDataSource == null)
             {
                 _logger.LogWarning("UsePostgresMemory is enabled but NpgsqlDataSource is not configured. Skipping Postgres index discovery.");
-                indexNamesList = new List<string>();
+                indexNamesList = [];
             }
             else
             {
@@ -95,6 +100,59 @@ public class RepositoryIndexMaintenanceGrain : Grain, IRepositoryIndexMaintenanc
             documentLibraryInfoService,
             documentLibraryRepository, 
             indexNamesList);
+
+        // New: Cleanup orphaned ingested document records for removed processes/libraries
+        await RemoveOrphanedIngestedDocumentsAsync(documentProcessInfoService, documentLibraryInfoService);
+    }
+
+    private async Task RemoveOrphanedIngestedDocumentsAsync(
+        IDocumentProcessInfoService documentProcessInfoService,
+        IDocumentLibraryInfoService documentLibraryInfoService)
+    {
+        try
+        {
+            var activeProcesses = (await documentProcessInfoService.GetCombinedDocumentProcessInfoListAsync())
+                .Select(p => p.ShortName)
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var activeLibraries = (await documentLibraryInfoService.GetAllDocumentLibrariesAsync())
+                .Select(l => l.ShortName)
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            await using var db = await _dbContextFactory.CreateDbContextAsync();
+
+            // Delete AdditionalDocumentLibrary ingested docs where the library no longer exists
+            var deletedLibCount = await db.IngestedDocuments
+                .Where(x => x.DocumentLibraryType == DocumentLibraryType.AdditionalDocumentLibrary
+                            && x.DocumentLibraryOrProcessName != null
+                            && !activeLibraries.Contains(x.DocumentLibraryOrProcessName))
+                .ExecuteDeleteAsync();
+
+            if (deletedLibCount > 0)
+            {
+                _logger.LogInformation("RepositoryIndexMaintenance: Deleted {Count} orphaned ingested documents for removed libraries.", deletedLibCount);
+            }
+
+            // Delete PrimaryDocumentProcessLibrary ingested docs where the process no longer exists
+            var deletedProcCount = await db.IngestedDocuments
+                .Where(x => x.DocumentLibraryType == DocumentLibraryType.PrimaryDocumentProcessLibrary
+                            && x.DocumentLibraryOrProcessName != null
+                            && !activeProcesses.Contains(x.DocumentLibraryOrProcessName))
+                .ExecuteDeleteAsync();
+
+            if (deletedProcCount > 0)
+            {
+                _logger.LogInformation("RepositoryIndexMaintenance: Deleted {Count} orphaned ingested documents for removed document processes.", deletedProcCount);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "RepositoryIndexMaintenance: Failed to remove orphaned ingested documents.");
+        }
     }
 
     private async Task CreateKernelMemoryIndexes(
@@ -108,11 +166,11 @@ public class RepositoryIndexMaintenanceGrain : Grain, IRepositoryIndexMaintenanc
 
         if (kernelMemoryDocumentProcesses.Count == 0)
         {
-            _logger.LogInformation("No Kernel Memory-based Document Processes found. Skipping index creation.");
+            _logger.LogDebug("No Kernel Memory-based Document Processes found. Skipping index creation.");
             return;
         }
 
-        _logger.LogInformation("Creating Kernel Memory indexes for {Count} Document Processes", kernelMemoryDocumentProcesses.Count);
+        _logger.LogDebug("Creating or updating Kernel Memory indexes for {Count} Document Processes", kernelMemoryDocumentProcesses.Count);
 
         // Get dummy document stream from blob storage or upload it if it doesn't exist
         Stream? dummyDocumentStream = await GetOrCreateDummyDocumentAsync();
@@ -124,8 +182,8 @@ public class RepositoryIndexMaintenanceGrain : Grain, IRepositoryIndexMaintenanc
 
         foreach (var documentProcess in kernelMemoryDocumentProcesses)
         {
-            var kernelMemoryRepository = _sp
-                .GetServiceForDocumentProcess<IKernelMemoryRepository>(documentProcess.ShortName);
+            var kernelMemoryRepository = await _sp
+                .GetServiceForDocumentProcessAsync<IKernelMemoryRepository>(documentProcess.ShortName);
 
             if (kernelMemoryRepository == null)
             {
@@ -137,7 +195,7 @@ public class RepositoryIndexMaintenanceGrain : Grain, IRepositoryIndexMaintenanc
             {
                 if (indexNames.Contains(repository))
                 {
-                    _logger.LogInformation("Index {IndexName} already exists for Document Process {DocumentProcess}. Skipping creation.", repository, documentProcess.ShortName);
+                    _logger.LogDebug("Index {IndexName} already exists for Document Process {DocumentProcess}. Skipping creation.", repository, documentProcess.ShortName);
                     continue;
                 }
 
@@ -155,24 +213,45 @@ public class RepositoryIndexMaintenanceGrain : Grain, IRepositoryIndexMaintenanc
             }
         }
 
-        _logger.LogInformation("Kernel Memory indexes created for {Count} Document Processes", kernelMemoryDocumentProcesses.Count);
+        _logger.LogDebug("Kernel Memory indexes created for {Count} Document Processes", kernelMemoryDocumentProcesses.Count);
 
         var documentLibraries = await documentLibraryInfoService.GetAllDocumentLibrariesAsync();
 
         if (documentLibraries.Count == 0)
         {
-            _logger.LogInformation("No Document Libraries found. Skipping index creation.");
+            _logger.LogDebug("No Document Libraries found. Skipping index creation.");
             dummyDocumentStream.Dispose();
             return;
         }
 
-        _logger.LogInformation("Updating or creating indexes for {Count} Document Libraries", documentLibraries.Count);
+        // Filter to Kernel Memory libraries only; skip Semantic Kernel Vector Store libraries (created lazily on demand)
+        var kernelMemoryLibraries = documentLibraries
+            .Where(l => l.LogicType == DocumentProcessLogicType.KernelMemory)
+            .ToList();
 
-        foreach (var documentLibrary in documentLibraries)
+        var skippedLibraries = documentLibraries.Count - kernelMemoryLibraries.Count;
+        if (skippedLibraries > 0)
+        {
+            _logger.LogDebug("Skipping {Skipped} non-KernelMemory libraries for proactive index creation (handled on-demand by their providers)", skippedLibraries);
+        }
+
+        if (kernelMemoryLibraries.Count == 0)
+        {
+            _logger.LogDebug("No Kernel Memory-based Document Libraries found. Skipping library index creation phase.");
+            dummyDocumentStream.Dispose();
+            return;
+        }
+
+        if (kernelMemoryLibraries.Count > 0)
+        {
+            _logger.LogDebug("Creating indexes for {Count} Kernel Memory Document Libraries", kernelMemoryLibraries.Count);
+        }
+
+        foreach (var documentLibrary in kernelMemoryLibraries)
         {
             if (indexNames.Contains(documentLibrary.IndexName))
             {
-                _logger.LogInformation("Index {IndexName} already exists for Document Library {DocumentLibrary}. Skipping creation.", documentLibrary.IndexName, documentLibrary.ShortName);
+                _logger.LogDebug("Index {IndexName} already exists for Document Library {DocumentLibrary}. Skipping creation.", documentLibrary.IndexName, documentLibrary.ShortName);
                 continue;
             }
 
@@ -196,7 +275,6 @@ public class RepositoryIndexMaintenanceGrain : Grain, IRepositoryIndexMaintenanc
         }
 
         dummyDocumentStream.Dispose();
-        _logger.LogInformation("Indexes updated or created for {Count} Document Libraries", documentLibraries.Count);
     }
 
     private async Task<Stream?> GetOrCreateDummyDocumentAsync()
@@ -212,13 +290,13 @@ public class RepositoryIndexMaintenanceGrain : Grain, IRepositoryIndexMaintenanc
                 
                 if (stream != null)
                 {
-                    _logger.LogInformation("Found DummyDocument.pdf in admin container");
+                    _logger.LogDebug("Found DummyDocument.pdf in admin container");
                     return stream;
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Could not retrieve DummyDocument.pdf from blob storage. Will attempt to create it.");
+                _logger.LogDebug(ex, "Could not retrieve DummyDocument.pdf from blob storage. Will attempt to create it.");
             }
 
             // If we get here, we need to create and upload a new dummy document
@@ -267,7 +345,7 @@ public class RepositoryIndexMaintenanceGrain : Grain, IRepositoryIndexMaintenanc
                 // Upload to blob storage
                 try
                 {
-                    _logger.LogInformation("Uploading new DummyDocument.pdf to admin container");
+                    _logger.LogDebug("Uploading new DummyDocument.pdf to admin container");
                     await _fileHelper.UploadFileToBlobAsync(
                         memoryStream, 
                         DummyDocumentName, 
@@ -281,14 +359,12 @@ public class RepositoryIndexMaintenanceGrain : Grain, IRepositoryIndexMaintenanc
                     
                     if (uploadedStream != null)
                     {
-                        _logger.LogInformation("Successfully created and uploaded DummyDocument.pdf");
+                        _logger.LogDebug("Successfully created and uploaded DummyDocument.pdf");
                         return uploadedStream;
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error uploading DummyDocument.pdf to blob storage");
-                    
                     // Return the in-memory stream as a fallback
                     memoryStream.Position = 0;
                     

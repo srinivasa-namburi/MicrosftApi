@@ -27,7 +27,8 @@ namespace Microsoft.Greenlight.Shared.Services.Search
                 Top = 5,
                 MinRelevance = 0.7,
                 PrecedingPartitionCount = 0,
-                FollowingPartitionCount = 0
+                FollowingPartitionCount = 0,
+                EnableProgressiveSearch = true
             };
         }
 
@@ -55,7 +56,8 @@ namespace Microsoft.Greenlight.Shared.Services.Search
                 Top = documentProcess.NumberOfCitationsToGetFromRepository,
                 MinRelevance = documentProcess.MinimumRelevanceForCitations,
                 PrecedingPartitionCount = documentProcess.PrecedingSearchPartitionInclusionCount,
-                FollowingPartitionCount = documentProcess.FollowingSearchPartitionInclusionCount
+                FollowingPartitionCount = documentProcess.FollowingSearchPartitionInclusionCount,
+                EnableProgressiveSearch = true
             };
 
             if (options.Top == 0)
@@ -80,7 +82,8 @@ namespace Microsoft.Greenlight.Shared.Services.Search
                 Top = _defaultOptions.Top,
                 MinRelevance = _defaultOptions.MinRelevance,
                 PrecedingPartitionCount = 0,
-                FollowingPartitionCount = 0
+                FollowingPartitionCount = 0,
+                EnableProgressiveSearch = true
             };
 
             return options;
@@ -97,7 +100,8 @@ namespace Microsoft.Greenlight.Shared.Services.Search
                 MinRelevance = _defaultOptions.MinRelevance,
                 PrecedingPartitionCount = 0,
                 FollowingPartitionCount = 0,
-                ParametersExactMatch = tags
+                ParametersExactMatch = tags,
+                EnableProgressiveSearch = false
             };
 
             return options;

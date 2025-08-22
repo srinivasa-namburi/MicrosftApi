@@ -40,6 +40,12 @@ await Task.Delay(TimeSpan.FromSeconds(5));
 // Bind the ServiceConfigurationOptions to configuration
 builder.Services.AddOptions<ServiceConfigurationOptions>()
     .Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName))
+    .PostConfigure(o =>
+    {
+        o.GreenlightServices.VectorStore.StoreType = o.GreenlightServices.Global.UsePostgresMemory
+            ? VectorStoreType.PostgreSQL
+            : VectorStoreType.AzureAISearch;
+    })
     .ValidateDataAnnotations()
     .ValidateOnStart();
 
@@ -47,7 +53,7 @@ builder.Services.AddOptions<ServiceConfigurationOptions>()
 //builder.Services.Configure<ServiceConfigurationOptions>(
 //    builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
 // Add this to provide a singleton instance directly:
-builder.Services.AddSingleton(sp => 
+builder.Services.AddSingleton(sp =>
     sp.GetRequiredService<IOptions<ServiceConfigurationOptions>>().Value);
 
 builder.Services.AddGreenlightHostedServices();

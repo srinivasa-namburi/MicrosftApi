@@ -1,17 +1,18 @@
-﻿using System.Text.Json;
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using Microsoft.Greenlight.Shared.Contracts.Components;
 using Microsoft.Greenlight.Shared.Models;
-using Microsoft.Greenlight.Shared.Models.Configuration;
+using Microsoft.Greenlight.Shared.Models.SourceReferences;
 using Microsoft.Greenlight.Shared.Models.DocumentLibrary;
 using Microsoft.Greenlight.Shared.Models.DocumentProcess;
-using Microsoft.Greenlight.Shared.Models.DomainGroups;
-using Microsoft.Greenlight.Shared.Models.Plugins;
-using Microsoft.Greenlight.Shared.Models.Review;
-using Microsoft.Greenlight.Shared.Models.SourceReferences;
 using Microsoft.Greenlight.Shared.Models.Validation;
+using Microsoft.Greenlight.Shared.Models.Configuration;
+using Microsoft.Greenlight.Shared.Models.DomainGroups;
+using Microsoft.Greenlight.Shared.Models.Review;
+using Microsoft.Greenlight.Shared.Models.Plugins;
+using Microsoft.Greenlight.Shared.Contracts.Components;
 
 namespace Microsoft.Greenlight.Shared.Data.Sql;
 
@@ -410,12 +411,16 @@ public class DocGenerationDbContext : DbContext
             .HasIndex(nameof(SourceReferenceItem.ContentNodeSystemItemId))
             .IsUnique(false);
 
+        // Configure TPH discriminator for SourceReferenceItem hierarchy including legacy fallback and vector-store types
         modelBuilder.Entity<SourceReferenceItem>()
             .HasDiscriminator<string>("Discriminator")
             .HasValue<PluginSourceReferenceItem>("PluginSourceReferenceItem")
             .HasValue<KernelMemoryDocumentSourceReferenceItem>("KernelMemoryDocumentSourceReferenceItem")
             .HasValue<DocumentProcessRepositorySourceReferenceItem>("DocumentProcessRepositorySourceReferenceItem")
-            .HasValue<DocumentLibrarySourceReferenceItem>("DocumentLibrarySourceReferenceItem");
+            .HasValue<DocumentLibrarySourceReferenceItem>("DocumentLibrarySourceReferenceItem")
+            .HasValue<VectorStoreAggregatedSourceReferenceItem>("VectorStoreAggregatedSourceReferenceItem")
+            .HasValue<VectorStoreSourceReferenceItem>("VectorStoreSourceReferenceItem")
+            .HasValue<LegacySourceReferenceItem>("SourceReferenceItem");
             
 
         modelBuilder.Entity<SourceReferenceItem>()
@@ -786,7 +791,6 @@ public class DocGenerationDbContext : DbContext
             .HasForeignKey(x => x.PromptDefinitionId)
             .IsRequired(true)
             .OnDelete(DeleteBehavior.Cascade);
-
        
         modelBuilder.Entity<ChatConversation>()
             .ToTable("ChatConversations");
@@ -875,6 +879,10 @@ public class DocGenerationDbContext : DbContext
 
         modelBuilder.Entity<IngestedDocument>()
             .HasIndex(d => d.OrchestrationId)
+            .IsUnique(false);
+
+        modelBuilder.Entity<IngestedDocument>()
+            .HasIndex(x => new { x.DocumentLibraryType, x.DocumentLibraryOrProcessName })
             .IsUnique(false);
 
         modelBuilder.Entity<ContentNode>()
@@ -1188,7 +1196,7 @@ public class DocGenerationDbContext : DbContext
     /// <summary>
     /// Gets or sets the AI Models
     /// </summary>
-    public DbSet<AiModel?> AiModels { get; set; }
+    public DbSet<AiModel> AiModels { get; set; }
 
     /// <summary>
     /// Gets or sets the AI Model Deployments

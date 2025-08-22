@@ -76,4 +76,32 @@ public class IngestedDocument : EntityBase
     /// Error message if ingestion failed.
     /// </summary>
     public string? Error { get; set; }
+
+    // Vector Store Tracking Properties
+
+    /// <summary>
+    /// Document identifier used in the vector store (typically sanitized file name).
+    /// This links to the DocumentId field in vector store records.
+    /// </summary>
+    public string? VectorStoreDocumentId { get; set; }
+
+    /// <summary>
+    /// The vector store index/collection name where this document's chunks are stored.
+    /// </summary>
+    public string? VectorStoreIndexName { get; set; }
+
+    /// <summary>
+    /// Number of chunks created from this document in the vector store.
+    /// </summary>
+    public int VectorStoreChunkCount { get; set; } = 0;
+
+    /// <summary>
+    /// Timestamp when the document was last indexed in the vector store.
+    /// </summary>
+    public DateTime? VectorStoreIndexedDate { get; set; }
+
+    /// <summary>
+    /// Indicates whether this document has been successfully indexed in the vector store.
+    /// </summary>
+    public bool IsVectorStoreIndexed { get; set; } = false;
 }

@@ -12,7 +12,7 @@ public abstract class SourceReferenceItem : EntityBase
     /// <summary>
     /// Unique identifier for the content node system item.
     /// </summary>
-    public Guid ContentNodeSystemItemId { get; set; }
+    public Guid? ContentNodeSystemItemId { get; set; }
 
     /// <summary>
     /// Content node system item associated with this source reference item.

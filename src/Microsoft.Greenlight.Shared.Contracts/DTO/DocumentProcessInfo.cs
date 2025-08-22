@@ -30,7 +30,7 @@ public class DocumentProcessInfo : IDocumentProcessInfo
     /// <summary>
     /// Logic type used for the document process.
     /// </summary>
-    public DocumentProcessLogicType LogicType { get; set; } = DocumentProcessLogicType.KernelMemory;
+    public DocumentProcessLogicType LogicType { get; set; } = DocumentProcessLogicType.SemanticKernelVectorStore;
 
     /// <summary>
     /// Name of the blob storage container for the document process.
@@ -93,6 +93,18 @@ public class DocumentProcessInfo : IDocumentProcessInfo
     public double MinimumRelevanceForCitations { get; set; } = 0.7;
 
     /// <summary>
+    /// Vector store chunk size in tokens (only applies when LogicType is SemanticKernelVectorStore).
+    /// If null, uses global VectorStoreOptions.ChunkSize.
+    /// </summary>
+    public int? VectorStoreChunkSize { get; set; }
+
+    /// <summary>
+    /// Vector store chunk overlap in tokens (only applies when LogicType is SemanticKernelVectorStore).
+    /// If null, uses global VectorStoreOptions.ChunkOverlap.
+    /// </summary>
+    public int? VectorStoreChunkOverlap { get; set; }
+
+    /// <summary>
     /// ID of the validation pipeline associated with the document process. May be null.
     /// </summary>
     public Guid? ValidationPipelineId { get; set; }
@@ -107,4 +119,8 @@ public class DocumentProcessInfo : IDocumentProcessInfo
     /// </summary>
     public Guid? AiModelDeploymentForValidationId { get; set; }
 
+    /// <summary>
+    /// Vector store chunking mode (only applies when LogicType is SemanticKernelVectorStore). Defaults to Simple.
+    /// </summary>
+    public TextChunkingMode? VectorStoreChunkingMode { get; set; } = TextChunkingMode.Simple;
 }

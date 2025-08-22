@@ -137,6 +137,14 @@ namespace Microsoft.Greenlight.Grains.Shared.Scheduling
                     // Use deterministic orchestration ID for container/folder
                     var orchestrationId = IngestionOrchestrationIdHelper.GenerateOrchestrationId(container, folder);
                     var orchestrationGrain = GrainFactory.GetGrain<IDocumentIngestionOrchestrationGrain>(orchestrationId);
+
+                    // Avoid overlapping runs for the same orchestration
+                    if (await orchestrationGrain.IsRunningAsync())
+                    {
+                        _logger.LogInformation("Ingestion already running for {Container}/{Folder} (or has pending work). Skipping start.", container, folder);
+                        continue;
+                    }
+
                     _ = orchestrationGrain.StartIngestionAsync(
                         shortName,
                         libraryType,

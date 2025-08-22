@@ -14,21 +14,34 @@ public class DocumentOutlineApiClient : WebAssemblyBaseServiceClient<DocumentOut
 
     public async Task<List<DocumentOutlineItemInfo>> GenerateOutlineFromTextAsync(string outlineText)
     {
-        var simpleText = new SimpleTextDTO()
+        try
         {
-            Text = outlineText
-        };
-        var url = "/api/document-outline/generate-from-text";
-        var response = await SendPostRequestMessage(url, simpleText);
+            var simpleText = new SimpleTextDTO()
+            {
+                Text = outlineText
+            };
+            var url = "/api/document-outline/generate-from-text";
+            var response = await SendPostRequestMessage(url, simpleText);
 
-        if (response.IsSuccessStatusCode)
-        {
-            var result = await response.Content.ReadFromJsonAsync<List<DocumentOutlineItemInfo>>();
-            return result ?? new List<DocumentOutlineItemInfo>();
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<List<DocumentOutlineItemInfo>>();
+                return result ?? new List<DocumentOutlineItemInfo>();
+            }
+            else
+            {
+                // Log the error details for debugging
+                var errorContent = await response.Content.ReadAsStringAsync();
+                Logger.LogError("Error generating outline from text. Status: {StatusCode}, Content: {ErrorContent}",
+                    response.StatusCode, errorContent);
+
+                // Handle error response - return empty list but don't fail silently
+                return new List<DocumentOutlineItemInfo>();
+            }
         }
-        else
+        catch (Exception ex)
         {
-            // Handle error response
+            Logger.LogError(ex, "Exception occurred while generating outline from text");
             return new List<DocumentOutlineItemInfo>();
         }
     }
@@ -52,7 +65,7 @@ public class DocumentOutlineApiClient : WebAssemblyBaseServiceClient<DocumentOut
         {
             return null;
         }
-        
+
         response?.EnsureSuccessStatusCode();
         return await response?.Content.ReadFromJsonAsync<DocumentOutlineInfo>()!;
     }

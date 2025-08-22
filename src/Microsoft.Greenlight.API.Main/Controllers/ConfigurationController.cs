@@ -1,4 +1,6 @@
 using AutoMapper;
+using Microsoft.Greenlight.Shared.Contracts.DTO.Configuration;
+using Microsoft.Greenlight.Shared.Services.Search;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -6,13 +8,13 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
-using Microsoft.Greenlight.Shared.Contracts.DTO.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.Messages;
 using Microsoft.Greenlight.Shared.Contracts.Streams;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Management.Configuration;
 using Microsoft.Greenlight.Shared.Models.Configuration;
 using Microsoft.Greenlight.Grains.Shared.Contracts;
+using Microsoft.Greenlight.Shared.Helpers;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Orleans.Streams;
@@ -33,6 +35,7 @@ public class ConfigurationController : BaseController
     private readonly EfCoreConfigurationProvider _configProvider;
     private readonly IConfiguration _configuration;
     private readonly IClusterClient _clusterClient;
+    private readonly AzureFileHelper _azureFileHelper;
 
     /// <summary>
     /// A list of accepted keys for configuration updates, including wildcards.
@@ -45,6 +48,9 @@ public class ConfigurationController : BaseController
         "ServiceConfiguration:GreenlightServices:FeatureFlags:*",
         "ServiceConfiguration:GreenlightServices:ReferenceIndexing:*",
         "ServiceConfiguration:GreenlightServices:Scalability:*",
+        "ServiceConfiguration:GreenlightServices:VectorStore:*",
+        // Allow OCR options to be managed from UI
+        "ServiceConfiguration:GreenlightServices:DocumentIngestion:Ocr:*",
         "ServiceConfiguration:OpenAI:*"
     ];
 
@@ -52,13 +58,13 @@ public class ConfigurationController : BaseController
     /// Initializes a new instance of the <see cref="ConfigurationController"/> class.
     /// </summary>
     /// <param name="serviceConfigurationOptionsMonitor">The service configuration options monitor.</param>
-    /// <param name="publishEndpoint">The publish endpoint.</param>
     /// <param name="dbContext">The database context.</param>
     /// <param name="mapper">The mapper.</param>
     /// <param name="logger">The logger.</param>
     /// <param name="configProvider">EF Core based configuration provider</param>
     /// <param name="configuration">Runtime IConfiguration</param>
     /// <param name="clusterClient">Orleans cluster client</param>
+    /// <param name="azureFileHelper">Azure Blob helper for file operations.</param>
     public ConfigurationController(
         IOptionsMonitor<ServiceConfigurationOptions> serviceConfigurationOptionsMonitor,
         DocGenerationDbContext dbContext,
@@ -66,7 +72,8 @@ public class ConfigurationController : BaseController
         ILogger<ConfigurationController> logger,
         EfCoreConfigurationProvider configProvider,
         IConfiguration configuration,
-        IClusterClient clusterClient)
+        IClusterClient clusterClient,
+        AzureFileHelper azureFileHelper)
     {
         _serviceConfigurationOptionsMonitor = serviceConfigurationOptionsMonitor;
         _dbContext = dbContext;
@@ -75,6 +82,7 @@ public class ConfigurationController : BaseController
         _configProvider = configProvider;
         _configuration = configuration;
         _clusterClient = clusterClient;
+        _azureFileHelper = azureFileHelper;
     }
 
     /// <summary>
@@ -168,6 +176,203 @@ public class ConfigurationController : BaseController
     }
 
     /// <summary>
+    /// Gets the vector store global options.
+    /// </summary>
+    [HttpGet("vector-store-options")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [Produces("application/json")]
+    public ActionResult<VectorStoreOptions> GetVectorStoreOptions()
+    {
+        // Use the service configuration options monitor to get the properly configured VectorStoreOptions
+        // This ensures that the post-configuration logic that sets StoreType based on UsePostgresMemory is applied
+        var vectorStoreOptions = _serviceConfigurationOptionsMonitor.CurrentValue.GreenlightServices.VectorStore;
+        return Ok(vectorStoreOptions);
+    }
+
+    /// <summary>
+    /// Gets the OCR options used during ingestion.
+    /// </summary>
+    [HttpGet("ocr-options")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [Produces("application/json")]
+    public ActionResult<ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions.OcrOptions> GetOcrOptions()
+    {
+        var ocr = _configuration
+            .GetSection("ServiceConfiguration:GreenlightServices:DocumentIngestion:Ocr")
+            .Get<ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions.OcrOptions>()
+            ?? new ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions.OcrOptions();
+        return Ok(ocr);
+    }
+
+    /// <summary>
+    /// Lists cached OCR language files in the configured blob container.
+    /// </summary>
+    [HttpGet("ocr/languages")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [Produces("application/json")]
+    public async Task<ActionResult<List<LanguageDisplayInfo>>> GetCachedOcrLanguages()
+    {
+        var ocr = _configuration
+            .GetSection("ServiceConfiguration:GreenlightServices:DocumentIngestion:Ocr")
+            .Get<ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions.OcrOptions>()
+            ?? new ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions.OcrOptions();
+
+        var result = new List<LanguageDisplayInfo>();
+        try
+        {
+            var serviceClient = _azureFileHelper.GetBlobServiceClient();
+            var container = serviceClient.GetBlobContainerClient(ocr.TessdataBlobContainer);
+            await container.CreateIfNotExistsAsync();
+            await foreach (var blob in container.GetBlobsAsync())
+            {
+                var name = blob.Name;
+                if (name.EndsWith(".traineddata", StringComparison.OrdinalIgnoreCase))
+                {
+                    var code = Path.GetFileNameWithoutExtension(name);
+                    result.Add(new LanguageDisplayInfo
+                    {
+                        Code = code,
+                        EnglishName = TesseractLanguageCatalog.GetEnglishName(code),
+                        Label = TesseractLanguageCatalog.GetDisplayLabel(code)
+                    });
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error listing OCR languages from blob container");
+            return StatusCode(500, "Failed to list OCR languages");
+        }
+
+        // Sort by label for nicer UI
+        result = result.OrderBy(l => l.Label).ToList();
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Downloads an OCR language from the configured external repository and caches it to blob storage.
+    /// </summary>
+    [HttpPost("ocr/download")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [Produces("application/json")]
+    public async Task<ActionResult<OcrLanguageDownloadResponse>> DownloadOcrLanguage([FromQuery] string language)
+    {
+        if (string.IsNullOrWhiteSpace(language))
+        {
+            return BadRequest("Language code is required.");
+        }
+
+        var ocr = _configuration
+            .GetSection("ServiceConfiguration:GreenlightServices:DocumentIngestion:Ocr")
+            .Get<ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions.OcrOptions>()
+            ?? new ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions.OcrOptions();
+
+        if (!ocr.AllowExternalDownloads)
+        {
+            return BadRequest("External downloads are disabled.");
+        }
+
+        try
+        {
+            var url = $"{ocr.ExternalRepoBaseUrl?.TrimEnd('/')}/{language}.traineddata";
+            using var http = new HttpClient();
+            using var resp = await http.GetAsync(url);
+            if (!resp.IsSuccessStatusCode)
+            {
+                return BadRequest($"Failed to download language '{language}' from external repository.");
+            }
+
+            await using var contentStream = await resp.Content.ReadAsStreamAsync();
+            var blobUrl = await _azureFileHelper.UploadFileToBlobAsync(
+                contentStream,
+                fileName: $"{language}.traineddata",
+                containerName: ocr.TessdataBlobContainer,
+                overwriteIfExists: true);
+
+            var dto = new OcrLanguageDownloadResponse { Language = language, BlobUrl = blobUrl };
+            return Ok(dto);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error downloading OCR language {Language}", language);
+            return StatusCode(500, "Internal server error - Failed to download OCR language.");
+        }
+    }
+
+    /// <summary>
+    /// Replaces the DefaultLanguages array for OCR in configuration (clears previous values and sets the provided list).
+    /// </summary>
+    [HttpPost("ocr/default-languages")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> SetDefaultOcrLanguages([FromBody] List<string>? languages)
+    {
+        if (languages == null)
+        {
+            return BadRequest("Languages list is required.");
+        }
+
+        try
+        {
+            var config = await _dbContext.Configurations.FirstOrDefaultAsync(c => c.Id == DbConfiguration.DefaultId);
+            if (config == null)
+            {
+                config = new DbConfiguration { ConfigurationValues = "{}", LastUpdated = DateTime.UtcNow, LastUpdatedBy = "System" };
+                _dbContext.Configurations.Add(config);
+            }
+
+            var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(config.ConfigurationValues) ?? new Dictionary<string, string>();
+            var prefix = "ServiceConfiguration:GreenlightServices:DocumentIngestion:Ocr:DefaultLanguages:";
+
+            var keysToRemove = dict.Keys.Where(k => k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList();
+            foreach (var key in keysToRemove)
+            {
+                dict.Remove(key);
+            }
+
+            for (int i = 0; i < languages.Count; i++)
+            {
+                var lang = languages[i]?.Trim();
+                if (string.IsNullOrWhiteSpace(lang)) { continue; }
+                dict[$"{prefix}{i}"] = lang;
+            }
+
+            config.ConfigurationValues = JsonSerializer.Serialize(dict);
+            config.LastUpdated = DateTime.UtcNow;
+            config.LastUpdatedBy = "System";
+
+            await _dbContext.SaveChangesAsync();
+
+            var updateItems = new Dictionary<string, string>();
+            for (int i = 0; i < languages.Count; i++)
+            {
+                var lang = languages[i]?.Trim();
+                if (!string.IsNullOrWhiteSpace(lang))
+                {
+                    updateItems[$"{prefix}{i}"] = lang;
+                }
+            }
+            _configProvider.UpdateOptions(updateItems);
+
+            var configurationUpdatedMessage = new ConfigurationUpdated(Guid.NewGuid());
+            var streamProvider = _clusterClient.GetStreamProvider("StreamProvider");
+            var stream = streamProvider.GetStream<ConfigurationUpdated>(
+                SystemStreamNameSpaces.ConfigurationUpdatedNamespace,
+                Guid.Empty);
+            await stream.OnNextAsync(configurationUpdatedMessage);
+
+            var configInfo = _mapper.Map<DbConfigurationInfo>(config);
+            return Ok(configInfo);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error setting OCR default languages.");
+            return StatusCode(500, "Internal server error - Error updating OCR languages.");
+        }
+    }
+
+    /// <summary>
     /// Update the configuration
     /// </summary>
     /// <param name="request"></param>
@@ -184,7 +389,6 @@ public class ConfigurationController : BaseController
             return BadRequest("Invalid configuration update request.");
         }
 
-        // Validate keys
         foreach (var key in request.ConfigurationItems.Keys)
         {
             if (!IsAcceptedKey(key))
@@ -195,7 +399,6 @@ public class ConfigurationController : BaseController
 
         try
         {
-            // Update the database
             var config = await _dbContext.Configurations.FirstOrDefaultAsync(
                 c => c.Id == DbConfiguration.DefaultId);
 
@@ -218,12 +421,10 @@ public class ConfigurationController : BaseController
 
             await _dbContext.SaveChangesAsync();
 
-            // Update the local configuration 
             _configProvider.UpdateOptions(request.ConfigurationItems);
 
             var configurationUpdatedMessage = new ConfigurationUpdated(Guid.NewGuid());
 
-            // Publish to Orleans Stream
             var streamProvider = _clusterClient.GetStreamProvider("StreamProvider");
             var stream = streamProvider.GetStream<ConfigurationUpdated>(
                 SystemStreamNameSpaces.ConfigurationUpdatedNamespace,
@@ -373,7 +574,6 @@ public class ConfigurationController : BaseController
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult> DeleteAiModel(Guid id)
     {
-        // Check if model has deployments
         var hasDeployments = await _dbContext.AiModelDeployments.AnyAsync(d => d.AiModelId == id);
         if (hasDeployments)
         {
@@ -444,7 +644,6 @@ public class ConfigurationController : BaseController
             return BadRequest("AI model deployment info is required.");
         }
 
-        // Check if the associated AI model exists
         var aiModel = await _dbContext.AiModels.FindAsync(aiModelDeploymentInfo.AiModelId);
         if (aiModel == null)
         {
@@ -525,7 +724,7 @@ public class ConfigurationController : BaseController
         var jobId = Guid.NewGuid();
         var grain = _clusterClient.GetGrain<IIndexExportGrain>(jobId);
         var userGroup = User?.Identity?.Name ?? "admin";
-        _= grain.StartExportAsync(request.Schema, request.TableName, userGroup);
+        _ = grain.StartExportAsync(request.Schema, request.TableName, userGroup);
         return Accepted(new IndexJobStartedResponse { JobId = jobId });
     }
 

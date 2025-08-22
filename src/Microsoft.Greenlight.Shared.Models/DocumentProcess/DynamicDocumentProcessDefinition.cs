@@ -153,4 +153,20 @@ public class DynamicDocumentProcessDefinition : EntityBase, IDocumentProcessInfo
     /// </summary>
     [JsonIgnore]
     public AiModelDeployment? AiModelDeploymentForValidation { get; set; }
+
+    /// <summary>
+    /// Vector store chunk size in tokens (only applies when LogicType is SemanticKernelVectorStore). If null, global VectorStoreOptions.ChunkSize is used.
+    /// </summary>
+    public int? VectorStoreChunkSize { get; set; }
+
+    /// <summary>
+    /// Vector store chunk overlap in tokens (only applies when LogicType is SemanticKernelVectorStore). If null, global VectorStoreOptions.ChunkOverlap is used.
+    /// </summary>
+    public int? VectorStoreChunkOverlap { get; set; }
+
+    /// <summary>
+    /// Chunking mode for vector store ingestion (only applies when LogicType is SemanticKernelVectorStore).
+    /// Defaults to Simple for backwards compatibility.
+    /// </summary>
+    public Microsoft.Greenlight.Shared.Enums.TextChunkingMode? VectorStoreChunkingMode { get; set; } = Microsoft.Greenlight.Shared.Enums.TextChunkingMode.Simple;
 }

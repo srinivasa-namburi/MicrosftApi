@@ -11,7 +11,7 @@ public class DocumentLibraryMappingProfile : Profile
 {
     /// <summary>
     /// Initializes a new instance of the <see cref="DocumentLibraryMappingProfile"/> class.
-    /// Defines the mapping between <see cref="DocumentLibrary"/> and <see cref="DocumentLibraryInfo"/>, 
+    /// Defines the mapping between <see cref="DocumentLibrary"/> and <see cref="DocumentLibraryInfo"/> (including LogicType), 
     /// between <see cref="DocumentLibraryDocumentProcessAssociation"/> and <see cref="DocumentLibraryDocumentProcessAssociationInfo"/>, 
     /// and between <see cref="DocumentLibraryInfo"/> and <see cref="DocumentLibraryUsageInfo"/>.
     /// </summary>

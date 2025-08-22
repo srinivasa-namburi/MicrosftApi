@@ -13,6 +13,7 @@
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
 	</ItemGroup>-->
   <ItemGroup>
+    <Folder Include="ApiClients\" />
     <Folder Include="Auth\" />
   </ItemGroup>
   <ItemGroup>

@@ -301,12 +301,15 @@ builder.UseOrleans(siloBuilder =>
 // Bind the ServiceConfigurationOptions to configuration
 builder.Services.AddOptions<ServiceConfigurationOptions>()
     .Bind(builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName))
+    .PostConfigure(o =>
+    {
+        // Derive (not user configurable) vector store type from UsePostgresMemory flag
+        o.GreenlightServices.VectorStore.StoreType = o.GreenlightServices.Global.UsePostgresMemory
+            ? VectorStoreType.PostgreSQL
+            : VectorStoreType.AzureAISearch;
+    })
     .ValidateDataAnnotations()
     .ValidateOnStart();
-
-// This enables reloading:
-builder.Services.Configure<ServiceConfigurationOptions>(
-    builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName));
 
 // This sets up a background worker + all SignalR notifiers.
 // We've currently disabled SignalR notifiers in the process of moving these

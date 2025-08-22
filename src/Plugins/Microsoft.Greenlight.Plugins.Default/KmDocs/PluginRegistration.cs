@@ -33,6 +33,7 @@ public class PluginRegistration : IPluginInitializer
         await using var scope = serviceProvider.CreateAsyncScope();
 
         var scopedServiceProvider = scope.ServiceProvider;
+        var scopeFactory = scopedServiceProvider.GetRequiredService<IServiceScopeFactory>();
         // Resolve required services from the built container.
 
         var dbContext = await scopedServiceProvider
@@ -53,13 +54,12 @@ public class PluginRegistration : IPluginInitializer
         {
             var documentProcessInfo = mapper.Map<DocumentProcessInfo>(staticDocumentProcess);
             var consolidatedSearchOptions = GetConsolidatedSearchOptionsForDocumentProcess(documentProcessInfo);
-            var pluginInstance = new KmDocsPlugin(scopedServiceProvider, documentProcessInfo, consolidatedSearchOptions);
+            var pluginInstance = new UniversalDocsPlugin(scopeFactory, documentProcessInfo, consolidatedSearchOptions);
 
-            registry.AddPlugin(documentProcessInfo.ShortName + "-KmDocsPlugin", pluginInstance, isDynamic: false);
+            registry.AddPlugin(documentProcessInfo.ShortName + "-UniversalDocsPlugin", pluginInstance, isDynamic: false);
         }
 
         var dynamicDocumentProcessDefinitions = dbContext.DynamicDocumentProcessDefinitions
-            .Where(x => x.LogicType == DocumentProcessLogicType.KernelMemory)
             .Include(x => x.DocumentOutline)
             .ToList();
 
@@ -68,9 +68,9 @@ public class PluginRegistration : IPluginInitializer
             var documentProcessInfo = mapper.Map<DocumentProcessInfo>(documentProcess);
             var consolidatedSearchOptions = GetConsolidatedSearchOptionsForDocumentProcess(documentProcessInfo);
 
-            var pluginInstance = new KmDocsPlugin(scopedServiceProvider, documentProcessInfo, consolidatedSearchOptions);
+            var pluginInstance = new UniversalDocsPlugin(scopeFactory, documentProcessInfo, consolidatedSearchOptions);
 
-            registry.AddPlugin(documentProcessInfo.ShortName + "-KmDocsPlugin", pluginInstance, isDynamic: false);
+            registry.AddPlugin(documentProcessInfo.ShortName + "-UniversalDocsPlugin", pluginInstance, isDynamic: false);
         }
     }
 

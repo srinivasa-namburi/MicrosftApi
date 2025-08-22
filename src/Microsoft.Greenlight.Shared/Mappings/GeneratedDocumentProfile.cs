@@ -83,6 +83,13 @@ public class GeneratedDocumentProfile : Profile
         CreateMap<DocumentProcessRepositorySourceReferenceItem, DocumentProcessRepositorySourceReferenceItemInfo>()
             .IncludeBase<KernelMemoryDocumentSourceReferenceItem, KernelMemoryDocumentSourceReferenceItemInfo>();
 
+        // Vector store aggregated result mapping
+        CreateMap<VectorStoreAggregatedSourceReferenceItem, VectorStoreSourceReferenceItemInfo>()
+            .ForMember(d => d.Chunks, opt => opt.MapFrom(s => s.Chunks))
+            .ForMember(d => d.StoredPartitionNumbers, opt => opt.MapFrom(s => s.StoredPartitionNumbers))
+            .IncludeBase<SourceReferenceItem, SourceReferenceItemInfo>();
+        CreateMap<DocumentChunk, VectorStoreDocumentChunkInfo>();
+
         // Mapping for GeneratedDocument
         CreateMap<GeneratedDocument, GeneratedDocumentInfo>()
             .ForMember(dest => dest.ContentNodes, opt => opt.Ignore())

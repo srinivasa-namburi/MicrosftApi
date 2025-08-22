@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Grains.Document.Contracts;
 using Microsoft.Greenlight.Shared.Data.Sql;
@@ -37,6 +38,8 @@ public class ReportTitleSectionGeneratorGrain : Grain, IReportTitleSectionGenera
         var dbContext = _dbContextFactory.CreateDbContext();
         try
         {
+            _logger.LogInformation("Starting section generation for document {DocumentId}", documentId);
+
             using var stream = new MemoryStream(Encoding.UTF8.GetBytes(contentNodeJson));
             var contentNode = await JsonSerializer.DeserializeAsync<ContentNode>(stream);
 
@@ -47,6 +50,8 @@ public class ReportTitleSectionGeneratorGrain : Grain, IReportTitleSectionGenera
                 return;
             }
 
+            _logger.LogDebug("Deserialized content node {ContentNodeId} for document {DocumentId}", contentNode.Id, documentId);
+
             var trackedDocument = await dbContext.GeneratedDocuments
                 .FirstOrDefaultAsync(x => x.Id == documentId);
 
@@ -56,6 +61,9 @@ public class ReportTitleSectionGeneratorGrain : Grain, IReportTitleSectionGenera
                 await NotifyCompletion(documentId, contentNode.Id, false);
                 return;
             }
+
+            _logger.LogInformation("Processing content node {ContentNodeId} for document process {DocumentProcess}", 
+                contentNode.Id, trackedDocument.DocumentProcess);
 
             try
             {
@@ -73,6 +81,8 @@ public class ReportTitleSectionGeneratorGrain : Grain, IReportTitleSectionGenera
                     await NotifyCompletion(documentId, contentNode.Id, false);
                     return;
                 }
+
+                _logger.LogDebug("Found existing content node {ContentNodeId}, processing...", existingContentNode.Id);
 
                 // If any of the direct descendants of the existing ContentNode are of type BodyText, delete them
                 var deleteBodyTextContentNodes = existingContentNode.Children
@@ -96,11 +106,15 @@ public class ReportTitleSectionGeneratorGrain : Grain, IReportTitleSectionGenera
                 // Publish the InProgress event
                 await NotifyStateChange(documentId, existingContentNode.Id, ContentNodeGenerationState.InProgress);
 
+                _logger.LogDebug("Set content node {ContentNodeId} to InProgress state", existingContentNode.Id);
+
                 // Generate table of contents
                 var tableOfContentsString = GeneratePlainTextTableOfContentsFromOutlineJson(documentOutlineJson);
 
+                _logger.LogDebug("Getting body text generator for document process {DocumentProcess}", trackedDocument.DocumentProcess);
+
                 var bodyTextGenerator =
-                    _dpServiceFactory.GetService<IBodyTextGenerator>(trackedDocument.DocumentProcess!);
+                    await _dpServiceFactory.GetServiceAsync<IBodyTextGenerator>(trackedDocument.DocumentProcess!);
 
                 if (bodyTextGenerator == null)
                 {
@@ -108,6 +122,9 @@ public class ReportTitleSectionGeneratorGrain : Grain, IReportTitleSectionGenera
                     await NotifyCompletion(documentId, contentNode.Id, false);
                     return;
                 }
+
+                _logger.LogInformation("Body text generator obtained successfully for document process {DocumentProcess}, generating body text...", 
+                    trackedDocument.DocumentProcess);
 
                 var bodyContentNodes = await bodyTextGenerator.GenerateBodyText(
                     existingContentNode.Type == ContentNodeType.Title ? "Title" : "Heading",
@@ -118,6 +135,9 @@ public class ReportTitleSectionGeneratorGrain : Grain, IReportTitleSectionGenera
                     metadataId,
                     existingContentNode
                 );
+
+                _logger.LogInformation("Generated {BodyContentNodeCount} body content nodes for content node {ContentNodeId}", 
+                    bodyContentNodes.Count, existingContentNode.Id);
 
                 int bodyContentNodeNumber = 1;
                 foreach (var bodyContentNode in bodyContentNodes)
@@ -160,6 +180,9 @@ public class ReportTitleSectionGeneratorGrain : Grain, IReportTitleSectionGenera
                 // Set GenerationState to Completed
                 existingContentNode.GenerationState = ContentNodeGenerationState.Completed;
                 await dbContext.SaveChangesAsync();
+
+                _logger.LogInformation("Successfully completed content generation for node {ContentNodeId} in document {DocumentId}", 
+                    existingContentNode.Id, documentId);
 
                 // Publish the Completed event
                 await NotifyStateChange(documentId, existingContentNode.Id, ContentNodeGenerationState.Completed);

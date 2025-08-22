@@ -16,6 +16,8 @@
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
 @inject ValidationEditorService ValidationEditorService
+@inject SignalRConnectionService SignalRConnectionService
+@inject SignalRSubscriptionFactory SignalRSubscriptionFactory
 
 @code {
     [Parameter] public Guid DocumentId { get; set; }
@@ -56,6 +58,8 @@
     private readonly List<string> messages = new List<string>();
 
     private readonly Dictionary<Guid, string> _validationContentCache = new();
+
+    private SignalRSubscriptionManager? _subMgr;
 }
 
 @if (Document != null)
@@ -313,62 +317,51 @@ else
     {
         if (HubConnection == null)
         {
-            var apiAddress = await AuthorizationApiClient.GetApiAddressAsync();
-            var url = $"{apiAddress}/hubs/notification-hub";
-
-            HubConnection = new HubConnectionBuilder()
-                .WithUrl(url, options =>
-                {
-                    options.AccessTokenProvider = async () => await ConfigurationApiClient.GetAccessTokenAsync();
-                })
-                .WithAutomaticReconnect()
-                .Build();
+            // Use shared connection if cascading is not provided
+            HubConnection = await SignalRConnectionService.GetOrCreateAsync();
         }
 
-        HubConnection.On<string>( // CorrelationId
+        _subMgr = SignalRSubscriptionFactory.Create(HubConnection);
+
+        _subMgr.RegisterHandlerOnce<string>(
             "ReceiveDocumentOutlineNotification",
             HubReceiveDocumentOutlineNotificationHandler);
 
-        HubConnection.On<ContentNodeGenerated>(
+        _subMgr.RegisterHandlerOnce<ContentNodeGenerated>(
             "ReceiveContentNodeNotification",
             HubReceiveContentNodeNotificationHandler);
 
-        HubConnection.On<ContentNodeGenerationStateChanged>(
+        _subMgr.RegisterHandlerOnce<ContentNodeGenerationStateChanged>(
             "ReceiveContentNodeGenerationStateChangedNotification",
             HubReceiveContentNodeGenerationStateChangedNotificationHandler);
 
-        HubConnection.On<ValidationExecutionForDocumentNotification>(
+        _subMgr.RegisterHandlerOnce<ValidationExecutionForDocumentNotification>(
             "ReceiveValidationExecutionForDocumentNotification",
             HubReceiveValidationExecutionForDocumentNotificationHandler);
 
-        if (HubConnection.State == HubConnectionState.Disconnected)
-        {
-            await HubConnection.StartAsync();
-        }
+        await _subMgr.EnsureConnectedAsync();
 
         // Add this connection to a group matching the document ID
         if (DocumentId != Guid.Empty)
         {
-            await HubConnection.SendAsync("AddToGroup", DocumentId.ToString());
+            await _subMgr.JoinGroupAsync(DocumentId.ToString());
         }
     }
 
     // Called on component disposal
     private async Task StopHubConnections()
     {
-        if (HubConnection == null) return;
+        if (_subMgr == null)
+        {
+            return;
+        }
 
-        // Remove handlers
-        HubConnection.Remove("ReceiveDocumentOutlineNotification");
-        HubConnection.Remove("ReceiveContentNodeNotification");
-        HubConnection.Remove("ReceiveContentNodeGenerationStateChangedNotification");
-        HubConnection.Remove("ReceiveValidationExecutionForDocumentNotification");
-
-        // Remove from group when leaving the page
         if (DocumentId != Guid.Empty)
         {
-            await HubConnection.SendAsync("RemoveFromGroup", DocumentId.ToString());
+            await _subMgr.LeaveGroupAsync(DocumentId.ToString());
         }
+
+        await _subMgr.DisposeAsync();
     }
 
     private async Task HubReceiveContentNodeGenerationStateChangedNotificationHandler(ContentNodeGenerationStateChanged message)
@@ -773,7 +766,7 @@ else
 
     public async ValueTask DisposeAsync()
     {
-        if (HubConnection != null)
+        if (_subMgr != null)
         {
             await StopHubConnections();
         }

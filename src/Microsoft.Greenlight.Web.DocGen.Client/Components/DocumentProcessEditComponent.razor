@@ -1,10 +1,14 @@
 @using System.Net
 @using Microsoft.Greenlight.Shared.Contracts.DTO.Configuration
+@using Microsoft.Greenlight.Shared.Enums
+@using Microsoft.Greenlight.Shared.Contracts.DTO
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
 @inject IDocumentProcessApiClient DocumentProcessApiClient
 @inject IDocumentLibraryApiClient DocumentLibraryApiClient
 @inject IConfigurationApiClient ConfigurationApiClient
 @inject IFileApiClient FileApiClient
 @inject IPluginApiClient PluginApiClient
+@inject IDocumentReindexApiClient DocumentReindexApiClient
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 
@@ -21,8 +25,56 @@
     {
         <MudPaper Class="pa-4">
             <MudGrid>
+                <MudItem xs="12">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                        <MudText Typo="Typo.h6">Basic Information</MudText>
+                        <MudText Typo="Typo.body2" Class="text-right">
+                            <strong>Logic Type:</strong> @_process.LogicType.ToString()
+                        </MudText>
+                    </MudStack>
+                </MudItem>
+            </MudGrid>
+
+            <!-- Inline Reindex Status -->
+            @if (_isEditMode)
+            {
+                <MudGrid Class="mb-2">
+                    <MudItem xs="12">
+                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                            <MudText Typo="Typo.subtitle2">Reindexing Status:</MudText>
+
+                            @if (_processReindexStatus != null)
+                            {
+                                <MudChip Color="@GetStatusColor(_processReindexStatus.Status)" Variant="Variant.Filled">
+                                    Process: @_processReindexStatus.Status.ToString() (@_processReindexStatus.ProcessedDocuments/@_processReindexStatus.TotalDocuments)
+                                </MudChip>
+                                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="OpenProcessReindexProgress">View details</MudButton>
+                            }
+                            else
+                            {
+                                <MudChip Color="Color.Default" Variant="Variant.Outlined">No active reindex for process</MudChip>
+                            }
+
+                            @if (_libraryReindexStatuses.Any())
+                            {
+                                <MudDivider Vertical="true" Class="mx-2" />
+                                @foreach (var kvp in _libraryReindexStatuses)
+                                {
+                                    <MudChip Color="@GetStatusColor(kvp.Value.Status)" Variant="Variant.Filled" Class="mr-1">
+                                        Library @kvp.Key: @kvp.Value.Status.ToString() (@kvp.Value.ProcessedDocuments/@kvp.Value.TotalDocuments)
+                                    </MudChip>
+                                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="() => OpenLibraryReindexProgress(kvp.Key)">View</MudButton>
+                                }
+                            }
+                            <MudSpacer />
+                            <MudIconButton Icon="@Icons.Material.Filled.Refresh" Title="Refresh reindex status" OnClick="RefreshReindexStatusesAsync" />
+                        </MudStack>
+                    </MudItem>
+                </MudGrid>
+            }
+            
+            <MudGrid>
                 <MudItem xs="12" md="6">
-                    <MudText Typo="Typo.h6">Basic Information</MudText>
                     <MudTextField @bind-Value="_process.ShortName" Label="Short Name" Disabled="_isEditMode" OnBlur="ValidateAndFormatShortName" />
                     <MudTextField @bind-Value="_process.Description" Label="Description" />
                     <MudTextField @bind-Value="_process.BlobStorageContainerName" Label="Blob Storage Container Name" />
@@ -31,6 +83,31 @@
                                   Label="Repository Index Name"
                                   Disabled="_isEditMode"
                                   OnInternalInputChanged="UpdateRepositories" />
+                    @if (_process.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
+                    {
+                        <MudSelect T="TextChunkingMode?" @bind-Value="_process.VectorStoreChunkingMode" Label="Chunking Mode">
+                            @foreach (var mode in Enum.GetValues<TextChunkingMode>())
+                            {
+                                <MudSelectItem Value="@(mode as TextChunkingMode?)">@mode.ToString()</MudSelectItem>
+                            }
+                        </MudSelect>
+                        
+                        <MudNumericField T="int?" @bind-Value="_process.VectorStoreChunkSize" 
+                                       Label="Chunk Size (tokens)" 
+                                       HelperText="Number of tokens per chunk. Leave empty to use global default."
+                                       Min="100" Max="8000" />
+                        
+                        <MudNumericField T="int?" @bind-Value="_process.VectorStoreChunkOverlap" 
+                                       Label="Chunk Overlap (tokens)" 
+                                       HelperText="Number of overlapping tokens between chunks. Leave empty to use global default."
+                                       Min="0" Max="2000" />
+                                        
+                        <MudAlert Severity="Severity.Info" Class="mt-2">
+                            <strong>Note:</strong> Changing chunk size or overlap will only apply to newly ingested documents. 
+                            Existing documents in the index will retain their original chunking. 
+                            You can reindex existing documents to apply new chunk settings.
+                        </MudAlert>
+                    }
                     <MudSelect T="DocumentProcessCompletionServiceType ?" @bind-Value="_process.CompletionServiceType" Label="AI Completion Service Type">
                         @foreach (var completionType in Enum.GetValues<DocumentProcessCompletionServiceType>())
                         {
@@ -76,6 +153,18 @@
                                 </MudButton>
                             </ButtonTemplate>
                         </MudFileUpload>
+                    }
+
+                    @if (ProcessId != null && _isEditMode && _process.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
+                    {
+                        <MudStack Class="mt-4" Spacing="2">
+                            <MudButton Variant="Variant.Filled" Color="Color.Warning" StartIcon="@Icons.Material.Filled.Refresh" OnClick="ShowReindexDialog">
+                                Reindex Documents
+                            </MudButton>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                This will recreate vector embeddings for all previously ingested documents in this process.
+                            </MudText>
+                        </MudStack>
                     }
 
                     @if (ProcessId != null && _isEditMode)
@@ -211,7 +300,8 @@
     [Parameter] public EventCallback OnProcessSaved { get; set; }
     [Parameter] public EventCallback OnCancel { get; set; }
 
-    private DocumentProcessInfo? _process = new();
+    // Initialized immediately; treated as non-null after OnInitializedAsync
+    private DocumentProcessInfo _process = new();
     private List<PromptInfo> _prompts = [];
 
     // Validation pipeline-related fields
@@ -246,6 +336,11 @@
                 _process.MinimumRelevanceForCitations = value / 100;
         }
     }
+
+    // Reindex status state
+    private string ProcessOrchestrationId => string.IsNullOrWhiteSpace(_process?.ShortName) ? string.Empty : $"process-{_process.ShortName}";
+    private DocumentReindexStateInfo? _processReindexStatus;
+    private Dictionary<string, DocumentReindexStateInfo> _libraryReindexStatuses = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -320,12 +415,17 @@
                     Console.WriteLine($"Error loading validation pipeline: {ex.Message}");
                     Snackbar.Add($"Error loading validation pipeline: {ex.Message}", Severity.Warning);
                 }
+
+                // Refresh reindexing statuses
+                await RefreshReindexStatusesAsync();
             }
             else
             {
-                // Set default model deployments for new Document Process
+                // New document process defaults
                 SelectedDeployment = _aiModelDeployments.FirstOrDefault(x => x.DeploymentName == "gpt-4o");
                 SelectedValidationDeployment = _aiModelDeployments.FirstOrDefault(x => x.DeploymentName == "gpt-4o");
+                // Default repository logic type: Semantic Kernel Vector Store (migrated away from Kernel Memory)
+                _process.LogicType = DocumentProcessLogicType.SemanticKernelVectorStore;
             }
         }
         catch (Exception ex)
@@ -338,6 +438,72 @@
             // Always set loading to false when done, even if there's an error
             _isLoading = false;
         }
+    }
+
+    private Color GetStatusColor(ReindexOrchestrationState status) => status switch
+    {
+        ReindexOrchestrationState.Running => Color.Info,
+        ReindexOrchestrationState.Completed => Color.Success,
+        ReindexOrchestrationState.Failed => Color.Error,
+        _ => Color.Default
+    };
+
+    private async Task RefreshReindexStatusesAsync()
+    {
+        try
+        {
+            _processReindexStatus = null;
+            _libraryReindexStatuses.Clear();
+
+            if (!string.IsNullOrWhiteSpace(ProcessOrchestrationId))
+            {
+                _processReindexStatus = await DocumentReindexApiClient.GetReindexingStatusAsync(ProcessOrchestrationId);
+            }
+
+            // For associated libraries, check each deterministic orchestration id
+            foreach (var lib in _associatedLibraries)
+            {
+                var libOrchId = $"library-{lib.ShortName}";
+                var status = await DocumentReindexApiClient.GetReindexingStatusAsync(libOrchId);
+                if (status != null && status.Status != ReindexOrchestrationState.NotStarted)
+                {
+                    _libraryReindexStatuses[lib.ShortName] = status;
+                }
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error refreshing reindex statuses: {ex.Message}");
+        }
+    }
+
+    private async Task OpenProcessReindexProgress()
+    {
+        if (string.IsNullOrWhiteSpace(ProcessOrchestrationId)) return;
+
+        var parameters = new DialogParameters
+        {
+            { "OrchestrationId", ProcessOrchestrationId },
+            { "TargetName", _process.ShortName },
+            { "Reason", _processReindexStatus?.Reason ?? "" }
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        await DialogService.ShowAsync<DocumentReindexProgressDisplay>("Reindexing Progress", parameters, options);
+    }
+
+    private async Task OpenLibraryReindexProgress(string libraryShortName)
+    {
+        var orchestrationId = $"library-{libraryShortName}";
+        var parameters = new DialogParameters
+        {
+            { "OrchestrationId", orchestrationId },
+            { "TargetName", libraryShortName },
+            { "Reason", _libraryReindexStatuses.TryGetValue(libraryShortName, out var st) ? (st.Reason ?? "") : "" }
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        await DialogService.ShowAsync<DocumentReindexProgressDisplay>("Reindexing Progress", parameters, options);
     }
 
     // Intermediate property for binding the selected deployment.
@@ -407,10 +573,9 @@
         }
     }
 
-    private async Task HandleValidationStepsChanged(List<DocumentProcessValidationPipelineStepInfo> steps)
+    private void HandleValidationStepsChanged(List<DocumentProcessValidationPipelineStepInfo> steps)
     {
         _validationSteps = steps;
-        // No need to save immediately - will be saved when the form is submitted
     }
 
     private void HandleRunValidationAutomaticallyChanged(bool value)
@@ -441,7 +606,10 @@
 
     private async Task LoadValidationPipelines()
     {
-        _validationPipeline = await DocumentProcessApiClient.GetValidationPipelineAsync(ProcessId.Value);
+        if (ProcessId.HasValue)
+        {
+            _validationPipeline = await DocumentProcessApiClient.GetValidationPipelineAsync(ProcessId.Value);
+        }
         if (_validationPipeline != null)
         {
             _validationSteps = _validationPipeline.ValidationPipelineSteps;
@@ -553,7 +721,7 @@
         await OnCancel.InvokeAsync();
     }
 
-    private async Task OpenDocumentOutlineEditor()
+    private void OpenDocumentOutlineEditor()
     {
         var parameters = new DialogParameters
         {
@@ -575,7 +743,7 @@
         var dialog = await DialogService.ShowAsync<EditMetadataFieldsDialog>("Metadata Fields Editor", parameters, options);
         var result = await dialog.Result;
 
-        if (!result.Cancelled)
+    if (!result.Canceled)
         {
             //_process.MetadataFields = result.Data;
         }
@@ -642,10 +810,12 @@
 
         dialog.Result.ContinueWith(async result =>
         {
-            if (!result.Result.Cancelled)
+            if (!result.Result.Canceled)
             {
                 await LoadAssociatedLibraries();
                 await LoadAvailableLibraries();
+                // refresh reindex status when libraries change
+                await RefreshReindexStatusesAsync();
                 StateHasChanged();
             }
         });
@@ -665,9 +835,11 @@
 
         dialog.Result.ContinueWith(async result =>
         {
-            if (!result.Result.Cancelled)
+            if (!result.Result.Canceled)
             {
                 await DisassociateLibrary(libraryId);
+                // refresh reindex status when libraries change
+                await RefreshReindexStatusesAsync();
                 StateHasChanged();
             }
         });
@@ -700,10 +872,28 @@
         StateHasChanged();
     }
 
+    private async Task ShowReindexDialog()
+    {
+        if (!_isEditMode || _process.LogicType != DocumentProcessLogicType.SemanticKernelVectorStore)
+        {
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            { "TargetName", _process.ShortName },
+            { "IsDocumentProcess", true },
+            { "Reason", "Manual reindexing" },
+            { "WarningMessage", "This will delete and rebuild the process repository index." }
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        await DialogService.ShowAsync<DocumentReindexConfirmationDialog>("Reindex Documents", parameters, options);
+    }
+
     // Helper class for plugin associations
     private class PluginAssociationViewModel
     {
-        public McpPluginInfo Plugin { get; set; }
-        public string Version { get; set; }
+    public McpPluginInfo Plugin { get; set; } = new();
+    public string Version { get; set; } = string.Empty;
     }
 }

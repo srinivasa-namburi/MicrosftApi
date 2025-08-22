@@ -1,4 +1,5 @@
-﻿using AutoMapper;
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+using AutoMapper;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -15,9 +16,10 @@ using Microsoft.SemanticKernel.Agents.Chat;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Scriban;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Greenlight.Grains.Document.Contracts;
 using Microsoft.Greenlight.Shared.Prompts;
-using Microsoft.SemanticKernel.Connectors.OpenAI;
+using Microsoft.Greenlight.Shared.Extensions;
 
 namespace Microsoft.Greenlight.Shared.DocumentProcess.Shared.Generation.Agentic
 {
@@ -28,11 +30,11 @@ namespace Microsoft.Greenlight.Shared.DocumentProcess.Shared.Generation.Agentic
     public class AgentAiCompletionService : IAiCompletionService
     {
         private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
-        private readonly string ProcessName;
+        private readonly string _processName;
         private readonly DocGenerationDbContext _dbContext;
         private readonly ILogger<AgentAiCompletionService> _logger;
         private readonly IServiceProvider _sp;
-        private Kernel _sk;
+        private Kernel? _sk;
         private readonly IDocumentProcessInfoService _documentProcessInfoService;
         private readonly IPluginSourceReferenceCollector _pluginSourceReferenceCollector;
         private readonly IPromptInfoService _promptInfoService;
@@ -40,10 +42,10 @@ namespace Microsoft.Greenlight.Shared.DocumentProcess.Shared.Generation.Agentic
         private const int InitialBlockSize = 100;
 
         private readonly string _executionIdString;
-        private ContentNode _createdBodyContentNode;
-        private AgentGroupChat _agentGroupChat;
-        private ContentStatePlugin _contentStatePlugin;
-        private DocumentHistoryPlugin _documentHistoryPlugin;
+        private ContentNode _createdBodyContentNode = default!;
+        private AgentGroupChat? _agentGroupChat;
+        private ContentStatePlugin? _contentStatePlugin;
+        private DocumentHistoryPlugin? _documentHistoryPlugin;
         private readonly IKernelFactory _kernelFactory;
 
         /// <summary>
@@ -64,7 +66,7 @@ namespace Microsoft.Greenlight.Shared.DocumentProcess.Shared.Generation.Agentic
             _kernelFactory = parameters.KernelFactory;
             _dbContextFactory = dbContextFactory;
             _dbContext = _dbContextFactory.CreateDbContext();
-            ProcessName = processName;
+            _processName = processName;
             _mapper = _sp.GetRequiredService<IMapper>();
             _executionIdString = Guid.NewGuid().ToString();
             _pluginSourceReferenceCollector = _sp.GetRequiredService<IPluginSourceReferenceCollector>();
@@ -72,7 +74,7 @@ namespace Microsoft.Greenlight.Shared.DocumentProcess.Shared.Generation.Agentic
 
         /// <inheritdoc />
         public async Task<List<ContentNode>> GetBodyContentNodes(
-            List<DocumentProcessRepositorySourceReferenceItem> sourceDocuments,
+            List<SourceReferenceItem> sourceReferences,
             string sectionOrTitleNumber,
             string sectionOrTitleText,
             ContentNodeType contentNodeType,
@@ -83,10 +85,10 @@ namespace Microsoft.Greenlight.Shared.DocumentProcess.Shared.Generation.Agentic
             // Prepare an empty ContentNode for the final text
             InitializeContentNode(sectionContentNode);
 
-            var documentProcess = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(ProcessName);
+            var documentProcess = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(_processName);
             if (documentProcess == null)
             {
-                throw new InvalidOperationException($"Document process '{ProcessName}' not found.");
+                throw new InvalidOperationException($"Document process '{_processName}' not found.");
             }
 
             // Retrieve a Semantic Kernel instance for this document process
@@ -104,9 +106,9 @@ namespace Microsoft.Greenlight.Shared.DocumentProcess.Shared.Generation.Agentic
                 ? sectionOrTitleText
                 : $"{sectionOrTitleNumber} {sectionOrTitleText}";
 
-            // Use a smaller subset of source docs for your prompt
-            var sourceDocumentsWithHighestScoringPartitions = sourceDocuments
-                .OrderByDescending(d => d.GetHighestScoringPartitionFromCitations())
+            // Use a smaller subset of source refs for your prompt (Kernel Memory, Vector Store, etc.)
+            var sourceDocumentsWithHighestScoringPartitions = sourceReferences
+                .OrderByDescending(d => d.GetHighestRelevanceScore())
                 .Take(5)
                 .ToList();
 
@@ -115,9 +117,19 @@ namespace Microsoft.Greenlight.Shared.DocumentProcess.Shared.Generation.Agentic
             foreach (var document in sourceDocumentsWithHighestScoringPartitions)
             {
                 sectionExample.AppendLine("[EXAMPLE: Document Extract]");
-                sectionExample.AppendLine(document.FullTextOutput);
+                // Select example text based on source type
+                var exampleText = document switch
+                {
+                    KernelMemoryDocumentSourceReferenceItem km => km.FullTextOutput,
+                    VectorStoreAggregatedSourceReferenceItem vs => string.Join("", vs.Chunks.Select(c => c.Text)),
+                    _ => string.Empty
+                };
+                if (!string.IsNullOrWhiteSpace(exampleText))
+                {
+                    sectionExample.AppendLine(exampleText);
+                }
                 sectionExample.AppendLine("[/EXAMPLE]");
-                _createdBodyContentNode.ContentNodeSystemItem?.SourceReferences.Add(document);
+                _createdBodyContentNode.ContentNodeSystemItem!.SourceReferences.Add(document);
             }
 
             var exampleString = sectionExample.ToString();
@@ -177,18 +189,34 @@ namespace Microsoft.Greenlight.Shared.DocumentProcess.Shared.Generation.Agentic
         /// </summary>
         private void ProcessAgentMessage(ChatMessageContent message)
         {
-            _logger.LogInformation($"Message from {message.AuthorName}");
-            _logger.LogInformation(message.Content);
-
-            // Example: if you want to detect a "complete" marker from the reviewer
-            if (message.Content.Contains("[COMPLETE]", StringComparison.OrdinalIgnoreCase))
+            try
             {
-                _logger.LogInformation("Received COMPLETION signal from ReviewerAgent.");
+                _logger.LogInformation($"Message from {message.AuthorName}");
+                if (!string.IsNullOrEmpty(message.Content))
+                {
+                    _logger.LogInformation(message.Content);
+                }
+
+                // Example: if you want to detect a "complete" marker from the reviewer
+                if (!string.IsNullOrEmpty(message.Content) && message.Content.Contains("[COMPLETE]", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogInformation("Received COMPLETION signal from ReviewerAgent.");
+                }
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "JSON parsing error while processing agent message, continuing with conversation");
+                // Continue processing despite JSON errors
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unexpected error processing agent message");
+                // Don't rethrow to avoid breaking the conversation flow
             }
         }
 
         /// <summary>
-        /// Builds a scriban-based agentic main prompt for the ContentAgent.
+        /// Builds a Scriban-based agentic main prompt for the ContentAgent.
         /// </summary>
         private async Task<string> BuildAgenticMainPrompt(
             string numberOfPasses,
@@ -200,7 +228,7 @@ namespace Microsoft.Greenlight.Shared.DocumentProcess.Shared.Generation.Agentic
             string pluginFunctionDescriptions,
             string documentProcessName)
         {
-            // Use the new SectionGenerationAgenticMainPrompt
+            // Use SectionGenerationAgenticMainPrompt
             var mainPromptInfo = await _promptInfoService.GetPromptByShortCodeAndProcessNameAsync(
                 PromptNames.SectionGenerationAgenticMainPrompt,
                 documentProcessName
@@ -251,14 +279,19 @@ namespace Microsoft.Greenlight.Shared.DocumentProcess.Shared.Generation.Agentic
 
             // Prepare plugins from the base kernel
             var availablePlugins = new Dictionary<string, object>();
+            if (_sk is null)
+            {
+                throw new InvalidOperationException("Kernel was not initialized before setting up agents.");
+            }
+
             foreach (var plugin in _sk.Plugins)
             {
                 if (plugin.Name == "DefaultKernelPlugin") continue; // Skip the default plugin
                 availablePlugins[plugin.Name] = plugin;
             }
             // Add ContentState and DocumentHistory plugins
-            availablePlugins["ContentState"] = _contentStatePlugin;
-            availablePlugins["DocumentHistory"] = _documentHistoryPlugin;
+            availablePlugins["ContentState"] = _contentStatePlugin!;
+            availablePlugins["DocumentHistory"] = _documentHistoryPlugin!;
 
             // --- Extract plugin and function descriptions for ContentAgent prompt ---
             var pluginFunctionDescriptions = new StringBuilder();
@@ -286,7 +319,7 @@ namespace Microsoft.Greenlight.Shared.DocumentProcess.Shared.Generation.Agentic
                         exampleString: exampleString,
                         promptInstructions: sectionContentNode?.PromptInstructions, // use actual prompt instructions if present
                         pluginFunctionDescriptions: pluginFunctionDescriptions.ToString(),
-                        documentProcessName: ProcessName
+                        documentProcessName: _processName
                     ),
                     AllowedPlugins = availablePlugins.Keys.ToList(),
                     IsOrchestrator = false,

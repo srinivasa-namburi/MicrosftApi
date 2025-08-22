@@ -1,17 +1,20 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.DocumentProcess.Dynamic;
 using Microsoft.Greenlight.Shared.DocumentProcess.Shared.Generation;
-using Microsoft.Greenlight.Shared.Extensions;
+// Removed legacy ReviewKernelMemoryRepository registration
 using Microsoft.Greenlight.Shared.Prompts;
 using Microsoft.Greenlight.Shared.Services;
-using Microsoft.Greenlight.Shared.Services.Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.Shared.Services.Search;
 using System.Reflection;
 
 namespace Microsoft.Greenlight.Shared.DocumentProcess.Shared;
 
+/// <summary>
+/// Extension methods for registering document process related services and dynamic processes.
+/// </summary>
 public static class DocumentProcessExtensions
 {
 
@@ -48,18 +51,19 @@ public static class DocumentProcessExtensions
 
         // Register the Kernel Memory Instance Factory for Document Libraries
         builder.Services.AddSingleton<KernelMemoryInstanceContainer>();
-        // This can be scoped because it relies on the singleton KernelMemoryInstanceContainer to keep track of the instances
+        // This can be transient because it relies on the singleton KernelMemoryInstanceContainer to keep track of the instances
         builder.Services.AddTransient<IKernelMemoryInstanceFactory, KernelMemoryInstanceFactory>();
 
-        // Register the ReviewKernelMemoryRepository
-        builder.AddKernelMemoryForReviews(options);
-        builder.Services.AddKeyedTransient<IKernelMemoryRepository, KernelMemoryRepository>("Reviews-IKernelMemoryRepository");
-        builder.Services.AddTransient<IReviewKernelMemoryRepository, ReviewKernelMemoryRepository>();
-
+        // Register the main IKernelMemoryRepository (non-keyed) for DocumentRepositoryFactory
+        builder.Services.AddTransient<IKernelMemoryRepository, KernelMemoryRepository>();
+        
         // Register the Additional Document Libraries Kernel Memory Repositories and services
         builder.Services.AddKeyedTransient<IKernelMemoryRepository, KernelMemoryRepository>(
             "AdditionalBase-IKernelMemoryRepository");
         builder.Services.AddTransient<IAdditionalDocumentLibraryKernelMemoryRepository, AdditionalDocumentLibraryKernelMemoryRepository>();
+
+        // Register the Document Repository Factory
+        builder.Services.AddTransient<IDocumentRepositoryFactory, DocumentRepositoryFactory>();
 
         // Add the Search Options Factory
         builder.Services.AddTransient<IConsolidatedSearchOptionsFactory, ConsolidatedSearchOptionsFactory>();
@@ -68,8 +72,9 @@ public static class DocumentProcessExtensions
         builder.Services.AddSingleton<SemanticKernelInstanceContainer>();
         builder.Services.AddTransient<IKernelFactory, SemanticKernelFactory>();
 
-        // Add the Embeddings Generation Service
+        // Add the Embeddings Generation & Chat Completion Service Factories
         builder.Services.AddTransient<IAiEmbeddingService, AiEmbeddingService>();
+        builder.Services.AddSingleton<IChatClientFactory, CachedChatClientFactory>();
 
         // Add Document Generation Service
         builder.Services.AddTransient<IDocumentGenerationService, DocumentGenerationService>();

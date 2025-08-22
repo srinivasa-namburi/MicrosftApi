@@ -518,6 +518,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
 
+                    b.Property<int>("LogicType")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("ModifiedUtc")
                         .HasColumnType("datetime2");
 
@@ -530,6 +533,15 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<string>("ShortName")
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
+
+                    b.Property<int?>("VectorStoreChunkOverlap")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("VectorStoreChunkSize")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("VectorStoreChunkingMode")
+                        .HasColumnType("int");
 
                     b.HasKey("Id");
 
@@ -771,6 +783,15 @@ namespace Microsoft.Greenlight.Shared.Migrations
 
                     b.Property<Guid?>("ValidationPipelineId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("VectorStoreChunkOverlap")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("VectorStoreChunkSize")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("VectorStoreChunkingMode")
+                        .HasColumnType("int");
 
                     b.HasKey("Id");
 
@@ -1075,7 +1096,7 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<string>("DocumentLibraryOrProcessName")
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<int>("DocumentLibraryType")
                         .HasColumnType("int");
@@ -1103,6 +1124,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<int>("IngestionState")
                         .HasColumnType("int");
 
+                    b.Property<bool>("IsVectorStoreIndexed")
+                        .HasColumnType("bit");
+
                     b.Property<DateTime>("ModifiedUtc")
                         .HasColumnType("datetime2");
 
@@ -1126,11 +1150,25 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<string>("UploadedByUserOid")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int>("VectorStoreChunkCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("VectorStoreDocumentId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("VectorStoreIndexName")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("VectorStoreIndexedDate")
+                        .HasColumnType("datetime2");
+
                     b.HasKey("Id");
 
                     b.HasIndex("FileHash");
 
                     b.HasIndex("OrchestrationId");
+
+                    b.HasIndex("DocumentLibraryType", "DocumentLibraryOrProcessName");
 
                     b.HasIndex("Container", "FolderPath", "FileName", "FileHash", "IngestionState")
                         .IsUnique()
@@ -1485,7 +1523,7 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid>("ContentNodeSystemItemId")
+                    b.Property<Guid?>("ContentNodeSystemItemId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime>("CreatedUtc")
@@ -1855,6 +1893,13 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.HasDiscriminator().HasValue("KernelMemoryDocumentSourceReferenceItem");
                 });
 
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.SourceReferences.LegacySourceReferenceItem", b =>
+                {
+                    b.HasBaseType("Microsoft.Greenlight.Shared.Models.SourceReferences.SourceReferenceItem");
+
+                    b.HasDiscriminator().HasValue("SourceReferenceItem");
+                });
+
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.SourceReferences.PluginSourceReferenceItem", b =>
                 {
                     b.HasBaseType("Microsoft.Greenlight.Shared.Models.SourceReferences.SourceReferenceItem");
@@ -1866,6 +1911,80 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.HasDiscriminator().HasValue("PluginSourceReferenceItem");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.SourceReferences.VectorStoreAggregatedSourceReferenceItem", b =>
+                {
+                    b.HasBaseType("Microsoft.Greenlight.Shared.Models.SourceReferences.SourceReferenceItem");
+
+                    b.Property<string>("DocumentId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("IndexName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<double>("Score")
+                        .HasColumnType("float");
+
+                    b.Property<string>("StoredPartitionNumbers")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.ToTable("SourceReferenceItems", t =>
+                        {
+                            t.Property("IndexName")
+                                .HasColumnName("VectorStoreAggregatedSourceReferenceItem_IndexName");
+                        });
+
+                    b.HasDiscriminator().HasValue("VectorStoreAggregatedSourceReferenceItem");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.SourceReferences.VectorStoreSourceReferenceItem", b =>
+                {
+                    b.HasBaseType("Microsoft.Greenlight.Shared.Models.SourceReferences.SourceReferenceItem");
+
+                    b.Property<string>("DocumentId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("IndexName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<double>("Score")
+                        .HasColumnType("float");
+
+                    b.Property<string>("StoredPartitionNumbers")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.ToTable("SourceReferenceItems", t =>
+                        {
+                            t.Property("DocumentId")
+                                .HasColumnName("VectorStoreSourceReferenceItem_DocumentId");
+
+                            t.Property("FileName")
+                                .HasColumnName("VectorStoreSourceReferenceItem_FileName");
+
+                            t.Property("IndexName")
+                                .HasColumnName("VectorStoreSourceReferenceItem_IndexName");
+
+                            t.Property("Score")
+                                .HasColumnName("VectorStoreSourceReferenceItem_Score");
+
+                            t.Property("StoredPartitionNumbers")
+                                .HasColumnName("VectorStoreSourceReferenceItem_StoredPartitionNumbers");
+                        });
+
+                    b.HasDiscriminator().HasValue("VectorStoreSourceReferenceItem");
                 });
 
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.SourceReferences.DocumentLibrarySourceReferenceItem", b =>

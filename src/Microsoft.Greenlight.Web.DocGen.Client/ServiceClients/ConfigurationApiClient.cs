@@ -70,110 +70,136 @@ public class ConfigurationApiClient : WebAssemblyBaseServiceClient<Configuration
                throw new IOException("No OpenAI options available!");
     }
 
+    public async Task<VectorStoreOptions> GetVectorStoreOptionsAsync()
+    {
+        var response = await SendGetRequestMessage("/api/configuration/vector-store-options");
+        response.EnsureSuccessStatusCode();
+        return await response.Content
+                   .ReadFromJsonAsync<VectorStoreOptions>() ??
+               new VectorStoreOptions();
+    }
+
     public async Task<ServiceConfigurationOptions.GreenlightServicesOptions.GlobalOptions> GetGlobalOptionsAsync()
     {
-        var response = await SendGetRequestMessage($"/api/configuration/global-options");
-        response?.EnsureSuccessStatusCode();
-        return await response?.Content.ReadFromJsonAsync<ServiceConfigurationOptions.GreenlightServicesOptions.GlobalOptions>() ??
-               throw new IOException("No global options available!");
+        var response = await SendGetRequestMessage("/api/configuration/global-options");
+        response.EnsureSuccessStatusCode();
+        return await response.Content
+                   .ReadFromJsonAsync<ServiceConfigurationOptions.GreenlightServicesOptions.GlobalOptions>() ??
+               new ServiceConfigurationOptions.GreenlightServicesOptions.GlobalOptions();
+    }
+
+    public async Task<ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions.OcrOptions> GetOcrOptionsAsync()
+    {
+        var response = await SendGetRequestMessage("/api/configuration/ocr-options");
+        response.EnsureSuccessStatusCode();
+        return await response.Content
+                   .ReadFromJsonAsync<ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions.OcrOptions>() ??
+               new ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions.OcrOptions();
+    }
+
+    public async Task<List<LanguageDisplayInfo>> GetCachedOcrLanguagesAsync()
+    {
+        var response = await SendGetRequestMessage("/api/configuration/ocr/languages");
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<List<LanguageDisplayInfo>>() ?? new List<LanguageDisplayInfo>();
+    }
+
+    public async Task<OcrLanguageDownloadResponse> DownloadOcrLanguageAsync(string languageCode)
+    {
+        var response = await SendPostRequestMessage($"/api/configuration/ocr/download?language={Uri.EscapeDataString(languageCode)}", new { });
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<OcrLanguageDownloadResponse>() ?? new OcrLanguageDownloadResponse { Language = languageCode };
+    }
+
+    public async Task<DbConfigurationInfo> SetDefaultOcrLanguagesAsync(List<string> languages)
+    {
+        var response = await SendPostRequestMessage("/api/configuration/ocr/default-languages", languages);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<DbConfigurationInfo>() ?? throw new IOException("No configuration info returned!");
     }
 
     public async Task<DbConfigurationInfo> UpdateConfigurationAsync(ConfigurationUpdateRequest request)
     {
         var response = await SendPostRequestMessage("/api/configuration/update", request);
-        response?.EnsureSuccessStatusCode();
-
-        return await response?.Content
-                   .ReadFromJsonAsync<DbConfigurationInfo>()! ??
-               throw new IOException("Unable to update configuration!");
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<DbConfigurationInfo>() ?? throw new IOException("No configuration info returned!");
     }
 
     public async Task<DbConfigurationInfo> GetCurrentConfigurationAsync()
     {
         var response = await SendGetRequestMessage("/api/configuration/current");
-        response?.EnsureSuccessStatusCode();
-
-        return await response?.Content.ReadFromJsonAsync<DbConfigurationInfo>()!;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<DbConfigurationInfo>() ?? throw new IOException("No configuration info returned!");
     }
 
     public async Task<List<AiModelInfo>> GetAiModelsAsync()
     {
         var response = await SendGetRequestMessage("/api/configuration/ai-models");
-        response?.EnsureSuccessStatusCode();
-        return await response?.Content.ReadFromJsonAsync<List<AiModelInfo>>() ??
-               new List<AiModelInfo>();
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<List<AiModelInfo>>() ?? new List<AiModelInfo>();
     }
 
     public async Task<AiModelInfo> GetAiModelByIdAsync(Guid id)
     {
         var response = await SendGetRequestMessage($"/api/configuration/ai-models/{id}");
-        response?.EnsureSuccessStatusCode();
-        return await response?.Content.ReadFromJsonAsync<AiModelInfo>() ??
-               throw new IOException($"Could not get AI model with ID {id}");
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<AiModelInfo>() ?? throw new IOException("Model not found!");
     }
 
     public async Task<AiModelInfo> CreateAiModelAsync(AiModelInfo model)
     {
         var response = await SendPostRequestMessage("/api/configuration/ai-models", model);
-        response?.EnsureSuccessStatusCode();
-        return await response?.Content.ReadFromJsonAsync<AiModelInfo>() ??
-               throw new IOException("Failed to create AI model");
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<AiModelInfo>() ?? throw new IOException("Create failed!");
     }
 
     public async Task<AiModelInfo> UpdateAiModelAsync(AiModelInfo model)
     {
         var response = await SendPutRequestMessage($"/api/configuration/ai-models/{model.Id}", model);
-        response?.EnsureSuccessStatusCode();
-        return await response?.Content.ReadFromJsonAsync<AiModelInfo>() ??
-               throw new IOException($"Failed to update AI model with ID {model.Id}");
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<AiModelInfo>() ?? throw new IOException("Update failed!");
     }
 
     public async Task DeleteAiModelAsync(Guid id)
     {
         var response = await SendDeleteRequestMessage($"/api/configuration/ai-models/{id}");
-        response?.EnsureSuccessStatusCode();
+        response.EnsureSuccessStatusCode();
     }
 
-    
     public async Task<List<AiModelDeploymentInfo>> GetAiModelDeploymentsAsync()
     {
         var response = await SendGetRequestMessage("/api/configuration/ai-model-deployments");
-        response?.EnsureSuccessStatusCode();
-        return await response?.Content.ReadFromJsonAsync<List<AiModelDeploymentInfo>>()! ??
-               throw new IOException("No AI model deployments available!");
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<List<AiModelDeploymentInfo>>() ?? new List<AiModelDeploymentInfo>();
     }
 
     public async Task<AiModelDeploymentInfo> GetAiModelDeploymentByIdAsync(Guid id)
     {
         var response = await SendGetRequestMessage($"/api/configuration/ai-model-deployments/{id}");
-        response?.EnsureSuccessStatusCode();
-        return await response?.Content.ReadFromJsonAsync<AiModelDeploymentInfo>() ??
-               throw new IOException($"Could not get AI model deployment with ID {id}");
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<AiModelDeploymentInfo>() ?? throw new IOException("Deployment not found!");
     }
 
     public async Task<AiModelDeploymentInfo> CreateAiModelDeploymentAsync(AiModelDeploymentInfo deployment)
     {
         var response = await SendPostRequestMessage("/api/configuration/ai-model-deployments", deployment);
-        response?.EnsureSuccessStatusCode();
-        return await response?.Content.ReadFromJsonAsync<AiModelDeploymentInfo>() ??
-               throw new IOException("Failed to create AI model deployment");
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<AiModelDeploymentInfo>() ?? throw new IOException("Create failed!");
     }
 
     public async Task<AiModelDeploymentInfo> UpdateAiModelDeploymentAsync(AiModelDeploymentInfo deployment)
     {
         var response = await SendPutRequestMessage($"/api/configuration/ai-model-deployments/{deployment.Id}", deployment);
-        response?.EnsureSuccessStatusCode();
-        return await response?.Content.ReadFromJsonAsync<AiModelDeploymentInfo>() ??
-               throw new IOException($"Failed to update AI model deployment with ID {deployment.Id}");
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<AiModelDeploymentInfo>() ?? throw new IOException("Update failed!");
     }
 
     public async Task DeleteAiModelDeploymentAsync(Guid id)
     {
         var response = await SendDeleteRequestMessage($"/api/configuration/ai-model-deployments/{id}");
-        response?.EnsureSuccessStatusCode();
+        response.EnsureSuccessStatusCode();
     }
 
-    /// <inheritdoc />
     public async Task<IndexJobStartedResponse> StartIndexExportAsync(IndexExportRequest request)
     {
         var response = await SendPostRequestMessage("/api/configuration/indexes/export", request);
@@ -181,7 +207,6 @@ public class ConfigurationApiClient : WebAssemblyBaseServiceClient<Configuration
         return await response.Content.ReadFromJsonAsync<IndexJobStartedResponse>() ?? throw new IOException("No JobId returned from export start.");
     }
 
-    /// <inheritdoc />
     public async Task<IndexJobStartedResponse> StartIndexImportAsync(IndexImportRequest request)
     {
         var response = await SendPostRequestMessage("/api/configuration/indexes/import", request);
@@ -193,13 +218,13 @@ public class ConfigurationApiClient : WebAssemblyBaseServiceClient<Configuration
     {
         var response = await SendGetRequestMessage($"/api/configuration/indexes/export/{jobId}");
         response?.EnsureSuccessStatusCode();
-        return await response?.Content.ReadFromJsonAsync<IndexExportJobStatus>() ?? throw new IOException($"No export job status for {jobId}");
+        return await response.Content.ReadFromJsonAsync<IndexExportJobStatus>() ?? new IndexExportJobStatus();
     }
 
     public async Task<IndexImportJobStatus> GetIndexImportStatusAsync(Guid jobId)
     {
         var response = await SendGetRequestMessage($"/api/configuration/indexes/import/{jobId}");
         response?.EnsureSuccessStatusCode();
-        return await response?.Content.ReadFromJsonAsync<IndexImportJobStatus>() ?? throw new IOException($"No import job status for {jobId}");
+        return await response.Content.ReadFromJsonAsync<IndexImportJobStatus>() ?? new IndexImportJobStatus();
     }
 }

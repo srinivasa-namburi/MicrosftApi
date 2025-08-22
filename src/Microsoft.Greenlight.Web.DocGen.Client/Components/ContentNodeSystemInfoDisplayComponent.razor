@@ -1,74 +1,256 @@
 ﻿@using Microsoft.Greenlight.Shared.Contracts.DTO.Document
+@inject Microsoft.Greenlight.Web.Shared.ServiceClients.IContentNodeApiClient ContentNodeApi
 
 @code {
     [Parameter] public ContentNodeSystemItemInfo? SystemItem { get; set; }
+
+    private readonly HashSet<Guid> _expandedPluginInputs = new();
+    private readonly HashSet<Guid> _expandedPluginOutputs = new();
+
+    private static string Truncate(string? value, int max = 400)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+        if (value.Length <= max)
+        {
+            return value;
+        }
+        return value.Substring(0, max) + "…";
+    }
+
+    private static bool IsTruncated(string? value, int max = 400) => !string.IsNullOrEmpty(value) && value.Length > max;
+
+    private void TogglePluginInput(Guid id)
+    {
+        if (_expandedPluginInputs.Contains(id))
+        {
+            _expandedPluginInputs.Remove(id);
+        }
+        else
+        {
+            _expandedPluginInputs.Add(id);
+        }
+    }
+
+    private void TogglePluginOutput(Guid id)
+    {
+        if (_expandedPluginOutputs.Contains(id))
+        {
+            _expandedPluginOutputs.Remove(id);
+        }
+        else
+        {
+            _expandedPluginOutputs.Add(id);
+        }
+    }
 }
 
 @if (SystemItem != null)
 {
     <MudPaper Class="pa-3 mb-3" Outlined="true">
-        <MudText Typo="Typo.h3">Reference Information:</MudText>
-        <MudDivider Class="my-2" />
-        <MudExpansionPanels>
-        @if (SystemItem.ComputedUsedMainGenerationPrompt != null)
-        {
-            <MudExpansionPanel Text="Computed Used Main Generation Prompt" Color="Color.Info">
-                <MudText Typo="Typo.body1">@SystemItem.ComputedUsedMainGenerationPrompt</MudText>
-            </MudExpansionPanel>
-        }
-        @if (SystemItem.ComputedSectionPromptInstructions != null)
-        {
-            <MudExpansionPanel Text="Computed Section Prompt Instructions" Color="Color.Info">
-                <MudText Typo="Typo.body1">@SystemItem.ComputedSectionPromptInstructions</MudText>
-            </MudExpansionPanel>
-        }
-        </MudExpansionPanels>
-        @if (SystemItem.SourceReferences.Count > 0)
-        {
-            <MudText Typo="Typo.h4"><strong>Source References:</strong></MudText>
+        <MudStack Spacing="2">
+            <MudText Typo="Typo.h4">Reference Information</MudText>
+            <MudDivider />
 
-            @if (SystemItem.SourceReferences.OfType<KernelMemoryDocumentSourceReferenceItemInfo>().Any())
+            @if (!string.IsNullOrWhiteSpace(SystemItem.ComputedUsedMainGenerationPrompt) || !string.IsNullOrWhiteSpace(SystemItem.ComputedSectionPromptInstructions))
             {
-                <MudText Typo="Typo.h5">Document References (Citations)</MudText>
-                <ul>
-                    @foreach (var kernelMemoryItem in SystemItem.SourceReferences.OfType<KernelMemoryDocumentSourceReferenceItemInfo>())
+                <MudExpansionPanels Elevation="0">
+                    @if (!string.IsNullOrWhiteSpace(SystemItem.ComputedUsedMainGenerationPrompt))
                     {
-                        <li>
-                            @kernelMemoryItem.Description (@kernelMemoryItem.SourceReferenceType)
-                            @foreach (var citation in kernelMemoryItem.Citations)
+                        <MudExpansionPanel Text="Computed Used Main Generation Prompt">
+                            <MudText Typo="Typo.body1">@SystemItem.ComputedUsedMainGenerationPrompt</MudText>
+                        </MudExpansionPanel>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(SystemItem.ComputedSectionPromptInstructions))
+                    {
+                        <MudExpansionPanel Text="Computed Section Prompt Instructions">
+                            <MudText Typo="Typo.body1">@SystemItem.ComputedSectionPromptInstructions</MudText>
+                        </MudExpansionPanel>
+                    }
+                </MudExpansionPanels>
+            }
+
+            @if (SystemItem.SourceReferences.Count > 0)
+            {
+                <MudText Typo="Typo.h5" Class="mt-2"><strong>Source References</strong></MudText>
+
+                @* Kernel Memory Citations *@
+                @if (SystemItem.SourceReferences.OfType<KernelMemoryDocumentSourceReferenceItemInfo>().Any())
+                {
+                    <MudPaper Class="pa-2 mb-2" Outlined="true">
+                        <MudText Typo="Typo.subtitle1">Document References (Citations)</MudText>
+                        <MudList Dense="true">
+                            @foreach (var kernelMemoryItem in SystemItem.SourceReferences.OfType<KernelMemoryDocumentSourceReferenceItemInfo>())
                             {
-                                @* This needs to be a link to a dialog that shows the full partitions from the citation in question *@
-                                <strong>Kernel Memory Citation:</strong>
-                                @citation.SourceName
-                                <br />
-                            }
-                        </li>
-                    }
-                </ul>
-            }
+                                <MudListItem>
+                                    <MudStack Spacing="1">
+                                        <MudText Typo="Typo.body2">
+                                            <MudChip Color="Color.Primary" Size="Size.Small" Variant="Variant.Outlined">@kernelMemoryItem.SourceReferenceType</MudChip>
+                                            @if (!string.IsNullOrWhiteSpace(kernelMemoryItem.Description))
+                                            {
+                                                <span class="ms-2">@kernelMemoryItem.Description</span>
+                                            }
+                                        </MudText>
 
-            @if (SystemItem.SourceReferences.OfType<PluginSourceReferenceItemInfo>().Any())
-            {
-                <MudText Typo="Typo.h5">Plugin Execution References</MudText>
-                <ul>
-                    @foreach (var pluginItem in SystemItem.SourceReferences.OfType<PluginSourceReferenceItemInfo>())
-                    {
-                        <li>
-                            @pluginItem.Description (@pluginItem.SourceReferenceType)
-                            <p>
-                                <strong>Plugin Identifier: </strong> @pluginItem.PluginIdentifier
-                                <br />
-                                @* These items should probably display in an expanding panel (the inputs and outputs)*@
-                                <strong>Plugin inputs:</strong>
-                                <RenderMultilineText Value="@pluginItem.SourceInputJson" />
-                                <br />
-                                <strong>Plugin output:</strong>
-                                <RenderMultilineText Value="@pluginItem.SourceOutput" />
-                            </p>
-                        </li>
-                    }
-                </ul>
+                                        @foreach (var citation in kernelMemoryItem.Citations)
+                                        {
+                                            <MudText Typo="Typo.caption"><strong>Kernel Memory Citation:</strong> @citation.SourceName</MudText>
+                                        }
+                                    </MudStack>
+                                </MudListItem>
+                            }
+                        </MudList>
+                    </MudPaper>
+                }
+
+                @* Vector Store References *@
+                @if (SystemItem.SourceReferences.OfType<VectorStoreSourceReferenceItemInfo>().Any())
+                {
+                    <MudPaper Class="pa-2 mb-2" Outlined="true">
+                        <MudText Typo="Typo.subtitle1">Vector Store Document References</MudText>
+                        <MudExpansionPanels Elevation="0">
+                            @foreach (var vsItem in SystemItem.SourceReferences.OfType<VectorStoreSourceReferenceItemInfo>())
+                            {
+                                var header = $"{vsItem.FileName} (Index: {vsItem.IndexName}, Score: {vsItem.Score:F3})";
+                                <MudExpansionPanel Text="@header">
+                                    @if (!string.IsNullOrWhiteSpace(vsItem.SourceReferenceLink))
+                                    {
+                                        <MudText Typo="Typo.caption" Class="mb-1">
+                                            <MudLink Href="@vsItem.SourceReferenceLink" Target="_blank" Underline="Underline.Hover">Open source document</MudLink>
+                                        </MudText>
+                                    }
+
+                                    @if (!string.IsNullOrWhiteSpace(vsItem.Description))
+                                    {
+                                        <MudText Typo="Typo.body2" Class="mb-2"><em>@vsItem.Description</em></MudText>
+                                    }
+
+                                    <MudText Typo="Typo.subtitle2">Chunks (@vsItem.Chunks.Count)</MudText>
+                                    <MudList Dense="true">
+                                        @foreach (var chunk in vsItem.Chunks.OrderByDescending(c => c.Relevance))
+                                        {
+                                            <MudListItem>
+                                                <MudStack Spacing="1">
+                                                    <MudText Typo="Typo.caption">
+                                                        <strong>Score:</strong> @chunk.Relevance.ToString("F3") | <strong>Partition:</strong> @chunk.PartitionNumber | <strong>Size:</strong> @chunk.SizeInBytes bytes
+                                                    </MudText>
+                                                    @if (!string.IsNullOrWhiteSpace(chunk.Text))
+                                                    {
+                                                        <RenderMultilineText Value="@chunk.Text" />
+                                                    }
+                                                </MudStack>
+                                            </MudListItem>
+                                        }
+                                    </MudList>
+
+                                    @* Passive load button: render only when nothing loaded but we have identifiers *@
+                                    @if ((vsItem.Chunks == null || vsItem.Chunks.Count == 0) && !string.IsNullOrWhiteSpace(vsItem.StoredPartitionNumbers))
+                                    {
+                                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" OnClick="async () => await LoadVectorChunksAsync(vsItem)">Load chunks</MudButton>
+                                    }
+                                </MudExpansionPanel>
+                            }
+                        </MudExpansionPanels>
+                    </MudPaper>
+                }
+
+                @* Plugin Execution References *@
+                @if (SystemItem.SourceReferences.OfType<PluginSourceReferenceItemInfo>().Any())
+                {
+                    <MudPaper Class="pa-2 mb-2" Outlined="true">
+                        <MudText Typo="Typo.subtitle1">Plugin Execution References</MudText>
+                        <MudList Dense="true">
+                            @foreach (var pluginItem in SystemItem.SourceReferences.OfType<PluginSourceReferenceItemInfo>())
+                            {
+                                <MudListItem>
+                                    <MudStack Spacing="1">
+                                        <MudText Typo="Typo.body2">
+                                            <MudChip Color="Color.Secondary" Size="Size.Small" Variant="Variant.Outlined">@pluginItem.SourceReferenceType</MudChip>
+                                            @if (!string.IsNullOrWhiteSpace(pluginItem.Description))
+                                            {
+                                                <span class="ms-2">@pluginItem.Description</span>
+                                            }
+                                        </MudText>
+                                        @if (!string.IsNullOrWhiteSpace(pluginItem.PluginIdentifier))
+                                        {
+                                            <MudText Typo="Typo.caption"><strong>Plugin Identifier:</strong> @pluginItem.PluginIdentifier</MudText>
+                                        }
+
+                                        @if (!string.IsNullOrWhiteSpace(pluginItem.SourceInputJson))
+                                        {
+                                            var showInputButton = IsTruncated(pluginItem.SourceInputJson) || _expandedPluginInputs.Contains(pluginItem.Id);
+                                            <MudText Typo="Typo.caption"><strong>Plugin inputs (@( _expandedPluginInputs.Contains(pluginItem.Id) ? "full" : "preview" )):</strong></MudText>
+                                            @if (_expandedPluginInputs.Contains(pluginItem.Id))
+                                            {
+                                                <RenderMultilineText Value="@pluginItem.SourceInputJson" />
+                                            }
+                                            else
+                                            {
+                                                <RenderMultilineText Value="@Truncate(pluginItem.SourceInputJson, 400)" />
+                                            }
+                                            @if (showInputButton)
+                                            {
+                                                <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => TogglePluginInput(pluginItem.Id)">
+                                                    @(_expandedPluginInputs.Contains(pluginItem.Id) ? "Show less" : "Show more")
+                                                </MudButton>
+                                            }
+                                        }
+
+                                        @if (!string.IsNullOrWhiteSpace(pluginItem.SourceOutput))
+                                        {
+                                            var showOutputButton = IsTruncated(pluginItem.SourceOutput) || _expandedPluginOutputs.Contains(pluginItem.Id);
+                                            <MudText Typo="Typo.caption"><strong>Plugin output (@( _expandedPluginOutputs.Contains(pluginItem.Id) ? "full" : "preview" )):</strong></MudText>
+                                            @if (_expandedPluginOutputs.Contains(pluginItem.Id))
+                                            {
+                                                <RenderMultilineText Value="@pluginItem.SourceOutput" />
+                                            }
+                                            else
+                                            {
+                                                <RenderMultilineText Value="@Truncate(pluginItem.SourceOutput, 400)" />
+                                            }
+                                            @if (showOutputButton)
+                                            {
+                                                <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => TogglePluginOutput(pluginItem.Id)">
+                                                    @(_expandedPluginOutputs.Contains(pluginItem.Id) ? "Show less" : "Show more")
+                                                </MudButton>
+                                            }
+                                        }
+                                    </MudStack>
+                                </MudListItem>
+                            }
+                        </MudList>
+                    </MudPaper>
+                }
             }
-        }
+            else
+            {
+                <MudAlert Severity="Severity.Info">No source references available.</MudAlert>
+            }
+        </MudStack>
     </MudPaper>
+}
+
+@code {
+    private async Task LoadVectorChunksAsync(VectorStoreSourceReferenceItemInfo vsItem)
+    {
+        if (string.IsNullOrWhiteSpace(vsItem.StoredPartitionNumbers))
+        {
+            return;
+        }
+        var list = await ContentNodeApi.GetVectorChunksAsync(vsItem.IndexName, vsItem.DocumentId, vsItem.StoredPartitionNumbers!);
+        if (list != null && list.Count > 0)
+        {
+            var existing = vsItem.Chunks?.Select(c => c.PartitionNumber).ToHashSet() ?? new HashSet<int>();
+            foreach (var c in list)
+            {
+                if (!existing.Contains(c.PartitionNumber))
+                {
+                    vsItem.Chunks.Add(c);
+                }
+            }
+            StateHasChanged();
+        }
+    }
 }

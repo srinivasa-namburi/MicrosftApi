@@ -50,6 +50,8 @@ public class FileController : BaseController
     /// Downloads a file from the specified URL.
     /// </summary>
     /// <param name="fileUrl">The URL of the file to download.</param>
+    /// <param name="disposition">Optional content-disposition behavior: 'inline' or 'attachment'. Defaults to current behavior (attachment with filename).</param>
+    /// <param name="contentTypeOverride">Optional explicit content-type override (e.g., application/pdf). If not supplied, detected from file name.</param>
     /// <returns>The file stream if found
     /// Produces Status Codes:
     ///     200 OK: When completed sucessfully
@@ -59,7 +61,7 @@ public class FileController : BaseController
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/octet-stream")]
-    public async Task<IActionResult> DownloadFile(string fileUrl)
+    public async Task<IActionResult> DownloadFile(string fileUrl, [FromQuery] string? disposition = null, [FromQuery] string? contentTypeOverride = null)
     {
         var decodedFileUrl = Uri.UnescapeDataString(fileUrl);
 
@@ -69,12 +71,20 @@ public class FileController : BaseController
             return NotFound();
         }
 
-        // Optional: Set the content type if you know it. Here, application/octet-stream
-        // is a generic type for binary data.
-        var contentType = new MimeTypesDetection().GetFileType(decodedFileUrl);
-        // the file name is everything after the final '/' character. It consists of the
-        // Document ID, a dash, a random GUID and then the file extension after a period.
+        var contentType = string.IsNullOrWhiteSpace(contentTypeOverride)
+            ? new MimeTypesDetection().GetFileType(decodedFileUrl)
+            : contentTypeOverride;
+
         var fileName = decodedFileUrl[(decodedFileUrl.LastIndexOf('/') + 1)..];
+
+        // If inline requested, return FileStreamResult without forcing download header
+        if (!string.IsNullOrWhiteSpace(disposition) && disposition.Equals("inline", StringComparison.OrdinalIgnoreCase))
+        {
+            // For inline, do not pass the download file name to avoid attachment disposition; set content-type only
+            return File(stream, contentType);
+        }
+
+        // Default behavior (download/attachment with filename)
         return File(stream, contentType, fileName);
     }
 
@@ -82,6 +92,8 @@ public class FileController : BaseController
     /// Downloads a file by its link ID.
     /// </summary>
     /// <param name="linkId">The link ID of the file to download.</param>
+    /// <param name="disposition">Optional content-disposition behavior: 'inline' or 'attachment'. Defaults to current behavior (attachment with filename).</param>
+    /// <param name="contentTypeOverride">Optional explicit content-type override (e.g., application/pdf). If not supplied, detected from file name.</param>
     /// <returns>The file stream if found
     /// Produces Status Codes:
     ///     200 OK: When completed sucessfully
@@ -91,7 +103,7 @@ public class FileController : BaseController
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/octet-stream")]
-    public async Task<IActionResult> DownloadFileById(string linkId)
+    public async Task<IActionResult> DownloadFileById(string linkId, [FromQuery] string? disposition = null, [FromQuery] string? contentTypeOverride = null)
     {
         var file = _dbContext.ExportedDocumentLinks.FirstOrDefault(edl => edl.Id == new Guid(linkId));
         if (file == null)
@@ -107,12 +119,16 @@ public class FileController : BaseController
             return NotFound();
         }
 
-        // Optional: Set the content type if you know it. Here, application/octet-stream is a
-        // generic type for binary data.
-        var contentType = new MimeTypesDetection().GetFileType(decodedFileUrl);
+        var contentType = string.IsNullOrWhiteSpace(contentTypeOverride)
+            ? new MimeTypesDetection().GetFileType(decodedFileUrl)
+            : contentTypeOverride;
         var fileName = decodedFileUrl[(decodedFileUrl.LastIndexOf('/') + 1)..];
-        // the file name is everything after the final '/' character. It consists of the Document ID,
-        // a dash, a random GUID and then the file extension after a period.
+
+        if (!string.IsNullOrWhiteSpace(disposition) && disposition.Equals("inline", StringComparison.OrdinalIgnoreCase))
+        {
+            return File(stream, contentType);
+        }
+
         return File(stream, contentType, fileName);
     }
 

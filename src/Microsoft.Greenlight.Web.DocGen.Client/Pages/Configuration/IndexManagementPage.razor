@@ -12,6 +12,7 @@
 @inject IDocumentProcessApiClient DocumentProcessApiClient
 @inject IFileApiClient FileApiClient
 @inject NavigationManager NavigationManager
+@inject SignalRConnectionService SignalRConnectionService
 
 <MudPaper Class="pa-4">
     <MudText Typo="Typo.h5" Class="mb-2">Index Management</MudText>
@@ -212,15 +213,7 @@
     {
         if (HubConnection == null)
         {
-            var apiAddress = await AuthorizationApiClient.GetApiAddressAsync();
-            HubConnection = new HubConnectionBuilder()
-                .WithUrl($"{apiAddress}/hubs/notification-hub", options =>
-                {
-                    options.AccessTokenProvider = async () => await ConfigurationApiClient.GetAccessTokenAsync();
-                })
-                .WithStatefulReconnect()
-                .WithAutomaticReconnect()
-                .Build();
+            HubConnection = await SignalRConnectionService.GetOrCreateAsync();
         }
 
         HubConnection.On<IndexExportJobNotification>("ReceiveExportJobCompletedNotification", async notification => await HandleExportJobStatusChanged(notification.JobId));
@@ -245,7 +238,6 @@
             HubConnection.Remove("ReceiveImportJobFailedNotification");
 
             await HubConnection.SendAsync("RemoveFromGroup", "admin");
-            await HubConnection.StopAsync();
         }
     }
 
@@ -254,7 +246,6 @@
         if (HubConnection != null)
         {
             await StopHubConnections();
-            await HubConnection.DisposeAsync();
         }
     }
 

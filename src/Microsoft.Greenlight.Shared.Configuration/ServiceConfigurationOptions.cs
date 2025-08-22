@@ -10,6 +10,9 @@ public class ServiceConfigurationOptions
     /// </summary>
     public const string PropertyName = "ServiceConfiguration";
 
+    /// <summary>
+    /// Host name override options for web and API endpoints.
+    /// </summary>
     public HostNameOverrideOptions HostNameOverride { get; set; } = new HostNameOverrideOptions();
 
     /// <summary>
@@ -123,6 +126,12 @@ public class ServiceConfigurationOptions
         public ReferenceIndexingOptions ReferenceIndexing { get; set; } = new ReferenceIndexingOptions();
 
         /// <summary>
+        /// Global vector store configuration options (Semantic Kernel vector store layer).
+        /// Bound under ServiceConfiguration:GreenlightServices:VectorStore.
+        /// </summary>
+        public VectorStoreOptions VectorStore { get; set; } = new VectorStoreOptions();
+
+        /// <summary>
         /// Options for reference indexing.
         /// </summary>
         public class ReferenceIndexingOptions
@@ -208,6 +217,37 @@ public class ServiceConfigurationOptions
             /// Enable a scheduled ingestion.
             /// </summary>
             public bool ScheduledIngestion { get; set; }
+
+            /// <summary>
+            /// OCR configuration for ingestion (languages, sources, caching).
+            /// </summary>
+            public OcrOptions Ocr { get; set; } = new OcrOptions();
+
+            /// <summary>
+            /// OCR options for PDF/image text extraction.
+            /// </summary>
+            public class OcrOptions
+            {
+                /// <summary>
+                /// Default OCR languages (Tesseract codes) to use, combined like "eng+jpn".
+                /// </summary>
+                public List<string> DefaultLanguages { get; set; } = new List<string> { "eng" };
+
+                /// <summary>
+                /// Blob container name where optional *.traineddata files are stored.
+                /// </summary>
+                public string TessdataBlobContainer { get; set; } = "ocr-tessdata";
+
+                /// <summary>
+                /// Allow downloading missing language files from external repository (GitHub tessdata).
+                /// </summary>
+                public bool AllowExternalDownloads { get; set; }
+
+                /// <summary>
+                /// Base URL for external language downloads (raw file URL). Example: https://github.com/tesseract-ocr/tessdata/raw/main
+                /// </summary>
+                public string ExternalRepoBaseUrl { get; set; } = "https://github.com/tesseract-ocr/tessdata/raw/main";
+            }
         }
 
         /// <summary>
@@ -227,6 +267,9 @@ public class ServiceConfigurationOptions
 
         }
 
+        /// <summary>
+        /// Global system-level feature toggles and infrastructure usage flags.
+        /// </summary>
         public class GlobalOptions
         {
             /// <summary>

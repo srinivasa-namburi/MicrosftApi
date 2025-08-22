@@ -1,0 +1,316 @@
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.Greenlight.Shared.Contracts.DTO
+@using Microsoft.Greenlight.Shared.Contracts.Messages.Reindexing.Events
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@implements IAsyncDisposable
+@inject IDocumentReindexApiClient DocumentReindexApiClient
+@inject NavigationManager Navigation
+@inject SignalRConnectionService SignalRConnectionService
+@inject SignalRSubscriptionFactory SignalRSubscriptionFactory
+
+<MudPaper Class="pa-4" Elevation="2">
+    <MudStack Spacing="3">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h6">
+                <MudIcon Icon="@GetStatusIcon()" Color="@GetStatusColor()" Class="mr-2" />
+                Reindexing Progress
+            </MudText>
+            @if (Status == ReindexOrchestrationState.Running)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.Refresh" 
+                               OnClick="RefreshStatusAsync" 
+                               Size="Size.Small"
+                               Title="Refresh Status" />
+            }
+        </MudStack>
+
+        <MudStack>
+            <MudText Typo="Typo.body1">
+                <strong>Target:</strong> @TargetName
+            </MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                <strong>Reason:</strong> @Reason
+            </MudText>
+            @if (!string.IsNullOrEmpty(OrchestrationId))
+            {
+                <MudText Typo="Typo.caption" Color="Color.Tertiary">
+                    <strong>ID:</strong> @OrchestrationId
+                </MudText>
+            }
+        </MudStack>
+
+        @if (Status == ReindexOrchestrationState.Running)
+        {
+            <MudStack>
+                <MudProgressLinear Color="Color.Primary" 
+                                   Value="@ProgressPercentage" 
+                                   Size="Size.Medium" 
+                                   Class="mb-2" />
+                <MudText Typo="Typo.body2" Align="Align.Center">
+                    @ProcessedDocuments of @TotalDocuments documents processed (@ProgressPercentage.ToString("F1")%)
+                </MudText>
+                @if (FailedDocuments > 0)
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Warning">
+                        <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Small" Class="mr-1" />
+                        @FailedDocuments documents failed
+                    </MudText>
+                }
+            </MudStack>
+        }
+        else if (Status == ReindexOrchestrationState.Completed)
+        {
+            <MudAlert Severity="Severity.Success">
+                <strong>Reindexing completed successfully!</strong><br/>
+                @ProcessedDocuments documents processed successfully.
+                @if (FailedDocuments > 0)
+                {
+                    <br/>@($"{FailedDocuments} documents failed processing.")
+                }
+            </MudAlert>
+        }
+        else if (Status == ReindexOrchestrationState.Failed)
+        {
+            <MudAlert Severity="Severity.Error">
+                <strong>Reindexing failed.</strong><br/>
+                @ProcessedDocuments documents processed, @FailedDocuments failed.
+                @if (!string.IsNullOrEmpty(LastError))
+                {
+                    <br/><strong>Last error:</strong> @LastError
+                }
+            </MudAlert>
+        }
+        else if (Status == ReindexOrchestrationState.NotStarted)
+        {
+            <MudAlert Severity="Severity.Info">
+                Reindexing operation has not started yet.
+            </MudAlert>
+        }
+
+        @if (ConnectionStatus != "Connected" && Status == ReindexOrchestrationState.Running)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mt-2">
+                <MudIcon Icon="@Icons.Material.Filled.CloudOff" Class="mr-2" />
+                Real-time updates unavailable (@ConnectionStatus). Progress will refresh manually.
+            </MudAlert>
+        }
+    </MudStack>
+</MudPaper>
+
+@code {
+    [Parameter] public string OrchestrationId { get; set; } = string.Empty;
+    [Parameter] public string TargetName { get; set; } = string.Empty;
+    [Parameter] public string Reason { get; set; } = string.Empty;
+    [Parameter] public EventCallback<ReindexOrchestrationState> OnStatusChanged { get; set; }
+
+    [CascadingParameter] public HubConnection? HubConnection { get; set; }
+    private Timer? _refreshTimer;
+    private SignalRSubscriptionManager? _subMgr;
+    private DateTime _lastEventUtc = DateTime.UtcNow;
+    
+    // State properties
+    private ReindexOrchestrationState Status { get; set; } = ReindexOrchestrationState.NotStarted;
+    private int TotalDocuments { get; set; }
+    private int ProcessedDocuments { get; set; }
+    private int FailedDocuments { get; set; }
+    private string LastError { get; set; } = string.Empty;
+    private string ConnectionStatus { get; set; } = "Disconnected";
+    
+    private double ProgressPercentage => TotalDocuments > 0 ? (double)(ProcessedDocuments + FailedDocuments) / TotalDocuments * 100 : 0;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.IsNullOrEmpty(OrchestrationId))
+        {
+            await InitializeSignalRConnectionAsync();
+            // Initial fetch to seed the UI in case we mounted mid-run.
+            await RefreshStatusAsync();
+            StartPeriodicRefresh();
+        }
+    }
+
+    private async Task InitializeSignalRConnectionAsync()
+    {
+        try
+        {
+            if (HubConnection == null)
+            {
+                HubConnection = await SignalRConnectionService.GetOrCreateAsync();
+            }
+
+            _subMgr = SignalRSubscriptionFactory.Create(HubConnection);
+
+            // Subscribe to reindexing notifications
+            _subMgr.RegisterHandlerOnce<DocumentReindexStartedNotification>("ReceiveDocumentReindexStartedNotification", OnReindexStarted);
+            _subMgr.RegisterHandlerOnce<DocumentReindexProgressNotification>("ReceiveDocumentReindexProgressNotification", OnReindexProgress);
+            _subMgr.RegisterHandlerOnce<DocumentReindexCompletedNotification>("ReceiveDocumentReindexCompletedNotification", OnReindexCompleted);
+            _subMgr.RegisterHandlerOnce<DocumentReindexFailedNotification>("ReceiveDocumentReindexFailedNotification", OnReindexFailed);
+
+            await _subMgr.EnsureConnectedAsync();
+            
+            // Join the orchestration group to receive notifications
+            await _subMgr.JoinGroupAsync(OrchestrationId);
+            
+            ConnectionStatus = HubConnection.State.ToString();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            ConnectionStatus = $"Error: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task RefreshStatusAsync()
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(OrchestrationId)) return;
+
+            var status = await DocumentReindexApiClient.GetReindexingStatusAsync(OrchestrationId);
+            if (status != null)
+            {
+                Status = status.Status;
+                TotalDocuments = status.TotalDocuments;
+                ProcessedDocuments = status.ProcessedDocuments;
+                FailedDocuments = status.FailedDocuments;
+                LastError = status.Errors.LastOrDefault() ?? string.Empty;
+                
+                await InvokeAsync(StateHasChanged);
+                await OnStatusChanged.InvokeAsync(Status);
+            }
+            else
+            {
+                // If status is null, the grain hasn't been initialized yet - keep waiting
+                Status = ReindexOrchestrationState.NotStarted;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Log error but don't show to user - this is background refresh
+            Console.WriteLine($"Error refreshing reindex status: {ex.Message}");
+        }
+    }
+
+    private void StartPeriodicRefresh()
+    {
+        _refreshTimer?.Dispose();
+        if (Status == ReindexOrchestrationState.Running)
+        {
+            // Watchdog: only poll if disconnected or if no SignalR events in the last 20 seconds.
+            _refreshTimer = new Timer(async _ =>
+            {
+                try
+                {
+                    var disconnected = HubConnection == null || HubConnection.State != HubConnectionState.Connected;
+                    var stale = (DateTime.UtcNow - _lastEventUtc) > TimeSpan.FromSeconds(20);
+                    if (disconnected || (Status == ReindexOrchestrationState.Running && stale))
+                    {
+                        await RefreshStatusAsync();
+                    }
+                }
+                catch
+                {
+                    // ignore timer exceptions
+                }
+            }, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+        }
+    }
+
+    private async Task OnReindexStarted(DocumentReindexStartedNotification notification)
+    {
+        if (notification.OrchestrationId == OrchestrationId)
+        {
+            _lastEventUtc = DateTime.UtcNow;
+            Status = ReindexOrchestrationState.Running;
+            await InvokeAsync(StateHasChanged);
+            await OnStatusChanged.InvokeAsync(Status);
+        }
+    }
+
+    private async Task OnReindexProgress(DocumentReindexProgressNotification notification)
+    {
+        if (notification.OrchestrationId == OrchestrationId)
+        {
+            _lastEventUtc = DateTime.UtcNow;
+            TotalDocuments = notification.TotalDocuments;
+            ProcessedDocuments = notification.ProcessedDocuments;
+            FailedDocuments = notification.FailedDocuments;
+            Status = ReindexOrchestrationState.Running;
+            
+            await InvokeAsync(StateHasChanged);
+            await OnStatusChanged.InvokeAsync(Status);
+        }
+    }
+
+    private async Task OnReindexCompleted(DocumentReindexCompletedNotification notification)
+    {
+        if (notification.OrchestrationId == OrchestrationId)
+        {
+            _lastEventUtc = DateTime.UtcNow;
+            TotalDocuments = notification.TotalDocuments;
+            ProcessedDocuments = notification.ProcessedDocuments;
+            FailedDocuments = notification.FailedDocuments;
+            Status = ReindexOrchestrationState.Completed;
+            
+            _refreshTimer?.Dispose(); // Stop periodic refresh
+            
+            await InvokeAsync(StateHasChanged);
+            await OnStatusChanged.InvokeAsync(Status);
+        }
+    }
+
+    private async Task OnReindexFailed(DocumentReindexFailedNotification notification)
+    {
+        if (notification.OrchestrationId == OrchestrationId)
+        {
+            _lastEventUtc = DateTime.UtcNow;
+            Status = ReindexOrchestrationState.Failed;
+            LastError = notification.ErrorMessage;
+            
+            _refreshTimer?.Dispose(); // Stop periodic refresh
+            
+            await InvokeAsync(StateHasChanged);
+            await OnStatusChanged.InvokeAsync(Status);
+        }
+    }
+
+    private string GetStatusIcon() => Status switch
+    {
+        ReindexOrchestrationState.Running => Icons.Material.Filled.Refresh,
+        ReindexOrchestrationState.Completed => Icons.Material.Filled.CheckCircle,
+        ReindexOrchestrationState.Failed => Icons.Material.Filled.Error,
+        _ => Icons.Material.Filled.Info
+    };
+
+    private Color GetStatusColor() => Status switch
+    {
+        ReindexOrchestrationState.Running => Color.Primary,
+        ReindexOrchestrationState.Completed => Color.Success,
+        ReindexOrchestrationState.Failed => Color.Error,
+        _ => Color.Default
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        _refreshTimer?.Dispose();
+        
+        if (_subMgr != null)
+        {
+            try
+            {
+                if (!string.IsNullOrEmpty(OrchestrationId))
+                {
+                    await _subMgr.LeaveGroupAsync(OrchestrationId);
+                }
+            }
+            catch
+            {
+                // Ignore disposal errors
+            }
+
+            await _subMgr.DisposeAsync();
+        }
+    }
+}

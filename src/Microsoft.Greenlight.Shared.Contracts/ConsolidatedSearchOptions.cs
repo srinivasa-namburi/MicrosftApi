@@ -41,6 +41,28 @@ namespace Microsoft.Greenlight.Shared.Contracts
         /// Number of following partitions.
         /// </summary>
         public int FollowingPartitionCount { get; set; } = 0;
+
+        /// <summary>
+        /// Enable progressive search with multiple relevance thresholds.
+        /// When enabled, if initial search finds no results, the repository will try
+        /// progressively lower relevance thresholds. Particularly useful for large chunks
+        /// that naturally score lower in similarity searches. Default is true.
+        /// </summary>
+        public bool EnableProgressiveSearch { get; set; } = true;
+
+        /// <summary>
+        /// Custom relevance thresholds for progressive search.
+        /// If null, uses default progressive thresholds. Only used when EnableProgressiveSearch is true.
+        /// Thresholds should be in descending order (highest to lowest relevance).
+        /// </summary>
+        public double[]? ProgressiveRelevanceThresholds { get; set; }
+
+        /// <summary>
+        /// Enable keyword-based fallback search as the final tier.
+        /// When enabled, if progressive relevance search fails, the repository will attempt
+        /// keyword-based searches using extracted terms from the query. Default is true.
+        /// </summary>
+        public bool EnableKeywordFallback { get; set; } = true;
     }
 
 }

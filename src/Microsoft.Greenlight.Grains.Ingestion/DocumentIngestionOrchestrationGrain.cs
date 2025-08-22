@@ -1,4 +1,6 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Greenlight.Grains.Ingestion.Contracts;
@@ -7,8 +9,11 @@ using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Helpers;
+using Microsoft.Greenlight.Shared.Models;
 using Microsoft.Greenlight.Shared.Services;
 using Orleans.Concurrency;
+using Microsoft.Greenlight.Shared.Services.Search.Abstractions;
+using Microsoft.Greenlight.Grains.Ingestion.Contracts.Models;
 
 namespace Microsoft.Greenlight.Grains.Ingestion;
 
@@ -24,11 +29,14 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
     private SemaphoreSlim _processingThrottleSemaphore;
     private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
     private readonly AzureFileHelper _azureFileHelper;
+    private readonly ISemanticKernelVectorStoreProvider _vectorStoreProvider;
 
     // In-memory counter for active child processes
     private int _activeChildCount = 0;
     // In-memory RunId for the current ingestion run
     private Guid? _currentRunId = null;
+    // In-memory activity flag for this orchestration activation
+    private volatile bool _isActive = false;
 
     public DocumentIngestionOrchestrationGrain(
         [PersistentState("docIngestOrchestration")]
@@ -38,7 +46,8 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
         IDocumentProcessInfoService documentProcessInfoService,
         IDocumentLibraryInfoService documentLibraryInfoService,
         IDbContextFactory<DocGenerationDbContext> dbContextFactory,
-        AzureFileHelper azureFileHelper)
+        AzureFileHelper azureFileHelper,
+        ISemanticKernelVectorStoreProvider vectorStoreProvider)
     {
         _state = state;
         _logger = logger;
@@ -47,78 +56,35 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
         _documentLibraryInfoService = documentLibraryInfoService;
         _dbContextFactory = dbContextFactory;
         _azureFileHelper = azureFileHelper;
+        _vectorStoreProvider = vectorStoreProvider;
     }
 
     public override async Task OnActivateAsync(CancellationToken cancellationToken)
     {
-        // Initialize the grain state if it's new
         if (string.IsNullOrWhiteSpace(_state.State.Id))
         {
             _state.State.Id = this.GetPrimaryKeyString();
             _state.State.Status = IngestionOrchestrationState.NotStarted;
-            _state.State.Errors = new List<string>();
+            _state.State.Errors = [];
             await SafeWriteStateAsync();
         }
 
-        // Initialize the semaphore when the grain activates
         var maxWorkers = _optionsSnapshot.Value.GreenlightServices.Scalability.NumberOfIngestionWorkers;
         if (maxWorkers <= 0)
-            maxWorkers = 4; // Default to 4 workers if not configured
+        {
+            // Use 2 workers by default if not configured
+            maxWorkers = 2;
+        }
 
         _processingThrottleSemaphore = new SemaphoreSlim(maxWorkers, maxWorkers);
 
         await base.OnActivateAsync(cancellationToken);
     }
 
-    private async Task ResumeOrStartIngestionAsync(CancellationToken cancellationToken)
+    public Task<bool> IsRunningAsync()
     {
-        if (_currentRunId == null)
-            return;
-        await using var db = _dbContextFactory.CreateDbContext();
-        var orchestrationId = this.GetPrimaryKeyString();
-        var files = await db.IngestedDocuments
-            .Where(x => x.OrchestrationId == orchestrationId && x.RunId == _currentRunId && x.IngestionState != IngestionState.Complete && x.IngestionState != IngestionState.Failed)
-            .ToListAsync(cancellationToken);
-
-        foreach (var file in files)
-        {
-            var fileGrain = GrainFactory.GetGrain<IFileIngestionGrain>(file.Id);
-            if (await fileGrain.IsActiveAsync())
-            {
-                _logger.LogDebug("FileIngestionGrain for file {FileId} is already active, skipping start.", file.Id);
-                continue;
-            }
-
-            await _processingThrottleSemaphore.WaitAsync(TimeSpan.FromMinutes(15));
-            // Stagger execution to resolve dependencies
-            await Task.Delay(500, cancellationToken);
-
-            // Increment active child count for each file started
-            Interlocked.Increment(ref _activeChildCount);
-
-            _ = fileGrain.StartIngestionAsync(file.Id)
-                .ContinueWith(t =>
-                {
-                    if (t.IsFaulted)
-                    {
-                        _logger.LogError(t.Exception, "Error starting ingestion for file {FileId}", file.Id);
-                    }
-
-                    try
-                    {
-                        _processingThrottleSemaphore.Release();
-                    }
-                    catch (SemaphoreFullException)
-                    {
-                        // There was no semaphore to release
-                    }
-                }, TaskScheduler.Current);
-        }
-    }
-
-    public async Task<DocumentIngestionState> GetStateAsync()
-    {
-        return _state.State;
+        // Only rely on the in-memory flag for the active orchestration in this activation
+        return Task.FromResult(_isActive);
     }
 
     public async Task StartIngestionAsync(
@@ -127,6 +93,13 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
         string blobContainerName,
         string folderPath)
     {
+        // Back off if this orchestration activation is already running
+        if (_isActive)
+        {
+            _logger.LogInformation("Orchestration {OrchestrationId} is already active. Skipping start.", this.GetPrimaryKeyString());
+            return;
+        }
+
         // Generate a new RunId for this ingestion run
         _currentRunId = Guid.NewGuid();
         var runId = _currentRunId.Value;
@@ -220,44 +193,77 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
             _state.State.TargetContainerName = documentProcess.BlobStorageContainerName;
         }
 
-        // Enumerate blobs in the container/folder and add new IngestedDocument entries if needed
+        // Mark orchestration as active for this activation
+        _isActive = true;
+
+        // Use hashing grain to enumerate and hash blobs in parallel.
+        var hashingGrainKey = orchestrationId; // tie hashing to orchestration
+        var hashingGrain = GrainFactory.GetGrain<IBlobHashingGrain>(hashingGrainKey);
+        if (await hashingGrain.IsActiveAsync())
+        {
+            _logger.LogInformation("Hashing already active for orchestration {OrchestrationId}. Backing off this cycle.", orchestrationId);
+            return; // let the scheduler retry on its next cycle; remain active only for our own run
+        }
+
+        List<BlobHashInfo> blobHashes = await hashingGrain.StartHashingAsync(_state.State.TargetContainerName, folderPath, runId);
+
+        // Enumerate blobs based on the results and add/update IngestedDocument entries
         await using (var db = await _dbContextFactory.CreateDbContextAsync())
         {
             // Fetch all existing documents for this orchestration to perform in-memory lookups or updates.
-            var allExistingDocsForOrchestration = db.IngestedDocuments
-                .Where(x => x.OrchestrationId == orchestrationId);
-              
+            var allExistingDocsForOrchestration = await db.IngestedDocuments
+                .Where(x => x.OrchestrationId == orchestrationId)
+                .ToListAsync();
 
-            var containerClient = _azureFileHelper.GetBlobServiceClient().GetBlobContainerClient(_state.State.TargetContainerName);
-            await containerClient.CreateIfNotExistsAsync();
-
-            _logger.LogDebug("Enumerating blobs in container {ContainerName} with prefix {FolderPath}", _state.State.TargetContainerName, folderPath);
-            var blobs = containerClient.GetBlobs(prefix: folderPath);
             int newFiles = 0;
             int resetFiles = 0;
             int skippedAlreadyProcessed = 0;
 
-            foreach (var blob in blobs)
+            foreach (var entry in blobHashes)
             {
-                string relativeFileName = System.IO.Path.GetFileName(blob.Name);
-                if (string.IsNullOrEmpty(relativeFileName) || blob.Name.TrimEnd('/').Equals(folderPath.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
-                {
-                    // This can happen if the prefix itself is listed as a blob, or if Path.GetFileName returns empty for a directory-like structure.
-                    // We are interested in files, so skip such entries.
-                    _logger.LogDebug("Skipping blob entry {BlobName} as it appears to be a folder or has no filename component relative to folderPath {FolderPath}.", blob.Name, folderPath);
-                    continue;
-                }
+                var relativeFileName = entry.RelativeFileName;
+                var fullBlobUrl = entry.FullBlobUrl;
+                var currentHash = entry.Hash;
 
-                var existingDoc = allExistingDocsForOrchestration.FirstOrDefault(d =>
-                                    d.FolderPath == folderPath &&
-                                    d.FileName == relativeFileName &&
-                                    d.Container == _state.State.TargetContainerName);
+                IngestedDocument? existingDoc = null;
+                if (!string.IsNullOrEmpty(currentHash))
+                {
+                    // Try exact match including hash first
+                    existingDoc = allExistingDocsForOrchestration.FirstOrDefault(d =>
+                        d.FolderPath == folderPath &&
+                        d.FileName == relativeFileName &&
+                        d.Container == _state.State.TargetContainerName &&
+                        d.FileHash == currentHash);
+
+                    // Backfill hash if we only have a name match without hash stored
+                    if (existingDoc == null)
+                    {
+                        var existingByName = allExistingDocsForOrchestration.FirstOrDefault(d =>
+                            d.FolderPath == folderPath &&
+                            d.FileName == relativeFileName &&
+                            d.Container == _state.State.TargetContainerName);
+                        if (existingByName != null && string.IsNullOrEmpty(existingByName.FileHash))
+                        {
+                            existingByName.FileHash = currentHash;
+                            await db.SaveChangesAsync();
+                            existingDoc = existingByName;
+                        }
+                    }
+                }
+                else
+                {
+                    // Fall back to name-only match if we couldn't compute a hash
+                    existingDoc = allExistingDocsForOrchestration.FirstOrDefault(d =>
+                        d.FolderPath == folderPath &&
+                        d.FileName == relativeFileName &&
+                        d.Container == _state.State.TargetContainerName);
+                }
 
                 if (existingDoc == null)
                 {
-                    _logger.LogInformation("New file discovered: Container={Container}, FolderPath={FolderPath}, FileName={RelativeFileName} (Original Blob Path: {BlobName})",
-                        _state.State.TargetContainerName, folderPath, relativeFileName, blob.Name);
-                    db.IngestedDocuments.Add(new Microsoft.Greenlight.Shared.Models.IngestedDocument
+                    _logger.LogInformation("New file discovered: Container={Container}, FolderPath={FolderPath}, FileName={RelativeFileName}",
+                        _state.State.TargetContainerName, folderPath, relativeFileName);
+                    db.IngestedDocuments.Add(new IngestedDocument
                     {
                         Id = Guid.NewGuid(),
                         FileName = relativeFileName, // Store relative file name
@@ -267,43 +273,113 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
                         RunId = runId,
                         IngestionState = IngestionState.Discovered,
                         IngestedDate = DateTime.UtcNow,
-                        OriginalDocumentUrl = containerClient.GetBlobClient(blob.Name).Uri.ToString(), // Full path for URL
+                        OriginalDocumentUrl = fullBlobUrl, // Full path for URL
                         DocumentLibraryType = documentLibraryType,
-                        DocumentLibraryOrProcessName = documentLibraryShortName
+                        DocumentLibraryOrProcessName = documentLibraryShortName,
+                        FileHash = currentHash
                     });
                     newFiles++;
                 }
                 else // Document already exists in DB for this OrchestrationId, FolderPath, and FileName
                 {
-                    if (existingDoc.IngestionState == IngestionState.Failed)
+                    switch (existingDoc.IngestionState)
                     {
-                        _logger.LogInformation("Resetting failed document for re-ingestion: {ExistingDocFileName} in folder {ExistingDocFolderPath}", existingDoc.FileName, existingDoc.FolderPath);
-                        existingDoc.IngestionState = IngestionState.Discovered;
-                        existingDoc.IngestedDate = DateTime.UtcNow;
-                        existingDoc.OriginalDocumentUrl = containerClient.GetBlobClient(blob.Name).Uri.ToString();
-                        existingDoc.RunId = runId;
-                        existingDoc.Error = null;
-                        resetFiles++;
-                    }
-                    else if (existingDoc.IngestionState == IngestionState.Complete)
-                    {
-                        // If the document is already marked as complete in the DB for this orchestration, folder, and file name,
-                        // we can assume it was processed successfully in a previous run or by another mechanism.
-                        // Delete the blob from the source/auto-import folder to prevent reprocessing.
-                        _logger.LogInformation("Document {ExistingDocFileName} in folder {ExistingDocFolderPath} already processed and complete. Deleting from source location {BlobName}.",
-                            existingDoc.FileName, existingDoc.FolderPath, blob.Name);
-                        await containerClient.GetBlobClient(blob.Name).DeleteIfExistsAsync();
-                        skippedAlreadyProcessed++;
-                    }
-                    else
-                    {
-                        // Document exists but is in a state like Discovered, FileCopying, Processing from a previous/concurrent run.
-                        // If it's not associated with the current runId yet, and not actively being processed by a file grain,
-                        // it might be an abandoned file from a previous run. The logic at the start of StartIngestionAsync
-                        // should have reassigned its RunId if it was eligible.
-                        // If it was already assigned to this runId by that logic, it will be picked up by ResumeOrStartIngestionAsync.
-                        _logger.LogDebug("Document {ExistingDocFileName} in folder {ExistingDocFolderPath} already exists with state {IngestionState}. It will be handled by the current run if eligible.",
-                            existingDoc.FileName, existingDoc.FolderPath, existingDoc.IngestionState);
+                        case IngestionState.Failed:
+                            {
+                                _logger.LogInformation("Resetting failed document for re-ingestion: {ExistingDocFileName} in folder {ExistingDocFolderPath}", existingDoc.FileName, existingDoc.FolderPath);
+                                existingDoc.IngestionState = IngestionState.Discovered;
+                                existingDoc.IngestedDate = DateTime.UtcNow;
+                                existingDoc.OriginalDocumentUrl = fullBlobUrl;
+                                existingDoc.RunId = runId;
+                                existingDoc.Error = null;
+                                if (string.IsNullOrEmpty(existingDoc.FileHash) && !string.IsNullOrEmpty(currentHash))
+                                {
+                                    existingDoc.FileHash = currentHash;
+                                }
+                                resetFiles++;
+                                break;
+                            }
+                        case IngestionState.Complete:
+                            {
+                                // If the document is already marked as complete in the DB, check if it exists in the vector store (SK only).
+                                // If not present anymore (e.g., index cleared), reset it for re-indexing without re-upload when possible.
+                                bool scheduledForReindex = false;
+                                try
+                                {
+                                    // Determine if SK Vector Store is used and resolve index/document IDs
+                                    string? indexName = existingDoc.VectorStoreIndexName;
+                                    string? vectorDocId = existingDoc.VectorStoreDocumentId;
+
+                                    if (documentLibraryType == DocumentLibraryType.AdditionalDocumentLibrary)
+                                    {
+                                        var docLib = await _documentLibraryInfoService.GetDocumentLibraryByShortNameAsync(documentLibraryShortName);
+                                        if (docLib?.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
+                                        {
+                                            indexName ??= docLib.IndexName;
+                                        }
+                                        else
+                                        {
+                                            indexName = null; // Not SK Vector Store - fall through to skip/delete
+                                        }
+                                    }
+                                    else
+                                    {
+                                        var docProcess = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentLibraryShortName);
+                                        if (docProcess?.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
+                                        {
+                                            indexName ??= (docProcess.Repositories?.FirstOrDefault() ?? documentLibraryShortName);
+                                        }
+                                        else
+                                        {
+                                            indexName = null;
+                                        }
+                                    }
+
+                                    if (!string.IsNullOrWhiteSpace(indexName))
+                                    {
+                                        vectorDocId ??= SanitizeFileName(existingDoc.FileName);
+                                        var partitions = await _vectorStoreProvider.GetDocumentPartitionNumbersAsync(indexName!, vectorDocId!);
+                                        if (partitions == null || partitions.Count == 0)
+                                        {
+                                            // Not in vector store anymore - schedule for reindex
+                                            existingDoc.IsVectorStoreIndexed = false;
+                                            existingDoc.VectorStoreIndexedDate = null;
+                                            existingDoc.VectorStoreChunkCount = 0;
+                                            existingDoc.OriginalDocumentUrl = fullBlobUrl;
+                                            existingDoc.RunId = runId;
+
+                                            // If we already have a copied blob, skip copy step and go straight to processing
+                                            existingDoc.IngestionState = string.IsNullOrWhiteSpace(existingDoc.FinalBlobUrl)
+                                                ? IngestionState.Discovered
+                                                : IngestionState.FileCopied;
+
+                                            scheduledForReindex = true;
+                                            resetFiles++;
+                                            _logger.LogInformation("Scheduled document {File} for re-indexing because it is missing from vector store index {Index}", existingDoc.FileName, indexName);
+                                        }
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogWarning(ex, "Failed to verify vector store presence for {File}; defaulting to existing behavior", existingDoc.FileName);
+                                }
+
+                                if (!scheduledForReindex)
+                                {
+                                    // Already processed and present, delete from source to prevent reprocessing
+                                    _logger.LogInformation("Document {ExistingDocFileName} in folder {ExistingDocFolderPath} already processed and complete. Deleting from source location.",
+                                        existingDoc.FileName, existingDoc.FolderPath);
+                                    var containerClient = _azureFileHelper.GetBlobServiceClient().GetBlobContainerClient(_state.State.TargetContainerName);
+                                    await containerClient.GetBlobClient(entry.BlobName).DeleteIfExistsAsync();
+                                    skippedAlreadyProcessed++;
+                                }
+
+                                break;
+                            }
+                        default:
+                            _logger.LogDebug("Document {ExistingDocFileName} in folder {ExistingDocFolderPath} already exists with state {IngestionState}. It will be handled by the current run if eligible.",
+                                existingDoc.FileName, existingDoc.FolderPath, existingDoc.IngestionState);
+                            break;
                     }
                 }
             }
@@ -311,7 +387,7 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
             if (newFiles > 0 || resetFiles > 0)
             {
                 await db.SaveChangesAsync();
-                _logger.LogInformation("Committed DB changes: Added {NewCount} new files and reset {ResetCount} failed files for orchestration {OrchestrationId}. Skipped {SkippedCount} already processed files.",
+                _logger.LogInformation("Committed DB changes: Added {NewCount} new files and reset {ResetCount} failed/missing-index files for orchestration {OrchestrationId}. Skipped {SkippedCount} already processed files.",
                     newFiles, resetFiles, orchestrationId, skippedAlreadyProcessed);
             }
             else
@@ -334,6 +410,68 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
 
         // Start or resume parallel file processing
         await ResumeOrStartIngestionAsync(CancellationToken.None);
+    }
+
+    private async Task ResumeOrStartIngestionAsync(CancellationToken cancellationToken)
+    {
+        if (_currentRunId == null)
+        {
+            return;
+        }
+
+        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+        // The orchestration ID is calculated based on container path from outside the grain, making it
+        // the same across all ingestion runs for a given container/folder.
+        var orchestrationId = this.GetPrimaryKeyString();
+        var files = await db.IngestedDocuments
+            .Where(x => x.OrchestrationId == orchestrationId && x.RunId == _currentRunId &&
+                        x.IngestionState != IngestionState.Complete
+                        && x.IngestionState != IngestionState.Failed)
+            .ToListAsync(cancellationToken);
+
+        foreach (var file in files)
+        {
+            var fileGrain = GrainFactory.GetGrain<IFileIngestionGrain>(file.Id);
+            if (await fileGrain.IsActiveAsync())
+            {
+                _logger.LogDebug("FileIngestionGrain for file {FileId} is already active, skipping start.", file.Id);
+                continue;
+            }
+
+            // Try to acquire a slot with timeout; if we fail, stop scheduling for now to avoid spinning
+            var acquired = await _processingThrottleSemaphore.WaitAsync(TimeSpan.FromMinutes(15));
+            if (!acquired)
+            {
+                _logger.LogWarning("Timed out waiting for ingestion start throttle; will retry on next resume cycle for file {FileId}.", file.Id);
+                return;
+            }
+
+            // Stagger execution to resolve dependencies
+            await Task.Delay(500, cancellationToken);
+
+            // Increment active child count for each file started
+            Interlocked.Increment(ref _activeChildCount);
+
+            _ = fileGrain.StartIngestionAsync(file.Id)
+                .ContinueWith(t =>
+                {
+                    if (t.IsFaulted)
+                    {
+                        _logger.LogError(t.Exception, "Error starting ingestion for file {FileId}", file.Id);
+                    }
+
+                    try
+                    {
+                        // Only release if we actually acquired a slot
+                        _processingThrottleSemaphore.Release();
+                    }
+                    catch (SemaphoreFullException)
+                    {
+                        // There was no semaphore to release
+                    }
+                }, TaskScheduler.Default);
+        }
     }
 
     public async Task OnIngestionCompletedAsync()
@@ -364,10 +502,11 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
                 _state.State.FailedFiles = 0;
                 _state.State.Errors = new List<string>();
                 await SafeWriteStateAsync();
+
+                // Clear in-memory activity when the orchestration finishes
+                _isActive = false;
             }
         }
-        // Release a slot in the semaphore for the next document
-        ReleaseSemaphore();
         // Decrement active child count
         Interlocked.Decrement(ref _activeChildCount);
     }
@@ -401,12 +540,10 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
                 _state.State.FailedFiles = 0;
                 _state.State.Errors = new List<string>();
                 await SafeWriteStateAsync();
+
+                // Clear in-memory activity when the orchestration finishes with failure
+                _isActive = false;
             }
-        }
-        // Release a slot in the semaphore for the next document
-        if (acquired)
-        {
-            ReleaseSemaphore();
         }
         // Decrement active child count
         Interlocked.Decrement(ref _activeChildCount);
@@ -434,12 +571,33 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
         }
         catch (SemaphoreFullException)
         {
-            // There was no semaphore to release, this can happen if the semaphore was already released
-
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error releasing semaphore");
         }
+    }
+
+    // Basic filename sanitization consistent with vector store usage
+    private static string SanitizeFileName(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return $"unknown_file_{Guid.NewGuid():N}";
+        }
+
+        return fileName
+            .Replace(" ", "_")
+            .Replace("+", "_")
+            .Replace("~", "_")
+            .Replace("/", "_")
+            .Replace("\\", "_")
+            .Replace(":", "_")
+            .Replace("*", "_")
+            .Replace("?", "_")
+            .Replace("\"", "_")
+            .Replace("<", "_")
+            .Replace(">", "_")
+            .Replace("|", "_");
     }
 }

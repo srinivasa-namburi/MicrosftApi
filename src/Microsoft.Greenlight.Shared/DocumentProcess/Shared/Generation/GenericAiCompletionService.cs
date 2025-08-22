@@ -5,15 +5,21 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Data.Sql;
+using Microsoft.Greenlight.Shared.Helpers;
+using System.Text.Json;
 using Microsoft.Greenlight.Shared.Enums;
-using Microsoft.Greenlight.Shared.Extensions;
+// Duplicate using removed
 using Microsoft.Greenlight.Shared.Models;
 using Microsoft.Greenlight.Shared.Models.SourceReferences;
 using Microsoft.Greenlight.Shared.Plugins;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.Connectors.AzureOpenAI; // AzureOpenAIPromptExecutionSettings
+using Microsoft.SemanticKernel.Connectors.OpenAI; // ToolCallBehavior, OpenAI behavior types
+using Microsoft.SemanticKernel.ChatCompletion; // IChatCompletionService, ChatHistory
 using Scriban;
 using System.Text;
+using Microsoft.Greenlight.Shared.Extensions;
 
 namespace Microsoft.Greenlight.Shared.DocumentProcess.Shared.Generation;
 
@@ -55,122 +61,202 @@ public class GenericAiCompletionService : IAiCompletionService
         _dbContext = dbContextFactory.CreateDbContext();
     }
 
+    /// <summary>
+    /// Generate body content nodes from a heterogeneous set of source references (Kernel Memory + Vector Store).
+    /// </summary>
     public async Task<List<ContentNode>> GetBodyContentNodes(
-        List<DocumentProcessRepositorySourceReferenceItem> sourceDocuments,
+        List<SourceReferenceItem> sourceReferences,
         string sectionOrTitleNumber, string sectionOrTitleText, ContentNodeType contentNodeType,
         string tableOfContentsString, Guid? metadataId, ContentNode? sectionContentNode)
     {
-        var combinedBodyTextStringBuilder = new StringBuilder();
+        _logger.LogInformation("Starting GetBodyContentNodes for section {SectionNumber} - {SectionTitle} with {SourceReferenceCount} source references", 
+            sectionOrTitleNumber, sectionOrTitleText, sourceReferences.Count);
 
-        var contentNodeId = Guid.NewGuid();
-        var contentNodeSystemItemId = Guid.NewGuid();
-        _createdBodyContentNode = new ContentNode
+        try
         {
-            Id = contentNodeId,
-            Text = string.Empty,
-            Type = ContentNodeType.BodyText,
-            GenerationState = ContentNodeGenerationState.InProgress,
-            ContentNodeSystemItemId = contentNodeSystemItemId,
-            ContentNodeSystemItem = new ContentNodeSystemItem
+            var combinedBodyTextStringBuilder = new StringBuilder();
+
+            var contentNodeId = Guid.NewGuid();
+            var contentNodeSystemItemId = Guid.NewGuid();
+            _createdBodyContentNode = new ContentNode
             {
-                Id = contentNodeSystemItemId,
-                ContentNodeId = contentNodeId,
-                SourceReferences = [],
-                ComputedSectionPromptInstructions = sectionContentNode?.PromptInstructions
+                Id = contentNodeId,
+                Text = string.Empty,
+                Type = ContentNodeType.BodyText,
+                GenerationState = ContentNodeGenerationState.InProgress,
+                ContentNodeSystemItemId = contentNodeSystemItemId,
+                ContentNodeSystemItem = new ContentNodeSystemItem
+                {
+                    Id = contentNodeSystemItemId,
+                    ContentNodeId = contentNodeId,
+                    SourceReferences = [],
+                    ComputedSectionPromptInstructions = sectionContentNode?.PromptInstructions
+                }
+            };
+
+            _logger.LogDebug("Created content node {ContentNodeId} for section {SectionNumber} - {SectionTitle}", 
+                contentNodeId, sectionOrTitleNumber, sectionOrTitleText);
+
+            var documentLikeSources = sourceReferences
+                .Where(r => r is DocumentProcessRepositorySourceReferenceItem or DocumentLibrarySourceReferenceItem or VectorStoreAggregatedSourceReferenceItem)
+                .ToList();
+
+            _logger.LogDebug("Filtered to {DocumentLikeSourceCount} document-like sources from {TotalSourceCount} total sources", 
+                documentLikeSources.Count, sourceReferences.Count);
+
+            foreach (var kmDoc in documentLikeSources.OfType<KernelMemoryDocumentSourceReferenceItem>())
+            {
+                kmDoc.ContentNodeSystemItemId = _createdBodyContentNode.ContentNodeSystemItem!.Id;
             }
-        };
 
-        foreach (var sourceDocument in sourceDocuments)
-        {
-            sourceDocument.ContentNodeSystemItemId = _createdBodyContentNode.ContentNodeSystemItem.Id;
+            _logger.LogDebug("Starting streaming body content text generation");
+
+            await foreach (var bodyContentNodeString in GetStreamingBodyContentText(documentLikeSources, sectionOrTitleNumber, sectionOrTitleText,
+                               contentNodeType, tableOfContentsString, metadataId, sectionContentNode))
+            {
+                combinedBodyTextStringBuilder.Append(bodyContentNodeString);
+            }
+
+            var combinedBodyText = combinedBodyTextStringBuilder.ToString();
+            _createdBodyContentNode.Text = combinedBodyText;
+            _createdBodyContentNode.GenerationState = ContentNodeGenerationState.Completed;
+
+            _logger.LogInformation("Successfully generated body content with {TextLength} characters for section {SectionNumber} - {SectionTitle}", 
+                combinedBodyText.Length, sectionOrTitleNumber, sectionOrTitleText);
+
+            return [_createdBodyContentNode];
         }
-
-        await foreach (var bodyContentNodeString in GetStreamingBodyContentText(sourceDocuments, sectionOrTitleNumber, sectionOrTitleText,
-                           contentNodeType, tableOfContentsString, metadataId, sectionContentNode))
+        catch (Exception ex)
         {
-            combinedBodyTextStringBuilder.Append(bodyContentNodeString);
+            _logger.LogError(ex, "Error in GetBodyContentNodes for section {SectionNumber} - {SectionTitle}", 
+                sectionOrTitleNumber, sectionOrTitleText);
+            throw;
         }
-
-        var combinedBodyText = combinedBodyTextStringBuilder.ToString();
-        _createdBodyContentNode.Text = combinedBodyText;
-        _createdBodyContentNode.GenerationState = ContentNodeGenerationState.Completed;
-
-        return [_createdBodyContentNode];
     }
 
     private async IAsyncEnumerable<string> GetStreamingBodyContentText(
-        List<DocumentProcessRepositorySourceReferenceItem> sourceDocuments,
+        List<SourceReferenceItem> sourceDocuments,
         string sectionOrTitleNumber, string sectionOrTitleText,
         ContentNodeType contentNodeType, string tableOfContentsString, Guid? metadataId, ContentNode? sectionContentNode)
     {
+        _logger.LogDebug("Starting GetStreamingBodyContentText for section {SectionNumber} - {SectionTitle}", 
+            sectionOrTitleNumber, sectionOrTitleText);
 
-        var documentProcess = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(ProcessName);
-        var pluginSourceReferenceCollector = _sp.GetRequiredService<IPluginSourceReferenceCollector>();
+        DocumentProcessInfo documentProcess;
+        IPluginSourceReferenceCollector pluginSourceReferenceCollector;
+        string systemPrompt;
+        string exampleString;
+        string originalPrompt = "";
+        var chatResponses = new List<string>();
+        var lastPassResponse = new List<string>();
+        string customDataString;
+        string fullSectionName;
 
-        _sk = await _kernelFactory.GetKernelForDocumentProcessAsync(documentProcess!.ShortName);
-
-        if (_sk == null)
+        // Initialize all variables outside the main loop to avoid try-catch with yield
+        try
         {
-            throw new InvalidOperationException("Semantic Kernel instance not set for GenericAiCompletionService");
-        }
-    
-        _sk.PrepareSemanticKernelInstanceForGeneration(documentProcess!.ShortName);
-
-        var sectionExample = new StringBuilder();
-
-        // Each document in sourceDocuments has a list of Citations. Each Citation has a list of Partitions. Each of these partitions has a Relevance (double) score.
-        // I want to take the top 20 documents by relevance score and use them as examples in the prompt. Bubble up the highest relevance partitions to sort the documents.
-
-        var sourceDocumentsWithHighestScoringPartitions = sourceDocuments
-            .OrderByDescending(d => d.GetHighestScoringPartitionFromCitations())
-            .Take(10)
-            .ToList();
-        
-        
-        foreach (var document in sourceDocumentsWithHighestScoringPartitions)
-        {
-            sectionExample.AppendLine($"[EXAMPLE: Document Extract]");
-            sectionExample.AppendLine(document.FullTextOutput);
-            sectionExample.AppendLine($"[/EXAMPLE]");
-
-            // Ensure ContentNodeSystemItem is initialized before accessing it
-            if (_createdBodyContentNode.ContentNodeSystemItem == null)
+            documentProcess = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(ProcessName);
+            
+            if (documentProcess == null)
             {
-                _createdBodyContentNode.ContentNodeSystemItem = new ContentNodeSystemItem
-                {
-                    Id = Guid.NewGuid(),
-                    ContentNodeId = _createdBodyContentNode.Id,
-                    SourceReferences = [],
-                    ComputedSectionPromptInstructions = sectionContentNode?.PromptInstructions
-                };
+                _logger.LogError("Document process {ProcessName} not found", ProcessName);
+                throw new InvalidOperationException($"Document process {ProcessName} not found");
             }
 
-            _createdBodyContentNode.ContentNodeSystemItem.SourceReferences.Add(document);
+            _logger.LogDebug("Retrieved document process info for {ProcessName}", ProcessName);
+
+            pluginSourceReferenceCollector = _sp.GetRequiredService<IPluginSourceReferenceCollector>();
+
+            _sk = await _kernelFactory.GetKernelForDocumentProcessAsync(documentProcess!.ShortName);
+
+            if (_sk == null)
+            {
+                _logger.LogError("Semantic Kernel instance is null for document process {ProcessName}", ProcessName);
+                throw new InvalidOperationException($"Semantic Kernel instance not set for GenericAiCompletionService for process {ProcessName}");
+            }
+
+            _logger.LogDebug("Retrieved Semantic Kernel instance for document process {ProcessName}", ProcessName);
+        
+            _sk.PrepareSemanticKernelInstanceForGeneration(documentProcess!.ShortName);
+
+            var sectionExample = new StringBuilder();
+
+            // Each document in sourceDocuments has a list of Citations. Each Citation has a list of Partitions. Each of these partitions has a Relevance (double) score.
+            // I want to take the top 20 documents by relevance score and use them as examples in the prompt. Bubble up the highest relevance partitions to sort the documents.
+
+            var sourceDocumentsWithHighestScoringPartitions = sourceDocuments
+                    .OrderByDescending(d => d.GetHighestRelevanceScore())
+                    .Take(10)
+                    .ToList();
+
+            _logger.LogDebug("Selected top {SelectedDocumentCount} documents with highest relevance scores from {TotalDocumentCount} total documents", 
+                sourceDocumentsWithHighestScoringPartitions.Count, sourceDocuments.Count);
+        
+            foreach (var document in sourceDocumentsWithHighestScoringPartitions)
+            {
+                sectionExample.AppendLine($"[EXAMPLE: Document Extract]");
+                // Determine example text depending on source type
+                string exampleText = document switch
+                {
+                    KernelMemoryDocumentSourceReferenceItem km => km.FullTextOutput,
+                    VectorStoreAggregatedSourceReferenceItem vs => string.Join("", vs.Chunks.Select(c => c.Text)),
+                    _ => string.Empty
+                };
+                if (!string.IsNullOrWhiteSpace(exampleText))
+                {
+                    sectionExample.AppendLine(exampleText);
+                }
+                sectionExample.AppendLine($"[/EXAMPLE]");
+
+                // Ensure ContentNodeSystemItem is initialized before accessing it
+                if (_createdBodyContentNode.ContentNodeSystemItem == null)
+                {
+                    _createdBodyContentNode.ContentNodeSystemItem = new ContentNodeSystemItem
+                    {
+                        Id = Guid.NewGuid(),
+                        ContentNodeId = _createdBodyContentNode.Id,
+                        SourceReferences = [],
+                        ComputedSectionPromptInstructions = sectionContentNode?.PromptInstructions
+                    };
+                }
+
+                _createdBodyContentNode.ContentNodeSystemItem.SourceReferences.Add(document);
+            }
+
+            exampleString = sectionExample.ToString();
+            var systemPromptInfo =
+                await _promptInfoService.GetPromptByShortCodeAndProcessNameAsync("SectionGenerationSystemPrompt", ProcessName);
+            systemPrompt = systemPromptInfo?.Text ?? string.Empty;
+
+            _logger.LogDebug("Retrieved system prompt for process {ProcessName}: {HasSystemPrompt}", 
+                ProcessName, !string.IsNullOrEmpty(systemPrompt));
+
+            var documentMetaData = await _dbContext.DocumentMetadata.FindAsync(metadataId);
+
+            customDataString = "No custom data available for this query";
+
+            if (documentMetaData != null && !string.IsNullOrEmpty(documentMetaData.MetadataJson))
+            {
+                customDataString = documentMetaData.MetadataJson;
+            }
+
+            fullSectionName = string.IsNullOrEmpty(sectionOrTitleNumber) ? sectionOrTitleText : $"{sectionOrTitleNumber} {sectionOrTitleText}";
+
+            _logger.LogDebug("Starting {NumberOfPasses} passes for section {FullSectionName}", _numberOfPasses, fullSectionName);
         }
-
-        var exampleString = sectionExample.ToString();
-        var originalPrompt = "";
-        var chatResponses = new List<string>();
-        var systemPromptInfo =
-            await _promptInfoService.GetPromptByShortCodeAndProcessNameAsync("SectionGenerationSystemPrompt", ProcessName);
-        var systemPrompt = systemPromptInfo.Text;
-
-        var lastPassResponse = new List<string>();
-        var documentMetaData = await _dbContext.DocumentMetadata.FindAsync(metadataId);
-
-        var customDataString = "No custom data available for this query";
-
-        if (documentMetaData != null && !string.IsNullOrEmpty(documentMetaData.MetadataJson))
+        catch (Exception ex)
         {
-            customDataString = documentMetaData.MetadataJson;
+            _logger.LogError(ex, "Error in initialization for GetStreamingBodyContentText for section {SectionNumber} - {SectionTitle}", 
+                sectionOrTitleNumber, sectionOrTitleText);
+            throw;
         }
 
-        var fullSectionName = "";
-
-        fullSectionName = string.IsNullOrEmpty(sectionOrTitleNumber) ? sectionOrTitleText : $"{sectionOrTitleNumber} {sectionOrTitleText}";
-
+        // Main generation loop - moved outside try-catch to allow yielding
         for (var i = 0; i < _numberOfPasses; i++)
         {
+            _logger.LogDebug("Starting pass {PassNumber} of {NumberOfPasses} for section {FullSectionName}", 
+                i + 1, _numberOfPasses, fullSectionName);
+
             string prompt;
             if (i == 0)
             {
@@ -180,7 +266,11 @@ public class GenericAiCompletionService : IAiCompletionService
                     customDataString,
                     tableOfContentsString,
                     exampleString,
-                    sectionContentNode.PromptInstructions);
+                    sectionContentNode?.PromptInstructions);
+
+                prompt += """
+                          You may call tools. After tools finish, always produce a concise final answer for the user in natural language. Never end your turn with only tool output.
+                          """;
 
                 // Remove all the Example Documents from the prompt and make a skinny prompt without it
                 // The documents are in the exampleString variable
@@ -220,6 +310,7 @@ public class GenericAiCompletionService : IAiCompletionService
                 // If the response contains the [*COMPLETE*] tag, we can stop the conversation
                 if (responseLine.Contains("[*COMPLETE*]", StringComparison.InvariantCultureIgnoreCase))
                 {
+                    _logger.LogDebug("Found completion tag in response for section {FullSectionName}, ending generation", fullSectionName);
                     yield break;
                 }
 
@@ -239,6 +330,8 @@ public class GenericAiCompletionService : IAiCompletionService
                 }
             }
         }
+
+        _logger.LogInformation("Completed all {NumberOfPasses} passes for section {FullSectionName}", _numberOfPasses, fullSectionName);
     }
 
     private async Task<string> BuildMainPrompt(string numberOfPasses,
@@ -336,9 +429,31 @@ public class GenericAiCompletionService : IAiCompletionService
             {"System-ExecutionId", executionIdString}
         };
 
-        await foreach (var update in _sk.InvokePromptStreamingAsync(userPrompt, kernelArguments))
+        // Collect all results first, then yield them to avoid try-catch with yield
+        var results = new List<string>();
+        
+        try
         {
-            yield return update.ToString();
+            var chatService = _sk!.GetRequiredService<IChatCompletionService>();
+            var history = new ChatHistory();
+            history.AddSystemMessage(systemPrompt);
+            history.AddUserMessage(userPrompt);
+
+            await foreach (var text in SemanticKernelStreamingHelper.StreamChatWithManualToolInvocationAsync(
+                chatService, history, executionSettings, _sk))
+            {
+                results.Add(text);
+            }
+        }
+        finally
+        {
+            // nothing
+        }
+
+        // Now yield all the collected results
+        foreach (var content in results)
+        {
+            yield return content;
         }
 
         var executionId = Guid.Parse(executionIdString);
@@ -364,21 +479,20 @@ public class GenericAiCompletionService : IAiCompletionService
         var executionSettings =
             await _kernelFactory.GetPromptExecutionSettingsForDocumentProcessAsync(documentProcess, AiTaskType.Summarization);
 
-        var summaryResult = "";
         var chatStringBuilder = new StringBuilder();
 
-        
+        var chatService = _sk!.GetRequiredService<IChatCompletionService>();
+        var history = new ChatHistory();
+        history.AddSystemMessage(systemPrompt);
+        history.AddUserMessage(summarizePrompt);
 
-        await foreach (var update in _sk.InvokePromptStreamingAsync(summarizePrompt, new KernelArguments(executionSettings)))
+        await foreach (var text in SemanticKernelStreamingHelper.StreamTextAsync(
+            chatService.GetStreamingChatMessageContentsAsync(history, executionSettings, _sk)))
         {
-            if (string.IsNullOrEmpty(update.ToString())) continue;
-
-           
-            chatStringBuilder.Append(update);
+            chatStringBuilder.Append(text);
         }
 
         _logger.LogInformation("Done summarizing output");
-
 
         return chatStringBuilder.ToString();
     }
