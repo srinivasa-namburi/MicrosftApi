@@ -65,7 +65,8 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
             await db.SaveChangesAsync();
 
             string indexName;
-            string vectorStoreDocumentId = SanitizeFileName(fileName); // Standard vector store document ID
+            // Use canonical vector document id scheme: Base64UrlEncode of sanitized filename
+            string vectorStoreDocumentId = Base64UrlEncode(SanitizeFileName(fileName));
 
             if (documentLibraryType == DocumentLibraryType.PrimaryDocumentProcessLibrary)
             {
@@ -179,7 +180,7 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
                 // Update vector store tracking properties with fallback values
                 trackedEntity.VectorStoreDocumentId = !string.IsNullOrWhiteSpace(vectorStoreDocumentId) 
                     ? vectorStoreDocumentId 
-                    : SanitizeFileName(trackedEntity.FileName); // Fallback to sanitized filename
+                    : Base64UrlEncode(SanitizeFileName(trackedEntity.FileName)); // Fallback to canonical scheme
                 
                 trackedEntity.VectorStoreIndexName = !string.IsNullOrWhiteSpace(indexName) 
                     ? indexName 
@@ -299,5 +300,16 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
             .Replace("<", "_")
             .Replace(">", "_")
             .Replace("|", "_");
+    }
+
+    /// <summary>
+    /// URL-safe Base64 encode without padding for consistent, provider-friendly identifiers.
+    /// Mirrors the repository implementation to keep IDs aligned.
+    /// </summary>
+    private static string Base64UrlEncode(string input)
+    {
+        var bytes = System.Text.Encoding.UTF8.GetBytes(input);
+        var base64 = Convert.ToBase64String(bytes);
+        return base64.Replace('+', '-').Replace('/', '_').TrimEnd('=');
     }
 }

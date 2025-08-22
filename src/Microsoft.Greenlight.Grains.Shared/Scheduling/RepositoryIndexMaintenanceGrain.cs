@@ -1,19 +1,19 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
-using Azure.Search.Documents.Indexes;
+
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
-using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.Shared.Services.Search;
+using Microsoft.Greenlight.Shared.Services.Search.Abstractions;
+using Npgsql;
 using Orleans.Concurrency;
-using Npgsql; // Added for Postgres support
-using System.Data;
+using Azure.Search.Documents.Indexes;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Microsoft.Greenlight.Grains.Shared.Scheduling;
 
@@ -101,7 +101,7 @@ public class RepositoryIndexMaintenanceGrain : Grain, IRepositoryIndexMaintenanc
             documentLibraryRepository, 
             indexNamesList);
 
-        // New: Cleanup orphaned ingested document records for removed processes/libraries
+        // Cleanup orphaned ingested document records for removed processes/libraries
         await RemoveOrphanedIngestedDocumentsAsync(documentProcessInfoService, documentLibraryInfoService);
     }
 
@@ -182,8 +182,17 @@ public class RepositoryIndexMaintenanceGrain : Grain, IRepositoryIndexMaintenanc
 
         foreach (var documentProcess in kernelMemoryDocumentProcesses)
         {
-            var kernelMemoryRepository = await _sp
-                .GetServiceForDocumentProcessAsync<IKernelMemoryRepository>(documentProcess.ShortName);
+            // Resolve the kernel memory repository from DI with a keyed service if configured
+            IKernelMemoryRepository? kernelMemoryRepository = null;
+            try
+            {
+                using var scope = _sp.CreateScope();
+                kernelMemoryRepository = scope.ServiceProvider.GetKeyedService<IKernelMemoryRepository>($"{documentProcess.ShortName}-IKernelMemory");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Failed to resolve keyed KM repository for {Process}", documentProcess.ShortName);
+            }
 
             if (kernelMemoryRepository == null)
             {
@@ -386,5 +395,34 @@ public class RepositoryIndexMaintenanceGrain : Grain, IRepositoryIndexMaintenanc
             _logger.LogError(ex, "Error in GetOrCreateDummyDocumentAsync");
             return null;
         }
+    }
+
+    private static string SanitizeFileName(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return $"unknown_file_{Guid.NewGuid():N}";
+        }
+
+        return fileName
+            .Replace(" ", "_")
+            .Replace("+", "_")
+            .Replace("~", "_")
+            .Replace("/", "_")
+            .Replace("\\", "_")
+            .Replace(":", "_")
+            .Replace("*", "_")
+            .Replace("?", "_")
+            .Replace("\"", "_")
+            .Replace("<", "_")
+            .Replace(">", "_")
+            .Replace("|", "_");
+    }
+
+    private static string Base64UrlEncode(string input)
+    {
+        var bytes = System.Text.Encoding.UTF8.GetBytes(input);
+        var base64 = Convert.ToBase64String(bytes);
+        return base64.Replace('+', '-').Replace('/', '_').TrimEnd('=');
     }
 }

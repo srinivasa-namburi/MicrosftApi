@@ -335,6 +335,7 @@ Additional plugin instructions:
 - Use **DP__FacilitiesPlugin** (if available) to find geographical markers.
 - Use **DP__EarthQuakePlugin** for seismic history.
 - Use **DP__DocumentLibraryPlugin** to check for specific details, prioritizing plugin data over general knowledge. Make sure to use this plugin only to look up information that is tailored to a specific subject you're inquiring about. If there is no relevant document library plugin for a topic, don't use the plugin.
+- Use **DP__UniversalDocsPlugin** to search for and ask questions about the document type you're currently working on. This plugin provides access to a library of documents similar to the one you're working on, but it does NOT contain detail for the current document. Use it for language and completeness checks for sections, but not for project details for the current project.
 
 If you use any plugins, list the references at the end of your section:
 - For **DP__FacilitiesPlugin**, cite as *Azure Maps (API)*.

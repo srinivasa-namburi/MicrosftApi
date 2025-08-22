@@ -1,3 +1,7 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+
+using System.ComponentModel.DataAnnotations;
+
 namespace Microsoft.Greenlight.Shared.Configuration;
 
 /// <summary>
@@ -277,7 +281,7 @@ public class ServiceConfigurationOptions
             /// </summary>
             public bool UseApplicationInsights { get; set; }
 
-            /// <summary>        
+            /// <summary>
             /// Use Azure SQL Server for local development instead of a container
             /// </summary>
             public bool UseAzureSqlServer { get; set; }
@@ -286,6 +290,13 @@ public class ServiceConfigurationOptions
             /// Use Postgres for Kernel Memory MemoryDB storage
             /// </summary>
             public bool UsePostgresMemory { get; set; }
+
+            /// <summary>
+            /// Enables the heavy Vector Store ID Fix job that migrates old filename-based IDs
+            /// to canonical Base64Url-encoded IDs. Disabled by default. When disabled, the job will
+            /// not run on startup and the monthly reminder will not be scheduled.
+            /// </summary>
+            public bool EnableVectorStoreIdFixJob { get; set; } = false;
         }
     }
 

@@ -302,13 +302,13 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
                         case IngestionState.Complete:
                             {
                                 // If the document is already marked as complete in the DB, check if it exists in the vector store (SK only).
-                                // If not present anymore (e.g., index cleared), reset it for re-indexing without re-upload when possible.
+                                // If present only under old id, schedule migration to canonical id.
                                 bool scheduledForReindex = false;
                                 try
                                 {
                                     // Determine if SK Vector Store is used and resolve index/document IDs
                                     string? indexName = existingDoc.VectorStoreIndexName;
-                                    string? vectorDocId = existingDoc.VectorStoreDocumentId;
+                                    string? storedDocId = existingDoc.VectorStoreDocumentId;
 
                                     if (documentLibraryType == DocumentLibraryType.AdditionalDocumentLibrary)
                                     {
@@ -337,25 +337,69 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
 
                                     if (!string.IsNullOrWhiteSpace(indexName))
                                     {
-                                        vectorDocId ??= SanitizeFileName(existingDoc.FileName);
-                                        var partitions = await _vectorStoreProvider.GetDocumentPartitionNumbersAsync(indexName!, vectorDocId!);
-                                        if (partitions == null || partitions.Count == 0)
+                                        var canonicalId = Base64UrlEncode(SanitizeFileName(existingDoc.FileName));
+
+                                        // Check canonical id first
+                                        var canonicalPartitions = await _vectorStoreProvider.GetDocumentPartitionNumbersAsync(indexName!, canonicalId);
+                                        if (canonicalPartitions != null && canonicalPartitions.Count > 0)
                                         {
-                                            // Not in vector store anymore - schedule for reindex
-                                            existingDoc.IsVectorStoreIndexed = false;
-                                            existingDoc.VectorStoreIndexedDate = null;
-                                            existingDoc.VectorStoreChunkCount = 0;
-                                            existingDoc.OriginalDocumentUrl = fullBlobUrl;
-                                            existingDoc.RunId = runId;
+                                            // Already indexed under canonical id: heal DB to canonical
+                                            if (!string.Equals(existingDoc.VectorStoreDocumentId, canonicalId, StringComparison.Ordinal))
+                                            {
+                                                existingDoc.VectorStoreDocumentId = canonicalId;
+                                                existingDoc.VectorStoreIndexName = indexName;
+                                                existingDoc.IsVectorStoreIndexed = true;
+                                                existingDoc.VectorStoreIndexedDate = existingDoc.VectorStoreIndexedDate ?? DateTime.UtcNow;
+                                                await db.SaveChangesAsync();
+                                                _logger.LogInformation("Healed document {File} to canonical vector id in index {Index}", existingDoc.FileName, indexName);
+                                            }
+                                        }
+                                        else
+                                        {
+                                            // Not found under canonical; check stored/old id
+                                            IReadOnlyList<int> storedPartitions = Array.Empty<int>();
+                                            if (!string.IsNullOrWhiteSpace(storedDocId) && !string.Equals(storedDocId, canonicalId, StringComparison.Ordinal))
+                                            {
+                                                storedPartitions = await _vectorStoreProvider.GetDocumentPartitionNumbersAsync(indexName!, storedDocId);
+                                            }
 
-                                            // If we already have a copied blob, skip copy step and go straight to processing
-                                            existingDoc.IngestionState = string.IsNullOrWhiteSpace(existingDoc.FinalBlobUrl)
-                                                ? IngestionState.Discovered
-                                                : IngestionState.FileCopied;
+                                            if (storedPartitions != null && storedPartitions.Count > 0)
+                                            {
+                                                // Found only under old id -> schedule reindex to migrate to canonical id
+                                                existingDoc.IsVectorStoreIndexed = false;
+                                                existingDoc.VectorStoreIndexedDate = null;
+                                                existingDoc.VectorStoreChunkCount = 0;
+                                                existingDoc.OriginalDocumentUrl = fullBlobUrl;
+                                                existingDoc.RunId = runId;
+                                                existingDoc.VectorStoreDocumentId = canonicalId; // set desired target id
 
-                                            scheduledForReindex = true;
-                                            resetFiles++;
-                                            _logger.LogInformation("Scheduled document {File} for re-indexing because it is missing from vector store index {Index}", existingDoc.FileName, indexName);
+                                                // If we already have a copied blob, skip copy step and go straight to processing
+                                                existingDoc.IngestionState = string.IsNullOrWhiteSpace(existingDoc.FinalBlobUrl)
+                                                    ? IngestionState.Discovered
+                                                    : IngestionState.FileCopied;
+
+                                                scheduledForReindex = true;
+                                                resetFiles++;
+                                                _logger.LogInformation("Scheduled document {File} for id migration to canonical id in index {Index}", existingDoc.FileName, indexName);
+                                            }
+                                            else
+                                            {
+                                                // Not present at all -> schedule for reindex
+                                                existingDoc.IsVectorStoreIndexed = false;
+                                                existingDoc.VectorStoreIndexedDate = null;
+                                                existingDoc.VectorStoreChunkCount = 0;
+                                                existingDoc.OriginalDocumentUrl = fullBlobUrl;
+                                                existingDoc.RunId = runId;
+                                                existingDoc.VectorStoreDocumentId = canonicalId; // ensure correct target id
+
+                                                existingDoc.IngestionState = string.IsNullOrWhiteSpace(existingDoc.FinalBlobUrl)
+                                                    ? IngestionState.Discovered
+                                                    : IngestionState.FileCopied;
+
+                                                scheduledForReindex = true;
+                                                resetFiles++;
+                                                _logger.LogInformation("Scheduled document {File} for re-indexing (missing from vector store index {Index})", existingDoc.FileName, indexName);
+                                            }
                                         }
                                     }
                                 }
@@ -599,5 +643,13 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
             .Replace("<", "_")
             .Replace(">", "_")
             .Replace("|", "_");
+    }
+
+    // URL-safe Base64 encode without padding to match repository document id scheme
+    private static string Base64UrlEncode(string input)
+    {
+        var bytes = System.Text.Encoding.UTF8.GetBytes(input);
+        var base64 = Convert.ToBase64String(bytes);
+        return base64.Replace('+', '-').Replace('/', '_').TrimEnd('=');
     }
 }

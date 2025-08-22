@@ -19,6 +19,8 @@
 
 - Every file must start with:
   // Copyright (c) Microsoft Corporation. All rights reserved.
+- Comments should be left in place, but changed to match current behavior if it changes
+- For stepwise processes, point out the steps in the comments.
 - Do not use primary constructors except for record classes.
 - Always Use XML documentation (/// <summary>) for all public classes, methods, and properties. Don't ever remove this documentation unless explicitly told to do so.
 - Use dependency injection for all services, including API clients and backend services.
@@ -48,11 +50,11 @@
 ### Controllers (REST API)
 
 - Controllers (e.g., `DocumentsController`, `McpPluginsController`) are responsible for handling HTTP requests.
-- Controllers should only accept and return DTO/Info/Request/Response objects from the Contracts project.
+- Controllers should only accept and return DTO/Info/Request/Response objects from the `Microsoft.Greenlight.Shared.Contracts` project.
 - Controllers use AutoMapper to map between backend models and contract types. These are in the Mappings folder in the `Microsoft.Greenlight.Shared` project.
 - For queries (read operations), use REST-style endpoints that return Info/DTO objects.
 - For commands (write operations), use REST endpoints that accept Request/Command objects and return Response/Info objects.
-- Never expose backend model classes directly in controller responses.
+- Never expose backend model classes directly in controller responses (from `Microsoft.Greenlight.Shared.Models`)
 - Using the `DocGenerationDbContext` for database operations is acceptable, but ensure that all data returned to the frontend is in the form of DTO/Info objects.
 
 ### Backend Grains (CQRS/Command Handling)
@@ -66,8 +68,7 @@
 - Grains should not expose backend model classes to the outside. Use contract types for all grain method signatures.
 - Grains are used for distributed, stateful, or long-running operations (e.g., chat, review, validation, ingestion).
 - For any service class or Orleans grain that needs to access Entity Framework, always inject `IDbContextFactory<DocGenerationDbContext>` via dependency injection.
-- In each method that needs a DbContext, use the following pattern: await using var db = await \_dbContextFactory.CreateDbContextAsync(cancellationToken);
-- Do not resolve the DbContext or its factory from the service provider in each method; inject the factory once in the constructor.
+- In each method that needs a DbContext, use the following pattern: `await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);`
 - This ensures that the DbContext is not shared across grains and avoids issues with concurrency and state management.
 
 ### SignalR Notifications

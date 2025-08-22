@@ -6,7 +6,6 @@ using Microsoft.Greenlight.Shared.Contracts;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Models.SourceReferences;
 using Microsoft.Greenlight.Shared.Services.Search;
-using Microsoft.Greenlight.Shared.Services.Search.Abstractions;
 using Microsoft.SemanticKernel;
 using System.ComponentModel;
 
