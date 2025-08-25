@@ -5,6 +5,7 @@ using Microsoft.Greenlight.Grains.Ingestion.Contracts;
 using Microsoft.Greenlight.Shared.Models;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
+using Microsoft.Greenlight.Grains.Shared.Contracts;
 
 namespace Microsoft.Greenlight.Grains.Ingestion
 {
@@ -17,6 +18,9 @@ namespace Microsoft.Greenlight.Grains.Ingestion
         private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
         private IngestedDocument? _entity;
         private bool _isInProcess = false;
+
+        // Lease tracking
+        private ConcurrencyLease? _lease;
 
         public FileIngestionGrain(ILogger<FileIngestionGrain> logger, IDbContextFactory<DocGenerationDbContext> dbContextFactory)
         {
@@ -65,7 +69,29 @@ namespace Microsoft.Greenlight.Grains.Ingestion
                 return;
             }
 
-            _isInProcess = true;
+            // Acquire global ingestion lease (weight=1) to enforce cluster-wide concurrency
+            var coordinator = GrainFactory.GetGrain<IGlobalConcurrencyCoordinatorGrain>(ConcurrencyCategory.Ingestion.ToString());
+            var requesterId = $"Ingest:{_entity.Id}";
+            try
+            {
+                _lease = await coordinator.AcquireAsync(requesterId, weight: 1, waitTimeout: TimeSpan.FromHours(8), leaseTtl: TimeSpan.FromMinutes(90));
+                _isInProcess = true;
+            }
+            catch (TimeoutException tex)
+            {
+                _logger.LogWarning(tex, "Timeout acquiring ingestion lease for document {DocumentId}", _entity.Id);
+                var orchestrationGrain = GrainFactory.GetGrain<IDocumentIngestionOrchestrationGrain>(_entity.OrchestrationId.ToString());
+                await orchestrationGrain.OnIngestionFailedAsync("Timeout waiting for ingestion worker", false);
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error acquiring ingestion lease for document {DocumentId}", _entity.Id);
+                var orchestrationGrain = GrainFactory.GetGrain<IDocumentIngestionOrchestrationGrain>(_entity.OrchestrationId.ToString());
+                await orchestrationGrain.OnIngestionFailedAsync($"Failed to acquire ingestion worker: {ex.Message}", false);
+                return;
+            }
+
             try
             {
                 // 1. Copy file if needed
@@ -106,58 +132,123 @@ namespace Microsoft.Greenlight.Grains.Ingestion
                 var orchestrationGrain = GrainFactory.GetGrain<IDocumentIngestionOrchestrationGrain>(_entity.OrchestrationId.ToString());
                 await orchestrationGrain.OnIngestionFailedAsync($"Failed to ingest file {_entity.FileName}: {ex.Message}", false);
                 _isInProcess = false;
+                await ReleaseLeaseSafeAsync();
             }
         }
 
         public async Task OnFileCopyCompletedAsync()
         {
-            if (_entity == null) { _isInProcess = false; return; }
+            if (_entity == null) 
+            { 
+                _isInProcess = false; 
+                await ReleaseLeaseSafeAsync(); 
+                return; 
+            }
+
+            // Update state to Processing
             _entity.IngestionState = IngestionState.Processing;
             await UpdateEntityStateAsync();
-            // Start processing and await result
-            var processorGrain = GrainFactory.GetGrain<IDocumentProcessorGrain>(_entity.Id);
-            var processResult = await processorGrain.ProcessDocumentAsync(_entity.Id);
-            if (processResult.Success)
+            
+            _logger.LogInformation("[OnFileCopyCompletedAsync] Starting document processing for documentId={DocumentId}, fileName={FileName}", 
+                _entity.Id, _entity.FileName);
+
+            try
             {
-                await OnProcessingCompletedAsync();
+                // Start processing with explicit timeout and error handling
+                var processorGrain = GrainFactory.GetGrain<IDocumentProcessorGrain>(_entity.Id);
+                
+                // Use a timeout to ensure we don't wait indefinitely
+                using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(30)); // 30 minute timeout for processing
+                
+                DocumentProcessResult processResult;
+                try
+                {
+                    var processingTask = processorGrain.ProcessDocumentAsync(_entity.Id);
+                    processResult = await processingTask.WaitAsync(cts.Token);
+                }
+                catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
+                {
+                    _logger.LogError("Document processing timed out after 30 minutes for documentId={DocumentId}, fileName={FileName}", 
+                        _entity.Id, _entity.FileName);
+                    await OnProcessingFailedAsync("Document processing timed out after 30 minutes");
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Exception occurred during document processing for documentId={DocumentId}, fileName={FileName}", 
+                        _entity.Id, _entity.FileName);
+                    await OnProcessingFailedAsync($"Document processing failed with exception: {ex.Message}");
+                    return;
+                }
+
+                // Handle the result
+                if (processResult.Success)
+                {
+                    _logger.LogInformation("[OnFileCopyCompletedAsync] Document processing succeeded for documentId={DocumentId}, fileName={FileName}", 
+                        _entity.Id, _entity.FileName);
+                    await OnProcessingCompletedAsync();
+                }
+                else
+                {
+                    var errorMessage = processResult.Error ?? "Unknown error during document processing";
+                    _logger.LogWarning("[OnFileCopyCompletedAsync] Document processing failed for documentId={DocumentId}, fileName={FileName}, error={Error}", 
+                        _entity.Id, _entity.FileName, errorMessage);
+                    await OnProcessingFailedAsync(errorMessage);
+                }
             }
-            else
+            catch (Exception ex)
             {
-                await OnProcessingFailedAsync(processResult.Error ?? "Unknown error during document processing.");
+                // Catch-all for any other unexpected exceptions
+                _logger.LogError(ex, "Unexpected error in OnFileCopyCompletedAsync for documentId={DocumentId}, fileName={FileName}", 
+                    _entity.Id, _entity.FileName);
+                await OnProcessingFailedAsync($"Unexpected error during processing setup: {ex.Message}");
             }
         }
 
         public async Task OnFileCopyFailedAsync(string error)
         {
             _isInProcess = false;
-            if (_entity == null) return;
+            if (_entity == null) { await ReleaseLeaseSafeAsync(); return; }
             _entity.IngestionState = IngestionState.Failed;
             _entity.Error = error;
             await UpdateEntityStateAsync();
             var orchestrationGrain = GrainFactory.GetGrain<IDocumentIngestionOrchestrationGrain>(_entity.OrchestrationId.ToString());
             await orchestrationGrain.OnIngestionFailedAsync($"File copy failed for {_entity.FileName}: {error}", false);
+            await ReleaseLeaseSafeAsync();
         }
 
         public async Task OnProcessingCompletedAsync()
         {
             _isInProcess = false;
-            if (_entity == null) return;
+            if (_entity == null) { await ReleaseLeaseSafeAsync(); return; }
+            
+            _logger.LogInformation("[OnProcessingCompletedAsync] Marking document as complete for documentId={DocumentId}, fileName={FileName}", 
+                _entity.Id, _entity.FileName);
+            
             _entity.IngestionState = IngestionState.Complete;
             _entity.Error = null;
             await UpdateEntityStateAsync();
+            
             var orchestrationGrain = GrainFactory.GetGrain<IDocumentIngestionOrchestrationGrain>(_entity.OrchestrationId.ToString());
             await orchestrationGrain.OnIngestionCompletedAsync();
+            await ReleaseLeaseSafeAsync();
         }
 
         public async Task OnProcessingFailedAsync(string error)
         {
             _isInProcess = false;
-            if (_entity == null) return;
+            if (_entity == null) { await ReleaseLeaseSafeAsync(); return; }
+            
+            _logger.LogError("[OnProcessingFailedAsync] Marking document as failed for documentId={DocumentId}, fileName={FileName}, error={Error}", 
+                _entity.Id, _entity.FileName, error);
+            
             _entity.IngestionState = IngestionState.Failed;
             _entity.Error = error;
             await UpdateEntityStateAsync();
+            
             var orchestrationGrain = GrainFactory.GetGrain<IDocumentIngestionOrchestrationGrain>(_entity.OrchestrationId.ToString());
             await orchestrationGrain.OnIngestionFailedAsync($"Processing failed for {_entity.FileName}: {error}", false);
+            await ReleaseLeaseSafeAsync();
         }
 
         public async Task UpdateStateAsync(Guid documentId)
@@ -194,6 +285,7 @@ namespace Microsoft.Greenlight.Grains.Ingestion
                     _logger.LogInformation("File ingestion complete for {FileName} (Id: {Id})", entity.FileName, entity.Id);
                 }
             }
+            await ReleaseLeaseSafeAsync();
         }
 
         public async Task MarkFailedAsync(string error)
@@ -212,18 +304,52 @@ namespace Microsoft.Greenlight.Grains.Ingestion
                     _logger.LogError("File ingestion failed for {FileName} (Id: {Id}): {Error}", entity.FileName, entity.Id, error);
                 }
             }
+            await ReleaseLeaseSafeAsync();
         }
 
         private async Task UpdateEntityStateAsync()
         {
             if (_entity == null) return;
-            await using var db = _dbContextFactory.CreateDbContext();
-            var entity = await db.IngestedDocuments.FirstOrDefaultAsync(x => x.Id == _entity.Id);
-            if (entity != null)
+            
+            try
             {
-                entity.IngestionState = _entity.IngestionState;
-                entity.Error = _entity.Error;
-                await db.SaveChangesAsync();
+                await using var db = _dbContextFactory.CreateDbContext();
+                var entity = await db.IngestedDocuments.FirstOrDefaultAsync(x => x.Id == _entity.Id);
+                if (entity != null)
+                {
+                    entity.IngestionState = _entity.IngestionState;
+                    entity.Error = _entity.Error;
+                    await db.SaveChangesAsync();
+                    _logger.LogDebug("Updated entity state for documentId={DocumentId} to {State}", _entity.Id, _entity.IngestionState);
+                }
+                else
+                {
+                    _logger.LogWarning("Could not find entity with Id {Id} to update state", _entity.Id);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to update entity state for documentId={DocumentId}", _entity.Id);
+                // Don't throw here as this would break the ingestion flow
+            }
+        }
+
+        private async Task ReleaseLeaseSafeAsync()
+        {
+            if (_lease == null) return;
+            try
+            {
+                var coordinator = GrainFactory.GetGrain<IGlobalConcurrencyCoordinatorGrain>(ConcurrencyCategory.Ingestion.ToString());
+                var released = await coordinator.ReleaseAsync(_lease.LeaseId);
+                _logger.LogDebug("Released ingestion lease {LeaseId} for document {DocumentId}: {Released}", _lease.LeaseId, _entity?.Id, released);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error releasing ingestion lease for document {DocumentId}", _entity?.Id);
+            }
+            finally
+            {
+                _lease = null;
             }
         }
     }

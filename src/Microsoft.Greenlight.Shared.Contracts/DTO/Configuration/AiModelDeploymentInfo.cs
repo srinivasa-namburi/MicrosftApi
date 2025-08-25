@@ -30,12 +30,20 @@ namespace Microsoft.Greenlight.Shared.Contracts.DTO.Configuration
         
         /// <summary>
         /// Token settings for various types of tasks. These are read at runtime and can be overridden here.
+        /// Only relevant for Chat models.
         /// </summary>
         public AiModelMaxTokenSettings TokenSettings { get; set; } = new AiModelMaxTokenSettings();
 
         /// <summary>
         /// Various reasoning settings for different types of AI model tasks.
+        /// Only relevant for Chat models with reasoning capabilities.
         /// </summary>
         public AiModelReasoningSettings? ReasoningSettings { get; set; }
+
+        /// <summary>
+        /// Settings specific to embedding models, including dimensions and content length limits.
+        /// Only relevant for Embedding models.
+        /// </summary>
+        public AiModelEmbeddingSettings? EmbeddingSettings { get; set; }
     }
 }

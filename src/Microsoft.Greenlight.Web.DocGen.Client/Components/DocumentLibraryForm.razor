@@ -1,6 +1,10 @@
 ﻿@using System.Net
 @using Microsoft.AspNetCore.SignalR.Client
 @using Microsoft.Greenlight.Shared.Contracts.Messages.Reindexing.Events
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Configuration
+@using Microsoft.Greenlight.Shared.Contracts.DTO
+@using Microsoft.Greenlight.Shared.Enums
+@inject IConfigurationApiClient ConfigurationApiClient
 @inject IDocumentLibraryApiClient DocumentLibraryApiClient
 @inject IDocumentProcessApiClient DocumentProcessApiClient
 @inject IFileApiClient FileApiClient
@@ -10,8 +14,6 @@
 @inject IDocumentReindexApiClient DocumentReindexApiClient
 @inject SignalRConnectionService SignalRConnectionService
 @inject SignalRSubscriptionFactory SignalRSubscriptionFactory
-@using Microsoft.Greenlight.Shared.Enums
-@using Microsoft.Greenlight.Shared.Contracts.DTO
 @implements IAsyncDisposable
 
 <MudPaper Class="pa-4">
@@ -59,35 +61,66 @@
         <MudTextField Label="Short Name" @bind-Value="DocumentLibraryInfo.ShortName" For="@(() => DocumentLibraryInfo.ShortName)" Required="true" OnBlur="ValidateAndFormatShortName" />
         <MudTextField Label="Description of Contents" @bind-Value="DocumentLibraryInfo.DescriptionOfContents" For="@(() => DocumentLibraryInfo.DescriptionOfContents)" Required="true" Lines="3" TextArea="true" />
         <MudTextField Label="Description of When to Use" @bind-Value="DocumentLibraryInfo.DescriptionOfWhenToUse" For="@(() => DocumentLibraryInfo.DescriptionOfWhenToUse)" Required="true" Lines="3" TextArea="true" />
-        <MudTextField Label="Index Name" @bind-Value="DocumentLibraryInfo.IndexName" For="@(() => DocumentLibraryInfo.IndexName)" Required="true" Disabled="IsEditMode" />
-        <MudTextField Label="Blob Storage Container Name" @bind-Value="DocumentLibraryInfo.BlobStorageContainerName" For="@(() => DocumentLibraryInfo.BlobStorageContainerName)" Required="true" Disabled="IsEditMode" />
-        <MudTextField Label="Blob Storage Auto Import Folder Name" @bind-Value="DocumentLibraryInfo.BlobStorageAutoImportFolderName" For="@(() => DocumentLibraryInfo.BlobStorageAutoImportFolderName)" />
-        
-        @if (DocumentLibraryInfo.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
-        {
-            <MudSelect T="TextChunkingMode?" @bind-Value="DocumentLibraryInfo.VectorStoreChunkingMode" Label="Chunking Mode">
-                @foreach (var mode in Enum.GetValues<TextChunkingMode>())
+
+        <MudExpansionPanels Class="mt-2">
+            <MudExpansionPanel Text="Storage & Index" Expanded="true">
+                <MudTextField Label="Index Name" @bind-Value="DocumentLibraryInfo.IndexName" For="@(() => DocumentLibraryInfo.IndexName)" Required="true" Disabled="IsEditMode" />
+                <MudTextField Label="Blob Storage Container Name" @bind-Value="DocumentLibraryInfo.BlobStorageContainerName" For="@(() => DocumentLibraryInfo.BlobStorageContainerName)" Required="true" Disabled="IsEditMode" />
+                <MudTextField Label="Blob Storage Auto Import Folder Name" @bind-Value="DocumentLibraryInfo.BlobStorageAutoImportFolderName" For="@(() => DocumentLibraryInfo.BlobStorageAutoImportFolderName)" />
+            </MudExpansionPanel>
+
+            <MudExpansionPanel Text="Advanced (Vector Store & Embeddings)" Expanded="true">
+                @if (DocumentLibraryInfo.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
                 {
-                    <MudSelectItem Value="@(mode as TextChunkingMode?)">@mode.ToString()</MudSelectItem>
+                    <MudSelect T="TextChunkingMode?" @bind-Value="DocumentLibraryInfo.VectorStoreChunkingMode" Label="Chunking Mode">
+                        @foreach (var mode in Enum.GetValues<TextChunkingMode>())
+                        {
+                            <MudSelectItem Value="@(mode as TextChunkingMode?)">@mode.ToString()</MudSelectItem>
+                        }
+                    </MudSelect>
+                    
+                    <MudNumericField T="int?" @bind-Value="DocumentLibraryInfo.VectorStoreChunkSize" 
+                                   Label="Chunk Size (tokens)" 
+                                   HelperText="Number of tokens per chunk. Leave empty to use global default."
+                                   Min="100" Max="8000" />
+                    
+                    <MudNumericField T="int?" @bind-Value="DocumentLibraryInfo.VectorStoreChunkOverlap" 
+                                   Label="Chunk Overlap (tokens)" 
+                                   HelperText="Number of overlapping tokens between chunks. Leave empty to use global default."
+                                   Min="0" Max="2000" />
+                                   
+                    <MudDivider Class="my-2" />
+
+                    <MudSelect T="AiModelDeploymentInfo" Label="Embedding Model Deployment" @bind-Value="SelectedEmbeddingDeployment" ToStringFunc="@(d => d.DeploymentName)">
+                        @foreach (var deployment in _aiModelDeployments.Where(d => d.AiModel?.ModelType == AiModelType.Embedding))
+                        {
+                            <MudSelectItem Value="@deployment">@deployment.DeploymentName</MudSelectItem>
+                        }
+                    </MudSelect>
+
+                    <MudSelect T="int?" @bind-Value="DocumentLibraryInfo.EmbeddingDimensionsOverride" Label="Embedding Size Override (dimensions)">
+                        <MudSelectItem T="int?" Value="@(default(int?))">Use deployment default</MudSelectItem>
+                        <MudSelectItem T="int?" Value="256">256</MudSelectItem>
+                        <MudSelectItem T="int?" Value="512">512</MudSelectItem>
+                        <MudSelectItem T="int?" Value="1024">1024</MudSelectItem>
+                        <MudSelectItem T="int?" Value="1536">1536</MudSelectItem>
+                        <MudSelectItem T="int?" Value="3072">3072</MudSelectItem>
+                    </MudSelect>
+
+                    <MudAlert Severity="Severity.Info" Class="mt-2">
+                        <strong>Note:</strong> Changing chunk size or overlap will only apply to newly ingested documents. 
+                        Existing documents in the index will retain their original chunking. 
+                        You can reindex existing documents to apply new chunk settings.
+                    </MudAlert>
                 }
-            </MudSelect>
-            
-            <MudNumericField T="int?" @bind-Value="DocumentLibraryInfo.VectorStoreChunkSize" 
-                           Label="Chunk Size (tokens)" 
-                           HelperText="Number of tokens per chunk. Leave empty to use global default."
-                           Min="100" Max="8000" />
-            
-            <MudNumericField T="int?" @bind-Value="DocumentLibraryInfo.VectorStoreChunkOverlap" 
-                           Label="Chunk Overlap (tokens)" 
-                           HelperText="Number of overlapping tokens between chunks. Leave empty to use global default."
-                           Min="0" Max="2000" />
-                           
-            <MudAlert Severity="Severity.Info" Class="mt-2">
-                <strong>Note:</strong> Changing chunk size or overlap will only apply to newly ingested documents. 
-                Existing documents in the index will retain their original chunking. 
-                You can reindex existing documents to apply new chunk settings.
-            </MudAlert>
-        }
+                else
+                {
+                    <MudAlert Severity="Severity.Info">
+                        Embedding Model and Embedding Size are only available when Logic Type is SemanticKernelVectorStore.
+                    </MudAlert>
+                }
+            </MudExpansionPanel>
+        </MudExpansionPanels>
 
         @if (IsEditMode && DocumentLibraryInfo.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
         {
@@ -103,9 +136,17 @@
 
         <MudDivider Class="my-2" />
 
-        <MudStack Row="true" Spacing="2">
-            <MudButton OnClick="(()=>HandleValidSubmit())" Variant="Variant.Filled" Color="Color.Primary">Save</MudButton>
-            <MudButton OnClick="@Cancel" Variant="Variant.Text" Color="Color.Default">Cancel</MudButton>
+        <MudStack Row="false" Spacing="2">
+            <MudStack Row="true" Spacing="2">
+                <MudButton OnClick="(()=>HandleValidSubmit())" Variant="Variant.Filled" Color="Color.Primary" Style="min-width:150px">Save</MudButton>
+                <MudButton OnClick="@Cancel" Variant="Variant.Outlined" Color="Color.Default" Style="min-width:150px">Cancel</MudButton>
+                @if (IsEditMode)
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="ConfirmDeleteLibrary" Style="min-width:150px">
+                        Delete Library
+                    </MudButton>
+                }
+            </MudStack>
         </MudStack>
     </MudForm>
 </MudPaper>
@@ -130,8 +171,6 @@
             </ButtonTemplate>
         </MudFileUpload>
     </MudPaper>
-
-
 
     <MudDivider Class="my-4" />
 
@@ -185,16 +224,32 @@
         (_libraryReindexStatus.Status == ReindexOrchestrationState.Completed && _sawLibraryRunThisSession)
     );
 
+    private List<AiModelDeploymentInfo> _aiModelDeployments = new();
+
+    private AiModelDeploymentInfo? SelectedEmbeddingDeployment
+    {
+        get => _aiModelDeployments.FirstOrDefault(d => d.Id == DocumentLibraryInfo.EmbeddingModelDeploymentId);
+        set => DocumentLibraryInfo.EmbeddingModelDeploymentId = value?.Id;
+    }
+
+    private Guid? _initialEmbeddingModelDeploymentId;
+    private int? _initialEmbeddingDimensionsOverride;
+
     protected override async Task OnInitializedAsync()
     {
         if (IsEditMode)
         {
+            _initialEmbeddingModelDeploymentId = DocumentLibraryInfo.EmbeddingModelDeploymentId;
+            _initialEmbeddingDimensionsOverride = DocumentLibraryInfo.EmbeddingDimensionsOverride;
             await LoadAssociatedDocumentProcesses();
             await LoadAvailableDocumentProcesses();
             // Seed status once, but do not show completed-from-previous-session banner
             await RefreshReindexStatusesAsync();
             await InitializeSignalRAsync();
         }
+
+        // Load embedding model deployments for dropdown
+        _aiModelDeployments = await ConfigurationApiClient.GetAiModelDeploymentsAsync();
     }
 
     private async Task InitializeSignalRAsync()
@@ -372,36 +427,118 @@
         AvailableDocumentProcesses = allProcesses.Where(p => AssociatedDocumentProcesses.All(ap => ap.Id != p.Id)).ToList();
     }
 
+    private bool EmbeddingConfigChanged()
+    {
+        return _initialEmbeddingModelDeploymentId != DocumentLibraryInfo.EmbeddingModelDeploymentId
+            || _initialEmbeddingDimensionsOverride != DocumentLibraryInfo.EmbeddingDimensionsOverride;
+    }
+
+    private async Task<bool> ConfirmReindexIfEmbeddingChangedAsync()
+    {
+        if (!IsEditMode)
+        {
+            return true;
+        }
+        if (!EmbeddingConfigChanged())
+        {
+            return true;
+        }
+
+        var parameters = new DialogParameters
+        {
+            { "TargetName", DocumentLibraryInfo.ShortName },
+            { "IsDocumentProcess", false },
+            { "Reason", "Embedding model/dimensions changed" },
+            { "WarningMessage", "Changing the embedding model or dimensions requires deleting and rebuilding the library vector index. Proceed?" }
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<DocumentReindexConfirmationDialog>("Reindex Required", parameters, options);
+        var result = await dialog.Result;
+        return !result.Canceled;
+    }
+
+    private async Task StartImmediateReindexAsync(string reason)
+    {
+        try
+        {
+            var orchestrationId = await DocumentReindexApiClient.StartDocumentLibraryReindexingAsync(DocumentLibraryInfo.ShortName, reason);
+
+            // show progress dialog directly
+            var parameters = new DialogParameters
+            {
+                { "OrchestrationId", orchestrationId },
+                { "TargetName", DocumentLibraryInfo.ShortName },
+                { "Reason", reason }
+            };
+            var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+            await DialogService.ShowAsync<DocumentReindexProgressDisplay>("Reindexing Progress", parameters, options);
+
+            // refresh banners/status
+            await RefreshReindexStatusesAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to start reindex: {ex.Message}", Severity.Error);
+        }
+    }
+
     private async Task HandleValidSubmit()
     {
         await form.Validate();
 
-        if (form.IsValid)
+        if (!form.IsValid)
         {
-            if (DocumentLibraryInfo.Id == Guid.Empty)
+            return;
+        }
+
+        if (IsEditMode && DocumentLibraryInfo.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
+        {
+            var ok = await ConfirmReindexIfEmbeddingChangedAsync();
+            if (!ok)
             {
-                // Create new document library
-                var createdLibrary = await DocumentLibraryApiClient.CreateDocumentLibraryAsync(DocumentLibraryInfo);
-                Snackbar.Add("Document Library saved", Severity.Success);
-                DocumentLibraryInfo = createdLibrary;
-                await OnSaved.InvokeAsync(createdLibrary);
-                NavigationManager.NavigateTo($"/document-library/{DocumentLibraryInfo.Id}");
+                return;
             }
-            else
+        }
+
+        // Ensure embedding settings are only applied for SemanticKernelVectorStore
+        if (DocumentLibraryInfo.LogicType != DocumentProcessLogicType.SemanticKernelVectorStore)
+        {
+            DocumentLibraryInfo.EmbeddingModelDeploymentId = null;
+            DocumentLibraryInfo.EmbeddingDimensionsOverride = null;
+        }
+
+        if (DocumentLibraryInfo.Id == Guid.Empty)
+        {
+            // Create new document library
+            var createdLibrary = await DocumentLibraryApiClient.CreateDocumentLibraryAsync(DocumentLibraryInfo);
+            Snackbar.Add("Document Library saved", Severity.Success);
+            DocumentLibraryInfo = createdLibrary;
+            await OnSaved.InvokeAsync(createdLibrary);
+            NavigationManager.NavigateTo($"/document-library/{DocumentLibraryInfo.Id}");
+        }
+        else
+        {
+            // Update existing document library
+            var updatedLibrary = await DocumentLibraryApiClient.UpdateDocumentLibraryAsync(DocumentLibraryInfo);
+            Snackbar.Add("Document Library updated", Severity.Success);
+            await OnSaved.InvokeAsync(updatedLibrary);
+
+            // Trigger immediate reindex if embedding config changed
+            if (DocumentLibraryInfo.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore && EmbeddingConfigChanged())
             {
-                // Update existing document library
-                var updatedLibrary = await DocumentLibraryApiClient.UpdateDocumentLibraryAsync(DocumentLibraryInfo);
-                Snackbar.Add("Document Library updated", Severity.Success);
-                await OnSaved.InvokeAsync(updatedLibrary);
+                await StartImmediateReindexAsync("Embedding model/dimensions changed");
             }
 
-            // Reload associated processes after save
-            if (IsEditMode)
-            {
-                await LoadAssociatedDocumentProcesses();
-                await LoadAvailableDocumentProcesses();
-                await RefreshReindexStatusesAsync();
-            }
+            // Reset baseline after save
+            _initialEmbeddingModelDeploymentId = DocumentLibraryInfo.EmbeddingModelDeploymentId;
+            _initialEmbeddingDimensionsOverride = DocumentLibraryInfo.EmbeddingDimensionsOverride;
+        }
+
+        if (IsEditMode)
+        {
+            await LoadAssociatedDocumentProcesses();
+            await LoadAvailableDocumentProcesses();
+            await RefreshReindexStatusesAsync();
         }
     }
 
@@ -513,6 +650,32 @@
         };
         var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
         await DialogService.ShowAsync<DocumentReindexConfirmationDialog>("Reindex Documents", parameters, options);
+    }
+
+    private async Task ConfirmDeleteLibrary()
+    {
+        var parameters = new DialogParameters
+        {
+            { "ContentText", $"Are you sure you want to delete the document library '{DocumentLibraryInfo.ShortName}'? This deletes the vector index/collection (if SK), its blob container and all ingested document records." },
+            { "ButtonText", "Delete" },
+            { "DialogColor", Color.Error }
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = DialogService.Show<ConfirmationDialog>("Delete Document Library", parameters, options);
+        var result = await dialog.Result;
+        if (!result.Canceled)
+        {
+            try
+            {
+                await DocumentLibraryApiClient.DeleteDocumentLibraryAsync(DocumentLibraryInfo.Id);
+                Snackbar.Add("Document library deleted.", Severity.Success);
+                NavigationManager.NavigateTo("/document-libraries");
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to delete library: {ex.Message}", Severity.Error);
+            }
+        }
     }
 
     public async ValueTask DisposeAsync()

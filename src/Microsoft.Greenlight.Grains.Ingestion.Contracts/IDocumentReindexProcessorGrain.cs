@@ -16,6 +16,7 @@ public interface IDocumentReindexProcessorGrain : IGrainWithGuidKey
     /// <param name="reason">The reason for reindexing.</param>
     /// <param name="orchestrationId">ID of the Orchestration grain starting this reindex process</param>
     /// <returns>A task representing the asynchronous operation.</returns>
+    [ResponseTimeout("2.00:00:00")] // Long-running: waiting for global lease and reindex
     Task StartReindexingAsync(Guid ingestedDocumentId, string reason, string orchestrationId);
 
 

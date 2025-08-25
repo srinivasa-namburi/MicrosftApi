@@ -22,6 +22,7 @@ namespace Microsoft.Greenlight.Grains.Ingestion.Contracts
     /// </summary>
     public interface IDocumentProcessorGrain : IGrainWithGuidKey
     {
+        [ResponseTimeout("2.00:00:00")] // Long-running: may wait for cluster-wide lease
         Task<DocumentProcessResult> ProcessDocumentAsync(Guid documentId);
     }
 }

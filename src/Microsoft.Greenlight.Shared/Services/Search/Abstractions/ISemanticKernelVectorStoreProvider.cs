@@ -15,6 +15,14 @@ public interface ISemanticKernelVectorStoreProvider
     Task EnsureCollectionAsync(string indexName, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Ensures the underlying collection (index) exists and is ready with the specified vector dimensions.
+    /// </summary>
+    /// <param name="indexName">Index / collection name.</param>
+    /// <param name="embeddingDimensions">Number of dimensions for the embedding vectors.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task EnsureCollectionAsync(string indexName, int embeddingDimensions, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Upserts (adds or updates) a batch of chunk records.
     /// </summary>
     Task UpsertAsync(string indexName, IEnumerable<SkVectorChunkRecord> records, CancellationToken cancellationToken = default);

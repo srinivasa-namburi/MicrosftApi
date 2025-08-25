@@ -26,7 +26,6 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
     private readonly IDocumentLibraryInfoService _documentLibraryInfoService;
     private readonly IPersistentState<DocumentIngestionState> _state;
     private readonly SemaphoreSlim _stateLock = new(1, 1);
-    private SemaphoreSlim _processingThrottleSemaphore;
     private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
     private readonly AzureFileHelper _azureFileHelper;
     private readonly ISemanticKernelVectorStoreProvider _vectorStoreProvider;
@@ -69,15 +68,6 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
             await SafeWriteStateAsync();
         }
 
-        var maxWorkers = _optionsSnapshot.Value.GreenlightServices.Scalability.NumberOfIngestionWorkers;
-        if (maxWorkers <= 0)
-        {
-            // Use 2 workers by default if not configured
-            maxWorkers = 2;
-        }
-
-        _processingThrottleSemaphore = new SemaphoreSlim(maxWorkers, maxWorkers);
-
         await base.OnActivateAsync(cancellationToken);
     }
 
@@ -85,6 +75,82 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
     {
         // Only rely on the in-memory flag for the active orchestration in this activation
         return Task.FromResult(_isActive);
+    }
+
+    public async Task DeactivateAsync()
+    {
+        try
+        {
+            _logger.LogInformation("Deactivation requested for ingestion orchestration {OrchestrationId}", this.GetPrimaryKeyString());
+            _isActive = false;
+            DeactivateOnIdle();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error requesting deactivation for {OrchestrationId}", this.GetPrimaryKeyString());
+        }
+        await Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Diagnostic method to check the status of stuck documents and attempt recovery.
+    /// </summary>
+    public async Task CheckAndRecoverStuckDocumentsAsync()
+    {
+        var orchestrationId = this.GetPrimaryKeyString();
+        _logger.LogInformation("Checking for stuck documents in orchestration {OrchestrationId}", orchestrationId);
+
+        await using var db = await _dbContextFactory.CreateDbContextAsync();
+        
+        // Find documents that have been in Processing state for more than 30 minutes
+        var thirtyMinutesAgo = DateTime.UtcNow.AddMinutes(-30);
+        var stuckDocuments = await db.IngestedDocuments
+            .Where(x => x.OrchestrationId == orchestrationId && 
+                        x.IngestionState == IngestionState.Processing &&
+                        x.IngestedDate < thirtyMinutesAgo)
+            .ToListAsync();
+
+        if (stuckDocuments.Count == 0)
+        {
+            _logger.LogInformation("No stuck documents found in orchestration {OrchestrationId}", orchestrationId);
+            return;
+        }
+
+        _logger.LogWarning("Found {StuckCount} documents stuck in Processing state for orchestration {OrchestrationId}", 
+            stuckDocuments.Count, orchestrationId);
+
+        foreach (var doc in stuckDocuments)
+        {
+            try
+            {
+                _logger.LogInformation("Attempting to recover stuck document {DocumentId} ({FileName})", doc.Id, doc.FileName);
+                
+                var fileGrain = GrainFactory.GetGrain<IFileIngestionGrain>(doc.Id);
+                var isActive = await fileGrain.IsActiveAsync();
+                
+                if (!isActive)
+                {
+                    // Document is not actively being processed, attempt to restart it
+                    _logger.LogInformation("Restarting inactive stuck document {DocumentId} ({FileName})", doc.Id, doc.FileName);
+                    
+                    // Reset the state to FileCopied so it will be reprocessed
+                    doc.IngestionState = IngestionState.FileCopied;
+                    doc.Error = "Recovered from stuck processing state";
+                    await db.SaveChangesAsync();
+                    
+                    // Fire-and-forget restart
+                    _ = fileGrain.StartIngestionAsync(doc.Id);
+                }
+                else
+                {
+                    _logger.LogInformation("Document {DocumentId} ({FileName}) is still actively being processed", doc.Id, doc.FileName);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to recover stuck document {DocumentId} ({FileName})", doc.Id, doc.FileName);
+            }
+        }
     }
 
     public async Task StartIngestionAsync(
@@ -99,6 +165,9 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
             _logger.LogInformation("Orchestration {OrchestrationId} is already active. Skipping start.", this.GetPrimaryKeyString());
             return;
         }
+
+        // Mark orchestration as active for this activation as we are starting now
+        _isActive = true;
 
         // Generate a new RunId for this ingestion run
         _currentRunId = Guid.NewGuid();
@@ -148,6 +217,7 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
                 if (allActive)
                 {
                     _logger.LogInformation("Ingestion already running for {Container}/{Folder}, skipping.", blobContainerName, folderPath);
+                    _isActive = false; // ensure we don't stay active if we didn't actually start anything
                     return;
                 }
             }
@@ -157,6 +227,7 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
                 _state.State.Status = _state.State.FailedFiles > 0 ? IngestionOrchestrationState.Failed : IngestionOrchestrationState.Completed;
                 await SafeWriteStateAsync();
                 _logger.LogInformation("[StartIngestionAsync] Orchestration {OrchestrationId} marked as {Status} (no files left)", orchestrationId, _state.State.Status);
+                _isActive = false;
                 return;
             }
         }
@@ -175,6 +246,7 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
                 _state.State.Status = IngestionOrchestrationState.Failed;
                 _state.State.Errors.Add($"Document library {documentLibraryShortName} not found");
                 await SafeWriteStateAsync();
+                _isActive = false;
                 return;
             }
             _state.State.TargetContainerName = documentLibrary.BlobStorageContainerName;
@@ -188,13 +260,11 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
                 _state.State.Status = IngestionOrchestrationState.Failed;
                 _state.State.Errors.Add($"Document process {documentLibraryShortName} not found");
                 await SafeWriteStateAsync();
+                _isActive = false;
                 return;
             }
             _state.State.TargetContainerName = documentProcess.BlobStorageContainerName;
         }
-
-        // Mark orchestration as active for this activation
-        _isActive = true;
 
         // Use hashing grain to enumerate and hash blobs in parallel.
         var hashingGrainKey = orchestrationId; // tie hashing to orchestration
@@ -202,7 +272,8 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
         if (await hashingGrain.IsActiveAsync())
         {
             _logger.LogInformation("Hashing already active for orchestration {OrchestrationId}. Backing off this cycle.", orchestrationId);
-            return; // let the scheduler retry on its next cycle; remain active only for our own run
+            _isActive = false; // let scheduler retry without blocking
+            return; // let the scheduler retry on its next cycle
         }
 
         List<BlobHashInfo> blobHashes = await hashingGrain.StartHashingAsync(_state.State.TargetContainerName, folderPath, runId);
@@ -446,13 +517,23 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
             _state.State.ProcessedFiles = runDocsForState.Count(x => x.IngestionState == IngestionState.Complete);
             _state.State.FailedFiles = runDocsForState.Count(x => x.IngestionState == IngestionState.Failed);
             await SafeWriteStateAsync();
+
+            // If there's nothing to process (no docs or all are Complete/Failed), finish gracefully
+            if (_state.State.TotalFiles == 0 || runDocsForState.All(x => x.IngestionState == IngestionState.Complete || x.IngestionState == IngestionState.Failed))
+            {
+                _state.State.Status = _state.State.FailedFiles > 0 ? IngestionOrchestrationState.Failed : IngestionOrchestrationState.Completed;
+                await SafeWriteStateAsync();
+                _isActive = false;
+                _logger.LogInformation("No pending files for orchestration {OrchestrationId}. Marking as {Status}", orchestrationId, _state.State.Status);
+                return;
+            }
         }
 
         // Update state
         _state.State.Status = IngestionOrchestrationState.Running;
         await SafeWriteStateAsync();
 
-        // Start or resume parallel file processing
+        // Start or resume parallel file processing (global coordinator in child grains will enforce concurrency)
         await ResumeOrStartIngestionAsync(CancellationToken.None);
     }
 
@@ -483,14 +564,6 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
                 continue;
             }
 
-            // Try to acquire a slot with timeout; if we fail, stop scheduling for now to avoid spinning
-            var acquired = await _processingThrottleSemaphore.WaitAsync(TimeSpan.FromMinutes(15));
-            if (!acquired)
-            {
-                _logger.LogWarning("Timed out waiting for ingestion start throttle; will retry on next resume cycle for file {FileId}.", file.Id);
-                return;
-            }
-
             // Stagger execution to resolve dependencies
             await Task.Delay(500, cancellationToken);
 
@@ -503,16 +576,6 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
                     if (t.IsFaulted)
                     {
                         _logger.LogError(t.Exception, "Error starting ingestion for file {FileId}", file.Id);
-                    }
-
-                    try
-                    {
-                        // Only release if we actually acquired a slot
-                        _processingThrottleSemaphore.Release();
-                    }
-                    catch (SemaphoreFullException)
-                    {
-                        // There was no semaphore to release
                     }
                 }, TaskScheduler.Default);
         }
@@ -604,21 +667,6 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
         finally
         {
             _stateLock.Release();
-        }
-    }
-
-    private void ReleaseSemaphore()
-    {
-        try
-        {
-            _processingThrottleSemaphore.Release();
-        }
-        catch (SemaphoreFullException)
-        {
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error releasing semaphore");
         }
     }
 

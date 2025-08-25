@@ -359,4 +359,34 @@ public class AzureFileHelper
     {
         return _blobServiceClient;
     }
+
+    /// <summary>
+    /// Deletes a blob container from Azure Blob Storage.
+    /// </summary>
+    /// <param name="containerName">The name of the container to delete.</param>
+    /// <param name="ignoreNotFound">If true, do not throw when the container does not exist.</param>
+    public virtual async Task DeleteBlobContainerAsync(string containerName, bool ignoreNotFound = true)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(containerName))
+            {
+                _logger.LogWarning("DeleteBlobContainerAsync called with empty container name");
+                return;
+            }
+
+            var container = _blobServiceClient.GetBlobContainerClient(containerName);
+            await container.DeleteIfExistsAsync();
+            _logger.LogInformation("Deleted blob container {Container}", containerName);
+        }
+        catch (RequestFailedException ex) when (ignoreNotFound && ex.Status == 404)
+        {
+            _logger.LogDebug("Blob container {Container} not found during delete", containerName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to delete blob container {Container}", containerName);
+            throw;
+        }
+    }
 }

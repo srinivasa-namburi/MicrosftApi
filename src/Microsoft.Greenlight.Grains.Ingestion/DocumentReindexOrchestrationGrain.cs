@@ -31,7 +31,6 @@ public class DocumentReindexOrchestrationGrain : Grain, IDocumentReindexOrchestr
     // Separate locks for different concerns to reduce contention
     private readonly SemaphoreSlim _stateLock = new(1, 1);
     private readonly SemaphoreSlim _progressLock = new(1, 1);
-    private SemaphoreSlim _processingThrottleSemaphore;
 
     private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
     private readonly IDocumentIngestionService _documentIngestionService;
@@ -73,15 +72,6 @@ public class DocumentReindexOrchestrationGrain : Grain, IDocumentReindexOrchestr
             await _state.WriteStateAsync(); // Direct write without nested locking
         }
 
-        // Initialize the semaphore when the grain activates
-        var maxWorkers = _optionsSnapshot.Value.GreenlightServices.Scalability.NumberOfIngestionWorkers;
-        if (maxWorkers <= 0)
-        {
-            maxWorkers = 4; // Default to 4 workers if not configured
-        }
-
-        _processingThrottleSemaphore = new SemaphoreSlim(maxWorkers, maxWorkers);
-
         // Sync in-memory counters with persisted state
         _processedCount = _state.State.ProcessedDocuments;
         _failedCount = _state.State.FailedDocuments;
@@ -110,6 +100,30 @@ public class DocumentReindexOrchestrationGrain : Grain, IDocumentReindexOrchestr
         };
     }
 
+    /// <summary>
+    /// Returns true if this orchestration activation is currently running.
+    /// This reflects in-memory activity and avoids relying on potentially stale persisted state after restarts.
+    /// </summary>
+    public Task<bool> IsRunningAsync()
+    {
+        return Task.FromResult(_isActive);
+    }
+
+    public async Task DeactivateAsync()
+    {
+        try
+        {
+            _logger.LogInformation("Deactivation requested for reindex orchestration {OrchestrationId}", this.GetPrimaryKeyString());
+            _isActive = false;
+            DeactivateOnIdle();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error requesting deactivation for reindex orchestration {OrchestrationId}", this.GetPrimaryKeyString());
+        }
+        await Task.CompletedTask;
+    }
+
     public async Task StartReindexingAsync(
         string documentLibraryShortName,
         DocumentLibraryType documentLibraryType,
@@ -125,10 +139,16 @@ public class DocumentReindexOrchestrationGrain : Grain, IDocumentReindexOrchestr
         await _stateLock.WaitAsync();
         try
         {
-            if (_state.State.Status == ReindexOrchestrationState.Running)
+            // Only block if both persisted state is Running AND this activation is active
+            if (_state.State.Status == ReindexOrchestrationState.Running && _isActive)
             {
                 _logger.LogWarning("Reindexing already running for {DocumentLibraryName}", documentLibraryShortName);
                 return;
+            }
+
+            if (_state.State.Status == ReindexOrchestrationState.Running && !_isActive)
+            {
+                _logger.LogWarning("Detected stale Running state for {DocumentLibraryName}. Resetting and starting a new run.", documentLibraryShortName);
             }
 
             // Initialize state
@@ -141,7 +161,9 @@ public class DocumentReindexOrchestrationGrain : Grain, IDocumentReindexOrchestr
             _state.State.TotalDocuments = 0;
             _state.State.ProcessedDocuments = 0;
             _state.State.FailedDocuments = 0;
+            _state.State.CompletedUtc = null;
             _state.State.LastUpdatedUtc = DateTime.UtcNow;
+            _state.State.Errors ??= new List<string>();
             _state.State.Errors.Clear();
 
             // Reset in-memory counters
@@ -179,8 +201,8 @@ public class DocumentReindexOrchestrationGrain : Grain, IDocumentReindexOrchestr
         try
         {
             // Validate document library exists and get target container and index name
-            string targetContainer = null;
-            string indexName = null;
+            string? targetContainer = null;
+            string? indexName = null;
 
             if (documentLibraryType == DocumentLibraryType.AdditionalDocumentLibrary)
             {
@@ -233,7 +255,7 @@ public class DocumentReindexOrchestrationGrain : Grain, IDocumentReindexOrchestr
             }
 
             // Step 1: Clear the vector store index (use the actual index name)
-            await ClearVectorStoreAsync(documentLibraryShortName, indexName);
+            await ClearVectorStoreAsync(documentLibraryShortName, indexName!);
 
             // Step 2: Find all ingested documents for this library/process that were previously indexed
             await using var db = await _dbContextFactory.CreateDbContextAsync();
@@ -266,7 +288,7 @@ public class DocumentReindexOrchestrationGrain : Grain, IDocumentReindexOrchestr
                 return;
             }
 
-            // Step 3: Start parallel reindexing (do not mass-reset flags here)
+            // Step 3: Start parallel reindexing. Concurrency is enforced by the global coordinator on processor grains.
             await StartParallelReindexingAsync(documentsToReindex);
         }
         catch (Exception ex)
@@ -324,13 +346,11 @@ public class DocumentReindexOrchestrationGrain : Grain, IDocumentReindexOrchestr
 
         foreach (var document in documents)
         {
-            // Create a task that handles semaphore acquisition and processing
-            var task = ProcessDocumentWithThrottlingAsync(document);
+            // Fire-and-forget processor calls. Global coordinator enforces concurrency.
+            var task = ProcessDocumentAsync(document);
             tasks.Add(task);
         }
 
-        // Don't await all tasks here - let them run in background
-        // The completion will be handled by the callback methods
         _ = Task.WhenAll(tasks).ContinueWith(t =>
         {
             if (t.IsFaulted)
@@ -340,32 +360,17 @@ public class DocumentReindexOrchestrationGrain : Grain, IDocumentReindexOrchestr
         }, TaskScheduler.Default);
     }
 
-    private async Task ProcessDocumentWithThrottlingAsync(Microsoft.Greenlight.Shared.Models.IngestedDocument document)
+    private async Task ProcessDocumentAsync(Microsoft.Greenlight.Shared.Models.IngestedDocument document)
     {
-        // Avoid indefinite waits that could stall the whole run; retry on timeout.
-        var acquired = await _processingThrottleSemaphore.WaitAsync(TimeSpan.FromMinutes(15));
-        if (!acquired)
-        {
-            _logger.LogWarning("Timeout acquiring reindex throttle for document {DocumentId}; will retry shortly.", document.Id);
-            _ = Task.Delay(TimeSpan.FromSeconds(10)).ContinueWith(_ => ProcessDocumentWithThrottlingAsync(document), TaskScheduler.Default);
-            return;
-        }
-
         try
         {
             var reindexGrain = GrainFactory.GetGrain<IDocumentReindexProcessorGrain>(document.Id);
-            // Pass the orchestration grain ID so the processor can reference back to this grain
             await reindexGrain.StartReindexingAsync(document.Id, _state.State.Reason, _state.State.Id);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error starting reindexing for document {DocumentId}", document.Id);
-            // Handle as a failed document
             await OnReindexFailedAsync($"Error starting reindexing: {ex.Message}", true);
-        }
-        finally
-        {
-            _processingThrottleSemaphore.Release();
         }
     }
 
@@ -383,7 +388,7 @@ public class DocumentReindexOrchestrationGrain : Grain, IDocumentReindexOrchestr
         await UpdateProgressAndCheckCompletionAsync(_processedCount, newFailedCount, errorMessage);
     }
 
-    private async Task UpdateProgressAndCheckCompletionAsync(int processedCount, int failedCount, string errorMessage)
+    private async Task UpdateProgressAndCheckCompletionAsync(int processedCount, int failedCount, string? errorMessage)
     {
         bool shouldComplete = false;
         bool isSuccess = false;
@@ -495,5 +500,4 @@ public class DocumentReindexOrchestrationGrain : Grain, IDocumentReindexOrchestr
     {
         await StartReindexingAsync(documentLibraryShortName, DocumentLibraryType.AdditionalDocumentLibrary, reason);
     }
-
 }

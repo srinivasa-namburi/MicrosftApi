@@ -50,6 +50,12 @@ public interface IDocumentReindexOrchestrationGrain : IGrainWithStringKey
     Task<DocumentReindexState> GetStateAsync();
 
     /// <summary>
+    /// Returns true if this orchestration activation is currently running.
+    /// This reflects in-memory activity and is used to avoid stale persisted states after restarts.
+    /// </summary>
+    Task<bool> IsRunningAsync();
+
+    /// <summary>
     /// Called when a document reindexing operation completes successfully.
     /// </summary>
     /// <returns>A task representing the asynchronous operation.</returns>
@@ -62,4 +68,10 @@ public interface IDocumentReindexOrchestrationGrain : IGrainWithStringKey
     /// <param name="acquired">Whether a semaphore was acquired for this operation.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     Task OnReindexFailedAsync(string reason, bool acquired);
+
+    /// <summary>
+    /// Requests this orchestration grain to deactivate as soon as possible.
+    /// Used during cleanup (e.g., library deletion) to avoid stale activations.
+    /// </summary>
+    Task DeactivateAsync();
 }

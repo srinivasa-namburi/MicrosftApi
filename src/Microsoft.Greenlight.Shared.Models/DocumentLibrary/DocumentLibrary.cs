@@ -1,4 +1,8 @@
-﻿namespace Microsoft.Greenlight.Shared.Models.DocumentLibrary;
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+using System.Text.Json.Serialization;
+using Microsoft.Greenlight.Shared.Models.Configuration;
+
+namespace Microsoft.Greenlight.Shared.Models.DocumentLibrary;
 
 /// <summary>
 /// Represents a document library with various properties and associations.
@@ -47,6 +51,18 @@ public class DocumentLibrary : EntityBase
     public List<DocumentLibraryDocumentProcessAssociation> DocumentProcessAssociations { get; set; } = [];
 
     /// <summary>
+    /// Unique identifier of the embedding model deployment used for this document library.
+    /// If null, uses the global default embedding model.
+    /// </summary>
+    public Guid? EmbeddingModelDeploymentId { get; set; }
+
+    /// <summary>
+    /// Embedding model deployment associated with the document library
+    /// </summary>
+    [JsonIgnore]
+    public AiModelDeployment? EmbeddingModelDeployment { get; set; }
+
+    /// <summary>
     /// Chunking mode for vector store ingestion (only applies when LogicType is SemanticKernelVectorStore).
     /// Defaults to Simple.
     /// </summary>
@@ -61,4 +77,9 @@ public class DocumentLibrary : EntityBase
     /// Vector store chunk overlap in tokens (only applies when LogicType is SemanticKernelVectorStore). If null, global VectorStoreOptions.ChunkOverlap is used.
     /// </summary>
     public int? VectorStoreChunkOverlap { get; set; }
+
+    /// <summary>
+    /// Optional override for embedding vector dimensions; if null, the deployment's embedding size is used.
+    /// </summary>
+    public int? EmbeddingDimensionsOverride { get; set; }
 }

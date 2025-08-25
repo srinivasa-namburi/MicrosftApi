@@ -103,10 +103,13 @@
     [Parameter] public string Reason { get; set; } = string.Empty;
     [Parameter] public EventCallback<ReindexOrchestrationState> OnStatusChanged { get; set; }
 
-    [CascadingParameter] public HubConnection? HubConnection { get; set; }
+    private HubConnection? _hubConnection;
     private Timer? _refreshTimer;
     private SignalRSubscriptionManager? _subMgr;
     private DateTime _lastEventUtc = DateTime.UtcNow;
+    private readonly SemaphoreSlim _pollLock = new(1, 1);
+    private string? _joinedGroupId;
+    private bool _initialized;
     
     // State properties
     private ReindexOrchestrationState Status { get; set; } = ReindexOrchestrationState.NotStarted;
@@ -122,36 +125,47 @@
     {
         if (!string.IsNullOrEmpty(OrchestrationId))
         {
-            await InitializeSignalRConnectionAsync();
+            await EnsureSignalRReadyAsync();
             // Initial fetch to seed the UI in case we mounted mid-run.
             await RefreshStatusAsync();
             StartPeriodicRefresh();
         }
     }
 
-    private async Task InitializeSignalRConnectionAsync()
+    private async Task EnsureSignalRReadyAsync()
     {
         try
         {
-            if (HubConnection == null)
+            // Always get or create the shared connection via the service (dialogs don't receive cascading values)
+            _hubConnection ??= await SignalRConnectionService.GetOrCreateAsync();
+
+            if (_subMgr == null)
             {
-                HubConnection = await SignalRConnectionService.GetOrCreateAsync();
+                _subMgr = SignalRSubscriptionFactory.Create(_hubConnection);
+
+                // Subscribe to reindexing notifications once
+                _subMgr.RegisterHandlerOnce<DocumentReindexStartedNotification>("ReceiveDocumentReindexStartedNotification", OnReindexStarted);
+                _subMgr.RegisterHandlerOnce<DocumentReindexProgressNotification>("ReceiveDocumentReindexProgressNotification", OnReindexProgress);
+                _subMgr.RegisterHandlerOnce<DocumentReindexCompletedNotification>("ReceiveDocumentReindexCompletedNotification", OnReindexCompleted);
+                _subMgr.RegisterHandlerOnce<DocumentReindexFailedNotification>("ReceiveDocumentReindexFailedNotification", OnReindexFailed);
             }
 
-            _subMgr = SignalRSubscriptionFactory.Create(HubConnection);
-
-            // Subscribe to reindexing notifications
-            _subMgr.RegisterHandlerOnce<DocumentReindexStartedNotification>("ReceiveDocumentReindexStartedNotification", OnReindexStarted);
-            _subMgr.RegisterHandlerOnce<DocumentReindexProgressNotification>("ReceiveDocumentReindexProgressNotification", OnReindexProgress);
-            _subMgr.RegisterHandlerOnce<DocumentReindexCompletedNotification>("ReceiveDocumentReindexCompletedNotification", OnReindexCompleted);
-            _subMgr.RegisterHandlerOnce<DocumentReindexFailedNotification>("ReceiveDocumentReindexFailedNotification", OnReindexFailed);
-
             await _subMgr.EnsureConnectedAsync();
-            
-            // Join the orchestration group to receive notifications
-            await _subMgr.JoinGroupAsync(OrchestrationId);
-            
-            ConnectionStatus = HubConnection.State.ToString();
+
+            // Rejoin group if orchestration id changed
+            if (!string.IsNullOrEmpty(_joinedGroupId) && _joinedGroupId != OrchestrationId)
+            {
+                try { await _subMgr.LeaveGroupAsync(_joinedGroupId); } catch { }
+                _joinedGroupId = null;
+            }
+
+            if (!string.IsNullOrEmpty(OrchestrationId) && _joinedGroupId != OrchestrationId)
+            {
+                await _subMgr.JoinGroupAsync(OrchestrationId);
+                _joinedGroupId = OrchestrationId;
+            }
+
+            ConnectionStatus = _hubConnection.State.ToString();
             await InvokeAsync(StateHasChanged);
         }
         catch (Exception ex)
@@ -163,9 +177,15 @@
 
     private async Task RefreshStatusAsync()
     {
+        // Prevent overlapping polls from timer/button when a previous call is still running
+        if (!await _pollLock.WaitAsync(0))
+        {
+            return;
+        }
+
         try
         {
-            if (string.IsNullOrEmpty(OrchestrationId)) return;
+            if (string.IsNullOrEmpty(OrchestrationId)) { return; }
 
             var status = await DocumentReindexApiClient.GetReindexingStatusAsync(OrchestrationId);
             if (status != null)
@@ -191,6 +211,10 @@
             // Log error but don't show to user - this is background refresh
             Console.WriteLine($"Error refreshing reindex status: {ex.Message}");
         }
+        finally
+        {
+            _pollLock.Release();
+        }
     }
 
     private void StartPeriodicRefresh()
@@ -203,7 +227,7 @@
             {
                 try
                 {
-                    var disconnected = HubConnection == null || HubConnection.State != HubConnectionState.Connected;
+                    var disconnected = _hubConnection == null || _hubConnection.State != HubConnectionState.Connected;
                     var stale = (DateTime.UtcNow - _lastEventUtc) > TimeSpan.FromSeconds(20);
                     if (disconnected || (Status == ReindexOrchestrationState.Running && stale))
                     {
@@ -300,9 +324,9 @@
         {
             try
             {
-                if (!string.IsNullOrEmpty(OrchestrationId))
+                if (!string.IsNullOrEmpty(_joinedGroupId))
                 {
-                    await _subMgr.LeaveGroupAsync(OrchestrationId);
+                    await _subMgr.LeaveGroupAsync(_joinedGroupId);
                 }
             }
             catch

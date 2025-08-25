@@ -155,6 +155,18 @@ public class DynamicDocumentProcessDefinition : EntityBase, IDocumentProcessInfo
     public AiModelDeployment? AiModelDeploymentForValidation { get; set; }
 
     /// <summary>
+    /// Unique identifier of the embedding model deployment used for this document process.
+    /// If null, uses the global default embedding model.
+    /// </summary>
+    public Guid? EmbeddingModelDeploymentId { get; set; }
+
+    /// <summary>
+    /// Embedding model deployment associated with the document process
+    /// </summary>
+    [JsonIgnore]
+    public AiModelDeployment? EmbeddingModelDeployment { get; set; }
+
+    /// <summary>
     /// Vector store chunk size in tokens (only applies when LogicType is SemanticKernelVectorStore). If null, global VectorStoreOptions.ChunkSize is used.
     /// </summary>
     public int? VectorStoreChunkSize { get; set; }
@@ -169,4 +181,9 @@ public class DynamicDocumentProcessDefinition : EntityBase, IDocumentProcessInfo
     /// Defaults to Simple for backwards compatibility.
     /// </summary>
     public Microsoft.Greenlight.Shared.Enums.TextChunkingMode? VectorStoreChunkingMode { get; set; } = Microsoft.Greenlight.Shared.Enums.TextChunkingMode.Simple;
+
+    /// <summary>
+    /// Optional override for embedding vector dimensions; if null, the deployment's embedding size is used.
+    /// </summary>
+    public int? EmbeddingDimensionsOverride { get; set; }
 }

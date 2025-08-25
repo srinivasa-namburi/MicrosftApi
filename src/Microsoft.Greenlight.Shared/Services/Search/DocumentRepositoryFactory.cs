@@ -140,6 +140,7 @@ public class DocumentRepositoryFactory : IDocumentRepositoryFactory
 
             VectorStoreDocumentProcessOptions? processOptions = null;
             TextChunkingMode effectiveChunkingMode = TextChunkingMode.Simple;
+            DocumentLibraryType? documentLibraryType = null;
 
             try
             {
@@ -153,6 +154,7 @@ public class DocumentRepositoryFactory : IDocumentRepositoryFactory
                 {
                     processOptions = globalOptions.FromDocumentProcess(processModel);
                     effectiveChunkingMode = processOptions.GetEffectiveChunkingMode();
+                    documentLibraryType = DocumentLibraryType.PrimaryDocumentProcessLibrary;
                     _logger.LogDebug("Using DP model options for {ContextName}: ChunkSize={ChunkSize}, ChunkOverlap={ChunkOverlap}, Mode={Mode}",
                         contextName, processOptions.GetEffectiveChunkSize(), processOptions.GetEffectiveChunkOverlap(), effectiveChunkingMode);
                 }
@@ -167,6 +169,7 @@ public class DocumentRepositoryFactory : IDocumentRepositoryFactory
                     {
                         processOptions = globalOptions.FromDocumentLibrary(libraryModel);
                         effectiveChunkingMode = processOptions.GetEffectiveChunkingMode();
+                        documentLibraryType = DocumentLibraryType.AdditionalDocumentLibrary;
                         _logger.LogDebug("Using library model options for {ContextName}: ChunkSize={ChunkSize}, ChunkOverlap={ChunkOverlap}, Mode={Mode}",
                             contextName, processOptions.GetEffectiveChunkSize(), processOptions.GetEffectiveChunkOverlap(), effectiveChunkingMode);
                     }
@@ -192,6 +195,8 @@ public class DocumentRepositoryFactory : IDocumentRepositoryFactory
                 ? sp.GetRequiredService<SemanticTextChunkingService>()
                 : sp.GetRequiredService<ChunkingService>();
 
+            var kernelFactory = sp.GetService<IKernelFactory>();
+
             _logger.LogDebug("All required services resolved successfully for context {ContextName}", contextName);
 
             IDocumentRepository repo = new SemanticKernelVectorStoreRepository(
@@ -201,9 +206,11 @@ public class DocumentRepositoryFactory : IDocumentRepositoryFactory
                 provider,
                 textExtractionService,
                 textChunkingService,
-                processOptions);
+                processOptions,
+                kernelFactory,
+                documentLibraryType);
 
-            _logger.LogInformation("Successfully created Semantic Kernel Vector Store repository for context {ContextName}", contextName);
+            _logger.LogInformation("Successfully created Semantic Kernel Vector Store repository for context {ContextName} with type {DocumentLibraryType}", contextName, documentLibraryType);
             return repo;
         }
         catch (Exception ex)

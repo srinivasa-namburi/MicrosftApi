@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Grains.Document.Contracts;
+using Microsoft.Greenlight.Grains.Shared.Contracts;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.DocumentProcess.Dynamic;
 using Microsoft.Greenlight.Shared.DocumentProcess.Shared.Generation;
@@ -36,6 +37,8 @@ public class ReportTitleSectionGeneratorGrain : Grain, IReportTitleSectionGenera
         string documentOutlineJson, Guid? metadataId)
     {
         var dbContext = _dbContextFactory.CreateDbContext();
+        ConcurrencyLease? lease = null;
+        var coordinator = GrainFactory.GetGrain<IGlobalConcurrencyCoordinatorGrain>(ConcurrencyCategory.Generation.ToString());
         try
         {
             _logger.LogInformation("Starting section generation for document {DocumentId}", documentId);
@@ -61,6 +64,10 @@ public class ReportTitleSectionGeneratorGrain : Grain, IReportTitleSectionGenera
                 await NotifyCompletion(documentId, contentNode.Id, false);
                 return;
             }
+
+            // Acquire a global generation lease (weight=1) to throttle across the cluster
+            var requesterId = $"ReportTitleSection:{documentId}:{contentNode.Id}";
+            lease = await coordinator.AcquireAsync(requesterId, weight: 1, waitTimeout: TimeSpan.FromHours(4), leaseTtl: TimeSpan.FromHours(1));
 
             _logger.LogInformation("Processing content node {ContentNodeId} for document process {DocumentProcess}", 
                 contentNode.Id, trackedDocument.DocumentProcess);
@@ -224,12 +231,28 @@ public class ReportTitleSectionGeneratorGrain : Grain, IReportTitleSectionGenera
                     }
                 }
 
-                await NotifyCompletion(documentId, nodeId, false);
+                await NotifyCompletion(documentId, Guid.Empty, false);
             }
             catch (Exception innerEx)
             {
                 _logger.LogError(innerEx, "Failed to update GenerationState to Failed for document {DocumentId}", documentId);
                 await NotifyCompletion(documentId, Guid.Empty, false);
+            }
+        }
+        finally
+        {
+            // Release the global lease if it was acquired
+            if (lease != null)
+            {
+                try
+                {
+                    var released = await coordinator.ReleaseAsync(lease.LeaseId);
+                    _logger.LogDebug("Released generation lease {LeaseId} for document {DocumentId}: {Released}", lease.LeaseId, documentId, released);
+                }
+                catch (Exception releaseEx)
+                {
+                    _logger.LogError(releaseEx, "Error releasing generation lease for document {DocumentId}", documentId);
+                }
             }
         }
     }

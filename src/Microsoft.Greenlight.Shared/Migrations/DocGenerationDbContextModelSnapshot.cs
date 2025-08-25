@@ -135,8 +135,14 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("EmbeddingSettings")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<bool>("IsReasoningModel")
                         .HasColumnType("bit");
+
+                    b.Property<int>("ModelType")
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("ModifiedUtc")
                         .HasColumnType("datetime2");
@@ -178,6 +184,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<string>("DeploymentName")
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("EmbeddingSettings")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("ModifiedUtc")
                         .HasColumnType("datetime2");
@@ -514,6 +523,12 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int?>("EmbeddingDimensionsOverride")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("EmbeddingModelDeploymentId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("IndexName")
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
@@ -547,6 +562,8 @@ namespace Microsoft.Greenlight.Shared.Migrations
 
                     b.HasIndex("BlobStorageContainerName")
                         .IsUnique();
+
+                    b.HasIndex("EmbeddingModelDeploymentId");
 
                     b.HasIndex("IndexName")
                         .IsUnique();
@@ -746,6 +763,12 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<Guid?>("DocumentOutlineId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int?>("EmbeddingDimensionsOverride")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("EmbeddingModelDeploymentId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<int>("FollowingSearchPartitionInclusionCount")
                         .HasColumnType("int");
 
@@ -798,6 +821,8 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.HasIndex("AiModelDeploymentForValidationId");
 
                     b.HasIndex("AiModelDeploymentId");
+
+                    b.HasIndex("EmbeddingModelDeploymentId");
 
                     b.HasIndex("LogicType");
 
@@ -2115,6 +2140,15 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Navigation("ContentNode");
                 });
 
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.DocumentLibrary.DocumentLibrary", b =>
+                {
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.Configuration.AiModelDeployment", "EmbeddingModelDeployment")
+                        .WithMany()
+                        .HasForeignKey("EmbeddingModelDeploymentId");
+
+                    b.Navigation("EmbeddingModelDeployment");
+                });
+
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.DocumentLibrary.DocumentLibraryDocumentProcessAssociation", b =>
                 {
                     b.HasOne("Microsoft.Greenlight.Shared.Models.DocumentLibrary.DocumentLibrary", "DocumentLibrary")
@@ -2182,6 +2216,10 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .HasForeignKey("AiModelDeploymentId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.Configuration.AiModelDeployment", "EmbeddingModelDeployment")
+                        .WithMany()
+                        .HasForeignKey("EmbeddingModelDeploymentId");
+
                     b.HasOne("Microsoft.Greenlight.Shared.Models.Validation.DocumentProcessValidationPipeline", "ValidationPipeline")
                         .WithOne("DocumentProcess")
                         .HasForeignKey("Microsoft.Greenlight.Shared.Models.DocumentProcess.DynamicDocumentProcessDefinition", "ValidationPipelineId")
@@ -2190,6 +2228,8 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Navigation("AiModelDeployment");
 
                     b.Navigation("AiModelDeploymentForValidation");
+
+                    b.Navigation("EmbeddingModelDeployment");
 
                     b.Navigation("ValidationPipeline");
                 });

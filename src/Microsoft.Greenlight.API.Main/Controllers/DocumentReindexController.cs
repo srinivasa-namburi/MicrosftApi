@@ -74,9 +74,10 @@ public class DocumentReindexController : BaseController
             var orchestrationId = $"library-{documentLibraryShortName}";
             var reindexGrain = _clusterClient.GetGrain<IDocumentReindexOrchestrationGrain>(orchestrationId);
 
-            // If already running, just return the same ID so the UI can attach
+            // If already running in this activation, just return the same ID so the UI can attach
             var existing = await reindexGrain.GetStateAsync();
-            if (existing.Status == ReindexOrchestrationState.Running)
+            var isActive = await reindexGrain.IsRunningAsync();
+            if (existing.Status == ReindexOrchestrationState.Running && isActive)
             {
                 _logger.LogInformation("Reindexing already running for document library {DocumentLibraryName}. Orchestration ID: {OrchestrationId}",
                     documentLibraryShortName, orchestrationId);
@@ -134,9 +135,10 @@ public class DocumentReindexController : BaseController
             var orchestrationId = $"process-{documentProcessShortName}";
             var reindexGrain = _clusterClient.GetGrain<IDocumentReindexOrchestrationGrain>(orchestrationId);
 
-            // If already running, just return the same ID so the UI can attach
+            // If already running in this activation, just return the same ID so the UI can attach
             var existing = await reindexGrain.GetStateAsync();
-            if (existing.Status == ReindexOrchestrationState.Running)
+            var isActive = await reindexGrain.IsRunningAsync();
+            if (existing.Status == ReindexOrchestrationState.Running && isActive)
             {
                 _logger.LogInformation("Reindexing already running for document process {DocumentProcessName}. Orchestration ID: {OrchestrationId}",
                     documentProcessShortName, orchestrationId);

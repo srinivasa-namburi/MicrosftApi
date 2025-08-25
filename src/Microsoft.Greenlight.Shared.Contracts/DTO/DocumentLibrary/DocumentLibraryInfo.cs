@@ -60,6 +60,12 @@ public class DocumentLibraryInfo
     public List<DocumentLibraryDocumentProcessAssociationInfo> DocumentProcessAssociations { get; set; } = [];
 
     /// <summary>
+    /// Unique identifier of the embedding model deployment used for this document library.
+    /// If null, uses the global default embedding model.
+    /// </summary>
+    public Guid? EmbeddingModelDeploymentId { get; set; }
+
+    /// <summary>
     /// Vector store chunking mode (only applies when LogicType is SemanticKernelVectorStore). Defaults to Simple.
     /// </summary>
     public TextChunkingMode? VectorStoreChunkingMode { get; set; } = TextChunkingMode.Simple;
@@ -73,4 +79,9 @@ public class DocumentLibraryInfo
     /// Vector store chunk overlap in tokens (only applies when LogicType is SemanticKernelVectorStore). If null, global VectorStoreOptions.ChunkOverlap is used.
     /// </summary>
     public int? VectorStoreChunkOverlap { get; set; }
+
+    /// <summary>
+    /// Optional override for embedding vector dimensions; if null, the deployment's embedding size is used.
+    /// </summary>
+    public int? EmbeddingDimensionsOverride { get; set; }
 }

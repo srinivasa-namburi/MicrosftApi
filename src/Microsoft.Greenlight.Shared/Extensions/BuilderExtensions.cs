@@ -57,6 +57,8 @@ using StackExchange.Redis;
 using StackExchange.Redis.Configuration;
 using System.ClientModel;
 using System.Reflection;
+using Microsoft.Extensions.Caching.Hybrid;
+using Microsoft.Greenlight.Shared.Services.Caching;
 
 namespace Microsoft.Greenlight.Shared.Extensions;
 #pragma warning disable SKEXP0011
@@ -136,6 +138,10 @@ public static class BuilderExtensions
         builder.Services.AddAutoMapper(typeof(DocumentProcessInfoProfile));
 
         builder.AddGreenLightRedisClient("redis", credentialHelper, serviceConfigurationOptions);
+
+        // Add HybridCache using configured IDistributedCache (Redis) as L2, memory as L1
+        builder.Services.AddHybridCache();
+        builder.Services.TryAddSingleton<IAppCache, AppCache>();
 
         // Common services and dependencies
         builder.AddAzureSearchClient("aiSearch",
@@ -241,6 +247,7 @@ public static class BuilderExtensions
 
         builder.Services.AddKeyedTransient<IDocumentExporter, WordDocumentExporter>("IDocumentExporter-Word");
 
+        // Register plugin source reference collector using Redis-backed implementation
         builder.Services.AddSingleton<IPluginSourceReferenceCollector, PluginSourceReferenceCollector>();
         builder.Services.AddKeyedTransient<IFunctionInvocationFilter, InputOutputTrackingPluginInvocationFilter>(
             "InputOutputTrackingPluginInvocationFilter");

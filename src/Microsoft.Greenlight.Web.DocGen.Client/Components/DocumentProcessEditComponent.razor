@@ -72,43 +72,8 @@
                 <MudItem xs="12" md="6">
                     <MudTextField @bind-Value="_process.ShortName" Label="Short Name" Disabled="_isEditMode" OnBlur="ValidateAndFormatShortName" />
                     <MudTextField @bind-Value="_process.Description" Label="Description" />
-                    <MudTextField @bind-Value="_process.BlobStorageContainerName" Label="Blob Storage Container Name" Disabled="_isEditMode" />
-                    <MudTextField @bind-Value="_process.BlobStorageAutoImportFolderName" Label="Auto Import Folder Name" />
-                    <MudTextField @bind-Value="_indexName"
-                                  Label="Repository Index Name"
-                                  Disabled="_isEditMode"
-                                  OnInternalInputChanged="UpdateRepositories" />
-                    @if (_process.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
-                    {
-                        <MudSelect T="TextChunkingMode?" @bind-Value="_process.VectorStoreChunkingMode" Label="Chunking Mode">
-                            @foreach (var mode in Enum.GetValues<TextChunkingMode>())
-                            {
-                                <MudSelectItem Value="@(mode as TextChunkingMode?)">@mode.ToString()</MudSelectItem>
-                            }
-                        </MudSelect>
-                        
-                        <MudNumericField T="int?" @bind-Value="_process.VectorStoreChunkSize" 
-                                       Label="Chunk Size (tokens)" 
-                                       HelperText="Number of tokens per chunk. Leave empty to use global default."
-                                       Min="100" Max="8000" />
-                        
-                        <MudNumericField T="int?" @bind-Value="_process.VectorStoreChunkOverlap" 
-                                       Label="Chunk Overlap (tokens)" 
-                                       HelperText="Number of overlapping tokens between chunks. Leave empty to use global default."
-                                       Min="0" Max="2000" />
-                                        
-                        <MudAlert Severity="Severity.Info" Class="mt-2">
-                            <strong>Note:</strong> Changing chunk size or overlap will only apply to newly ingested documents. 
-                            Existing documents in the index will retain their original chunking. 
-                            You can reindex existing documents to apply new chunk settings.
-                        </MudAlert>
-                    }
-                    <MudSelect T="DocumentProcessCompletionServiceType ?" @bind-Value="_process.CompletionServiceType" Label="AI Completion Service Type">
-                        @foreach (var completionType in Enum.GetValues<DocumentProcessCompletionServiceType>())
-                        {
-                            <MudSelectItem Value="@(completionType as DocumentProcessCompletionServiceType?)">@completionType.ToString()</MudSelectItem>
-                        }
-                    </MudSelect>
+
+                    <!-- AI Model Deployment selectors for Regular and Validation deployments -->
                     <MudSelect T="AiModelDeploymentInfo" @bind-Value="SelectedDeployment" Label="AI Model Deployment"
                                ToStringFunc="@(d => d.DeploymentName)">
                         @foreach (var deployment in _aiModelDeployments)
@@ -128,6 +93,51 @@
                             </MudSelectItem>
                         }
                     </MudSelect>
+
+                    <MudExpansionPanels Class="mt-2">
+                        <MudExpansionPanel Text="Storage & Index" Expanded="true">
+                            <MudTextField @bind-Value="_process.BlobStorageContainerName" Label="Blob Storage Container Name" Disabled="_isEditMode" />
+                            <MudTextField @bind-Value="_process.BlobStorageAutoImportFolderName" Label="Auto Import Folder Name" />
+                            <MudTextField @bind-Value="_indexName" Label="Repository Index Name" Disabled="_isEditMode" OnInternalInputChanged="UpdateRepositories" />
+                        </MudExpansionPanel>
+
+                        <MudExpansionPanel Text="Advanced (Vector Store & Embeddings)" Expanded="true">
+                            @if (_process.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
+                            {
+                                <MudSelect T="TextChunkingMode?" @bind-Value="_process.VectorStoreChunkingMode" Label="Chunking Mode">
+                                    @foreach (var mode in Enum.GetValues<TextChunkingMode>())
+                                    {
+                                        <MudSelectItem Value="@(mode as TextChunkingMode?)">@mode.ToString()</MudSelectItem>
+                                    }
+                                </MudSelect>
+
+                                <MudNumericField T="int?" @bind-Value="_process.VectorStoreChunkSize" Label="Chunk Size (tokens)" Min="100" Max="8000" HelperText="Number of tokens per chunk. Leave empty to use global default." />
+                                <MudNumericField T="int?" @bind-Value="_process.VectorStoreChunkOverlap" Label="Chunk Overlap (tokens)" Min="0" Max="2000" HelperText="Number of overlapping tokens between chunks. Leave empty to use global default." />
+
+                                <MudDivider Class="my-2" />
+
+                                <MudSelect T="AiModelDeploymentInfo" Label="Embedding Model Deployment" @bind-Value="SelectedEmbeddingDeployment" ToStringFunc="@(d => d.DeploymentName)">
+                                    @foreach (var deployment in _aiModelDeployments.Where(d => d.AiModel?.ModelType == AiModelType.Embedding))
+                                    {
+                                        <MudSelectItem Value="@deployment">@deployment.DeploymentName</MudSelectItem>
+                                    }
+                                </MudSelect>
+
+                                <MudSelect T="int?" @bind-Value="_process.EmbeddingDimensionsOverride" Label="Embedding Size Override (dimensions)">
+                                    <MudSelectItem T="int?" Value="@(default(int?))">Use deployment default</MudSelectItem>
+                                    <MudSelectItem T="int?" Value="256">256</MudSelectItem>
+                                    <MudSelectItem T="int?" Value="512">512</MudSelectItem>
+                                    <MudSelectItem T="int?" Value="1024">1024</MudSelectItem>
+                                    <MudSelectItem T="int?" Value="1536">1536</MudSelectItem>
+                                    <MudSelectItem T="int?" Value="3072">3072</MudSelectItem>
+                                </MudSelect>
+
+                                <MudAlert Severity="Severity.Info" Class="mt-2">
+                                    <strong>Note:</strong> Changing chunk size or overlap will only apply to newly ingested documents. You can reindex existing documents to apply new settings.
+                                </MudAlert>
+                            }
+                        </MudExpansionPanel>
+                    </MudExpansionPanels>
 
                     <!-- File Upload Section -->
                     @if (ProcessId != null && _isEditMode)
@@ -180,11 +190,17 @@
 
                     <MudGrid Spacing="2" Class="mt-2 mb-2">
                         <MudItem>
-                            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveProcess">Save</MudButton>
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveProcess" Style="min-width:150px">Save</MudButton>
                         </MudItem>
                         <MudItem>
-                            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="Cancel">Cancel</MudButton>
+                            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="Cancel" Style="min-width:150px">Cancel</MudButton>
                         </MudItem>
+                        @if (ProcessId != null)
+                        {
+                            <MudItem>
+                                <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="ConfirmDeleteProcess" Style="min-width:150px">Delete Process</MudButton>
+                            </MudItem>
+                        }
                     </MudGrid>
 
                 </MudItem>
@@ -348,6 +364,10 @@
         (_processReindexStatus.Status == ReindexOrchestrationState.Completed && _sawProcessRunThisSession)
     );
 
+    // New fields to track initial embedding model and dimensions
+    private Guid? _initialEmbeddingModelDeploymentId;
+    private int? _initialEmbeddingDimensionsOverride;
+
     protected override async Task OnInitializedAsync()
     {
         try
@@ -359,6 +379,18 @@
             {
                 _isEditMode = true;
                 _process = await DocumentProcessApiClient.GetDocumentProcessInfoByIdAsync(ProcessId.Value) ?? new DocumentProcessInfo();
+                _initialEmbeddingModelDeploymentId = _process.EmbeddingModelDeploymentId;
+                _initialEmbeddingDimensionsOverride = _process.EmbeddingDimensionsOverride;
+
+                // If no embedding deployment has been set yet, default to the first embedding deployment
+                if (_process.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore && _process.EmbeddingModelDeploymentId == null)
+                {
+                    var defaultEmbedding = _aiModelDeployments.FirstOrDefault(d => d.AiModel?.ModelType == AiModelType.Embedding);
+                    if (defaultEmbedding != null)
+                    {
+                        _process.EmbeddingModelDeploymentId = defaultEmbedding.Id;
+                    }
+                }
 
                 // Initialize _indexName with the existing repository value
                 if (_process.Repositories != null && _process.Repositories.Any())
@@ -433,6 +465,13 @@
                 SelectedValidationDeployment = _aiModelDeployments.FirstOrDefault(x => x.DeploymentName == "gpt-4o");
                 // Default repository logic type: Semantic Kernel Vector Store (migrated away from Kernel Memory)
                 _process.LogicType = DocumentProcessLogicType.SemanticKernelVectorStore;
+
+                // Default embedding deployment for new processes
+                var defaultEmbedding = _aiModelDeployments.FirstOrDefault(d => d.AiModel?.ModelType == AiModelType.Embedding);
+                if (defaultEmbedding != null)
+                {
+                    _process.EmbeddingModelDeploymentId = defaultEmbedding.Id;
+                }
             }
         }
         catch (Exception ex)
@@ -617,6 +656,13 @@
         }
     }
 
+    // Intermediate property for binding the selected embedding deployment.
+    private AiModelDeploymentInfo? SelectedEmbeddingDeployment
+    {
+        get => _aiModelDeployments.FirstOrDefault(d => d.Id == _process.EmbeddingModelDeploymentId);
+        set => _process.EmbeddingModelDeploymentId = value?.Id;
+    }
+
     private async Task HandleFileSelected(IReadOnlyList<IBrowserFile>? files)
     {
         if (files == null || files.Count == 0)
@@ -725,6 +771,11 @@
         ValidateAndFormatShortName();
         UpdateRepositories();
 
+        if (!await ConfirmReindexIfEmbeddingChangedAsync())
+        {
+            return;
+        }
+
         if (_isEditMode && _process != null)
         {
             // Handle validation pipeline
@@ -746,8 +797,23 @@
                 _validationPipeline = null;
             }
 
+            // Ensure embedding settings are only applied for SemanticKernelVectorStore
+            if (_process.LogicType != DocumentProcessLogicType.SemanticKernelVectorStore)
+            {
+                _process.EmbeddingModelDeploymentId = null;
+                _process.EmbeddingDimensionsOverride = null;
+            }
+
             await DocumentProcessApiClient.UpdateDynamicDocumentProcessDefinitionAsync(_process);
             Snackbar.Add("Document process updated successfully.", Severity.Success);
+
+            if (_process.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore && EmbeddingConfigChangedForProcess())
+            {
+                await StartImmediateProcessReindexAsync("Embedding model/dimensions changed");
+            }
+
+            _initialEmbeddingModelDeploymentId = _process.EmbeddingModelDeploymentId;
+            _initialEmbeddingDimensionsOverride = _process.EmbeddingDimensionsOverride;
         }
         else
         {
@@ -970,6 +1036,97 @@
     {
     public McpPluginInfo Plugin { get; set; } = new();
     public string Version { get; set; } = string.Empty;
+    }
+
+    private bool EmbeddingConfigChangedForProcess()
+    {
+        return _initialEmbeddingModelDeploymentId != _process.EmbeddingModelDeploymentId
+            || _initialEmbeddingDimensionsOverride != _process.EmbeddingDimensionsOverride;
+    }
+
+    private async Task<bool> ConfirmReindexIfEmbeddingChangedAsync()
+    {
+        if (!_isEditMode || _process.LogicType != DocumentProcessLogicType.SemanticKernelVectorStore)
+        {
+            return true;
+        }
+        if (!EmbeddingConfigChangedForProcess())
+        {
+            return true;
+        }
+
+        var parameters = new DialogParameters
+        {
+            { "TargetName", _process.ShortName },
+            { "IsDocumentProcess", true },
+            { "Reason", "Embedding model/dimensions changed" },
+            { "WarningMessage", "Changing the embedding model or dimensions requires deleting and rebuilding the process repository index. Proceed?" }
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<DocumentReindexConfirmationDialog>("Reindex Required", parameters, options);
+        var result = await dialog.Result;
+        return !result.Canceled;
+    }
+
+    private async Task StartImmediateProcessReindexAsync(string reason)
+    {
+        try
+        {
+            var orchestrationId = await DocumentReindexApiClient.StartDocumentProcessReindexingAsync(_process.ShortName, reason);
+
+            var parameters = new DialogParameters
+            {
+                { "OrchestrationId", orchestrationId },
+                { "TargetName", _process.ShortName },
+                { "Reason", reason }
+            };
+            var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+            await DialogService.ShowAsync<DocumentReindexProgressDisplay>("Reindexing Progress", parameters, options);
+
+            await RefreshReindexStatusesAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to start reindex: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ConfirmDeleteProcess()
+    {
+        if (ProcessId == null)
+        {
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            { "ContentText", $"Are you sure you want to delete the document process '{_process.ShortName}'? This deletes the vector index/collection (if SK), its blob container and all ingested document records." },
+            { "ButtonText", "Delete" },
+            { "DialogColor", Color.Error }
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = DialogService.Show<ConfirmationDialog>("Delete Document Process", parameters, options);
+        var result = await dialog.Result;
+        if (!result.Canceled)
+        {
+            try
+            {
+                var ok = await DocumentProcessApiClient.DeleteDocumentProcessAsync(ProcessId.Value);
+                if (ok)
+                {
+                    Snackbar.Add("Document process deleted.", Severity.Success);
+                    await OnProcessSaved.InvokeAsync();
+                }
+                else
+                {
+                    Snackbar.Add("Delete failed.", Severity.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to delete process: {ex.Message}", Severity.Error);
+            }
+        }
     }
 
     public async ValueTask DisposeAsync()

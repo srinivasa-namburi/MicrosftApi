@@ -3,6 +3,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Grains.Ingestion.Contracts;
+using Microsoft.Greenlight.Grains.Shared.Contracts;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Helpers;
@@ -58,10 +59,17 @@ public class DocumentReindexProcessorGrain : Grain, IDocumentReindexProcessorGra
 
         _isActive = true;
 
+        ConcurrencyLease? lease = null;
+        var coordinator = GrainFactory.GetGrain<IGlobalConcurrencyCoordinatorGrain>(ConcurrencyCategory.Ingestion.ToString());
+
         try
         {
             _logger.LogInformation("Starting reindexing for document {DocumentId}. Reason: {Reason}. Orchestration: {OrchestrationId}",
                 ingestedDocumentId, reason, orchestrationId);
+
+            // Acquire cluster-wide ingestion lease
+            var requesterId = $"Reindex:{ingestedDocumentId}";
+            lease = await coordinator.AcquireAsync(requesterId, weight: 1, waitTimeout: TimeSpan.FromDays(2), leaseTtl: TimeSpan.FromHours(1));
 
             // Get the document details
             Microsoft.Greenlight.Shared.Models.IngestedDocument document;
@@ -127,6 +135,20 @@ public class DocumentReindexProcessorGrain : Grain, IDocumentReindexProcessorGra
         }
         finally
         {
+            // Release global lease
+            if (lease != null)
+            {
+                try
+                {
+                    var released = await coordinator.ReleaseAsync(lease.LeaseId);
+                    _logger.LogDebug("Released reindex ingestion lease {LeaseId} for document {DocumentId}: {Released}", lease.LeaseId, ingestedDocumentId, released);
+                }
+                catch (Exception releaseEx)
+                {
+                    _logger.LogError(releaseEx, "Error releasing reindex ingestion lease for document {DocumentId}", ingestedDocumentId);
+                }
+            }
+
             _isActive = false;
         }
     }

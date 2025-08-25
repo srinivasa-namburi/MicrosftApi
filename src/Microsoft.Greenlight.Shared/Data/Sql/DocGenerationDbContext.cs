@@ -94,6 +94,7 @@ public class DocGenerationDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
+
         //Apply configurations for entities inheriting from EntityBase
         //This loop applies configurations for all entities inheriting EntityBase to avoid repeating the same configurations
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())
@@ -104,6 +105,9 @@ public class DocGenerationDbContext : DbContext
                 modelBuilder.Entity(entityType.ClrType).Property(typeof(byte[]), nameof(EntityBase.RowVersion)).IsRowVersion();
             }
         }
+
+        // Apply split configurations
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(DocGenerationDbContext).Assembly);
 
         // ValueConverter for List<string> to JSON string for storage in a single column
         var stringListToJsonConverter = new ValueConverter<List<string>, string>(
@@ -204,6 +208,12 @@ public class DocGenerationDbContext : DbContext
                     v => JsonSerializer.Deserialize<AiModelMaxTokenSettings>(v, (JsonSerializerOptions)null!) ?? new AiModelMaxTokenSettings()
                 );
 
+            entity.Property(e => e.EmbeddingSettings)
+                .HasConversion(
+                    v => JsonSerializer.Serialize(v, (JsonSerializerOptions)null!),
+                    v => string.IsNullOrEmpty(v) ? null : JsonSerializer.Deserialize<AiModelEmbeddingSettings>(v, (JsonSerializerOptions)null!)
+                );
+
             entity.HasIndex(nameof(AiModel.Name)).IsUnique();
         });
 
@@ -233,6 +243,12 @@ public class DocGenerationDbContext : DbContext
                 .HasConversion(
                     v => JsonSerializer.Serialize(v, (JsonSerializerOptions)null!),
                     v => JsonSerializer.Deserialize<AiModelReasoningSettings>(v, (JsonSerializerOptions)null!) ?? new AiModelReasoningSettings()
+                );
+
+            entity.Property(e => e.EmbeddingSettings)
+                .HasConversion(
+                    v => JsonSerializer.Serialize(v, (JsonSerializerOptions)null!),
+                    v => string.IsNullOrEmpty(v) ? null : JsonSerializer.Deserialize<AiModelEmbeddingSettings>(v, (JsonSerializerOptions)null!)
                 );
 
             entity.HasIndex(nameof(AiModelDeployment.DeploymentName)).IsUnique();

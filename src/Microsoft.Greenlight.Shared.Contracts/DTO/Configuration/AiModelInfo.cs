@@ -1,4 +1,5 @@
 ﻿using Microsoft.Greenlight.Shared.Contracts.Components;
+using Microsoft.Greenlight.Shared.Enums;
 
 
 
@@ -21,15 +22,28 @@ namespace Microsoft.Greenlight.Shared.Contracts.DTO.Configuration
         public required string Name { get; set; }
 
         /// <summary>
+        /// Type of AI model (Chat or Embedding).
+        /// </summary>
+        public AiModelType ModelType { get; set; } = AiModelType.Chat;
+
+        /// <summary>
         /// Various recommended max token limits for different types of content generation.
         /// These form the basis of deployment definitions, but are not enforced and can be overridden.
+        /// Only relevant for Chat models.
         /// </summary>
         public AiModelMaxTokenSettings TokenSettings { get; set; } = new AiModelMaxTokenSettings();
 
         /// <summary>
         /// Whether this is a reasoning model type. Defaults to false.
+        /// Only relevant for Chat models.
         /// </summary>
         public bool IsReasoningModel { get; set; } = false;
+
+        /// <summary>
+        /// Settings specific to embedding models, including dimensions and content length limits.
+        /// Only relevant for Embedding models.
+        /// </summary>
+        public AiModelEmbeddingSettings? EmbeddingSettings { get; set; }
 
     }
 }

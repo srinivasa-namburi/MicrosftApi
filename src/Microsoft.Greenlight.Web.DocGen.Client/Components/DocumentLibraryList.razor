@@ -1,6 +1,8 @@
-﻿@inject IDocumentLibraryApiClient DocumentLibraryApiClient
+﻿@* // Copyright (c) Microsoft Corporation. All rights reserved. *@
+@inject IDocumentLibraryApiClient DocumentLibraryApiClient
 @inject NavigationManager NavigationManager
-@inject IJSRuntime JSRuntime
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
 @using Microsoft.Greenlight.Shared.Enums
 
 <MudPaper Class="pa-4">
@@ -33,7 +35,7 @@
                 <TemplateColumn Title="Actions" CellClass="d-flex justify-end">
                     <CellTemplate>
                         <MudIconButton Color="Color.Default" Icon="@Icons.Material.Filled.StickyNote2" Size="Size.Small" OnClick="@(()=>EditLibrary(context.Item.Id))"></MudIconButton>
-                        <MudIconButton Color="Color.Error" Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => DeleteLibrary(context.Item.Id))"/>
+                        <MudIconButton Color="Color.Error" Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => ConfirmDeleteLibrary(context.Item.Id))"/>
                     </CellTemplate>
                 </TemplateColumn>
             </Columns>
@@ -64,13 +66,34 @@
         NavigationManager.NavigateTo($"/document-library/{id}");
     }
 
-    private async Task DeleteLibrary(Guid id)
+    private async Task ConfirmDeleteLibrary(Guid id)
     {
-        bool confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to delete this document library?");
-        if (confirmed)
+        var lib = DocumentLibraries?.FirstOrDefault(l => l.Id == id);
+        var name = lib?.ShortName ?? "this library";
+
+        var parameters = new DialogParameters
         {
-            await DocumentLibraryApiClient.DeleteDocumentLibraryAsync(id);
-            await LoadLibraries();
+            { "ContentText", $"Are you sure you want to delete the document library '{name}'? This deletes the vector index/collection (if SK), its blob container and all ingested document records." },
+            { "ButtonText", "Delete" },
+            { "DialogColor", Color.Error }
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = DialogService.Show<ConfirmationDialog>("Delete Document Library", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            try
+            {
+                await DocumentLibraryApiClient.DeleteDocumentLibraryAsync(id);
+                Snackbar.Add("Document library deleted.", Severity.Success);
+                await LoadLibraries();
+                await InvokeAsync(StateHasChanged);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to delete library: {ex.Message}", Severity.Error);
+            }
         }
     }
 

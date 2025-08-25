@@ -14,6 +14,7 @@ using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.Extensions.AI;
 using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
 using Microsoft.Greenlight.Shared.Services.Search.Internal;
+using Microsoft.Greenlight.Shared.Services;
 
 namespace Microsoft.Greenlight.Shared.Services.Search;
 
@@ -36,6 +37,7 @@ public class SemanticKernelVectorStoreRepository : IDocumentRepository
     private readonly ITextChunkingService _textChunkingService;
     private readonly VectorStoreDocumentProcessOptions? _processOptions;
     private readonly IKernelFactory? _kernelFactory;
+    private readonly DocumentLibraryType? _documentLibraryType;
 
     /// <summary>
     /// Creates a new repository instance.
@@ -48,7 +50,8 @@ public class SemanticKernelVectorStoreRepository : IDocumentRepository
         ITextExtractionService textExtractionService,
         ITextChunkingService textChunkingService,
         VectorStoreDocumentProcessOptions? processOptions = null,
-        IKernelFactory? kernelFactory = null)
+        IKernelFactory? kernelFactory = null,
+        DocumentLibraryType? documentLibraryType = null)
     {
         _logger = logger;
         _options = rootOptions.Value.GreenlightServices.VectorStore;
@@ -58,6 +61,7 @@ public class SemanticKernelVectorStoreRepository : IDocumentRepository
         _textChunkingService = textChunkingService;
         _processOptions = processOptions;
         _kernelFactory = kernelFactory;
+        _documentLibraryType = documentLibraryType;
     }
 
     /// <inheritdoc />
@@ -131,7 +135,33 @@ public class SemanticKernelVectorStoreRepository : IDocumentRepository
         }
 
         _logger.LogDebug("Chunking document {FileName} with chunk size {ChunkSize} and overlap {ChunkOverlap}, produced {ChunkCount} chunks", fileName, effectiveChunkSize, effectiveChunkOverlap, chunkPositions.Count);
-        if (chunkPositions.Count > 0) _logger.LogInformation("[VectorStore] Starting embedding generation for {ChunkCount} chunks (file={File}, index={Index})", chunkPositions.Count, fileName, indexName);
+        
+        // Early return if no chunks to process
+        if (chunkPositions.Count == 0)
+        {
+            _logger.LogInformation("No chunks generated from document {FileName}, skipping ingestion", fileName);
+            return;
+        }
+
+        // 3) Resolve embedding dimensions efficiently using context-aware resolution
+        _logger.LogDebug("Resolving embedding dimensions for document library or process '{Name}' (context: {DocumentLibraryType})", documentLibraryName, _documentLibraryType);
+        int embeddingDimensions;
+        try
+        {
+            embeddingDimensions = await ResolveEmbeddingDimensionsAsync(documentLibraryName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to resolve embedding config for '{DocumentLibraryName}', using default dimensions", documentLibraryName);
+            // Final fallback to configured or default dimensions
+            embeddingDimensions = _options.VectorSize > 0 ? _options.VectorSize : 1536;
+            _logger.LogDebug("Using fallback embedding dimensions: {Dimensions}", embeddingDimensions);
+        }
+
+        // 4) Ensure collection exists with the correct dimensions BEFORE generating all embeddings
+        await _provider.EnsureCollectionAsync(indexName, embeddingDimensions);
+
+        _logger.LogInformation("[VectorStore] Starting embedding generation for {ChunkCount} chunks (file={File}, index={Index})", chunkPositions.Count, fileName, indexName);
         var progressMilestones = new List<int>();
         if (chunkPositions.Count > 0)
         {
@@ -148,7 +178,7 @@ public class SemanticKernelVectorStoreRepository : IDocumentRepository
         var now = DateTimeOffset.UtcNow; var partition = 0;
         foreach (var chunk in chunkPositions)
         {
-            var embedding = await _embeddingService.GenerateEmbeddingsAsync(chunk.Text);
+            var embedding = await GenerateEmbeddingForDocumentAsync(documentLibraryName, chunk.Text);
             var tags = BuildTags(documentLibraryName, documentId, fileName, documentUrl, userId, additionalTags);
             if (isPdf && chunk.StartPage.HasValue)
             {
@@ -175,9 +205,86 @@ public class SemanticKernelVectorStoreRepository : IDocumentRepository
             }
         }
         if (chunkPositions.Count > 0) _logger.LogInformation("[VectorStore] Completed embedding generation for {ChunkCount} chunks (file={File}, index={Index})", chunkPositions.Count, fileName, indexName);
-        await _provider.EnsureCollectionAsync(indexName);
+        
+        // 5) Upsert the records (collection already exists with correct dimensions)
         await _provider.UpsertAsync(indexName, chunkRecords);
         _logger.LogInformation("Ingested {ChunkCount} chunks into vector index {Index} for file {File}", chunkPositions.Count, indexName, fileName);
+    }
+
+    /// <summary>
+    /// Context-aware embedding dimension resolution based on the repository type.
+    /// </summary>
+    private async Task<int> ResolveEmbeddingDimensionsAsync(string documentLibraryName)
+    {
+        // Use context-aware resolution order based on the repository type
+        if (_documentLibraryType == DocumentLibraryType.PrimaryDocumentProcessLibrary)
+        {
+            // For document processes, try document process first, then document library
+            try
+            {
+                var (_, processDimensions) = await _embeddingService.ResolveEmbeddingConfigForDocumentProcessAsync(documentLibraryName);
+                _logger.LogDebug("Resolved embedding dimensions from document process '{DocumentProcess}': {Dimensions}", documentLibraryName, processDimensions);
+                return processDimensions;
+            }
+            catch (Exception exProcess)
+            {
+                _logger.LogDebug(exProcess, "Failed to resolve embedding config as document process '{DocumentProcess}', trying as document library", documentLibraryName);
+                try
+                {
+                    var (_, libraryDimensions) = await _embeddingService.ResolveEmbeddingConfigForDocumentLibraryAsync(documentLibraryName);
+                    _logger.LogDebug("Resolved embedding dimensions from document library '{DocumentLibrary}': {Dimensions}", documentLibraryName, libraryDimensions);
+                    return libraryDimensions;
+                }
+                catch (Exception exLibrary)
+                {
+                    _logger.LogDebug(exLibrary, "Failed to resolve embedding config as document library '{DocumentLibrary}' after document process failure", documentLibraryName);
+                    throw;
+                }
+            }
+        }
+        else
+        {
+            // For document libraries (or unknown context), try document library first, then document process
+            try
+            {
+                var (_, libraryDimensions) = await _embeddingService.ResolveEmbeddingConfigForDocumentLibraryAsync(documentLibraryName);
+                _logger.LogDebug("Resolved embedding dimensions from document library '{DocumentLibrary}': {Dimensions}", documentLibraryName, libraryDimensions);
+                return libraryDimensions;
+            }
+            catch (Exception exLibrary)
+            {
+                _logger.LogDebug(exLibrary, "Failed to resolve embedding config as document library '{DocumentLibrary}', trying as document process", documentLibraryName);
+                try
+                {
+                    var (_, processDimensions) = await _embeddingService.ResolveEmbeddingConfigForDocumentProcessAsync(documentLibraryName);
+                    _logger.LogDebug("Resolved embedding dimensions from document process '{DocumentProcess}': {Dimensions}", documentLibraryName, processDimensions);
+                    return processDimensions;
+                }
+                catch (Exception exProcess)
+                {
+                    _logger.LogDebug(exProcess, "Failed to resolve embedding config as document process '{DocumentProcess}' after document library failure", documentLibraryName);
+                    throw;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Context-aware embedding generation based on the repository type.
+    /// </summary>
+    private async Task<float[]> GenerateEmbeddingForDocumentAsync(string documentLibraryName, string text)
+    {
+        // Use context-aware embedding generation based on the repository type
+        if (_documentLibraryType == DocumentLibraryType.PrimaryDocumentProcessLibrary)
+        {
+            // For document processes, use document process embedding service
+            return await _embeddingService.GenerateEmbeddingsForDocumentProcessAsync(documentLibraryName, text);
+        }
+        else
+        {
+            // For document libraries, use document library embedding service
+            return await _embeddingService.GenerateEmbeddingsForDocumentLibraryAsync(documentLibraryName, text);
+        }
     }
 
     /// <inheritdoc />
@@ -285,7 +392,7 @@ public class SemanticKernelVectorStoreRepository : IDocumentRepository
     /// </summary>
     private async Task<List<SourceReferenceItem>> PerformSingleSearchAsync(string documentLibraryName, string searchText, ConsolidatedSearchOptions options, string indexName)
     {
-        var queryEmbedding = await _embeddingService.GenerateEmbeddingsAsync(searchText);
+        var queryEmbedding = await GenerateEmbeddingForDocumentAsync(documentLibraryName, searchText);
         _logger.LogDebug("Generated embeddings for search query '{SearchText}' (embedding dimension: {EmbeddingDimension})", 
             searchText, queryEmbedding.Length);
 

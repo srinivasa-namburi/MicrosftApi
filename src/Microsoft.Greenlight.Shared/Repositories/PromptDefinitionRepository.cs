@@ -2,7 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Models.DocumentProcess;
-using StackExchange.Redis;
+using Microsoft.Greenlight.Shared.Services.Caching;
 
 namespace Microsoft.Greenlight.Shared.Repositories;
 
@@ -11,18 +11,18 @@ namespace Microsoft.Greenlight.Shared.Repositories;
 /// </summary>
 public class PromptDefinitionRepository : GenericRepository<PromptDefinition>
 {
-    private const string CacheKeyAll = "PromptDefinition";
+    private const string CacheKeyAll = "Repo:PromptDefinition:All";
     private readonly TimeSpan DefaultCacheDuration = TimeSpan.FromMinutes(60);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PromptDefinitionRepository"/> class.
     /// </summary>
-    /// <param name="dbContext">The database context.</param>
-    /// <param name="redisConnection">The Redis connection.</param>
+    /// <param name="dbContextFactory">The database context factory.</param>
+    /// <param name="appCache">The centralized cache.</param>
     public PromptDefinitionRepository(
         IDbContextFactory<DocGenerationDbContext> dbContextFactory,
-        IConnectionMultiplexer redisConnection
-    ) : base(dbContextFactory, redisConnection)
+        IAppCache appCache
+    ) : base(dbContextFactory, appCache)
     {
         SetCacheDuration(DefaultCacheDuration);
     }
@@ -38,19 +38,11 @@ public class PromptDefinitionRepository : GenericRepository<PromptDefinition>
     {
         if (useCache)
         {
-            var cachedData = await Cache.StringGetAsync(CacheKeyAll);
-            if (cachedData.HasValue)
-            {
-                var result = JsonSerializer.Deserialize<List<PromptDefinition>>(cachedData!);
-                if (result != null)
-                {
-                    return result;
-                }
-            }
-
-            var promptDefinitions = await GetAllAsync(useCache: false);
-            await Cache.StringSetAsync(CacheKeyAll, JsonSerializer.Serialize(promptDefinitions), CacheDuration);
-            return promptDefinitions;
+            return await _appCache.GetOrCreateAsync(
+                CacheKeyAll,
+                async ct => await GetAllAsync(useCache: false),
+                CacheDuration,
+                allowDistributed: false);
         }
         else
         {
@@ -61,25 +53,17 @@ public class PromptDefinitionRepository : GenericRepository<PromptDefinition>
     /// <inheritdoc/>
     public virtual new async Task<List<PromptDefinition>> GetAllAsync(bool useCache = false)
     {
-        var dbContext = await _dbContextFactory.CreateDbContextAsync();
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
         if (useCache)
         {
-            var cachedData = await Cache.StringGetAsync(CacheKeyAll);
-            if (cachedData.HasValue)
-            {
-                var result = JsonSerializer.Deserialize<List<PromptDefinition>>(cachedData!);
-                if (result != null)
-                {
-                    return result;
-                }
-            }
-
-            var entities = await dbContext.PromptDefinitions
-                .Include(x => x.Variables)
-                .ToListAsync();
-            await Cache.StringSetAsync(CacheKeyAll, JsonSerializer.Serialize(entities), CacheDuration);
-            return entities;
+            return await _appCache.GetOrCreateAsync(
+                CacheKeyAll,
+                async ct => await dbContext.PromptDefinitions
+                    .Include(x => x.Variables)
+                    .ToListAsync(ct),
+                CacheDuration,
+                allowDistributed: false);
         }
         else
         {
@@ -101,24 +85,14 @@ public class PromptDefinitionRepository : GenericRepository<PromptDefinition>
     {
         if (useCache)
         {
-            var cacheKey = $"{nameof(PromptDefinition)}_{shortCode}";
-            var cachedData = await Cache.StringGetAsync(cacheKey);
-            if (cachedData.HasValue)
-            {
-                return JsonSerializer.Deserialize<PromptDefinition>(cachedData!);
-            }
-
-            var promptDefinition = await AllRecords()
-                .Where(x => x.ShortCode == shortCode)
-                .FirstOrDefaultAsync();
-
-            if (promptDefinition != null)
-            {
-                await Cache.StringSetAsync(cacheKey, JsonSerializer.Serialize(promptDefinition), CacheDuration);
-                return promptDefinition;
-            }
-
-            return null;
+            var cacheKey = $"Repo:PromptDefinition:ShortCode:{shortCode}";
+            return await _appCache.GetOrCreateAsync(
+                cacheKey,
+                async ct => await AllRecords()
+                    .Where(x => x.ShortCode == shortCode)
+                    .FirstOrDefaultAsync(ct),
+                CacheDuration,
+                allowDistributed: true);
         }
         else
         {
@@ -129,16 +103,16 @@ public class PromptDefinitionRepository : GenericRepository<PromptDefinition>
     }
 
     /// <inheritdoc/>
-    public virtual new async Task AddAsync(PromptDefinition newDefinition, bool saveChanges = true)
+    public new virtual async Task AddAsync(PromptDefinition newDefinition, bool saveChanges = true)
     {
         await base.AddAsync(newDefinition, saveChanges);
 
-        // Additionally create a cache item for the short code
-        var cacheKey = $"{nameof(PromptDefinition)}_ShortCode_{newDefinition.ShortCode}";
-        await Cache.StringSetAsync(cacheKey, JsonSerializer.Serialize(newDefinition), CacheDuration);
+        // Additionally update the short code cache
+        var cacheKey = $"Repo:PromptDefinition:ShortCode:{newDefinition.ShortCode}";
+        await _appCache.SetAsync(cacheKey, newDefinition, CacheDuration, allowDistributed: true);
 
-        // Invalidate the full cache
-        await Cache.KeyDeleteAsync(CacheKeyAll);
+        // Invalidate the full cache by removing it
+        await _appCache.RemoveAsync(CacheKeyAll);
     }
 
     /// <inheritdoc/>
@@ -146,6 +120,6 @@ public class PromptDefinitionRepository : GenericRepository<PromptDefinition>
     {
         await base.UpdateAsync(updatedDefinition, saveChanges);
         // Invalidate the full cache
-        await Cache.KeyDeleteAsync(CacheKeyAll);
+        await _appCache.RemoveAsync(CacheKeyAll);
     }
 }

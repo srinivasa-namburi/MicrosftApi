@@ -1,15 +1,19 @@
-﻿using Humanizer;
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Greenlight.Grains.Document.Contracts;
+using Microsoft.Greenlight.Grains.Shared.Contracts;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Data.Sql;
+using Microsoft.Greenlight.Shared.DocumentProcess.Shared.Generation;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Models;
 using System.Text;
 using System.Text.Json;
+
+namespace Microsoft.Greenlight.Grains.Document;
 
 public class ReportContentGeneratorGrain : Grain, IReportContentGeneratorGrain
 {
@@ -17,7 +21,6 @@ public class ReportContentGeneratorGrain : Grain, IReportContentGeneratorGrain
     private readonly ILogger<ReportContentGeneratorGrain> _logger;
     private readonly IOptionsMonitor<ServiceConfigurationOptions> _optionsMonitor;
     private readonly IConfiguration _config;
-    private SemaphoreSlim _throttleSemaphore;
 
     public ReportContentGeneratorGrain(
         IDbContextFactory<DocGenerationDbContext> dbContextFactory,
@@ -34,17 +37,8 @@ public class ReportContentGeneratorGrain : Grain, IReportContentGeneratorGrain
     public async Task GenerateContentAsync(Guid documentId, string? authorOid, string generatedDocumentJson,
         string documentProcessName, Guid? metadataId)
     {
-        var maxParallelActivations = _config.GetValue<int>(
-            "ServiceConfiguration:GreenlightServices:Scalability:NumberOfGenerationWorkers");
-
-        if (maxParallelActivations <= 0)
-        {
-            maxParallelActivations = 4;
-        }
-
-        _throttleSemaphore = new SemaphoreSlim(maxParallelActivations, maxParallelActivations);
-
-        var dbContext = await _dbContextFactory.CreateDbContextAsync();
+        // Concurrency is enforced at the per-section level via IGlobalConcurrencyCoordinatorGrain
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
         try
         {
@@ -87,19 +81,16 @@ public class ReportContentGeneratorGrain : Grain, IReportContentGeneratorGrain
                 await orchestrationGrain.OnContentNodeGeneratedAsync(node.Id, true);
             }
             
+            // Dispatch section generation without local throttling; global coordinator will queue at section grain level
             foreach ((ContentNode node, string outlineJson) in generationMessages)
             {
-                bool semaphoreAcquired = false;
                 try
                 {
-                    await _throttleSemaphore.WaitAsync(15.Minutes());
-                    semaphoreAcquired = true;
-
                     var sectionGeneratorGrain = GrainFactory.GetGrain<IReportTitleSectionGeneratorGrain>(Guid.NewGuid());
                     var contentNodeJson = JsonSerializer.Serialize(node);
 
-                    // Introduce a half second delay to stagger execution to resolve all dependencies
-                    await Task.Delay(500);
+                    // Small stagger to avoid bursty dispatch
+                    await Task.Delay(200);
 
                     _ = sectionGeneratorGrain.GenerateSectionAsync(
                             documentId, authorOid, contentNodeJson, outlineJson, metadataId)
@@ -109,19 +100,11 @@ public class ReportContentGeneratorGrain : Grain, IReportContentGeneratorGrain
                             {
                                 _logger.LogError(t.Exception, "Error generating section for document {DocumentId}", documentId);
                             }
-                            if (semaphoreAcquired)
-                            {
-                                _throttleSemaphore.Release();
-                            }
-                        });
+                        }, TaskScheduler.Current);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error waiting for semaphore for document {DocumentId}", documentId);
-                    if (semaphoreAcquired)
-                    {
-                        _throttleSemaphore.Release();
-                    }
+                    _logger.LogError(ex, "Error dispatching section generation for document {DocumentId}", documentId);
                     throw;
                 }
             }

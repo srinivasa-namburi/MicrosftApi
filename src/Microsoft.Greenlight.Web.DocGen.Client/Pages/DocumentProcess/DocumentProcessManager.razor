@@ -32,7 +32,7 @@
                                 <MudIconButton Disabled="@IsStaticProcess(context.Item)" OnClick="() => EditProcess(context.Item.Id)" Size="@Size.Small" Icon="@Icons.Material.Filled.StickyNote2"></MudIconButton>
                             </MudTooltip>
                             <MudTooltip Delay="400" Text="Delete Document Process (you will be asked to confirm)">
-                                <MudIconButton Disabled="@IsStaticProcess(context.Item)" OnClick="() => ShowDeleteConfirmation(context.Item.Id)" Size="@Size.Small" Icon="@Icons.Material.Filled.Delete"></MudIconButton>
+                                <MudIconButton Disabled="@IsStaticProcess(context.Item)" OnClick="() => ShowDeleteConfirmation(context.Item)" Size="@Size.Small" Icon="@Icons.Material.Filled.Delete"></MudIconButton>
                             </MudTooltip>
                             <MudTooltip Delay="400" Text="Export Document Process as Json (you will be asked to confirm)">
                                 <MudIconButton Disabled="@IsStaticProcess(context.Item)" OnClick="() => ExportProcess(context.Item.Id)" Size="@Size.Small" Icon="@Icons.Material.Filled.ArrowDownward"></MudIconButton>
@@ -72,11 +72,11 @@
         //await JSRuntime.InvokeVoidAsync("downloadFile", fileName, json);
     }
 
-    private async Task ShowDeleteConfirmation(Guid contextId)
+    private async Task ShowDeleteConfirmation(DocumentProcessInfo process)
     {
         var parameters = new DialogParameters
         {
-            { "ContentText", "Are you sure you want to delete this document process?" },
+            { "ContentText", $"Are you sure you want to delete the document process '{process.ShortName}'? This deletes the vector index/collection (if SK), its blob container and all ingested document records." },
             { "ButtonText", "Delete" },
             { "DialogColor", Color.Error }
         };
@@ -87,7 +87,7 @@
 
         if (!result.Canceled)
         {
-            await DeleteDocumentProcess(contextId);
+            await DeleteDocumentProcess(process.Id);
         }
     }
 

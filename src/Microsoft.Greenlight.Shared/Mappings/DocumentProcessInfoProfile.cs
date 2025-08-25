@@ -47,6 +47,8 @@ public class DocumentProcessInfoProfile : Profile
             .ForMember(dest => dest.VectorStoreChunkSize, opt => opt.MapFrom(src => src.VectorStoreChunkSize))
             .ForMember(dest => dest.VectorStoreChunkOverlap, opt => opt.MapFrom(src => src.VectorStoreChunkOverlap))
             .ForMember(dest => dest.VectorStoreChunkingMode, opt => opt.MapFrom(src => src.VectorStoreChunkingMode))
+            .ForMember(dest => dest.EmbeddingModelDeploymentId, opt => opt.MapFrom(src => src.EmbeddingModelDeploymentId))
+            .ForMember(dest => dest.EmbeddingDimensionsOverride, opt => opt.MapFrom(src => src.EmbeddingDimensionsOverride))
             .ForMember(x => x.McpServerAssociations, y => y.DoNotUseDestinationValue());
 
         CreateMap<DynamicDocumentProcessDefinition, DocumentProcessInfo>()
@@ -55,7 +57,9 @@ public class DocumentProcessInfoProfile : Profile
             .ForMember(x => x.DocumentOutlineId, MapDocumentOutlineId)
             .ForMember(dest => dest.VectorStoreChunkSize, opt => opt.MapFrom(src => src.VectorStoreChunkSize))
             .ForMember(dest => dest.VectorStoreChunkOverlap, opt => opt.MapFrom(src => src.VectorStoreChunkOverlap))
-            .ForMember(dest => dest.VectorStoreChunkingMode, opt => opt.MapFrom(src => src.VectorStoreChunkingMode));
+            .ForMember(dest => dest.VectorStoreChunkingMode, opt => opt.MapFrom(src => src.VectorStoreChunkingMode))
+            .ForMember(dest => dest.EmbeddingModelDeploymentId, opt => opt.MapFrom(src => src.EmbeddingModelDeploymentId))
+            .ForMember(dest => dest.EmbeddingDimensionsOverride, opt => opt.MapFrom(src => src.EmbeddingDimensionsOverride));
     }
 
     /// <summary>

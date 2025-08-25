@@ -120,7 +120,18 @@ public class DocumentProcessInfo : IDocumentProcessInfo
     public Guid? AiModelDeploymentForValidationId { get; set; }
 
     /// <summary>
+    /// Unique identifier of the embedding model deployment used for this document process.
+    /// If null, uses the global default embedding model.
+    /// </summary>
+    public Guid? EmbeddingModelDeploymentId { get; set; }
+
+    /// <summary>
     /// Vector store chunking mode (only applies when LogicType is SemanticKernelVectorStore). Defaults to Simple.
     /// </summary>
     public TextChunkingMode? VectorStoreChunkingMode { get; set; } = TextChunkingMode.Simple;
+
+    /// <summary>
+    /// Optional override for embedding vector dimensions; if null, the deployment's embedding size is used.
+    /// </summary>
+    public int? EmbeddingDimensionsOverride { get; set; }
 }

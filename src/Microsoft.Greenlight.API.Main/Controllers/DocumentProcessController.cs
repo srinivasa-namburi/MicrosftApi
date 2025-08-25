@@ -1,3 +1,4 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
 using AutoMapper;
 
 using Microsoft.AspNetCore.Mvc;
@@ -8,6 +9,9 @@ using Microsoft.Greenlight.Shared.Models.DocumentProcess;
 using Microsoft.Greenlight.Shared.Models.Validation;
 using Microsoft.Greenlight.Shared.Services;
 using System.Text.Json;
+using Microsoft.Greenlight.Shared.Helpers;
+using Microsoft.Greenlight.Shared.Enums;
+using Microsoft.Greenlight.Shared.Services.Search.Abstractions;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
@@ -22,26 +26,29 @@ public class DocumentProcessController : BaseController
     private readonly IDocumentProcessInfoService _documentProcessInfoService;
     private readonly IDocumentLibraryInfoService _documentLibraryInfoService;
     private readonly IMapper _mapper;
+    private readonly AzureFileHelper _fileHelper;
+    private readonly IDocumentIngestionService _documentIngestionService;
+    private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DocumentProcessController"/> class.
     /// </summary>
-    /// <param name="dbContext">The database context.</param>
-    /// <param name="documentProcessInfoService">The document process info service.</param>
-    /// <param name="pluginService">The plugin service.</param>
-    /// <param name="documentLibraryInfoService">The document library info service.</param>
-    /// <param name="mapper">The mapper.</param>
-    /// <param name="publishEndpoint">The publish endpoint.</param>
     public DocumentProcessController(
         DocGenerationDbContext dbContext,
         IDocumentProcessInfoService documentProcessInfoService,
         IDocumentLibraryInfoService documentLibraryInfoService,
-        IMapper mapper)
+        IMapper mapper,
+        AzureFileHelper fileHelper,
+        IDocumentIngestionService documentIngestionService,
+        IDbContextFactory<DocGenerationDbContext> dbContextFactory)
     {
         _dbContext = dbContext;
         _documentProcessInfoService = documentProcessInfoService;
         _documentLibraryInfoService = documentLibraryInfoService;
         _mapper = mapper;
+        _fileHelper = fileHelper;
+        _documentIngestionService = documentIngestionService;
+        _dbContextFactory = dbContextFactory;
     }
 
     /// <summary>
@@ -196,7 +203,7 @@ public class DocumentProcessController : BaseController
     }
 
     /// <summary>
-    /// Deletes a document process.
+    /// Deletes a document process and performs storage cleanup (vector index, container, ingested rows).
     /// </summary>
     /// <param name="id">The ID of the document process.</param>
     /// <returns>A boolean indicating success or failure.
@@ -214,7 +221,14 @@ public class DocumentProcessController : BaseController
     {
         try
         {
-            // Use the McpPluginsController to delete all plugin associations for this document process
+            // Load snapshot for cleanup before metadata removal
+            var processSnapshot = await _dbContext.DynamicDocumentProcessDefinitions
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == id);
+
+            // Existing delete logic (plugins, associations, outlines, validation) will run below
+
+            // Begin existing code
             var mcpPlugins = await _dbContext.McpPlugins
                 .Include(p => p.DocumentProcesses)
                 .Where(p => p.DocumentProcesses != null && p.DocumentProcesses.Any(dp => dp.DynamicDocumentProcessDefinitionId == id))
@@ -236,7 +250,6 @@ public class DocumentProcessController : BaseController
                 await _documentLibraryInfoService.DisassociateDocumentProcessAsync(library.Id, id);
             }
 
-            // Remove the DocumentOutline and any Document Outline Items if present
             var documentOutline = await _dbContext.DocumentOutlines
                 .FirstOrDefaultAsync(x => x.DocumentProcessDefinitionId == id);
 
@@ -263,7 +276,6 @@ public class DocumentProcessController : BaseController
                 await _dbContext.SaveChangesAsync();
             }
 
-            // Remove any validation pipelines if present
             var validationPipelines = await _dbContext.DocumentProcessValidationPipelines
                 .Where(x => x.DocumentProcessId == id)
                 .Include(x => x.ValidationPipelineSteps)
@@ -279,9 +291,54 @@ public class DocumentProcessController : BaseController
                 await _dbContext.SaveChangesAsync();
             }
 
-            // Remove the document process
             await _documentProcessInfoService.DeleteDocumentProcessInfoAsync(id);
+            // End existing code
 
+            // Storage cleanup best-effort after metadata removal
+            if (processSnapshot != null)
+            {
+                try
+                {
+                    // Clear SK index if applicable
+                    if (processSnapshot.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore
+                        && processSnapshot.Repositories is { Count: > 0 })
+                    {
+                        var index = processSnapshot.Repositories.First();
+                        await _documentIngestionService.ClearIndexAsync(processSnapshot.ShortName, index);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error clearing vector index for process {processSnapshot.ShortName}: {ex.Message}");
+                }
+
+                try
+                {
+                    // Delete blob container
+                    if (!string.IsNullOrWhiteSpace(processSnapshot.BlobStorageContainerName))
+                    {
+                        await _fileHelper.DeleteBlobContainerAsync(processSnapshot.BlobStorageContainerName);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error deleting blob container for process {processSnapshot.ShortName}: {ex.Message}");
+                }
+
+                try
+                {
+                    // Delete ingested documents rows for this process
+                    await using var db = await _dbContextFactory.CreateDbContextAsync();
+                    await db.IngestedDocuments
+                        .Where(x => x.DocumentLibraryType == DocumentLibraryType.PrimaryDocumentProcessLibrary
+                                    && x.DocumentLibraryOrProcessName == processSnapshot.ShortName)
+                        .ExecuteDeleteAsync();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error deleting ingested documents for process {processSnapshot.ShortName}: {ex.Message}");
+                }
+            }
         }
         catch
         {

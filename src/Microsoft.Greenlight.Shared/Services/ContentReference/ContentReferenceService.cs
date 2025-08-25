@@ -1,42 +1,41 @@
 ﻿using AutoMapper;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Models;
 using Microsoft.Greenlight.Shared.Models.Review;
+using Microsoft.Greenlight.Shared.Services.Caching;
 using System.Text;
-using System.Text.Json;
 
 namespace Microsoft.Greenlight.Shared.Services.ContentReference
 {
     /// <inheritdoc />
     public class ContentReferenceService : IContentReferenceService
     {
-        private readonly IDistributedCache _cache;
+        private readonly IAppCache _cache;
         private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
         private readonly ILogger<ContentReferenceService> _logger;
         private readonly IContentReferenceGenerationServiceFactory _generationServiceFactory;
         private readonly IAiEmbeddingService _aiEmbeddingService;
 
         // We continue using the same CacheKey name here.
-        private const string CacheKey = "AllContentReferences";
+        private const string CacheKey = "ContentReferences:All";
         private readonly TimeSpan _cacheDuration = TimeSpan.FromMinutes(10);
         private readonly IMapper _mapper;
 
         /// <summary>
         /// Constructor for the (now updated) content reference service.
         /// </summary>
-        /// <param name="cache">Distributed cache for storing lightweight reference DTOs</param>
+        /// <param name="cache">Centralized cache for storing lightweight reference DTOs</param>
         /// <param name="dbContextFactory">Factory for creating database contexts</param>
         /// <param name="generationServiceFactory">Factory for resolving content reference generation services</param>
         /// <param name="aiEmbeddingService">Service for generating and comparing embeddings</param>
         /// <param name="logger">Logger for service diagnostics</param>
         /// <param name="mapper">AutoMapper instance</param>
         public ContentReferenceService(
-            IDistributedCache cache,
+            IAppCache cache,
             IDbContextFactory<DocGenerationDbContext> dbContextFactory,
             IContentReferenceGenerationServiceFactory generationServiceFactory,
             IAiEmbeddingService aiEmbeddingService,
@@ -53,31 +52,10 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
         /// <inheritdoc />
         public async Task<List<ContentReferenceItemInfo>?> GetAllCachedReferencesAsync()
         {
-            var cachedData = await _cache.GetStringAsync(CacheKey);
-            if (!string.IsNullOrEmpty(cachedData))
-            {
-                try
-                {
-                    var allReferences = JsonSerializer.Deserialize<List<ContentReferenceItemInfo>>(cachedData);
-
-                    // We filter out External File references here.
-                    return allReferences?.Where(r => r.ReferenceType != ContentReferenceType.ExternalFile).ToList();
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error deserializing references from cache");
-                }
-            }
-
-            // When cache is missing or deserialization fails, rebuild from database.
-            var references = await CompileReferencesAsync();
-            var cacheOptions = new DistributedCacheEntryOptions
-            {
-                AbsoluteExpirationRelativeToNow = _cacheDuration
-            };
-
-            await _cache.SetStringAsync(CacheKey, JsonSerializer.Serialize(references), cacheOptions);
-            return references.Where(r => r.ReferenceType != ContentReferenceType.ExternalFile).ToList();
+            // Use LocalOnly to avoid large values in Redis
+            var allReferences = await _cache.GetOrCreateAsync(CacheKey, async ct => await CompileReferencesAsync(), _cacheDuration, allowDistributed: false);
+            // Filter out External File references here.
+            return allReferences?.Where(r => r.ReferenceType != ContentReferenceType.ExternalFile).ToList();
         }
 
         /// <inheritdoc />
@@ -85,7 +63,9 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
         {
             var allReferences = await GetAllCachedReferencesAsync();
             if (string.IsNullOrWhiteSpace(searchTerm))
+            {
                 return allReferences;
+            }
 
             return allReferences?
                 .Where(r => r.DisplayName?.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ?? false)
@@ -243,11 +223,8 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
         {
             // Rebuild the lightweight DTO list from the database.
             var references = await CompileReferencesAsync();
-            var cacheOptions = new DistributedCacheEntryOptions
-            {
-                AbsoluteExpirationRelativeToNow = _cacheDuration
-            };
-            await _cache.SetStringAsync(CacheKey, JsonSerializer.Serialize(references), cacheOptions);
+            // Store in LocalOnly to avoid large payloads in Redis
+            await _cache.SetAsync(CacheKey, references, _cacheDuration, allowDistributed: false);
         }
 
         /// <inheritdoc />

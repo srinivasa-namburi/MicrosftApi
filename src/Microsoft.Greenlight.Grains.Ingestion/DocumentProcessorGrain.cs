@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Grains.Ingestion.Contracts;
+using Microsoft.Greenlight.Grains.Shared.Contracts;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Helpers;
@@ -44,8 +45,29 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
             return DocumentProcessResult.Fail("Processing already running.");
         }
         _isRunning = true;
+        ConcurrencyLease? lease = null;
+        var coordinator = GrainFactory.GetGrain<IGlobalConcurrencyCoordinatorGrain>(ConcurrencyCategory.Ingestion.ToString());
+        
         try
         {
+            // Acquire a cluster-wide ingestion lease before doing heavy work
+            var requesterId = $"Ingestion:{documentId}";
+            try
+            {
+                lease = await coordinator.AcquireAsync(requesterId, weight: 1, waitTimeout: TimeSpan.FromDays(2), leaseTtl: TimeSpan.FromHours(1));
+                _logger.LogDebug("Acquired ingestion lease {LeaseId} for document {DocumentId}", lease.LeaseId, documentId);
+            }
+            catch (TimeoutException ex)
+            {
+                _logger.LogError(ex, "Timeout acquiring ingestion lease for document {DocumentId}", documentId);
+                return DocumentProcessResult.Fail($"Timeout acquiring ingestion lease: {ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error acquiring ingestion lease for document {DocumentId}", documentId);
+                return DocumentProcessResult.Fail($"Failed to acquire ingestion lease: {ex.Message}");
+            }
+
             await using var db = await _dbContextFactory.CreateDbContextAsync();
             var entity = await db.IngestedDocuments.FindAsync(documentId);
             if (entity == null)
@@ -59,6 +81,8 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
             string documentLibraryShortName = entity.DocumentLibraryOrProcessName ?? string.Empty;
             DocumentLibraryType documentLibraryType = entity.DocumentLibraryType;
             string? uploadedByUserOid = entity.UploadedByUserOid;
+
+            _logger.LogInformation("Starting document processing for {FileName} (Id: {DocumentId})", fileName, documentId);
 
             // Track vector store processing start
             entity.IngestionState = IngestionState.Processing;
@@ -101,15 +125,27 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
                 return DocumentProcessResult.Fail($"Failed to get document stream for {documentUrl}");
             }
 
-            // Use the document ingestion service
-            var result = await _documentIngestionService.IngestDocumentAsync(
-                documentId,
-                fileStream,
-                fileName,
-                documentUrl,
-                documentLibraryShortName,
-                indexName,
-                uploadedByUserOid);
+            _logger.LogInformation("Starting document ingestion for {FileName} with indexName={IndexName}", fileName, indexName);
+
+            // Use the document ingestion service with explicit error handling
+            DocumentIngestionResult result;
+            try
+            {
+                result = await _documentIngestionService.IngestDocumentAsync(
+                    documentId,
+                    fileStream,
+                    fileName,
+                    documentUrl,
+                    documentLibraryShortName,
+                    indexName,
+                    uploadedByUserOid);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Exception during document ingestion service call for {FileName} (Id: {DocumentId})", fileName, documentId);
+                await UpdateIngestionFailureAsync(entity, $"Document ingestion service failed: {ex.Message}");
+                return DocumentProcessResult.Fail($"Document ingestion service failed: {ex.Message}");
+            }
 
             if (!result.Success)
             {
@@ -127,7 +163,7 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to process document {DocumentId}", documentId);
+            _logger.LogError(ex, "Unexpected error during document processing for {DocumentId}", documentId);
 
             // Fallback: Update entity state if possible
             try
@@ -136,7 +172,7 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
                 var entity = await db.IngestedDocuments.FindAsync(documentId);
                 if (entity != null)
                 {
-                    await UpdateIngestionFailureAsync(entity, $"Failed to process document: {ex.Message}");
+                    await UpdateIngestionFailureAsync(entity, $"Unexpected error during processing: {ex.Message}");
                 }
             }
             catch (Exception dbEx)
@@ -144,10 +180,22 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
                 _logger.LogError(dbEx, "Failed to update document state after processing failure for {DocumentId}", documentId);
             }
 
-            return DocumentProcessResult.Fail($"Failed to process document: {ex.Message}");
+            return DocumentProcessResult.Fail($"Unexpected error during processing: {ex.Message}");
         }
         finally
         {
+            if (lease != null)
+            {
+                try
+                {
+                    var released = await coordinator.ReleaseAsync(lease.LeaseId);
+                    _logger.LogDebug("Released ingestion lease {LeaseId} for document {DocumentId}: {Released}", lease.LeaseId, documentId, released);
+                }
+                catch (Exception releaseEx)
+                {
+                    _logger.LogError(releaseEx, "Error releasing ingestion lease for document {DocumentId}", documentId);
+                }
+            }
             _isRunning = false;
         }
     }

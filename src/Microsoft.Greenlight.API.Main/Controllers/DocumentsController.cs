@@ -1,4 +1,3 @@
-
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Identity.Web;
@@ -14,6 +13,7 @@ using Microsoft.Greenlight.Grains.Document.Contracts;
 using Microsoft.Greenlight.Shared.Contracts.DTO.Document;
 using Microsoft.Greenlight.Shared.Models.Validation;
 using Microsoft.Greenlight.Shared.Services;
+using Microsoft.Greenlight.Grains.Ingestion.Contracts;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
@@ -507,5 +507,95 @@ public partial class DocumentsController : BaseController
         }
 
         return documents;
+    }
+
+    /// <summary>
+    /// Recovers stuck documents in ingestion orchestrations by triggering diagnostic recovery.
+    /// </summary>
+    /// <param name="orchestrationId">The orchestration ID to recover stuck documents for.</param>
+    /// <returns>OK if recovery was triggered.
+    /// Produces Status Codes:
+    ///     200 OK: When recovery was triggered successfully
+    ///     400 Bad Request: When the orchestration ID is invalid
+    /// </returns>
+    [HttpPost("ingestion/recover-stuck/{orchestrationId}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [Produces("application/json")]
+    public async Task<IActionResult> RecoverStuckDocuments(string orchestrationId)
+    {
+        if (string.IsNullOrWhiteSpace(orchestrationId))
+        {
+            return BadRequest("Orchestration ID is required");
+        }
+
+        try
+        {
+            var orchestrationGrain = _clusterClient.GetGrain<IDocumentIngestionOrchestrationGrain>(orchestrationId);
+            await orchestrationGrain.CheckAndRecoverStuckDocumentsAsync();
+            
+            return Ok(new { message = $"Recovery triggered for orchestration {orchestrationId}" });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = $"Failed to trigger recovery: {ex.Message}" });
+        }
+    }
+
+    /// <summary>
+    /// Gets the status of stuck documents in the ingestion system.
+    /// </summary>
+    /// <returns>Information about stuck documents.
+    /// Produces Status Codes:
+    ///     200 OK: When completed successfully
+    /// </returns>
+    [HttpGet("ingestion/stuck-status")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [Produces("application/json")]
+    public async Task<IActionResult> GetStuckDocumentsStatus()
+    {
+        try
+        {
+            var thirtyMinutesAgo = DateTime.UtcNow.AddMinutes(-30);
+            var stuckDocuments = await _dbContext.IngestedDocuments
+                .Where(x => x.IngestionState == Shared.Enums.IngestionState.Processing &&
+                            x.IngestedDate < thirtyMinutesAgo)
+                .Select(x => new 
+                {
+                    x.Id,
+                    x.FileName,
+                    x.OrchestrationId,
+                    x.IngestionState,
+                    x.IngestedDate,
+                    x.Error,
+                    x.DocumentLibraryOrProcessName,
+                    MinutesStuck = Math.Round((DateTime.UtcNow - x.IngestedDate).TotalMinutes, 1)
+                })
+                .OrderByDescending(x => x.IngestedDate)
+                .ToListAsync();
+
+            var orchestrationGroups = stuckDocuments
+                .GroupBy(x => x.OrchestrationId)
+                .Select(g => new
+                {
+                    OrchestrationId = g.Key,
+                    DocumentCount = g.Count(),
+                    DocumentLibraryOrProcessName = g.First().DocumentLibraryOrProcessName,
+                    OldestStuckDocument = g.OrderBy(x => x.IngestedDate).First(),
+                    Documents = g.ToList()
+                })
+                .ToList();
+
+            return Ok(new 
+            { 
+                totalStuckDocuments = stuckDocuments.Count,
+                orchestrationGroups = orchestrationGroups,
+                allStuckDocuments = stuckDocuments
+            });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = $"Failed to get stuck documents status: {ex.Message}" });
+        }
     }
 }

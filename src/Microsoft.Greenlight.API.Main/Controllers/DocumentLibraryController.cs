@@ -1,9 +1,14 @@
-
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Greenlight.Shared.Contracts.DTO.DocumentLibrary;
-using Microsoft.Greenlight.Shared.Contracts.Messages;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Services;
+using Microsoft.Greenlight.Shared.Enums;
+using Microsoft.Greenlight.Shared.Data.Sql;
+using Microsoft.Greenlight.Shared.Services.Search.Abstractions;
+using Orleans;
+using Microsoft.Greenlight.Grains.Ingestion.Contracts;
+using Microsoft.Greenlight.Grains.Ingestion.Contracts.Helpers;
 
 namespace Microsoft.Greenlight.API.Main.Controllers
 {
@@ -14,17 +19,32 @@ namespace Microsoft.Greenlight.API.Main.Controllers
     public class DocumentLibraryController : BaseController
     {
         private readonly IDocumentLibraryInfoService _documentLibraryInfoService;
+        private readonly AzureFileHelper _fileHelper;
+        private readonly IDocumentIngestionService _documentIngestionService;
+        private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
+        private readonly IClusterClient _clusterClient;
         
         /// <summary>
         /// Initializes a new instance of the <see cref="DocumentLibraryController"/> class.
         /// </summary>
         /// <param name="documentLibraryInfoService">The document library info service.</param>
-        /// <param name="publishEndpoint">The publish endpoint.</param>
+        /// <param name="fileHelper">Blob helper for container operations.</param>
+        /// <param name="documentIngestionService">Vector store ingestion service for index operations.</param>
+        /// <param name="dbContextFactory">DbContext factory for cleanup of ingested rows.</param>
+        /// <param name="clusterClient">Orleans cluster client.</param>
         public DocumentLibraryController(
-            IDocumentLibraryInfoService documentLibraryInfoService
+            IDocumentLibraryInfoService documentLibraryInfoService,
+            AzureFileHelper fileHelper,
+            IDocumentIngestionService documentIngestionService,
+            IDbContextFactory<DocGenerationDbContext> dbContextFactory,
+            IClusterClient clusterClient
         )
         {
             _documentLibraryInfoService = documentLibraryInfoService;
+            _fileHelper = fileHelper;
+            _documentIngestionService = documentIngestionService;
+            _dbContextFactory = dbContextFactory;
+            _clusterClient = clusterClient;
         }
 
         /// <summary>
@@ -172,7 +192,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         }
 
         /// <summary>
-        /// Deletes a document library.
+        /// Deletes a document library, including its vector index (if SK) and blob container, and related ingested documents.
         /// </summary>
         /// <param name="id">The ID of the document library to delete.</param>
         /// <returns>No content if the deletion was successful.
@@ -185,6 +205,80 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> DeleteDocumentLibrary(Guid id)
         {
+            // Load current library snapshot for cleanup
+            var library = await _documentLibraryInfoService.GetDocumentLibraryByIdAsync(id);
+            if (library == null)
+            {
+                return NotFound();
+            }
+
+            // First: attempt to deactivate any active ingestion/reindex orchestrations tied to this library
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(library.BlobStorageContainerName) &&
+                    !string.IsNullOrWhiteSpace(library.BlobStorageAutoImportFolderName))
+                {
+                    var ingestionOrchestrationId = IngestionOrchestrationIdHelper.GenerateOrchestrationId(
+                        library.BlobStorageContainerName,
+                        library.BlobStorageAutoImportFolderName);
+                    var ingestionGrain = _clusterClient.GetGrain<IDocumentIngestionOrchestrationGrain>(ingestionOrchestrationId);
+                    await ingestionGrain.DeactivateAsync();
+                }
+
+                var reindexOrchestrationId = $"library-{library.ShortName}";
+                var reindexGrain = _clusterClient.GetGrain<IDocumentReindexOrchestrationGrain>(reindexOrchestrationId);
+                await reindexGrain.DeactivateAsync();
+            }
+            catch (Exception ex)
+            {
+                // Log and continue with best-effort cleanup
+                Console.WriteLine($"Error deactivating orchestrations for library {library.ShortName}: {ex.Message}");
+            }
+
+            try
+            {
+                // 1) Delete vector index/collection for SK Vector Store
+                if (library.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore &&
+                    !string.IsNullOrWhiteSpace(library.IndexName))
+                {
+                    await _documentIngestionService.ClearIndexAsync(library.ShortName, library.IndexName);
+                }
+                // For KernelMemory libraries we currently rely on KM storage lifecycle; TODO: implement explicit index deletion if backend supports it
+            }
+            catch (Exception ex)
+            {
+                // Log and continue with best-effort cleanup
+                Console.WriteLine($"Error clearing vector index for library {library.ShortName}: {ex.Message}");
+            }
+
+            try
+            {
+                // 2) Delete blob storage container (best-effort)
+                if (!string.IsNullOrWhiteSpace(library.BlobStorageContainerName))
+                {
+                    await _fileHelper.DeleteBlobContainerAsync(library.BlobStorageContainerName);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error deleting blob container for library {library.ShortName}: {ex.Message}");
+            }
+
+            try
+            {
+                // 3) Delete tracked ingested documents for this library
+                await using var db = await _dbContextFactory.CreateDbContextAsync();
+                await db.IngestedDocuments
+                    .Where(x => x.DocumentLibraryType == DocumentLibraryType.AdditionalDocumentLibrary
+                                && x.DocumentLibraryOrProcessName == library.ShortName)
+                    .ExecuteDeleteAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error deleting ingested documents for library {library.ShortName}: {ex.Message}");
+            }
+
+            // 4) Remove library record and its associations
             var success = await _documentLibraryInfoService.DeleteDocumentLibraryAsync(id);
             if (!success)
             {

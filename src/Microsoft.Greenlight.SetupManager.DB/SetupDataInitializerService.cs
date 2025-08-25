@@ -39,6 +39,9 @@ public class SetupDataInitializerService(
     private readonly Guid _gpt4OModelId = Guid.Parse("f7ece6e1-af11-4f90-a69f-c77fcef73486", CultureInfo.InvariantCulture);
     private readonly Guid _gpt4OModelDeploymentId = Guid.Parse("453a06c4-3ce8-4468-a7a8-7444f8352aa6", CultureInfo.InvariantCulture);
 
+    private readonly Guid _textEmbeddingAda002ModelId = Guid.Parse("e8b4f2d1-1c7e-4a3b-9f2d-6e5a8b9c0d1e", CultureInfo.InvariantCulture);
+    private readonly Guid _textEmbeddingAda002ModelDeploymentId = Guid.Parse("a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d", CultureInfo.InvariantCulture);
+
     private readonly Guid _nrcEnvironmentalReportId = Guid.Parse("88ffae0a-22a3-42e0-a538-72dd1a589216", CultureInfo.InvariantCulture);
 
 
@@ -187,6 +190,7 @@ public class SetupDataInitializerService(
         await Seed2025_03_18_DefaultConfiguration(dbContext, cancellationToken);
         await Seed2025_04_24_AiModelSettings(dbContext, cancellationToken);
         await Seed2025_04_24_DefaultAiModelDeploymentForDocumentProcesses(dbContext, cancellationToken);
+        await Seed2025_12_15_EmbeddingModelSettings(dbContext, cancellationToken);
         await Seed2025_09_20_EnvironmentalReportDocumentProcess(dbContext, cancellationToken);
 
         sw.Stop();
@@ -440,7 +444,11 @@ public class SetupDataInitializerService(
             DocumentOutline = documentOutline,
             Repositories = [.. indexNames],
             AiModelDeploymentId = _gpt4OModelDeploymentId,
-            AiModelDeploymentForValidationId = _gpt4OModelDeploymentId
+            AiModelDeploymentForValidationId = _gpt4OModelDeploymentId,
+            // Ensure an embedding deployment is set so UI binds and resolver works
+            EmbeddingModelDeploymentId = _textEmbeddingAda002ModelDeploymentId,
+            // Do not override dimensions here; use deployment default (1536)
+            EmbeddingDimensionsOverride = null
         };
 
         // Associate the outline with the document process
@@ -852,6 +860,57 @@ public class SetupDataInitializerService(
         }
     }
 
+    private async Task Seed2025_12_15_EmbeddingModelSettings(DocGenerationDbContext dbContext, CancellationToken cancellationToken)
+    {
+        // Ensure default embedding model exists
+        var embeddingModel = await dbContext.AiModels.FindAsync([_textEmbeddingAda002ModelId], cancellationToken);
+        if (embeddingModel == null)
+        {
+            embeddingModel = new AiModel
+            {
+                Id = _textEmbeddingAda002ModelId,
+                Name = "text-embedding-ada-002",
+                ModelType = AiModelType.Embedding,
+                EmbeddingSettings = new Microsoft.Greenlight.Shared.Contracts.Components.AiModelEmbeddingSettings
+                {
+                    Dimensions = 1536,
+                    MaxContentLength = 8192
+                },
+                IsReasoningModel = false
+            };
+            dbContext.AiModels.Add(embeddingModel);
+        }
+
+        // Ensure default embedding deployment exists
+        var embeddingDeployment = await dbContext.AiModelDeployments.FindAsync([_textEmbeddingAda002ModelDeploymentId], cancellationToken);
+        if (embeddingDeployment == null)
+        {
+            embeddingDeployment = new AiModelDeployment
+            {
+                Id = _textEmbeddingAda002ModelDeploymentId,
+                DeploymentName = "text-embedding-ada-002",
+                AiModelId = _textEmbeddingAda002ModelId,
+                EmbeddingSettings = embeddingModel.EmbeddingSettings
+            };
+            dbContext.AiModelDeployments.Add(embeddingDeployment);
+        }
+
+        // Backfill ModelType for existing models that don't have it set (default to Chat)
+        var modelsWithoutType = await dbContext.AiModels
+            .Where(m => m.ModelType == 0 && m.Id != _textEmbeddingAda002ModelId)
+            .ToListAsync(cancellationToken);
+        foreach (var model in modelsWithoutType)
+        {
+            model.ModelType = AiModelType.Chat;
+            dbContext.AiModels.Update(model);
+        }
+
+        if (dbContext.ChangeTracker.HasChanges())
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+    }
+
     private async Task Seed2025_02_27_CreateDefaultSequentialValidationPipeline(DocGenerationDbContext dbContext, CancellationToken cancellationToken)
     {
         // For each DocumentProcess that does not have a default validation pipeline, create a default validation pipeline
@@ -862,7 +921,9 @@ public class SetupDataInitializerService(
             .ToListAsync(cancellationToken);
 
         if (documentProcesses.Count == 0)
+        {
             return;
+        }
 
         _logger.LogInformation("Seeding : Creating default validation pipeline for {Count} DocumentProcesses", documentProcesses.Count);
 
@@ -874,26 +935,24 @@ public class SetupDataInitializerService(
                 DocumentProcessId = dp.Id,
                 ValidationPipelineSteps = new List<DocumentProcessValidationPipelineStep>
                 {
-                    new DocumentProcessValidationPipelineStep()
+                    new DocumentProcessValidationPipelineStep
                     {
                         Id = Guid.NewGuid(),
                         DocumentProcessValidationPipelineId = dp.Id,
-                        PipelineExecutionType = ValidationPipelineExecutionType.SequentialFullDocument
+                        PipelineExecutionType = ValidationPipelineExecutionType.SequentialFullDocument,
+                        Order = 0
                     }
                 }
             };
 
             dp.ValidationPipelineId = pipeline.Id;
 
-
             dbContext.DocumentProcessValidationPipelines.Add(pipeline);
             dbContext.DynamicDocumentProcessDefinitions.Update(dp);
-
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
         _logger.LogInformation("Seeding : Created default validation pipeline for {Count} DocumentProcesses", documentProcesses.Count);
-
     }
 
 
