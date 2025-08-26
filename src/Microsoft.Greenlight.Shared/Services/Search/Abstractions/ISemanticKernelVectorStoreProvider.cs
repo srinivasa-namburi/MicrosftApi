@@ -10,11 +10,6 @@ namespace Microsoft.Greenlight.Shared.Services.Search.Abstractions;
 public interface ISemanticKernelVectorStoreProvider
 {
     /// <summary>
-    /// Ensures the underlying collection (index) exists and is ready.
-    /// </summary>
-    Task EnsureCollectionAsync(string indexName, CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// Ensures the underlying collection (index) exists and is ready with the specified vector dimensions.
     /// </summary>
     /// <param name="indexName">Index / collection name.</param>

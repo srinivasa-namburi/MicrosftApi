@@ -22,6 +22,8 @@ public class AiEmbeddingService : IAiEmbeddingService
     private readonly ILogger<AiEmbeddingService> _logger;
     private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
 
+    // NOTE: We no longer split-and-average on oversized inputs. Re-chunking is handled at ingestion using ITextChunkingService.
+
     /// <summary>
     /// Constructs a new instance of the AiEmbeddingService
     /// </summary>
@@ -58,13 +60,11 @@ public class AiEmbeddingService : IAiEmbeddingService
             deploymentName = _serviceConfigurationOptions.OpenAi.EmbeddingModelDeploymentName;
         }
 
-        // Trim text if it's too long (most embedding models have token limits)
-        if (text.Length > 16384)
-        {
-            _logger.LogWarning("Text truncated to 16384 characters for embedding generation");
-            text = text.Substring(0, 16384);
-        }
+        return await GenerateEmbeddingsSafeAsync(text, deploymentName, dimensions);
+    }
 
+    private async Task<float[]> GenerateEmbeddingsSafeAsync(string text, string deploymentName, int? dimensions)
+    {
         try
         {
             var embeddingClient = _openAIClient.GetEmbeddingClient(deploymentName);
@@ -77,11 +77,27 @@ public class AiEmbeddingService : IAiEmbeddingService
             var embeddingResult = await embeddingClient.GenerateEmbeddingAsync(text, options);
             return embeddingResult.Value.ToFloats().ToArray();
         }
+        catch (Exception ex) when (IsContextLengthExceeded(ex))
+        {
+            // Oversized input: let the caller (repository) re-chunk with its configured ITextChunkingService.
+            _logger.LogInformation("Embedding input exceeded model context length (len={Len}). Signaling caller to re-chunk.", text.Length);
+            throw new EmbeddingInputTooLargeException(text.Length, deploymentName, ex);
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error generating embeddings for deployment {Deployment}", deploymentName);
             throw;
         }
+    }
+
+    private static bool IsContextLengthExceeded(Exception ex)
+    {
+        var msg = ex.ToString();
+        return msg.Contains("maximum context length", StringComparison.OrdinalIgnoreCase)
+               || msg.Contains("requested", StringComparison.OrdinalIgnoreCase) && msg.Contains("tokens", StringComparison.OrdinalIgnoreCase)
+               || msg.Contains("invalid_request_error", StringComparison.OrdinalIgnoreCase)
+               || msg.Contains("prompt is too long", StringComparison.OrdinalIgnoreCase)
+               || msg.Contains("context length", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <inheritdoc />
@@ -123,7 +139,7 @@ public class AiEmbeddingService : IAiEmbeddingService
         }
 
         int? dims = dp.EmbeddingDimensionsOverride;
-        return await GenerateEmbeddingsAsync(text, deploymentName, dims);
+        return await GenerateEmbeddingsSafeAsync(text, deploymentName, dims);
     }
 
     /// <inheritdoc />
@@ -158,7 +174,7 @@ public class AiEmbeddingService : IAiEmbeddingService
         }
 
         int? dims = lib.EmbeddingDimensionsOverride;
-        return await GenerateEmbeddingsAsync(text, deploymentName, dims);
+        return await GenerateEmbeddingsSafeAsync(text, deploymentName, dims);
     }
 
     /// <inheritdoc />

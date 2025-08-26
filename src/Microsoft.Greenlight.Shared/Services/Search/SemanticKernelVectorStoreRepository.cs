@@ -1,5 +1,4 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -7,8 +6,8 @@ using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Models.SourceReferences;
-using Microsoft.Greenlight.Shared.Services.Search.Abstractions; // for repository/vector store abstractions
-using Microsoft.Extensions.DependencyInjection; // For GetRequiredService
+using Microsoft.Greenlight.Shared.Services.Search.Abstractions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.Extensions.AI;
@@ -175,28 +174,37 @@ public class SemanticKernelVectorStoreRepository : IDocumentRepository
         // Use URL-safe Base64 encoding for document identifiers to satisfy Azure AI Search key constraints across providers
         var documentId = Base64UrlEncode(fileName);
         var chunkRecords = new List<SkVectorChunkRecord>();
-        var now = DateTimeOffset.UtcNow; var partition = 0;
-        foreach (var chunk in chunkPositions)
+        var now = DateTimeOffset.UtcNow; 
+        var partition = 0;
+
+        // Process all chunks with smart re-chunking on embedding failures
+        for (int ci = 0; ci < chunkPositions.Count; ci++)
         {
-            var embedding = await GenerateEmbeddingForDocumentAsync(documentLibraryName, chunk.Text);
-            var tags = BuildTags(documentLibraryName, documentId, fileName, documentUrl, userId, additionalTags);
-            if (isPdf && chunk.StartPage.HasValue)
+            var chunk = chunkPositions[ci];
+            var subChunks = await ProcessChunkWithRetryAsync(documentLibraryName, chunk.Text, effectiveChunkSize, effectiveChunkOverlap);
+            
+            foreach (var subChunk in subChunks)
             {
-                // Store starting page number as agreed tag name
-                tags["SourceDocumentSourcePage"] = [chunk.StartPage.Value.ToString()];
+                var tags = BuildTags(documentLibraryName, documentId, fileName, documentUrl, userId, additionalTags);
+                if (isPdf && chunk.StartPage.HasValue)
+                {
+                    // Store starting page number as agreed tag name
+                    tags["SourceDocumentSourcePage"] = [chunk.StartPage.Value.ToString()];
+                }
+                chunkRecords.Add(new SkVectorChunkRecord
+                {
+                    DocumentId = documentId,
+                    FileName = fileName,
+                    OriginalDocumentUrl = documentUrl,
+                    ChunkText = subChunk.Text,
+                    Embedding = subChunk.Embedding,
+                    PartitionNumber = partition++,
+                    IngestedAt = now,
+                    Tags = tags
+                });
             }
-            chunkRecords.Add(new SkVectorChunkRecord
-            {
-                DocumentId = documentId,
-                FileName = fileName,
-                OriginalDocumentUrl = documentUrl,
-                ChunkText = chunk.Text,
-                Embedding = embedding,
-                PartitionNumber = partition++,
-                IngestedAt = now,
-                Tags = tags
-            });
-            var processed = chunkRecords.Count;
+            
+            var processed = ci + 1;
             if (nextMilestoneIndex < progressMilestones.Count && processed >= progressMilestones[nextMilestoneIndex])
             {
                 var percent = (int)Math.Round((processed / (double)chunkPositions.Count) * 100, MidpointRounding.AwayFromZero);
@@ -204,11 +212,84 @@ public class SemanticKernelVectorStoreRepository : IDocumentRepository
                 nextMilestoneIndex++;
             }
         }
-        if (chunkPositions.Count > 0) _logger.LogInformation("[VectorStore] Completed embedding generation for {ChunkCount} chunks (file={File}, index={Index})", chunkPositions.Count, fileName, indexName);
+        
+        if (chunkPositions.Count > 0) 
+        {
+            _logger.LogInformation("[VectorStore] Completed embedding generation for {ChunkCount} original chunks, resulting in {FinalChunkCount} final chunks (file={File}, index={Index})", chunkPositions.Count, chunkRecords.Count, fileName, indexName);
+        }
         
         // 5) Upsert the records (collection already exists with correct dimensions)
         await _provider.UpsertAsync(indexName, chunkRecords);
-        _logger.LogInformation("Ingested {ChunkCount} chunks into vector index {Index} for file {File}", chunkPositions.Count, indexName, fileName);
+        _logger.LogInformation("Ingested {ChunkCount} chunks into vector index {Index} for file {File}", chunkRecords.Count, indexName, fileName);
+    }
+
+    /// <summary>
+    /// Processes a chunk with automatic retry and smart re-chunking if the embedding service rejects it due to size.
+    /// </summary>
+    private async Task<List<(string Text, float[] Embedding)>> ProcessChunkWithRetryAsync(string documentLibraryName, string chunkText, int originalChunkSize, int originalChunkOverlap)
+    {
+        try
+        {
+            // Try to embed the original chunk
+            var embedding = await GenerateEmbeddingForDocumentAsync(documentLibraryName, chunkText);
+            return new List<(string Text, float[] Embedding)> { (chunkText, embedding) };
+        }
+        catch (EmbeddingInputTooLargeException ex)
+        {
+            _logger.LogInformation("Chunk too large for embedding (length={Length}), attempting smart re-chunking with reduced size", chunkText.Length);
+            
+            // Calculate new chunk size - reduce by 40% to ensure we're well under the limit
+            var newChunkSize = Math.Max(100, (int)(originalChunkSize * 0.6));
+            var newChunkOverlap = Math.Min(originalChunkOverlap, newChunkSize / 4); // Overlap should be reasonable relative to new size
+            
+            _logger.LogDebug("Re-chunking with newChunkSize={NewChunkSize}, newChunkOverlap={NewChunkOverlap}", newChunkSize, newChunkOverlap);
+            
+            // Re-chunk the text with smaller size
+            var subChunkStrings = _textChunkingService.ChunkText(chunkText, newChunkSize, newChunkOverlap);
+            var results = new List<(string Text, float[] Embedding)>();
+            
+            foreach (var subChunk in subChunkStrings)
+            {
+                try
+                {
+                    var subEmbedding = await GenerateEmbeddingForDocumentAsync(documentLibraryName, subChunk);
+                    results.Add((subChunk, subEmbedding));
+                }
+                catch (EmbeddingInputTooLargeException subEx)
+                {
+                    // If even the sub-chunk is too large, try one more time with even smaller chunks
+                    _logger.LogWarning("Sub-chunk still too large (length={Length}), attempting final re-chunking", subChunk.Length);
+                    
+                    var finalChunkSize = Math.Max(50, newChunkSize / 2);
+                    var finalChunkOverlap = Math.Min(newChunkOverlap, finalChunkSize / 4);
+                    
+                    var finalChunkStrings = _textChunkingService.ChunkText(subChunk, finalChunkSize, finalChunkOverlap);
+                    
+                    foreach (var finalChunk in finalChunkStrings)
+                    {
+                        try
+                        {
+                            var finalEmbedding = await GenerateEmbeddingForDocumentAsync(documentLibraryName, finalChunk);
+                            results.Add((finalChunk, finalEmbedding));
+                        }
+                        catch (EmbeddingInputTooLargeException finalEx)
+                        {
+                            // If we still can't embed it, log error and skip this chunk
+                            _logger.LogError(finalEx, "Final chunk still too large (length={Length}), skipping this chunk", finalChunk.Length);
+                        }
+                    }
+                }
+            }
+            
+            if (results.Count == 0)
+            {
+                _logger.LogError("Failed to create any embeddings for chunk after re-chunking, original length={Length}", chunkText.Length);
+                throw new InvalidOperationException($"Unable to create embeddings for chunk of length {chunkText.Length} even after multiple re-chunking attempts");
+            }
+            
+            _logger.LogInformation("Successfully re-chunked oversized chunk into {SubChunkCount} smaller chunks", results.Count);
+            return results;
+        }
     }
 
     /// <summary>

@@ -26,12 +26,13 @@ public class SemanticKernelVectorStoreProviderTests
     {
         // Arrange
         const string indexName = "test-index";
-        _mockProvider.Setup(x => x.EnsureCollectionAsync(indexName, It.IsAny<CancellationToken>()))
+        const int dims = 1536;
+        _mockProvider.Setup(x => x.EnsureCollectionAsync(indexName, dims, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         // Act & Assert
-        await _mockProvider.Object.EnsureCollectionAsync(indexName);
-        _mockProvider.Verify(x => x.EnsureCollectionAsync(indexName, It.IsAny<CancellationToken>()), Times.Once);
+        await _mockProvider.Object.EnsureCollectionAsync(indexName, dims);
+        _mockProvider.Verify(x => x.EnsureCollectionAsync(indexName, dims, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
