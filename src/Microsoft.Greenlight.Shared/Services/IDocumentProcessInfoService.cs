@@ -42,6 +42,14 @@ public interface IDocumentProcessInfoService
     Task<DocumentProcessInfo> CreateDocumentProcessInfoAsync(DocumentProcessInfo documentProcessInfo);
 
     /// <summary>
+    /// Creates a minimal document process without default outline or prompt implementations.
+    /// This is useful for import scenarios where custom content will be added separately.
+    /// </summary>
+    /// <param name="documentProcessInfo">The document process information to create.</param>
+    /// <returns>The created document process information.</returns>
+    Task<DocumentProcessInfo> CreateMinimalDocumentProcessInfoAsync(DocumentProcessInfo documentProcessInfo);
+
+    /// <summary>
     /// Deletes the document process information by process ID.
     /// </summary>
     /// <param name="processId">The ID of the document process to delete.</param>

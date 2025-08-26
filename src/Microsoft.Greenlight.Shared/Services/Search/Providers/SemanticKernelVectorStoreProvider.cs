@@ -115,6 +115,21 @@ public sealed class SemanticKernelVectorStoreProvider : ISemanticKernelVectorSto
     }
 
     /// <inheritdoc />
+    public async Task<bool> CollectionExistsAsync(string indexName, CancellationToken cancellationToken = default)
+    {
+        var collection = GetCollection(indexName);
+        try
+        {
+            return await collection.CollectionExistsAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Failed to check if collection {Index} exists, assuming false", indexName);
+            return false;
+        }
+    }
+
+    /// <inheritdoc />
     public async Task UpsertAsync(string indexName, IEnumerable<SkVectorChunkRecord> records, CancellationToken cancellationToken = default)
     {
         var list = records?.ToList() ?? new List<SkVectorChunkRecord>();

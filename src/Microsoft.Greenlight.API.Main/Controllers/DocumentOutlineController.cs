@@ -73,12 +73,15 @@ public class DocumentOutlineController : BaseController
     public async Task<ActionResult<DocumentOutlineInfo>> GetDocumentOutlineById(Guid id)
     {
         var documentOutline = await _dbContext.DocumentOutlines
-            .Include(o => o.OutlineItems)
-                .ThenInclude(a => a.Children)
-                    .ThenInclude(b => b.Children)
-                        .ThenInclude(c => c.Children)
-                            .ThenInclude(d => d.Children)
-                                .ThenInclude(e => e.Children)
+            // Only load root items in the top OutlineItems collection; children are brought in via navigation
+            .Include(o => o.OutlineItems
+                .Where(i => i.ParentId == null)
+                .OrderBy(i => i.OrderIndex))
+                .ThenInclude(a => a.Children.OrderBy(i => i.OrderIndex))
+                    .ThenInclude(b => b.Children.OrderBy(i => i.OrderIndex))
+                        .ThenInclude(c => c.Children.OrderBy(i => i.OrderIndex))
+                            .ThenInclude(d => d.Children.OrderBy(i => i.OrderIndex))
+                                .ThenInclude(e => e.Children.OrderBy(i => i.OrderIndex))
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.Id == id);
 

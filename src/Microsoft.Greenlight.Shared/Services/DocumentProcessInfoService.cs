@@ -212,6 +212,36 @@ namespace Microsoft.Greenlight.Shared.Services
             return createdDocumentProcessInfo;
         }
 
+        /// <summary>
+        /// Creates a minimal document process without default outline or prompt implementations.
+        /// This is useful for import scenarios where custom content will be added separately.
+        /// </summary>
+        /// <param name="documentProcessInfo">The document process information to create.</param>
+        /// <returns>The created document process information.</returns>
+        public async Task<DocumentProcessInfo> CreateMinimalDocumentProcessInfoAsync(DocumentProcessInfo documentProcessInfo)
+        {
+            var dbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            ValidateAndFormatShortName(documentProcessInfo);
+
+            var dynamicDocumentProcess = _mapper.Map<DynamicDocumentProcessDefinition>(documentProcessInfo);
+            if (dynamicDocumentProcess.Id == Guid.Empty)
+            {
+                dynamicDocumentProcess.Id = Guid.NewGuid();
+            }
+
+            // Set status to Active but don't create any default content
+            dynamicDocumentProcess.Status = DocumentProcessStatus.Active;
+
+            // Add and save the new document process WITHOUT outline or prompt implementations
+            await dbContext.DynamicDocumentProcessDefinitions.AddAsync(dynamicDocumentProcess);
+            await dbContext.SaveChangesAsync();
+
+            // Return the created process info
+            var createdDocumentProcessInfo = _mapper.Map<DocumentProcessInfo>(dynamicDocumentProcess);
+            return createdDocumentProcessInfo;
+        }
+
         /// <inheritdoc/>
         public async Task<bool> DeleteDocumentProcessInfoAsync(Guid processId)
         {

@@ -101,6 +101,7 @@
         {
             OriginalDocumentOutline = await DocumentOutlineApiClient.GetDocumentOutlineByIdAsync(DocumentOutlineId);
 
+            // Normalize to 0-based in UI; OrderIndex from DB is 1-based, but the UI compares by list position and rewrites on save
             int orderIndex = 0;
             foreach (DocumentOutlineItemInfo item in OriginalDocumentOutline.OutlineItems)
             {

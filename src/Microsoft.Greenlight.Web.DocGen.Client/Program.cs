@@ -127,6 +127,11 @@ builder.Services.AddHttpClient<IVectorStoreApiClient, VectorStoreApiClient>(clie
     client.BaseAddress = serverBaseAddress;
 });
 
+builder.Services.AddHttpClient<IDefinitionsApiClient, DefinitionsApiClient>(client =>
+{
+    client.BaseAddress = serverBaseAddress;
+});
+
 // Service used to aid in constructing editors
 builder.Services.AddScoped<ValidationEditorService>();
 

@@ -32,6 +32,13 @@
                             Search Vector Store
                         </MudButton>
                     }
+                    @if (IsEditMode)
+                    {
+                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="OpenExportDialog">
+                            <MudIcon Icon="@Icons.Material.Filled.Download" Class="mr-1" />
+                            Export Definition
+                        </MudButton>
+                    }
                 </MudStack>
             </MudStack>
         </MudItem>
@@ -692,5 +699,17 @@
             catch { }
             await _subMgr.DisposeAsync();
         }
+    }
+
+    private async Task OpenExportDialog()
+    {
+        if (!IsEditMode) { return; }
+        var parameters = new DialogParameters
+        {
+            ["LibraryId"] = DocumentLibraryInfo.Id,
+            ["SuggestedFileName"] = $"library-{DocumentLibraryInfo.ShortName}.json"
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        await DialogService.ShowAsync<Microsoft.Greenlight.Web.DocGen.Client.Components.Definitions.ExportDefinitionDialog>("Export Definition", parameters, options);
     }
 }

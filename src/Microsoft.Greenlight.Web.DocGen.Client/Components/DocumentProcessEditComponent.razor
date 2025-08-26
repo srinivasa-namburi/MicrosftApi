@@ -44,6 +44,13 @@
                                     Search Vector Store
                                 </MudButton>
                             }
+                            @if (_isEditMode)
+                            {
+                                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="OpenExportDialog">
+                                    <MudIcon Icon="@Icons.Material.Filled.Download" Class="mr-1" />
+                                    Export Definition
+                                </MudButton>
+                            }
                         </MudStack>
                     </MudStack>
                 </MudItem>
@@ -92,6 +99,12 @@
                                 @deployment.DeploymentName
                             </MudSelectItem>
                         }
+                    </MudSelect>
+
+                    <!-- Ai Completion Service selection -->
+                    <MudSelect T="DocumentProcessCompletionServiceType" @bind-Value="_completionServiceType" Label="AI Completion Service">
+                        <MudSelectItem Value="DocumentProcessCompletionServiceType.GenericAiCompletionService">Generic AI Completion Service</MudSelectItem>
+                        <MudSelectItem Value="DocumentProcessCompletionServiceType.AgentAiCompletionService">Agent AI Completion Service</MudSelectItem>
                     </MudSelect>
 
                     <MudExpansionPanels Class="mt-2">
@@ -263,7 +276,7 @@
                 <MudTabPanel Text="Document Libraries">
                     <MudText Typo="Typo.h6">Associated Document Libraries</MudText>
 
-                    <MudTable Items="_associatedLibraries" Hover="true">
+                    <MudTable Items="@_associatedLibraries" Hover="true">
                         <HeaderContent>
                             <MudTh>Library Name</MudTh>
                             <MudTh>Description</MudTh>
@@ -292,7 +305,7 @@
                 <MudTabPanel Text="Prompts">
                     @if (_showPrompts)
                     {
-                        <PromptList Prompts="_prompts" />
+                        <PromptList Prompts="@_prompts" />
                     }
                     else
                     {
@@ -314,6 +327,9 @@
     // Initialized immediately; treated as non-null after OnInitializedAsync
     private DocumentProcessInfo _process = new();
     private List<PromptInfo> _prompts = [];
+
+    // Completion service selection backing field
+    private DocumentProcessCompletionServiceType _completionServiceType = DocumentProcessCompletionServiceType.GenericAiCompletionService;
 
     // Validation pipeline-related fields
     private List<DocumentProcessValidationPipelineStepInfo> _validationSteps = [];
@@ -381,6 +397,10 @@
                 _process = await DocumentProcessApiClient.GetDocumentProcessInfoByIdAsync(ProcessId.Value) ?? new DocumentProcessInfo();
                 _initialEmbeddingModelDeploymentId = _process.EmbeddingModelDeploymentId;
                 _initialEmbeddingDimensionsOverride = _process.EmbeddingDimensionsOverride;
+
+                // Default completion service type if missing
+                _completionServiceType = _process.CompletionServiceType ?? DocumentProcessCompletionServiceType.GenericAiCompletionService;
+                _process.CompletionServiceType ??= _completionServiceType;
 
                 // If no embedding deployment has been set yet, default to the first embedding deployment
                 if (_process.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore && _process.EmbeddingModelDeploymentId == null)
@@ -465,6 +485,10 @@
                 SelectedValidationDeployment = _aiModelDeployments.FirstOrDefault(x => x.DeploymentName == "gpt-4o");
                 // Default repository logic type: Semantic Kernel Vector Store (migrated away from Kernel Memory)
                 _process.LogicType = DocumentProcessLogicType.SemanticKernelVectorStore;
+
+                // Default completion service is Generic
+                _completionServiceType = DocumentProcessCompletionServiceType.GenericAiCompletionService;
+                _process.CompletionServiceType = _completionServiceType;
 
                 // Default embedding deployment for new processes
                 var defaultEmbedding = _aiModelDeployments.FirstOrDefault(d => d.AiModel?.ModelType == AiModelType.Embedding);
@@ -771,6 +795,9 @@
         ValidateAndFormatShortName();
         UpdateRepositories();
 
+        // Write selected completion service back to the process model
+        _process.CompletionServiceType = _completionServiceType;
+
         if (!await ConfirmReindexIfEmbeddingChangedAsync())
         {
             return;
@@ -1035,7 +1062,7 @@
     private class PluginAssociationViewModel
     {
     public McpPluginInfo Plugin { get; set; } = new();
-    public string Version { get; set; } = string.Empty;
+    public String Version { get; set; } = string.Empty;
     }
 
     private bool EmbeddingConfigChangedForProcess()
@@ -1143,5 +1170,17 @@
             catch { }
             await _subMgr.DisposeAsync();
         }
+    }
+
+    private async Task OpenExportDialog()
+    {
+        if (!_isEditMode || ProcessId is null) { return; }
+        var parameters = new DialogParameters
+        {
+            ["ProcessId"] = ProcessId.Value,
+            ["SuggestedFileName"] = $"process-{_process.ShortName}.json"
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        await DialogService.ShowAsync<Microsoft.Greenlight.Web.DocGen.Client.Components.Definitions.ExportDefinitionDialog>("Export Definition", parameters, options);
     }
 }

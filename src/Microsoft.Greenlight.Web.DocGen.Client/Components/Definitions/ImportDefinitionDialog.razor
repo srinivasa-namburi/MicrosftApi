@@ -1,0 +1,835 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+@using System.Text.Json
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Definitions
+@using Microsoft.Greenlight.Shared.Contracts.DTO
+@using Microsoft.Greenlight.Shared.Contracts.DTO.DocumentLibrary
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Configuration
+@using Microsoft.Greenlight.Shared.Enums
+@inject IDefinitionsApiClient DefinitionsApiClient
+@inject IDocumentProcessApiClient DocumentProcessApiClient
+@inject IDocumentLibraryApiClient DocumentLibraryApiClient
+@inject IConfigurationApiClient ConfigurationApiClient
+@inject ISnackbar Snackbar
+
+<MudDialog MaxWidth="MaxWidth.Medium" FullWidth="true">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@Title</MudText>
+    </TitleContent>
+
+    <DialogContent>
+        <MudStack Spacing="2">
+            <MudAlert Severity="Severity.Info" Dense="true">
+                Upload a JSON export package to import a @(IsProcessMode ? "Document Process" : "Document Library").
+            </MudAlert>
+
+            <MudFileUpload T="IReadOnlyList<IBrowserFile>" MaximumFileCount="1" Accept=".json" FilesChanged="OnFilesChanged">
+                <ButtonTemplate>
+                    <MudButton HtmlTag="label" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.UploadFile" for="@context">
+                        @(HasFile ? "Replace File" : "Choose File")
+                    </MudButton>
+                </ButtonTemplate>
+            </MudFileUpload>
+            @if (HasFile)
+            {
+                <MudText Typo="Typo.caption">Selected: @SelectedFileName</MudText>
+            }
+
+            @if (IsProcessMode && ProcessPackage is not null)
+            {
+                <MudDivider />
+                <MudText Typo="Typo.subtitle2">Package Summary</MudText>
+                <MudStack Row="true" Spacing="2">
+                    <MudChip Color="Color.Primary">Prompts: @((ProcessPackage.Prompts?.Count ?? 0))</MudChip>
+                    <MudChip Color="Color.Primary">Metadata Fields: @((ProcessPackage.MetaDataFields?.Count ?? 0))</MudChip>
+                    <MudChip Color="Color.Primary">Outline Items: @(OutlineItemCount)</MudChip>
+                </MudStack>
+            }
+
+            @if (IsProcessMode && ProcessPackage is not null)
+            {
+                <MudDivider />
+                <MudText Typo="Typo.subtitle2">Editable Settings</MudText>
+                <MudTextField Label="Short Name" @bind-Value="ProcessShortName" Required="true"
+                              Error="@(!IsShortNameAvailable)" ErrorText="@(IsShortNameAvailable ? null : ShortNameError)" />
+                <MudTextField Label="Description" @bind-Value="ProcessDescription" Lines="3" TextArea="true" />
+
+                <MudExpansionPanels>
+                    <MudExpansionPanel Text="Storage & Index" Expanded="true">
+                        <MudTextField Label="Blob Storage Container Name" @bind-Value="ProcessContainer" />
+                        <MudTextField Label="Auto Import Folder Name" @bind-Value="ProcessAutoImportFolder" />
+                        <MudTextField Label="Index Name (repository)" @bind-Value="ProcessIndexName" 
+                                      HelperText="If empty, defaults to short name."
+                                      Error="@(!IsProcessIndexAvailable)" ErrorText="@(IsProcessIndexAvailable ? null : ProcessIndexError)" />
+                    </MudExpansionPanel>
+                    <MudExpansionPanel Text="Vector Store Chunking" Expanded="true">
+                        <MudNumericField T="int?" Label="Chunk Size (tokens)" @bind-Value="ProcessChunkSize" Min="100" Max="8000" />
+                        <MudNumericField T="int?" Label="Chunk Overlap (tokens)" @bind-Value="ProcessChunkOverlap" Min="0" Max="2000" />
+                    </MudExpansionPanel>
+                    <MudExpansionPanel Text="Model Deployments (optional)" Expanded="false">
+                        <MudSelect T="AiModelDeploymentInfo" @bind-Value="SelectedGenModel" Label="Generation Model" ToStringFunc="@(d => d?.DeploymentName ?? string.Empty)">
+                            @foreach (var d in _aiDeployments.Where(x => x.AiModel?.ModelType == AiModelType.Chat))
+                            {
+                                <MudSelectItem Value="@d">@d.DeploymentName</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <MudSelect T="AiModelDeploymentInfo" @bind-Value="SelectedValidationModel" Label="Validation Model" ToStringFunc="@(d => d?.DeploymentName ?? string.Empty)">
+                            @foreach (var d in _aiDeployments.Where(x => x.AiModel?.ModelType == AiModelType.Chat))
+                            {
+                                <MudSelectItem Value="@d">@d.DeploymentName</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <MudSelect T="AiModelDeploymentInfo" @bind-Value="SelectedEmbeddingModel" Label="Embedding Model" ToStringFunc="@(d => d?.DeploymentName ?? string.Empty)">
+                            @foreach (var d in _aiDeployments.Where(x => x.AiModel?.ModelType == AiModelType.Embedding))
+                            {
+                                <MudSelectItem Value="@d">@d.DeploymentName</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
+            }
+
+            @if (!IsProcessMode && LibraryPackage is not null)
+            {
+                <MudDivider />
+                <MudText Typo="Typo.subtitle2">Editable Settings</MudText>
+                <MudTextField Label="Short Name" @bind-Value="LibraryShortName" Required="true"
+                              Error="@(!IsShortNameAvailable)" ErrorText="@(IsShortNameAvailable ? null : ShortNameError)" />
+                <MudTextField Label="Description of Contents" @bind-Value="LibraryDescriptionOfContents" Lines="3" TextArea="true" />
+                <MudTextField Label="Description of When to Use" @bind-Value="LibraryDescriptionOfWhenToUse" Lines="3" TextArea="true" />
+
+                <MudExpansionPanels>
+                    <MudExpansionPanel Text="Storage & Index" Expanded="true">
+                        <MudTextField Label="Index Name" @bind-Value="LibraryIndexName"
+                                      Error="@(!IsLibraryIndexAvailable)" ErrorText="@(IsLibraryIndexAvailable ? null : LibraryIndexError)" />
+                        <MudTextField Label="Blob Storage Container Name" @bind-Value="LibraryContainer" />
+                        <MudTextField Label="Auto Import Folder Name" @bind-Value="LibraryAutoImportFolder" />
+                    </MudExpansionPanel>
+                    <MudExpansionPanel Text="Vector Store Chunking" Expanded="true">
+                        <MudNumericField T="int?" Label="Chunk Size (tokens)" @bind-Value="LibraryChunkSize" Min="100" Max="8000" />
+                        <MudNumericField T="int?" Label="Chunk Overlap (tokens)" @bind-Value="LibraryChunkOverlap" Min="0" Max="2000" />
+                    </MudExpansionPanel>
+                    <MudExpansionPanel Text="Embedding Model (optional)" Expanded="false">
+                        <MudSelect T="AiModelDeploymentInfo" @bind-Value="SelectedEmbeddingModel" Label="Embedding Model" ToStringFunc="@(d => d?.DeploymentName ?? string.Empty)">
+                            @foreach (var d in _aiDeployments.Where(x => x.AiModel?.ModelType == AiModelType.Embedding))
+                            {
+                                <MudSelectItem Value="@d">@d.DeploymentName</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
+            }
+
+            @if (_containerWarnings.Count > 0)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true">
+                    <MudText Typo="Typo.body2">Container Warnings:</MudText>
+                    @foreach (var warning in _containerWarnings)
+                    {
+                        <MudText Typo="Typo.caption">• @warning</MudText>
+                    }
+                </MudAlert>
+            }
+
+            @if (_indexWarnings.Count > 0)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true">
+                    <MudText Typo="Typo.body2">Index Conflicts:</MudText>
+                    @foreach (var warning in _indexWarnings)
+                    {
+                        <MudText Typo="Typo.caption">• @warning</MudText>
+                    }
+                </MudAlert>
+            }
+        </MudStack>
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ImportAsync" Disabled="@(!CanImport)">Import</MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="Cancel">Cancel</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public bool IsProcessMode { get; set; }
+
+    private string Title => IsProcessMode ? "Import Document Process" : "Import Document Library";
+
+    // File state
+    private bool HasFile => !string.IsNullOrWhiteSpace(SelectedFileName);
+    private string? SelectedFileName { get; set; }
+
+    // Packages
+    private DocumentProcessDefinitionPackageDto? ProcessPackage { get; set; }
+    private DocumentLibraryDefinitionPackageDto? LibraryPackage { get; set; }
+
+    // Editable fields - Process
+    private string _processShortName = string.Empty;
+    private bool _processUserChangedShortName = false;
+
+    private string ProcessShortName
+    {
+        get => _processShortName;
+        set
+        {
+            if (!string.Equals(_processShortName, value, StringComparison.Ordinal))
+            {
+                _processShortName = value ?? string.Empty;
+                _processUserChangedShortName = true;
+                
+                // Auto-update container and index only if they haven't been manually edited
+                if (!_processUserChangedContainer)
+                {
+                    UpdateProcessContainerFromShortName();
+                }
+                if (!_processUserChangedIndex)
+                {
+                    UpdateProcessIndexFromShortName();
+                    // Clear and revalidate index when auto-updating
+                    ClearProcessIndexValidation();
+                    _ = DebouncedCheckIndexAsync(true);
+                }
+
+                _ = DebouncedCheckShortNameAsync(true);
+            }
+        }
+    }
+
+    private string? ProcessDescription { get; set; }
+
+    // Track whether user has manually changed these fields
+    private bool _processUserChangedContainer = false;
+    private bool _processUserChangedIndex = false;
+
+    private string _processContainer = string.Empty;
+    private string ProcessContainer
+    {
+        get => _processContainer;
+        set
+        {
+            if (!string.Equals(_processContainer, value, StringComparison.Ordinal))
+            {
+                _processContainer = value ?? string.Empty;
+                _processUserChangedContainer = true;
+                // Container changes should NOT affect short name
+            }
+        }
+    }
+
+    private string ProcessAutoImportFolder { get; set; } = "ingest-auto";
+
+    private string _processIndexName = string.Empty;
+    private string ProcessIndexName
+    {
+        get => _processIndexName;
+        set
+        {
+            if (!string.Equals(_processIndexName, value, StringComparison.Ordinal))
+            {
+                _processIndexName = value ?? string.Empty;
+                _processUserChangedIndex = true;
+                
+                // Clear validation state immediately and trigger new validation
+                ClearProcessIndexValidation();
+                _ = DebouncedCheckIndexAsync(true);
+                // Index changes should NOT affect short name
+            }
+        }
+    }
+
+    private int? ProcessChunkSize { get; set; }
+    private int? ProcessChunkOverlap { get; set; }
+
+    // Editable fields - Library
+    private string _libraryShortName = string.Empty;
+    private bool _libraryUserChangedShortName = false;
+
+    private string LibraryShortName
+    {
+        get => _libraryShortName;
+        set
+        {
+            if (!string.Equals(_libraryShortName, value, StringComparison.Ordinal))
+            {
+                _libraryShortName = value ?? string.Empty;
+                _libraryUserChangedShortName = true;
+
+                // Auto-update container and index only if they haven't been manually edited
+                if (!_libraryUserChangedContainer)
+                {
+                    UpdateLibraryContainerFromShortName();
+                }
+                if (!_libraryUserChangedIndex)
+                {
+                    UpdateLibraryIndexFromShortName();
+                    // Clear and revalidate index when auto-updating
+                    ClearLibraryIndexValidation();
+                    _ = DebouncedCheckIndexAsync(false);
+                }
+
+                _ = DebouncedCheckShortNameAsync(false);
+            }
+        }
+    }
+
+    private string LibraryDescriptionOfContents { get; set; } = string.Empty;
+    private string LibraryDescriptionOfWhenToUse { get; set; } = string.Empty;
+
+    // Track whether user has manually changed these fields
+    private bool _libraryUserChangedContainer = false;
+    private bool _libraryUserChangedIndex = false;
+
+    private string _libraryIndexName = string.Empty;
+    private string LibraryIndexName
+    {
+        get => _libraryIndexName;
+        set
+        {
+            if (!string.Equals(_libraryIndexName, value, StringComparison.Ordinal))
+            {
+                _libraryIndexName = value ?? string.Empty;
+                _libraryUserChangedIndex = true;
+                
+                // Clear validation state immediately and trigger new validation
+                ClearLibraryIndexValidation();
+                _ = DebouncedCheckIndexAsync(false);
+                // Index changes should NOT affect short name
+            }
+        }
+    }
+
+    private string _libraryContainer = string.Empty;
+    private string LibraryContainer
+    {
+        get => _libraryContainer;
+        set
+        {
+            if (!string.Equals(_libraryContainer, value, StringComparison.Ordinal))
+            {
+                _libraryContainer = value ?? string.Empty;
+                _libraryUserChangedContainer = true;
+                // Container changes should NOT affect short name
+            }
+        }
+    }
+
+    private string LibraryAutoImportFolder { get; set; } = "ingest-auto";
+    private int? LibraryChunkSize { get; set; }
+    private int? LibraryChunkOverlap { get; set; }
+
+    // Models
+    private List<AiModelDeploymentInfo> _aiDeployments = new();
+    private AiModelDeploymentInfo? SelectedGenModel { get; set; }
+    private AiModelDeploymentInfo? SelectedValidationModel { get; set; }
+    private AiModelDeploymentInfo? SelectedEmbeddingModel { get; set; }
+
+    // Validation state
+    private bool IsShortNameAvailable { get; set; } = true;
+    private string ShortNameError { get; set; } = string.Empty;
+    private bool IsProcessIndexAvailable { get; set; } = true;
+    private string ProcessIndexError { get; set; } = string.Empty;
+    private bool IsLibraryIndexAvailable { get; set; } = true;
+    private string LibraryIndexError { get; set; } = string.Empty;
+    
+    private readonly List<string> _containerWarnings = new();
+    private readonly List<string> _indexWarnings = new();
+
+    // Debouncing
+    private CancellationTokenSource? _debounceCts;
+    private CancellationTokenSource? _indexDebounceCts;
+    private long _checkVersion;
+    private long _indexCheckVersion;
+
+    private int OutlineItemCount => ProcessPackage?.Outline?.Items is null ? 0 : CountOutlineItems(ProcessPackage.Outline.Items);
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _aiDeployments = await ConfigurationApiClient.GetAiModelDeploymentsAsync();
+
+            // Default model selections if available
+            SelectedGenModel = _aiDeployments.FirstOrDefault(d => string.Equals(d.DeploymentName, "gpt-4o", StringComparison.OrdinalIgnoreCase))
+                               ?? _aiDeployments.FirstOrDefault(d => d.AiModel?.ModelType == AiModelType.Chat);
+            SelectedValidationModel = SelectedGenModel;
+            SelectedEmbeddingModel = _aiDeployments.FirstOrDefault(d => string.Equals(d.DeploymentName, "text-embedding-ada-002", StringComparison.OrdinalIgnoreCase))
+                                     ?? _aiDeployments.FirstOrDefault(d => d.AiModel?.ModelType == AiModelType.Embedding);
+        }
+        catch { }
+    }
+
+    private async Task OnFilesChanged(IReadOnlyList<IBrowserFile> files)
+    {
+        if (files is null || files.Count == 0) { return; }
+        var file = files[0];
+        SelectedFileName = file.Name;
+
+        // Clear all warnings and validation state
+        ClearAllValidation();
+
+        using var stream = file.OpenReadStream(long.MaxValue);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        var json = System.Text.Encoding.UTF8.GetString(ms.ToArray());
+
+        try
+        {
+            if (IsProcessMode)
+            {
+                ProcessPackage = JsonSerializer.Deserialize<DocumentProcessDefinitionPackageDto>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (ProcessPackage == null)
+                {
+                    Snackbar.Add("Invalid process package.", Severity.Error);
+                    return;
+                }
+                await SeedProcessFields();
+            }
+            else
+            {
+                LibraryPackage = JsonSerializer.Deserialize<DocumentLibraryDefinitionPackageDto>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (LibraryPackage == null)
+                {
+                    Snackbar.Add("Invalid library package.", Severity.Error);
+                    return;
+                }
+                await SeedLibraryFields();
+            }
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to read file: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void ClearAllValidation()
+    {
+        _containerWarnings.Clear();
+        _indexWarnings.Clear();
+        
+        // Reset validation state
+        IsShortNameAvailable = true;
+        ShortNameError = string.Empty;
+        IsProcessIndexAvailable = true;
+        ProcessIndexError = string.Empty;
+        IsLibraryIndexAvailable = true;
+        LibraryIndexError = string.Empty;
+        
+        // Cancel any pending operations
+        _debounceCts?.Cancel();
+        _indexDebounceCts?.Cancel();
+    }
+
+    private void ClearProcessIndexValidation()
+    {
+        IsProcessIndexAvailable = true;
+        ProcessIndexError = string.Empty;
+        
+        // Remove any process-related index warnings
+        _indexWarnings.RemoveAll(w => w.Contains(_processIndexName) || w.Contains("process"));
+    }
+
+    private void ClearLibraryIndexValidation()
+    {
+        IsLibraryIndexAvailable = true;
+        LibraryIndexError = string.Empty;
+        
+        // Remove any library-related index warnings
+        _indexWarnings.RemoveAll(w => w.Contains(_libraryIndexName) || w.Contains("library"));
+    }
+
+    private async Task SeedProcessFields()
+    {
+        if (ProcessPackage == null) return;
+
+        // Reset user edit tracking
+        _processUserChangedShortName = false;
+        _processUserChangedContainer = false;
+        _processUserChangedIndex = false;
+
+        // Seed editable fields - don't trigger validation events during seeding
+        _processShortName = ProcessPackage.ShortName ?? string.Empty;
+        ProcessDescription = ProcessPackage.Description;
+        ProcessChunkSize = ProcessPackage.VectorStoreChunkSize;
+        ProcessChunkOverlap = ProcessPackage.VectorStoreChunkOverlap;
+        ProcessAutoImportFolder = "ingest-auto";
+
+        // Auto-generate container and index names
+        UpdateProcessContainerFromShortName();
+        UpdateProcessIndexFromShortName();
+
+        // Immediate availability checks
+        var version = Interlocked.Increment(ref _checkVersion);
+        await CheckShortNameAvailabilityAsync(true, version);
+        
+        var indexVersion = Interlocked.Increment(ref _indexCheckVersion);
+        await CheckIndexAvailabilityAsync(true, indexVersion);
+    }
+
+    private async Task SeedLibraryFields()
+    {
+        if (LibraryPackage == null) return;
+
+        // Reset user edit tracking
+        _libraryUserChangedShortName = false;
+        _libraryUserChangedContainer = false;
+        _libraryUserChangedIndex = false;
+
+        // Seed editable fields - don't trigger validation events during seeding
+        _libraryShortName = LibraryPackage.ShortName ?? string.Empty;
+        LibraryDescriptionOfContents = LibraryPackage.DescriptionOfContents ?? string.Empty;
+        LibraryDescriptionOfWhenToUse = LibraryPackage.DescriptionOfWhenToUse ?? string.Empty;
+        LibraryAutoImportFolder = string.IsNullOrWhiteSpace(LibraryPackage.BlobStorageAutoImportFolderName) ? "ingest-auto" : LibraryPackage.BlobStorageAutoImportFolderName;
+        LibraryChunkSize = LibraryPackage.VectorStoreChunkSize;
+        LibraryChunkOverlap = LibraryPackage.VectorStoreChunkOverlap;
+
+        // Use package values as defaults, but allow auto-generation if empty
+        if (!string.IsNullOrWhiteSpace(LibraryPackage.IndexName))
+        {
+            _libraryIndexName = LibraryPackage.IndexName;
+            _libraryUserChangedIndex = true; // Mark as user-defined
+        }
+        else
+        {
+            UpdateLibraryIndexFromShortName();
+        }
+
+        if (!string.IsNullOrWhiteSpace(LibraryPackage.BlobStorageContainerName))
+        {
+            _libraryContainer = LibraryPackage.BlobStorageContainerName;
+            _libraryUserChangedContainer = true; // Mark as user-defined
+        }
+        else
+        {
+            UpdateLibraryContainerFromShortName();
+        }
+
+        // Immediate availability checks
+        var version = Interlocked.Increment(ref _checkVersion);
+        await CheckShortNameAvailabilityAsync(false, version);
+        
+        var indexVersion = Interlocked.Increment(ref _indexCheckVersion);
+        await CheckIndexAvailabilityAsync(false, version);
+    }
+
+    private void UpdateProcessContainerFromShortName()
+    {
+        if (!string.IsNullOrWhiteSpace(_processShortName))
+        {
+            _processContainer = SanitizeContainerFromShortName(_processShortName);
+        }
+    }
+
+    private void UpdateProcessIndexFromShortName()
+    {
+        if (!string.IsNullOrWhiteSpace(_processShortName))
+        {
+            _processIndexName = "index-" + _processShortName.ToLowerInvariant().Replace(" ", "-").Replace(".", "-");
+        }
+    }
+
+    private void UpdateLibraryContainerFromShortName()
+    {
+        if (!string.IsNullOrWhiteSpace(_libraryShortName))
+        {
+            var formattedName = _libraryShortName.ToLowerInvariant().Replace(".", "-");
+            _libraryContainer = $"blob-additional-{formattedName}";
+        }
+    }
+
+    private void UpdateLibraryIndexFromShortName()
+    {
+        if (!string.IsNullOrWhiteSpace(_libraryShortName))
+        {
+            var formattedName = _libraryShortName.ToLowerInvariant().Replace(".", "-");
+            _libraryIndexName = $"index-additional-{formattedName}";
+        }
+    }
+
+    private string SanitizeContainerFromShortName(string? shortName)
+    {
+        if (string.IsNullOrWhiteSpace(shortName)) return string.Empty;
+        var lower = new string(shortName.ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : '-').ToArray());
+        lower = lower.Trim('-');
+        if (lower.Length < 3) lower = (lower + "---").Substring(0, 3);
+        if (lower.Length > 63) lower = lower.Substring(0, 63).Trim('-');
+        return lower;
+    }
+
+    private int CountOutlineItems(List<DocumentOutlineItemPackageDto> items)
+    {
+        int count = 0;
+        foreach (var item in items)
+        {
+            count++;
+            if (item.Children != null && item.Children.Count > 0)
+            {
+                count += CountOutlineItems(item.Children);
+            }
+        }
+        return count;
+    }
+
+    private async Task DebouncedCheckShortNameAsync(bool process)
+    {
+        _debounceCts?.Cancel();
+        _debounceCts = new CancellationTokenSource();
+        var myVersion = Interlocked.Increment(ref _checkVersion);
+        try
+        {
+            await Task.Delay(400, _debounceCts.Token);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        await CheckShortNameAvailabilityAsync(process, myVersion);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task DebouncedCheckIndexAsync(bool process)
+    {
+        _indexDebounceCts?.Cancel();
+        _indexDebounceCts = new CancellationTokenSource();
+        var myVersion = Interlocked.Increment(ref _indexCheckVersion);
+        try
+        {
+            await Task.Delay(400, _indexDebounceCts.Token);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        await CheckIndexAvailabilityAsync(process, myVersion);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private static string NormalizeShortNameClient(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) { return string.Empty; }
+        var replaced = value.Replace(" ", ".");
+        var filtered = new string(replaced.Where(c => char.IsLetterOrDigit(c) || c == '.').ToArray());
+        return filtered.Trim();
+    }
+
+    private async Task CheckShortNameAvailabilityAsync(bool process, long version)
+    {
+        try
+        {
+            // Snapshot the current input and normalize to match backend
+            var raw = process ? ProcessShortName?.Trim() : LibraryShortName?.Trim();
+            var name = NormalizeShortNameClient(raw);
+
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                if (version == Volatile.Read(ref _checkVersion))
+                {
+                    IsShortNameAvailable = false;
+                    ShortNameError = "Short Name is required";
+                }
+                return;
+            }
+
+            bool ok = process
+                ? await DefinitionsApiClient.IsProcessShortNameAvailableAsync(name)
+                : await DefinitionsApiClient.IsLibraryShortNameAvailableAsync(name);
+
+            // Only apply result if this is still the latest check and the input hasn't changed materially
+            if (version == Volatile.Read(ref _checkVersion))
+            {
+                var current = NormalizeShortNameClient(process ? ProcessShortName : LibraryShortName);
+                if (string.Equals(current, name, StringComparison.Ordinal))
+                {
+                    IsShortNameAvailable = ok;
+                    ShortNameError = ok ? string.Empty : "Short Name is already in use";
+                }
+            }
+        }
+        catch
+        {
+            if (version == Volatile.Read(ref _checkVersion))
+            {
+                IsShortNameAvailable = true; // fail-open
+                ShortNameError = string.Empty;
+            }
+        }
+    }
+
+    private async Task CheckIndexAvailabilityAsync(bool process, long version)
+    {
+        try
+        {
+            var indexName = process ? ProcessIndexName?.Trim() : LibraryIndexName?.Trim();
+            
+            if (string.IsNullOrWhiteSpace(indexName))
+            {
+                if (version == Volatile.Read(ref _indexCheckVersion))
+                {
+                    if (process)
+                    {
+                        IsProcessIndexAvailable = true;
+                        ProcessIndexError = string.Empty;
+                    }
+                    else
+                    {
+                        IsLibraryIndexAvailable = true;
+                        LibraryIndexError = string.Empty;
+                    }
+                    
+                    // Remove related warnings
+                    _indexWarnings.RemoveAll(w => w.Contains(indexName ?? ""));
+                }
+                return;
+            }
+
+            var compatibility = await DefinitionsApiClient.GetIndexCompatibilityAsync(indexName);
+
+            if (version == Volatile.Read(ref _indexCheckVersion))
+            {
+                var current = process ? ProcessIndexName?.Trim() : LibraryIndexName?.Trim();
+                if (string.Equals(current, indexName, StringComparison.Ordinal))
+                {
+                    bool indexExists = compatibility?.Exists == true;
+                    
+                    if (process)
+                    {
+                        IsProcessIndexAvailable = !indexExists;
+                        ProcessIndexError = indexExists ? "Index already exists and cannot be reused" : string.Empty;
+                    }
+                    else
+                    {
+                        IsLibraryIndexAvailable = !indexExists;
+                        LibraryIndexError = indexExists ? "Index already exists and cannot be reused" : string.Empty;
+                    }
+
+                    // Update warnings list - clear existing warnings for this index first
+                    _indexWarnings.RemoveAll(w => w.Contains(indexName));
+                    if (indexExists)
+                    {
+                        _indexWarnings.Add($"Index '{indexName}' already exists and cannot be reused.");
+                        if (!string.IsNullOrWhiteSpace(compatibility?.Error))
+                        {
+                            _indexWarnings.Add($"Error: {compatibility.Error}");
+                        }
+                    }
+                }
+            }
+        }
+        catch
+        {
+            if (version == Volatile.Read(ref _indexCheckVersion))
+            {
+                var indexName = process ? ProcessIndexName?.Trim() : LibraryIndexName?.Trim();
+                
+                if (process)
+                {
+                    IsProcessIndexAvailable = true; // fail-open
+                    ProcessIndexError = string.Empty;
+                }
+                else
+                {
+                    IsLibraryIndexAvailable = true; // fail-open
+                    LibraryIndexError = string.Empty;
+                }
+                
+                // Clear warnings on error
+                _indexWarnings.RemoveAll(w => w.Contains(indexName ?? ""));
+            }
+        }
+    }
+
+    private bool CanImport
+        => HasFile && IsShortNameAvailable && IsProcessIndexAvailable && IsLibraryIndexAvailable && ((IsProcessMode && ProcessPackage is not null) || (!IsProcessMode && LibraryPackage is not null));
+
+    private async Task ImportAsync()
+    {
+        if (!CanImport) { return; }
+
+        try
+        {
+            if (IsProcessMode && ProcessPackage is not null)
+            {
+                // Apply editable fields to package before import
+                ProcessPackage.ShortName = ProcessShortName;
+                ProcessPackage.Description = ProcessDescription;
+                ProcessPackage.VectorStoreChunkSize = ProcessChunkSize;
+                ProcessPackage.VectorStoreChunkOverlap = ProcessChunkOverlap;
+                ProcessPackage.BlobStorageContainerName = string.IsNullOrWhiteSpace(ProcessContainer) ? null : ProcessContainer;
+                ProcessPackage.BlobStorageAutoImportFolderName = string.IsNullOrWhiteSpace(ProcessAutoImportFolder) ? null : ProcessAutoImportFolder;
+
+                var newId = await DefinitionsApiClient.ImportProcessAsync(ProcessPackage);
+
+                // Post-update to apply additional settings not in the package
+                var info = await DocumentProcessApiClient.GetDocumentProcessInfoByIdAsync(newId);
+                if (info != null)
+                {
+                    // Set repository/index if provided (not part of import package)
+                    var repo = string.IsNullOrWhiteSpace(ProcessIndexName) ? ProcessShortName : ProcessIndexName!;
+                    info.Repositories = new List<string> { repo };
+
+                    // Models: use selected or default fallbacks (not part of import package)
+                    var gen = SelectedGenModel ?? _aiDeployments.FirstOrDefault(d => string.Equals(d.DeploymentName, "gpt-4o", StringComparison.OrdinalIgnoreCase))
+                                                  ?? _aiDeployments.FirstOrDefault(d => d.AiModel?.ModelType == AiModelType.Chat);
+                    var val = SelectedValidationModel ?? gen;
+                    var emb = SelectedEmbeddingModel ?? _aiDeployments.FirstOrDefault(d => string.Equals(d.DeploymentName, "text-embedding-ada-002", StringComparison.OrdinalIgnoreCase))
+                                                      ?? _aiDeployments.FirstOrDefault(d => d.AiModel?.ModelType == AiModelType.Embedding);
+
+                    if (gen is not null) info.AiModelDeploymentId = gen.Id;
+                    if (val is not null) info.AiModelDeploymentForValidationId = val.Id;
+                    if (emb is not null) info.EmbeddingModelDeploymentId = emb.Id;
+
+                    await DocumentProcessApiClient.UpdateDynamicDocumentProcessDefinitionAsync(info);
+                }
+
+                Snackbar.Add($"Imported process '{ProcessShortName}'.", Severity.Success);
+                MudDialog.Close(DialogResult.Ok(true));
+            }
+            else if (!IsProcessMode && LibraryPackage is not null)
+            {
+                // Apply editable fields to package
+                LibraryPackage.ShortName = LibraryShortName;
+                LibraryPackage.DescriptionOfContents = LibraryDescriptionOfContents;
+                LibraryPackage.DescriptionOfWhenToUse = LibraryDescriptionOfWhenToUse;
+                LibraryPackage.IndexName = LibraryIndexName;
+                LibraryPackage.BlobStorageContainerName = LibraryContainer;
+                LibraryPackage.BlobStorageAutoImportFolderName = LibraryAutoImportFolder;
+                LibraryPackage.LogicType = DocumentProcessLogicType.SemanticKernelVectorStore; // preferred modern logic
+                LibraryPackage.VectorStoreChunkSize = LibraryChunkSize;
+                LibraryPackage.VectorStoreChunkOverlap = LibraryChunkOverlap;
+
+                var newId = await DefinitionsApiClient.ImportLibraryAsync(LibraryPackage);
+
+                // Post-update: embedding model - use selected or default
+                var emb = SelectedEmbeddingModel ?? _aiDeployments.FirstOrDefault(d => string.Equals(d.DeploymentName, "text-embedding-ada-002", StringComparison.OrdinalIgnoreCase))
+                                                  ?? _aiDeployments.FirstOrDefault(d => d.AiModel?.ModelType == AiModelType.Embedding);
+                if (emb is not null)
+                {
+                    var lib = await DocumentLibraryApiClient.GetDocumentLibraryByIdAsync(newId);
+                    if (lib != null)
+                    {
+                        lib.EmbeddingModelDeploymentId = emb.Id;
+                        lib.VectorStoreChunkSize = LibraryChunkSize;
+                        lib.VectorStoreChunkOverlap = LibraryChunkOverlap;
+                        await DocumentLibraryApiClient.UpdateDocumentLibraryAsync(lib);
+                    }
+                }
+
+                Snackbar.Add($"Imported library '{LibraryShortName}'.", Severity.Success);
+                MudDialog.Close(DialogResult.Ok(true));
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            Snackbar.Add($"Import failed: {ex.Message}", Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Unexpected error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

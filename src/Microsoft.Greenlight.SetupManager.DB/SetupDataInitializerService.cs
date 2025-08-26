@@ -191,7 +191,7 @@ public class SetupDataInitializerService(
         await Seed2025_04_24_AiModelSettings(dbContext, cancellationToken);
         await Seed2025_04_24_DefaultAiModelDeploymentForDocumentProcesses(dbContext, cancellationToken);
         await Seed2025_12_15_EmbeddingModelSettings(dbContext, cancellationToken);
-        await Seed2025_09_20_EnvironmentalReportDocumentProcess(dbContext, cancellationToken);
+        //await Seed2025_09_20_EnvironmentalReportDocumentProcess(dbContext, cancellationToken);
 
         sw.Stop();
         _logger.LogInformation(

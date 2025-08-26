@@ -38,6 +38,30 @@ public class AzureFileHelper
     }
 
     /// <summary>
+    /// Checks whether a blob container exists.
+    /// </summary>
+    /// <param name="containerName">Container name to check.</param>
+    /// <returns>True if the container exists; otherwise false.</returns>
+    public virtual async Task<bool> ContainerExistsAsync(string containerName)
+    {
+        if (string.IsNullOrWhiteSpace(containerName))
+        {
+            return false;
+        }
+        try
+        {
+            var container = _blobServiceClient.GetBlobContainerClient(containerName);
+            var exists = await container.ExistsAsync().ConfigureAwait(false);
+            return exists.Value;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Failed to query container existence for {Container}", containerName);
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Uploads a file to Azure Blob Storage.
     /// </summary>
     /// <param name="stream">The file stream.</param>

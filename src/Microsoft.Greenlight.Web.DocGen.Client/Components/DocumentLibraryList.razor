@@ -23,6 +23,7 @@
             <ToolBarContent>
                 <MudText Typo="Typo.h6">Document Libraries</MudText>
                 <MudSpacer />
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="OpenImportDialog">Import</MudButton>
                 <MudButton OnClick="@CreateNew" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add">
                     Create New Document Library
                 </MudButton>
@@ -54,6 +55,22 @@
     private async Task LoadLibraries()
     {
         DocumentLibraries = await DocumentLibraryApiClient.GetAllDocumentLibrariesAsync();
+    }
+
+    private async Task OpenImportDialog()
+    {
+        var parameters = new DialogParameters
+        {
+            ["IsProcessMode"] = false
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<Microsoft.Greenlight.Web.DocGen.Client.Components.Definitions.ImportDefinitionDialog>("Import Document Library", parameters, options);
+        var result = await dialog.Result;
+        if (!result.Canceled)
+        {
+            await LoadLibraries();
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private void CreateNew()

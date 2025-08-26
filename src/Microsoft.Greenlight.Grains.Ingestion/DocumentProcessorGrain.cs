@@ -45,28 +45,12 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
             return DocumentProcessResult.Fail("Processing already running.");
         }
         _isRunning = true;
-        ConcurrencyLease? lease = null;
-        var coordinator = GrainFactory.GetGrain<IGlobalConcurrencyCoordinatorGrain>(ConcurrencyCategory.Ingestion.ToString());
-        
+
         try
         {
-            // Acquire a cluster-wide ingestion lease before doing heavy work
-            var requesterId = $"Ingestion:{documentId}";
-            try
-            {
-                lease = await coordinator.AcquireAsync(requesterId, weight: 1, waitTimeout: TimeSpan.FromDays(2), leaseTtl: TimeSpan.FromHours(1));
-                _logger.LogDebug("Acquired ingestion lease {LeaseId} for document {DocumentId}", lease.LeaseId, documentId);
-            }
-            catch (TimeoutException ex)
-            {
-                _logger.LogError(ex, "Timeout acquiring ingestion lease for document {DocumentId}", documentId);
-                return DocumentProcessResult.Fail($"Timeout acquiring ingestion lease: {ex.Message}");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error acquiring ingestion lease for document {DocumentId}", documentId);
-                return DocumentProcessResult.Fail($"Failed to acquire ingestion lease: {ex.Message}");
-            }
+            // IMPORTANT: Do NOT acquire the global ingestion lease here.
+            // FileIngestionGrain holds the cluster-wide ingestion lease while calling into this grain.
+            // Acquiring it again here caused a deadlock. Concurrency is already controlled by the caller.
 
             await using var db = await _dbContextFactory.CreateDbContextAsync();
             var entity = await db.IngestedDocuments.FindAsync(documentId);
@@ -184,18 +168,6 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
         }
         finally
         {
-            if (lease != null)
-            {
-                try
-                {
-                    var released = await coordinator.ReleaseAsync(lease.LeaseId);
-                    _logger.LogDebug("Released ingestion lease {LeaseId} for document {DocumentId}: {Released}", lease.LeaseId, documentId, released);
-                }
-                catch (Exception releaseEx)
-                {
-                    _logger.LogError(releaseEx, "Error releasing ingestion lease for document {DocumentId}", documentId);
-                }
-            }
             _isRunning = false;
         }
     }
