@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Grains.ApiSpecific.Contracts;
 using Microsoft.Greenlight.Grains.Chat.Contracts;
 using Microsoft.Greenlight.Shared.Contracts.Chat;
@@ -9,7 +10,6 @@ using Microsoft.Greenlight.Shared.Services;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using System.Text;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 
 
@@ -24,7 +24,7 @@ namespace Microsoft.Greenlight.Grains.Chat
         private readonly IKernelFactory _kernelFactory;
 
         // Original content for reference
-        private string _originalContent;
+        private string _originalContent = string.Empty;
 
         // Tracking of processed chunks
         private List<ContentChunk> _processedChunks = new List<ContentChunk>();
@@ -72,7 +72,7 @@ namespace Microsoft.Greenlight.Grains.Chat
                 var sk = await _kernelFactory.GetKernelForDocumentProcessAsync(documentProcessName);
                 var executionSettings = await _kernelFactory.GetPromptExecutionSettingsForDocumentProcessAsync(
                     documentProcessName, AiTaskType.ChatReplies);
-                    
+
                 // Append special instructions for chunk-based processing
                 var chunkPrompt = CreateChunkProcessingPrompt(originalContent, userQuery);
 
@@ -94,7 +94,7 @@ namespace Microsoft.Greenlight.Grains.Chat
                 StringBuilder responseBuilder = new StringBuilder();
 
                 // Update message to indicate we're generating content improvements
-                assistantMessage.Message = "Analyzing your content request:\n\n" + 
+                assistantMessage.Message = "Analyzing your content request:\n\n" +
                                           "• Reviewing document structure\n" +
                                           "• Identifying improvement opportunities";
                 await SendAssistantMessageUpdateAsync(conversationId, assistantMessage);
@@ -104,58 +104,71 @@ namespace Microsoft.Greenlight.Grains.Chat
 
                 try
                 {
-                    // Use IChatCompletionService with ChatHistory for streaming + function auto-invocation
+                    // Use IChatCompletionService with ChatHistory and DISABLE tool auto-invocation to force plain text chunk output
                     var chatService = sk.GetRequiredService<IChatCompletionService>();
                     var history = new ChatHistory();
                     history.AddSystemMessage(systemPrompt);
                     history.AddUserMessage(chunkPrompt);
 
-                    await foreach (var text in SemanticKernelStreamingHelper.StreamChatWithManualToolInvocationAsync(
-                        chatService, history, executionSettings, sk, cts.Token))
+                    var originalBehavior = executionSettings.FunctionChoiceBehavior;
+                    try
                     {
-                        responseBuilder.Append(text);
+                        // Allow the model to call functions/tools as needed during chunk generation.
+                        // We still parse only assistant text into chunks; tool calls happen behind the scenes.
+                        executionSettings.FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(autoInvoke: true);
 
-                        // Try to extract complete chunks from the response so far
-                        var extractedChunks = ExtractContentChunks(responseBuilder.ToString(), originalContent);
-
-                        // Filter out already processed chunks using signatures
-                        var newChunks = new List<ContentChunk>();
-                        foreach (var extractedChunk in extractedChunks)
+                        // Stream only assistant text; tool/function artifacts (if surfaced) are ignored by the helper
+                        var stream = chatService.GetStreamingChatMessageContentsAsync(history, executionSettings, sk, cts.Token);
+                        await foreach (var text in SemanticKernelStreamingHelper.StreamTextAsync(stream, cts.Token))
                         {
-                            var signature = GenerateChunkSignature(extractedChunk);
-                            if (!processedChunkSignatures.Contains(signature))
+                            responseBuilder.Append(text);
+
+                            // Try to extract complete chunks from the response so far
+                            var extractedChunks = ExtractContentChunks(responseBuilder.ToString(), originalContent);
+
+                            // Filter out already processed chunks using signatures
+                            var newChunks = new List<ContentChunk>();
+                            foreach (var extractedChunk in extractedChunks)
                             {
-                                processedChunkSignatures.Add(signature);
-                                newChunks.Add(extractedChunk);
-
-                                // Categorize the chunk
-                                CategorizeChunk(extractedChunk, chunksByType);
-                            }
-                        }
-
-                        if (newChunks.Any())
-                        {
-                            // Send new chunks to clients
-                            await SendChunkUpdateAsync(conversationId, messageId, newChunks, false);
-
-                            // Add to processed chunks
-                            _processedChunks.AddRange(newChunks);
-
-                            // Update the assistant message with current progress
-                            assistantMessage.Message = GenerateProgressMessage(chunksByType);
-                            await SendAssistantMessageUpdateAsync(conversationId, assistantMessage);
-
-                            // Remove processed chunks from the response buffer
-                            foreach (var extractedChunk in newChunks)
-                            {
-                                var chunkPattern = CreateChunkRemovalPattern(extractedChunk);
-                                var match = Regex.Match(responseBuilder.ToString(), chunkPattern);
-                                if (match.Success)
+                                var signature = GenerateChunkSignature(extractedChunk);
+                                if (!processedChunkSignatures.Contains(signature))
                                 {
-                                    responseBuilder.Remove(match.Index, match.Length);
+                                    processedChunkSignatures.Add(signature);
+                                    newChunks.Add(extractedChunk);
+
+                                    // Categorize the chunk
+                                    CategorizeChunk(extractedChunk, chunksByType);
+                                }
+                            }
+
+                            if (newChunks.Any())
+                            {
+                                // Send new chunks to clients
+                                await SendChunkUpdateAsync(conversationId, messageId, newChunks, false);
+
+                                // Add to processed chunks
+                                _processedChunks.AddRange(newChunks);
+
+                                // Update the assistant message with current progress
+                                assistantMessage.Message = GenerateProgressMessage(chunksByType);
+                                await SendAssistantMessageUpdateAsync(conversationId, assistantMessage);
+
+                                // Remove processed chunks from the response buffer
+                                foreach (var extractedChunk in newChunks)
+                                {
+                                    var chunkPattern = CreateChunkRemovalPattern(extractedChunk);
+                                    var match = Regex.Match(responseBuilder.ToString(), chunkPattern);
+                                    if (match.Success)
+                                    {
+                                        responseBuilder.Remove(match.Index, match.Length);
+                                    }
                                 }
                             }
                         }
+                    }
+                    finally
+                    {
+                        executionSettings.FunctionChoiceBehavior = originalBehavior;
                     }
                 }
                 catch (OperationCanceledException)
@@ -179,12 +192,12 @@ namespace Microsoft.Greenlight.Grains.Chat
                     await SendCompletionNotificationAsync(conversationId, messageId);
                     return;
                 }
-                
+
                 // Filter out already processed chunks
                 var newRemainingChunks = remainingChunks
                     .Where(c => !processedChunkSignatures.Contains(GenerateChunkSignature(c)))
                     .ToList();
-                    
+
                 if (newRemainingChunks.Any())
                 {
                     foreach (var chunk in newRemainingChunks)
@@ -192,7 +205,7 @@ namespace Microsoft.Greenlight.Grains.Chat
                         processedChunkSignatures.Add(GenerateChunkSignature(chunk));
                         CategorizeChunk(chunk, chunksByType);
                     }
-                    
+
                     await SendChunkUpdateAsync(conversationId, messageId, newRemainingChunks, true);
                     _processedChunks.AddRange(newRemainingChunks);
 
@@ -230,7 +243,7 @@ namespace Microsoft.Greenlight.Grains.Chat
                     State = ChatMessageCreationState.Failed,
                     CreatedUtc = DateTime.UtcNow
                 };
-                
+
                 await SendAssistantMessageUpdateAsync(conversationId, errorMessage);
 
                 // Always send a completion notification to unblock the UI
@@ -243,34 +256,34 @@ namespace Microsoft.Greenlight.Grains.Chat
             // Simple heuristics to categorize changes
             string lowerOriginal = chunk.OriginalText?.ToLower() ?? "";
             string lowerNew = chunk.NewText?.ToLower() ?? "";
-            
+
             // Check for headings (text that starts with # or has heading HTML tags)
-            if ((lowerOriginal.StartsWith("#") || lowerNew.StartsWith("#") || 
+            if ((lowerOriginal.StartsWith("#") || lowerNew.StartsWith("#") ||
                  lowerOriginal.Contains("<h") || lowerNew.Contains("<h")) ||
                 (chunk.OriginalText?.Length <= 100 && lowerOriginal.EndsWith(":") || lowerNew.EndsWith(":")))
             {
                 chunksByType["headings"].Add(chunk);
                 return;
             }
-            
+
             // Check for simple formatting changes (punctuation, capitalization, minor word changes)
-            if (chunk.OriginalText != null && chunk.NewText != null && 
+            if (chunk.OriginalText != null && chunk.NewText != null &&
                 Math.Abs(chunk.OriginalText.Length - chunk.NewText.Length) < 5 &&
                 (ContainsFormatting(lowerOriginal) || ContainsFormatting(lowerNew)))
             {
                 chunksByType["formatting"].Add(chunk);
                 return;
             }
-            
+
             // Check for grammar fixes (short replacements, typical grammar issues)
-            if (chunk.OriginalText != null && chunk.NewText != null && 
+            if (chunk.OriginalText != null && chunk.NewText != null &&
                 Math.Abs(chunk.OriginalText.Length - chunk.NewText.Length) < 15 &&
                 (ContainsGrammarIssue(lowerOriginal) || IsLikelyGrammarFix(lowerOriginal, lowerNew)))
             {
                 chunksByType["grammar"].Add(chunk);
                 return;
             }
-            
+
             // Assume longer changes are paragraph rewrites
             if ((chunk.OriginalText?.Length > 100 || chunk.NewText?.Length > 100) ||
                 chunk.OriginalText?.Contains("\n") == true || chunk.NewText?.Contains("\n") == true)
@@ -278,14 +291,14 @@ namespace Microsoft.Greenlight.Grains.Chat
                 chunksByType["paragraphs"].Add(chunk);
                 return;
             }
-            
+
             // Default category
             chunksByType["other"].Add(chunk);
         }
 
         private bool ContainsFormatting(string text)
         {
-            return text.Contains("*") || text.Contains("_") || text.Contains("**") || 
+            return text.Contains("*") || text.Contains("_") || text.Contains("**") ||
                    text.Contains("`") || text.Contains("#") || text.Contains("<");
         }
 
@@ -306,85 +319,85 @@ namespace Microsoft.Greenlight.Grains.Chat
             // Check if this is a small word change like a/the, is/was, etc.
             var originalWords = original.Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
             var updatedWords = updated.Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-            
+
             // If word count is same or just 1-2 different
             if (Math.Abs(originalWords.Length - updatedWords.Length) <= 2)
             {
                 // Check for common grammar fixes
-                var commonGrammarWords = new[] { "a", "an", "the", "is", "are", "was", "were", "has", "have", "had", 
+                var commonGrammarWords = new[] { "a", "an", "the", "is", "are", "was", "were", "has", "have", "had",
                                                 "its", "it's", "your", "you're", "their", "they're", "there" };
-                
+
                 // If the difference involves these common grammar words
                 var allWords = originalWords.Concat(updatedWords).ToList();
                 return allWords.Any(w => commonGrammarWords.Contains(w.ToLower()));
             }
-            
+
             return false;
         }
 
         private string GenerateProgressMessage(Dictionary<string, List<ContentChunk>> chunksByType)
         {
             StringBuilder message = new StringBuilder("Making improvements to your content:\n\n");
-            
+
             int headings = chunksByType["headings"].Count;
             int paragraphs = chunksByType["paragraphs"].Count;
             int formatting = chunksByType["formatting"].Count;
             int grammar = chunksByType["grammar"].Count;
             int other = chunksByType["other"].Count;
-            
+
             if (headings > 0)
                 message.AppendLine($"• Improved {headings} {(headings == 1 ? "heading" : "headings")}");
-            
+
             if (paragraphs > 0)
                 message.AppendLine($"• Enhanced {paragraphs} {(paragraphs == 1 ? "paragraph" : "paragraphs")}");
-            
+
             if (formatting > 0)
                 message.AppendLine($"• Fixed {formatting} formatting {(formatting == 1 ? "issue" : "issues")}");
-            
+
             if (grammar > 0)
                 message.AppendLine($"• Corrected {grammar} grammar/style {(grammar == 1 ? "error" : "errors")}");
-            
+
             if (other > 0)
                 message.AppendLine($"• Made {other} other {(other == 1 ? "improvement" : "improvements")}");
-            
+
             message.AppendLine("\nStill analyzing your content...");
-            
+
             return message.ToString();
         }
 
         private string GenerateCompletionMessage(Dictionary<string, List<ContentChunk>> chunksByType)
         {
             StringBuilder message = new StringBuilder("I've improved your content with the following changes:\n\n");
-            
+
             int headings = chunksByType["headings"].Count;
             int paragraphs = chunksByType["paragraphs"].Count;
             int formatting = chunksByType["formatting"].Count;
             int grammar = chunksByType["grammar"].Count;
             int other = chunksByType["other"].Count;
-            
+
             if (headings > 0)
                 message.AppendLine($"✅ Improved {headings} {(headings == 1 ? "heading" : "headings")}");
-            
+
             if (paragraphs > 0)
                 message.AppendLine($"✅ Enhanced {paragraphs} {(paragraphs == 1 ? "paragraph" : "paragraphs")}");
-            
+
             if (formatting > 0)
                 message.AppendLine($"✅ Fixed {formatting} formatting {(formatting == 1 ? "issue" : "issues")}");
-            
+
             if (grammar > 0)
                 message.AppendLine($"✅ Corrected {grammar} grammar/style {(grammar == 1 ? "error" : "errors")}");
-            
+
             if (other > 0)
                 message.AppendLine($"✅ Made {other} other {(other == 1 ? "improvement" : "improvements")}");
-            
+
             message.AppendLine("\nAll changes have been applied to your document.");
-            
+
             return message.ToString();
         }
 
         private async Task SendAssistantMessageUpdateAsync(Guid conversationId, ChatMessageDTO message)
         {
-            var notification = new ChatMessageResponseReceived(conversationId, message, null);
+            var notification = new ChatMessageResponseReceived(conversationId, message, string.Empty);
 
             var notifierGrain = GrainFactory.GetGrain<ISignalRNotifierGrain>(Guid.Empty);
             await notifierGrain.NotifyChatMessageResponseReceivedAsync(notification);
@@ -399,7 +412,7 @@ namespace Microsoft.Greenlight.Grains.Chat
                 MessageId = messageId,
                 Chunks = chunks,
                 IsComplete = isComplete,
-                StatusMessage = isComplete ? "Content update complete." : null
+                StatusMessage = isComplete ? "Content update complete." : string.Empty
             };
 
             var notifierGrain = GrainFactory.GetGrain<ISignalRNotifierGrain>(Guid.Empty);
@@ -436,8 +449,10 @@ namespace Microsoft.Greenlight.Grains.Chat
         private string CreateChunkProcessingPrompt(string originalContent, string userQuery)
         {
             return $@"
-You are improving content based on user instructions. Instead of providing a complete replacement, 
-you will identify specific chunks of text to modify and provide those changes in a structured format.
+You are improving content based on user instructions. You may call tools or functions if needed to gather data or verify facts.
+Do NOT return analysis or explanations to the user. Instead of providing a complete replacement,
+you will identify specific chunks of text to modify and provide those changes ONLY
+in the structured format below. The only user-visible output must be one or more <CHUNK> blocks.
 
 ORIGINAL CONTENT:
 {originalContent}
@@ -445,7 +460,7 @@ ORIGINAL CONTENT:
 USER REQUEST:
 {userQuery}
 
-INSTRUCTIONS:
+INSTRUCTIONS (strict):
 1. Analyze the content and the user's request.
 2. For each change you want to make, output a chunk in this exact format:
 
@@ -466,6 +481,10 @@ CONTEXT: [text before the change]...[text after the change]
 8. Do not output the entire modified document - only output the chunks.
 9. IMPORTANT: Keep chunks small and focused - don't try to replace huge sections at once.
 10. IMPORTANT: If simple word or phrase replacements are needed, break them into individual chunks.
+
+CRITICAL:
+- You may call tools and functions to complete the task. However, do not include tool outputs or analysis in the assistant's user-visible text.
+- Do not add any prose before or after the chunks. Return only one or more <CHUNK> blocks as the final assistant message content.
 
 Please identify the specific changes needed to improve this content according to the user's request.
 Respond with only chunk definitions, no explanatory text before or after the chunks.";
