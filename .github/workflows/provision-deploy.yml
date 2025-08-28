@@ -69,10 +69,10 @@ jobs:
           # Check if PostgreSQL DNS Zone is required and provided
           POSTGRES_REQUIRED=false
 
-          # DNS zone is required if using postgres backend in private deployment
-          if [ "${DEPLOYMENT_MODEL}" == "private" ] && [ "${MEMORY_BACKEND}" == "postgres" ]; then
+          # DNS zone is required if using postgres backend in private or hybrid deployment
+          if { [ "${DEPLOYMENT_MODEL}" == "private" ] || [ "${DEPLOYMENT_MODEL}" == "hybrid" ]; } && [ "${MEMORY_BACKEND}" == "postgres" ]; then
             POSTGRES_REQUIRED=true
-            echo "Private deployment with PostgreSQL backend - DNS zone required"
+            echo "${DEPLOYMENT_MODEL^} deployment with PostgreSQL backend - DNS zone required"
           fi
 
           if [ "${POSTGRES_REQUIRED}" == "true" ] && [ -z "${POSTGRES_DNSZONE_RESOURCEID}" ]; then
@@ -83,18 +83,18 @@ jobs:
             exit 1
           fi
 
-          # Check for other required variables for private deployments
-          if [ "${DEPLOYMENT_MODEL}" == "private" ]; then
+          # Check for other required variables for private or hybrid deployments
+          if [ "${DEPLOYMENT_MODEL}" == "private" ] || [ "${DEPLOYMENT_MODEL}" == "hybrid" ]; then
             if [ "${AZURE_CAE_WORKLOAD_TYPE}" == "consumption" ]; then
-              echo "Error: When DEPLOYMENT_MODEL is 'private', AZURE_CAE_WORKLOAD_TYPE cannot be 'consumption'."
+              echo "Error: When DEPLOYMENT_MODEL is '${DEPLOYMENT_MODEL}', AZURE_CAE_WORKLOAD_TYPE cannot be 'consumption'."
               exit 1
             fi
             if [ -z "${AZURE_SUBNET_CAE}" ] || [ -z "${AZURE_SUBNET_PE}" ]; then
-              echo "Error: When DEPLOYMENT_MODEL is 'private', both AZURE_SUBNET_CAE and AZURE_SUBNET_PE must be non-empty."
+              echo "Error: When DEPLOYMENT_MODEL is '${DEPLOYMENT_MODEL}', both AZURE_SUBNET_CAE and AZURE_SUBNET_PE must be non-empty."
               exit 1
             fi
             if [ "${POSTGRES_REQUIRED}" == "true" ] && [ -z "${AZURE_SUBNET_POSTGRES}" ]; then
-              echo "Error: When using PostgreSQL in a private deployment, AZURE_SUBNET_POSTGRES must be provided."
+              echo "Error: When using PostgreSQL in a ${DEPLOYMENT_MODEL} deployment, AZURE_SUBNET_POSTGRES must be provided."
               exit 1
             fi
           fi
