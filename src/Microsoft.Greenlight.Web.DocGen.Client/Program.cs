@@ -52,7 +52,7 @@ builder.Services.AddHttpClient<IContentNodeApiClient, ContentNodeApiClient>(clie
     client.BaseAddress = serverBaseAddress;
 });
 
-builder.Services.AddHttpClient<IDocumentGenerationApiClient, DocumentGenerationApiClient>(client =>
+builder.Services.AddHttpClient<IDocumentGenerationApiClient, Microsoft.Greenlight.Web.Shared.ServiceClients.DocumentGenerationApiClient>(client =>
 {
     client.BaseAddress = serverBaseAddress;
 });

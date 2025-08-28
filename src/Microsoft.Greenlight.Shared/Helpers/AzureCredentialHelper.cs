@@ -13,6 +13,12 @@ public class AzureCredentialHelper
     private Uri? _authorityHost;
 
     /// <summary>
+    /// Authority Host used by this instance of the solution.
+    /// Only works after Initialize() has been called.
+    /// </summary>
+    public string DiscoveredAuthorityHost => _authorityHost?.ToString() ?? string.Empty;
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="AzureCredentialHelper"/> class.
     /// </summary>
     /// <param name="configuration">The configuration instance.</param>

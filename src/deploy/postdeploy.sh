@@ -24,6 +24,7 @@ fi
 declare -A containerApps=(
     ["web-docgen"]=1
     ["api-main"]=1
+    ["mcp-server"]=1
     ["silo"]=4 # Min replicas for silo
 )
 

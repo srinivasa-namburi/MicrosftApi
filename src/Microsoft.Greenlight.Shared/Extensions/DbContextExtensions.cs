@@ -22,10 +22,25 @@ public static class DbContextExtensions
     /// <returns>The updated IHostApplicationBuilder.</returns>
     public static IHostApplicationBuilder AddDocGenDbContext(this IHostApplicationBuilder builder, ServiceConfigurationOptions serviceConfigurationOptions)
     {
+        // Validate required configuration early to provide helpful errors instead of NullReference/Argument exceptions later
+        var databaseName = serviceConfigurationOptions?.SQL?.DatabaseName;
+        if (string.IsNullOrWhiteSpace(databaseName))
+        {
+            throw new InvalidOperationException(
+                "Missing configuration: 'ServiceConfiguration:SQL:DatabaseName' must be set to the name of the connection string containing the DocGeneration database connection.");
+        }
+
+        var connectionString = builder.Configuration.GetConnectionString(databaseName);
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            throw new InvalidOperationException(
+                $"Missing connection string: 'ConnectionStrings:{databaseName}' must be present and non-empty. This should point to the DocGeneration database.");
+        }
+
         builder.Services.AddDbContext<DocGenerationDbContext>(options =>
         {
             options.UseSqlServer(
-                    builder.Configuration.GetConnectionString(serviceConfigurationOptions.SQL.DatabaseName),
+                    connectionString,
                     sqlServerBuilder =>
                     {
                         sqlServerBuilder.MigrationsAssembly(typeof(DocGenerationDbContext).Assembly.FullName);
@@ -44,7 +59,7 @@ public static class DbContextExtensions
         {
             var optionsBuilder = new DbContextOptionsBuilder<DocGenerationDbContext>();
             optionsBuilder.UseSqlServer(
-                builder.Configuration.GetConnectionString(serviceConfigurationOptions.SQL.DatabaseName),
+                connectionString,
                 sqlServerBuilder =>
                 {
                     sqlServerBuilder.MigrationsAssembly(typeof(DocGenerationDbContext).Assembly.FullName);
@@ -62,7 +77,7 @@ public static class DbContextExtensions
         builder.EnrichSqlServerDbContext<DocGenerationDbContext>(settings =>
         {
             settings.DisableRetry = true;
-            settings.ConnectionString = builder.Configuration.GetConnectionString(serviceConfigurationOptions.SQL.DatabaseName);
+            settings.ConnectionString = connectionString;
         });
 
         return builder;

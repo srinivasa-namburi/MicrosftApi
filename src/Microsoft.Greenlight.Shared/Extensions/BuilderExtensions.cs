@@ -59,6 +59,7 @@ using System.ClientModel;
 using System.Reflection;
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Greenlight.Shared.Services.Caching;
+using System.Net;
 
 namespace Microsoft.Greenlight.Shared.Extensions;
 #pragma warning disable SKEXP0011
@@ -552,9 +553,19 @@ public static class BuilderExtensions
         AzureCredentialHelper credentialHelper)
     {
         var eventHubConnectionString = builder.Configuration.GetConnectionString("greenlight-cg-streams");
+        var clusteringConnectionString = builder.Configuration.GetConnectionString("clustering");
+        var loggerFactory = LoggerFactory.Create(cfg => cfg.AddConsole());
+        var logger = loggerFactory.CreateLogger("Greenlight.OrleansClient");
 
         builder.UseOrleansClient(siloBuilder =>
         {
+            // Ensure Client uses the same ClusterId/ServiceId as the primary Orleans Silo
+            // Defaults match Aspire AppHost configuration
+            siloBuilder.Configure<ClusterOptions>(options =>
+            {
+                options.ClusterId = builder.Configuration["Orleans:ClusterId"] ?? "greenlight-cluster";
+                options.ServiceId = builder.Configuration["Orleans:ServiceId"] ?? "greenlight-main-silo";
+            });
 
             siloBuilder.Configure<ClientMessagingOptions>(options =>
             {
@@ -609,21 +620,131 @@ public static class BuilderExtensions
                         assemblyName.StartsWith("Microsoft.Greenlight.Shared"));
             }
 
-            siloBuilder.AddEventHubStreams("StreamProvider", (IClusterClientEventHubStreamConfigurator configurator) =>
+            // If Aspire provided explicit gateway endpoints, prefer static clustering in local dev.
+            // This avoids 127.0.0.1 misrouting issues and uses the S<ip> host address instead.
+            var gatewaysSection = builder.Configuration.GetSection("Orleans:Gateways");
+            var configuredStaticGateways = false;
+            if (gatewaysSection.Exists() && gatewaysSection.GetChildren().Any())
             {
-                configurator.ConfigureEventHub(eventHubBuilder => eventHubBuilder.Configure(options =>
+                try
                 {
-                    var eventHubNamespace = eventHubConnectionString!.Split("Endpoint=")[1].Split(":443/")[0];
-                    var eventHubName = eventHubConnectionString!.Split("EntityPath=")[1].Split(";")[0];
-                    var consumerGroup = eventHubConnectionString!.Split("ConsumerGroup=")[1].Split(";")[0];
+                    var gateways = new List<System.Net.IPEndPoint>();
+                    foreach (var child in gatewaysSection.GetChildren())
+                    {
+                        var address = child["Address"]; // e.g., S172.19.176.1
+                        var portStr = child["Port"];
+                        if (!string.IsNullOrWhiteSpace(address) && int.TryParse(portStr, out var port))
+                        {
+                            // S-address includes a leading 'S' in Aspire; strip if present
+                            var cleanAddress = address.StartsWith("S", StringComparison.OrdinalIgnoreCase)
+                                ? address.Substring(1)
+                                : address;
+                            if (System.Net.IPAddress.TryParse(cleanAddress, out var ip))
+                            {
+                                gateways.Add(new System.Net.IPEndPoint(ip, port));
+                            }
+                        }
+                    }
 
-                    options.ConfigureEventHubConnection(
-                        eventHubNamespace,
-                        eventHubName,
-                        consumerGroup, credentialHelper.GetAzureCredential());
+                    if (gateways.Count > 0)
+                    {
+                        siloBuilder.UseStaticClustering(gateways.ToArray());
+                        logger.LogInformation("Orleans client: Using static clustering to gateways: {Gateways}", string.Join(", ", gateways.Select(g => $"{g.Address}:{g.Port}")));
+                        configuredStaticGateways = true;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Failed to configure static clustering from Orleans:Gateways. Will continue to membership configuration.");
+                }
+            }
 
-                }));
-            });
+            if (!string.IsNullOrWhiteSpace(eventHubConnectionString) &&
+                eventHubConnectionString.Contains("Endpoint=") &&
+                eventHubConnectionString.Contains("EntityPath=") &&
+                eventHubConnectionString.Contains("ConsumerGroup="))
+            {
+                // Configure Event Hubs streaming when a valid connection string is available (Aspire / cloud envs)
+                siloBuilder.AddEventHubStreams("StreamProvider", (IClusterClientEventHubStreamConfigurator configurator) =>
+                {
+                    configurator.ConfigureEventHub(eventHubBuilder => eventHubBuilder.Configure(options =>
+                    {
+                        var eventHubNamespace = eventHubConnectionString!.Split("Endpoint=")[1].Split(":443/")[0];
+                        var eventHubName = eventHubConnectionString!.Split("EntityPath=")[1].Split(";")[0];
+                        var consumerGroup = eventHubConnectionString!.Split("ConsumerGroup=")[1].Split(";")[0];
+
+                        options.ConfigureEventHubConnection(
+                            eventHubNamespace,
+                            eventHubName,
+                            consumerGroup, credentialHelper.GetAzureCredential());
+
+                    }));
+                });
+            }
+            else
+            {
+                // Fallback for local runs without Event Hubs: use in-memory streams so stream consumers can still resolve a provider
+                // Note: This is suitable for basic smoke tests; real stream traffic requires Event Hubs in dev/prod.
+                siloBuilder.AddMemoryStreams("StreamProvider");
+            }
+
+            // Configure membership discovery so the client can find gateways.
+            // Prefer Azure Table (also works with Azurite in local Aspire).
+            if (!configuredStaticGateways && !string.IsNullOrWhiteSpace(clusteringConnectionString))
+            {
+                siloBuilder.UseAzureStorageClustering(options =>
+                {
+                    // Robustly construct TableServiceClient:
+                    // - If we have a parsed endpoint + shared key, use those
+                    // - Else, if the value looks like a connection string (contains '=') use it directly
+                    // - Else, treat it as a URI and use DefaultAzureCredential
+                    var tuple = AzureStorageHelper.ParseTableEndpointAndCredential(clusteringConnectionString!);
+                    var tableEndpoint = tuple.endpoint;
+                    var sharedKey = tuple.sharedKeyCredential;
+
+                    if (sharedKey != null)
+                    {
+                        options.TableServiceClient = new TableServiceClient(tableEndpoint, sharedKey);
+                        logger.LogInformation("Orleans client: Using Azure Table clustering with shared key at {Endpoint}", tableEndpoint);
+                    }
+                    else if (clusteringConnectionString.Contains('=')
+                             || clusteringConnectionString.StartsWith("UseDevelopmentStorage", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Standard Azure/Azurite connection string
+                        options.TableServiceClient = new TableServiceClient(clusteringConnectionString);
+                        logger.LogInformation("Orleans client: Using Azure Table clustering via connection string");
+                    }
+                    else if (Uri.TryCreate(clusteringConnectionString, UriKind.Absolute, out var endpointUri))
+                    {
+                        // Endpoint with AAD/Managed Identity
+                        options.TableServiceClient = new TableServiceClient(endpointUri, credentialHelper.GetAzureCredential());
+                        logger.LogInformation("Orleans client: Using Azure Table clustering with AAD at {Endpoint}", endpointUri);
+                    }
+                    else
+                    {
+                        // Last resort: attempt connection string ctor (will throw early if invalid)
+                        options.TableServiceClient = new TableServiceClient(clusteringConnectionString);
+                        logger.LogInformation("Orleans client: Using Azure Table clustering via connection string (fallback)");
+                    }
+
+                    options.TableName = "OrleansSiloInstances"; // must match silo's AzureTable clustering table name
+                });
+            }
+            else if (!configuredStaticGateways)
+            {
+                // Fallback for pure local dev without Azure Table membership
+                // Uses the default localhost gateway (or override via Orleans__Endpoints__GatewayPort)
+                if (int.TryParse(builder.Configuration["Orleans:Endpoints:GatewayPort"], out var gwPort))
+                {
+                    siloBuilder.UseLocalhostClustering(gatewayPort: gwPort);
+                    logger.LogWarning("Orleans client: Falling back to localhost clustering on port {Port}", gwPort);
+                }
+                else
+                {
+                    siloBuilder.UseLocalhostClustering();
+                    logger.LogWarning("Orleans client: Falling back to localhost clustering on default port");
+                }
+            }
         });
 
         return builder;

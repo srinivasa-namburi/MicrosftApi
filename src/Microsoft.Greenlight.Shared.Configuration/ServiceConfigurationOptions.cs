@@ -269,6 +269,11 @@ public class ServiceConfigurationOptions
             /// </summary>
             public bool CreateBodyTextNodes { get; set; }
 
+            /// <summary>
+            /// Cache duration (seconds) for document generation status endpoints.
+            /// </summary>
+            public int StatusCacheSeconds { get; set; } = 30;
+
         }
 
         /// <summary>

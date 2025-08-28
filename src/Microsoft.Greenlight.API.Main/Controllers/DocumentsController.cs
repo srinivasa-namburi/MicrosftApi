@@ -10,10 +10,15 @@ using Microsoft.Greenlight.Shared.Models;
 using System.Text.RegularExpressions;
 using AutoMapper;
 using Microsoft.Greenlight.Grains.Document.Contracts;
-using Microsoft.Greenlight.Shared.Contracts.DTO.Document;
+// using Microsoft.Greenlight.Shared.Contracts.DTO.Document; // already included below
 using Microsoft.Greenlight.Shared.Models.Validation;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.Grains.Ingestion.Contracts;
+using Microsoft.Extensions.Options;
+using Microsoft.Greenlight.Shared.Configuration;
+using Microsoft.Greenlight.Shared.Services.Caching;
+using Microsoft.Greenlight.Shared.Enums;
+using Microsoft.Greenlight.Shared.Contracts.DTO.Document;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
@@ -29,11 +34,14 @@ public partial class DocumentsController : BaseController
     private readonly AzureFileHelper _fileHelper;
     private readonly IMapper _mapper;
     private readonly IClusterClient _clusterClient;
+    private readonly IAppCache _cache;
+    private readonly IOptionsMonitor<ServiceConfigurationOptions> _options;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DocumentsController"/> class.
     /// </summary>
-    /// <param name="publishEndpoint">The publish endpoint for sending messages.</param>
+    /// <param name="cache">Application cache for caching status responses.</param>
+    /// <param name="options">Options monitor for service configuration.</param>
     /// <param name="dbContext">The database context for document generation.</param>
     /// <param name="wordDocumentExporter">The document exporter for Word documents.</param>
     /// <param name="contentNodeService">The content node service for retrieving and sorting Content Nodes</param>
@@ -46,8 +54,10 @@ public partial class DocumentsController : BaseController
         IDocumentExporter wordDocumentExporter,
         IContentNodeService contentNodeService,
         AzureFileHelper fileHelper,
-        IMapper mapper, 
-        IClusterClient clusterClient)
+        IMapper mapper,
+        IClusterClient clusterClient,
+        IAppCache cache,
+        IOptionsMonitor<ServiceConfigurationOptions> options)
     {
         _dbContext = dbContext;
         _wordDocumentExporter = wordDocumentExporter;
@@ -55,6 +65,8 @@ public partial class DocumentsController : BaseController
         _fileHelper = fileHelper;
         _mapper = mapper;
         _clusterClient = clusterClient;
+        _cache = cache;
+        _options = options;
     }
 
     /// <summary>
@@ -68,7 +80,7 @@ public partial class DocumentsController : BaseController
     [HttpPost("generatemultiple")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     [Consumes("application/json")]
-    public async Task<IActionResult> GenerateDocuments([FromBody] GenerateDocumentsDTO generateDocumentsDto)
+    public IActionResult GenerateDocuments([FromBody] GenerateDocumentsDTO generateDocumentsDto)
     {
         var claimsPrincipal = HttpContext.User;
 
@@ -95,7 +107,7 @@ public partial class DocumentsController : BaseController
     [HttpPost("generate")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     [Consumes("application/json")]
-    public async Task<IActionResult> GenerateDocument([FromBody] GenerateDocumentDTO generateDocumentDto)
+    public IActionResult GenerateDocument([FromBody] GenerateDocumentDTO generateDocumentDto)
     {
         var claimsPrincipal = HttpContext.User;
         generateDocumentDto.AuthorOid = claimsPrincipal.GetObjectId();
@@ -105,7 +117,7 @@ public partial class DocumentsController : BaseController
         // Fire and forget the document creation process - this progresses 
         // asynchronously and will be tracked by the orchestration grain
         _ = grain.StartDocumentGenerationAsync(generateDocumentDto);
-        
+
         return Accepted();
     }
 
@@ -332,6 +344,238 @@ public partial class DocumentsController : BaseController
     }
 
     /// <summary>
+    /// Gets the aggregated generation status for a document.
+    /// </summary>
+    /// <param name="documentId">The ID of the document.</param>
+    /// <returns>Aggregated status computed from all content nodes.</returns>
+    [HttpGet("{documentId}/status")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [Produces("application/json")]
+    [Produces<DocumentGenerationStatusInfo>]
+    public async Task<ActionResult<DocumentGenerationStatusInfo>> GetDocumentAggregatedStatus(string documentId)
+    {
+        if (!Guid.TryParse(documentId, out var docId))
+        {
+            return NotFound();
+        }
+
+        var existing = await _dbContext.GeneratedDocuments.AsNoTracking().AnyAsync(d => d.Id == docId);
+        if (!existing)
+        {
+            return NotFound();
+        }
+
+        var ttlSeconds = Math.Max(1, _options.CurrentValue.GreenlightServices.DocumentGeneration.StatusCacheSeconds);
+        var cacheKey = $"doc-status:summary:{docId}";
+
+        var result = await _cache.GetOrCreateAsync(cacheKey, async _ =>
+        {
+            var nodes = await _contentNodeService.GetContentNodesHierarchicalAsyncForDocumentId(docId, enableTracking: false, addParentNodes: false)
+                       ?? new List<ContentNode>();
+            var counts = new StatusCounts();
+            var status = AggregateOverallStatus(nodes, counts);
+            return new DocumentGenerationStatusInfo
+            {
+                DocumentId = docId,
+                Status = status,
+                TotalNodes = counts.Total,
+                InProgressNodes = counts.InProgress,
+                CompletedNodes = counts.Completed,
+                FailedNodes = counts.Failed
+            };
+        }, TimeSpan.FromSeconds(ttlSeconds));
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Gets the full per-node generation status tree for a document.
+    /// </summary>
+    /// <param name="documentId">The ID of the document.</param>
+    /// <returns>Full status JSON including node-level aggregated statuses.</returns>
+    [HttpGet("{documentId}/status/full")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [Produces("application/json")]
+    [Produces<DocumentGenerationFullStatusInfo>]
+    public async Task<ActionResult<DocumentGenerationFullStatusInfo>> GetDocumentFullStatus(string documentId)
+    {
+        if (!Guid.TryParse(documentId, out var docId))
+        {
+            return NotFound();
+        }
+
+        var existing = await _dbContext.GeneratedDocuments.AsNoTracking().AnyAsync(d => d.Id == docId);
+        if (!existing)
+        {
+            return NotFound();
+        }
+
+        var ttlSeconds = Math.Max(1, _options.CurrentValue.GreenlightServices.DocumentGeneration.StatusCacheSeconds);
+        var cacheKey = $"doc-status:full:{docId}";
+
+        var result = await _cache.GetOrCreateAsync(cacheKey, async _ =>
+        {
+            var nodes = await _contentNodeService.GetContentNodesHierarchicalAsyncForDocumentId(docId, enableTracking: false, addParentNodes: false)
+                       ?? new List<ContentNode>();
+            var counts = new StatusCounts();
+            var rootStatuses = new List<DocumentGenerationNodeStatusInfo>();
+            foreach (var root in nodes)
+            {
+                rootStatuses.Add(BuildNodeStatus(root, counts));
+            }
+            var overall = ComputeAggregatedFromRoots(rootStatuses);
+            return new DocumentGenerationFullStatusInfo
+            {
+                DocumentId = docId,
+                Status = overall,
+                RootNodes = rootStatuses
+            };
+        }, TimeSpan.FromSeconds(ttlSeconds));
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Helper record for counting statuses.
+    /// </summary>
+    private sealed class StatusCounts
+    {
+        public int Total { get; set; }
+        public int InProgress { get; set; }
+        public int Completed { get; set; }
+        public int Failed { get; set; }
+    }
+
+    /// <summary>
+    /// Aggregates overall status from root nodes and updates counts.
+    /// </summary>
+    private static ContentNodeGenerationState AggregateOverallStatus(List<ContentNode> roots, StatusCounts counts)
+    {
+        if (roots.Count == 0)
+        {
+            return ContentNodeGenerationState.Completed; // nothing to do
+        }
+
+        var statuses = new List<ContentNodeGenerationState>();
+        foreach (var r in roots)
+        {
+            var status = AggregateNodeStatus(r, counts);
+            statuses.Add(status);
+        }
+
+        return Summarize(statuses);
+    }
+
+    /// <summary>
+    /// Recursively aggregates status for a node based on its children; RenderTitleOnly nodes bubble up child status.
+    /// </summary>
+    private static ContentNodeGenerationState AggregateNodeStatus(ContentNode node, StatusCounts counts)
+    {
+        if (node.Children != null && node.Children.Count > 0)
+        {
+            var childStatuses = new List<ContentNodeGenerationState>();
+            foreach (var child in node.Children)
+            {
+                childStatuses.Add(AggregateNodeStatus(child, counts));
+            }
+            var agg = Summarize(childStatuses);
+            // Count this parent node as part of totals as well, but use aggregated outcome (parent completeness depends on children)
+            counts.Total++;
+            IncrementCount(counts, agg);
+            return agg;
+        }
+        else
+        {
+            // Leaf: use its own state; treat OutlineOnly or null as InProgress for "real" progress.
+            var s = node.GenerationState;
+            var mapped = s switch
+            {
+                ContentNodeGenerationState.Completed => ContentNodeGenerationState.Completed,
+                ContentNodeGenerationState.Failed => ContentNodeGenerationState.Failed,
+                ContentNodeGenerationState.InProgress => ContentNodeGenerationState.InProgress,
+                ContentNodeGenerationState.OutlineOnly => ContentNodeGenerationState.InProgress,
+                _ => ContentNodeGenerationState.InProgress
+            };
+            counts.Total++;
+            IncrementCount(counts, mapped);
+            return mapped;
+        }
+    }
+
+    private static void IncrementCount(StatusCounts counts, ContentNodeGenerationState state)
+    {
+        switch (state)
+        {
+            case ContentNodeGenerationState.Completed:
+                counts.Completed++;
+                break;
+            case ContentNodeGenerationState.Failed:
+                counts.Failed++;
+                break;
+            default:
+                counts.InProgress++;
+                break;
+        }
+    }
+
+    private static ContentNodeGenerationState Summarize(IEnumerable<ContentNodeGenerationState> statuses)
+    {
+        var anyFailed = statuses.Any(s => s == ContentNodeGenerationState.Failed);
+        if (anyFailed) return ContentNodeGenerationState.Failed;
+
+        var anyInProgress = statuses.Any(s => s == ContentNodeGenerationState.InProgress || s == ContentNodeGenerationState.OutlineOnly);
+        if (anyInProgress) return ContentNodeGenerationState.InProgress;
+
+        return ContentNodeGenerationState.Completed;
+    }
+
+    private static ContentNodeGenerationState ComputeAggregatedFromRoots(List<DocumentGenerationNodeStatusInfo> roots)
+    {
+        var statuses = roots.Select(r => r.AggregatedStatus);
+        return Summarize(statuses);
+    }
+
+    private static DocumentGenerationNodeStatusInfo BuildNodeStatus(ContentNode node, StatusCounts counts)
+    {
+        var info = new DocumentGenerationNodeStatusInfo
+        {
+            NodeId = node.Id,
+            Type = node.Type,
+            RenderTitleOnly = node.RenderTitleOnly,
+            NodeState = node.GenerationState
+        };
+
+        if (node.Children != null && node.Children.Count > 0)
+        {
+            foreach (var child in node.Children)
+            {
+                info.Children.Add(BuildNodeStatus(child, counts));
+            }
+            info.AggregatedStatus = Summarize(info.Children.Select(c => c.AggregatedStatus));
+            counts.Total++;
+            IncrementCount(counts, info.AggregatedStatus);
+        }
+        else
+        {
+            // Leaf mapping
+            info.AggregatedStatus = node.GenerationState switch
+            {
+                ContentNodeGenerationState.Completed => ContentNodeGenerationState.Completed,
+                ContentNodeGenerationState.Failed => ContentNodeGenerationState.Failed,
+                ContentNodeGenerationState.InProgress => ContentNodeGenerationState.InProgress,
+                ContentNodeGenerationState.OutlineOnly => ContentNodeGenerationState.InProgress,
+                _ => ContentNodeGenerationState.InProgress
+            };
+            counts.Total++;
+            IncrementCount(counts, info.AggregatedStatus);
+        }
+
+        return info;
+    }
+
+    /// <summary>
     /// Deletes the document with the given ID.
     /// </summary>
     /// <param name="documentId">The ID of the document to delete.</param>
@@ -458,7 +702,7 @@ public partial class DocumentsController : BaseController
                         }
 
                         contentNodeResult.ResultantContentNodeId = contentNodeResult.OriginalContentNodeId;
-                        
+
                         _dbContext.Update(contentNodeResult);
                         _dbContext.ContentNodes.Remove(newContentNode);
                     }
@@ -533,7 +777,7 @@ public partial class DocumentsController : BaseController
         {
             var orchestrationGrain = _clusterClient.GetGrain<IDocumentIngestionOrchestrationGrain>(orchestrationId);
             await orchestrationGrain.CheckAndRecoverStuckDocumentsAsync();
-            
+
             return Ok(new { message = $"Recovery triggered for orchestration {orchestrationId}" });
         }
         catch (Exception ex)
@@ -560,7 +804,7 @@ public partial class DocumentsController : BaseController
             var stuckDocuments = await _dbContext.IngestedDocuments
                 .Where(x => x.IngestionState == Shared.Enums.IngestionState.Processing &&
                             x.IngestedDate < thirtyMinutesAgo)
-                .Select(x => new 
+                .Select(x => new
                 {
                     x.Id,
                     x.FileName,
@@ -586,8 +830,8 @@ public partial class DocumentsController : BaseController
                 })
                 .ToList();
 
-            return Ok(new 
-            { 
+            return Ok(new
+            {
                 totalStuckDocuments = stuckDocuments.Count,
                 orchestrationGroups = orchestrationGroups,
                 allStuckDocuments = stuckDocuments

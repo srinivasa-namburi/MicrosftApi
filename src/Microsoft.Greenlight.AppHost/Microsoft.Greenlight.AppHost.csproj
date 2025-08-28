@@ -39,6 +39,7 @@
 	</ItemGroup>
 	<ItemGroup>
 		<ProjectReference Include="..\Microsoft.Greenlight.API.Main\Microsoft.Greenlight.API.Main.csproj" />
+		<ProjectReference Include="..\Microsoft.Greenlight.McpServer\Microsoft.Greenlight.McpServer.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.SetupManager.DB\Microsoft.Greenlight.SetupManager.DB.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.Silo\Microsoft.Greenlight.Silo.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.Web.DocGen\Microsoft.Greenlight.Web.DocGen.csproj" />

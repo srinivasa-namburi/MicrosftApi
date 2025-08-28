@@ -26,7 +26,6 @@ using StackExchange.Redis;
 using System.Net.Http.Headers;
 using System.Security.Claims;
 using Yarp.ReverseProxy.Transforms;
-using Yarp.ReverseProxy.Forwarder;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -199,7 +198,7 @@ builder.Services.Configure<FormOptions>(options =>
 {
     options.MultipartBodyLengthLimit = 1024 * 1024 * 1024; // 1024MB
     options.ValueLengthLimit = 1024 * 1024 * 1024;
-    options.ValueCountLimit = 16384;        
+    options.ValueCountLimit = 16384;
 });
 
 builder.Services.AddSingleton<IHostedService, ShutdownCleanupService>();
@@ -289,7 +288,7 @@ app.MapGet("/api-address", () =>
     var scheme = uri.Scheme;
     var newUri = new Uri($"{scheme}://{hostName}:{port}");
     apiAddress = newUri.ToString();
-    
+
     return string.IsNullOrEmpty(apiAddress)
         ? Results.NotFound()
         : Results.Ok(apiAddress.TrimEnd('/'));
@@ -315,7 +314,7 @@ string ComputeRedirectUri(RedirectContext redirectContext, ServiceConfigurationO
 {
     var request = redirectContext.HttpContext.Request;
     string selectedScheme = !redirectContext.ProtocolMessage.RedirectUri.Contains("localhost") ? "https" : request.Scheme;
-                
+
     var hostName = request.Host.ToString();
     if (!string.IsNullOrEmpty(serviceConfigurationOptions1.HostNameOverride.Web))
     {
@@ -337,7 +336,7 @@ string ComputeRedirectUri(RedirectContext redirectContext, ServiceConfigurationO
             }
         }
     }
-    
+
     hostName = hostName.TrimEnd('/');
 
     var s = $"{selectedScheme}://{hostName}{request.PathBase.ToString().TrimEnd('/')}/signin-oidc";

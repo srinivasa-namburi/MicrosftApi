@@ -11,6 +11,7 @@ var envAzureAdConfigurationSection = builder.Configuration.GetSection("AzureAd")
 var envConnectionStringsConfigurationSection = builder.Configuration.GetSection("ConnectionStrings");
 var envAzureConfigurationSection = builder.Configuration.GetSection("Azure");
 var envKestrelConfigurationSection = builder.Configuration.GetSection("Kestrel");
+var envMcpConfigurationSection = builder.Configuration.GetSection("Mcp");
 
 // Change from ADO
 var sqlPassword = builder.AddParameter("sqlPassword", true);
@@ -198,6 +199,44 @@ if (signalr != null)
 }
 var apiMain = apiMainBuilder;
 
+// MCP Server exposes Greenlight operations via Model Context Protocol over HTTP
+var mcpServerBuilder = builder
+    .AddProject<Projects.Microsoft_Greenlight_McpServer>("mcp-server")
+    .WithExternalHttpEndpoints()
+    .WithConfigSection(envMcpConfigurationSection)
+    .WithConfigSection(envAzureAdConfigurationSection)
+    .WithConfigSection(envServiceConfigurationConfigurationSection)
+    .WithConfigSection(envConnectionStringsConfigurationSection)
+    .WithConfigSection(envAzureConfigurationSection)
+    .WithConfigSection(envKestrelConfigurationSection)
+    .WithReference(apiMain)
+    .WithReference(blobStorage)
+    .WithReference(redisResource)
+    .WithReference(docGenSql)
+    .WithReference(azureAiSearch)
+    .WithReference(eventHub)
+    .WithReference(orleans.AsClient())
+    .WithReference(orleansCheckpointing)
+    .WithReference(orleansBlobStorage)
+    .WithReference(orleansClusteringTable)
+    .WaitForCompletion(dbSetupManager);
+
+if (usePostgres && kmvectorDb != null)
+{
+    mcpServerBuilder.WithReference(kmvectorDb);
+}
+if (signalr != null)
+{
+    mcpServerBuilder.WithReference(signalr);
+}
+
+if (builder.ExecutionContext.IsRunMode)
+{
+    mcpServerBuilder.WithEnvironment("DOTNET_LAUNCH_PROFILE", "https");
+}
+
+var mcpServer = mcpServerBuilder;
+
 var siloBuilder = builder.AddProject<Projects.Microsoft_Greenlight_Silo>("silo")
     .WithReplicas(1)
     .WithConfigSection(envServiceConfigurationConfigurationSection)
@@ -227,6 +266,7 @@ if (builder.ExecutionContext.IsRunMode)
     // gateway and silo port reshuffle which delays startup
     silo.WithEnvironment("Orleans__Endpoints__GatewayPort", "10090")
         .WithEnvironment("Orleans__Endpoints__SiloPort", "10091");
+
 }
 
 var docGenFrontendBuilder = builder
@@ -266,6 +306,7 @@ if (insights is not null)
 {
     apiMain.WithReference(insights);
     silo.WithReference(insights);
+    mcpServer.WithReference(insights);
 }
 
 builder.Build().Run();

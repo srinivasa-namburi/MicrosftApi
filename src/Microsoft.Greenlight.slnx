@@ -59,6 +59,9 @@
     <Project Path="Microsoft.Greenlight.Silo/Microsoft.Greenlight.Silo.csproj">
       <BuildType Solution="Publish|*" Project="Release" />
     </Project>
+    <Project Path="Microsoft.Greenlight.McpServer/Microsoft.Greenlight.McpServer.csproj">
+      <BuildType Solution="Publish|*" Project="Release" />
+    </Project>
   </Folder>
   <Folder Name="/30. Orleans Framework/" />
   <Folder Name="/30. Orleans Framework/ApiSpecific/" Id="379c094c-ec04-4eda-8be9-d628967378f8">

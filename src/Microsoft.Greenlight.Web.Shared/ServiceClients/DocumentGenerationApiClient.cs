@@ -1,19 +1,17 @@
-//#pragma warning disable
-#if false
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Contracts.DTO.Document;
-using Microsoft.Greenlight.Web.Shared.ServiceClients;
 
-namespace Microsoft.Greenlight.Web.DocGen.Client.ServiceClients;
+namespace Microsoft.Greenlight.Web.Shared.ServiceClients;
 
-// Obsolete: Replaced by Microsoft.Greenlight.Web.Shared.ServiceClients.DocumentGenerationApiClient
-[Obsolete("Use Microsoft.Greenlight.Web.Shared.ServiceClients.DocumentGenerationApiClient instead.")]
-internal class LegacyDocumentGenerationApiClient : WebAssemblyBaseServiceClient<LegacyDocumentGenerationApiClient>
+public class DocumentGenerationApiClient : CrossPlatformServiceClientBase<DocumentGenerationApiClient>, IDocumentGenerationApiClient
 {
-    public LegacyDocumentGenerationApiClient(HttpClient httpClient, ILogger<LegacyDocumentGenerationApiClient> logger, AuthenticationStateProvider authStateProvider) : base(httpClient, logger, authStateProvider)
+    // Single DI-friendly constructor to avoid ambiguity with typed HttpClient
+    public DocumentGenerationApiClient(HttpClient httpClient, ILogger<DocumentGenerationApiClient> logger, AuthenticationStateProvider authStateProvider)
+        : base(httpClient, logger, authStateProvider)
     {
     }
 
@@ -24,24 +22,22 @@ internal class LegacyDocumentGenerationApiClient : WebAssemblyBaseServiceClient<
             throw new ArgumentNullException(nameof(generateDocumentDto));
         }
 
-        var response = await SendPostRequestMessage($"/api/documents/generate", generateDocumentDto);
+        var response = await SendPostRequestMessage($"/api/documents/generate", generateDocumentDto, authorize: true);
         response?.EnsureSuccessStatusCode();
-
         return response?.StatusCode.ToString();
     }
 
     public async Task<GeneratedDocumentInfo?> GetDocumentAsync(string documentId)
     {
-        var response = await SendGetRequestMessage($"/api/documents/{documentId}");
+        var response = await SendGetRequestMessage($"/api/documents/{documentId}", authorize: true);
         response?.EnsureSuccessStatusCode();
-
         return await response?.Content.ReadFromJsonAsync<GeneratedDocumentInfo>()! ??
                throw new IOException("No document!");
     }
 
     public async Task<GeneratedDocumentInfo?> GetDocumentHeaderAsync(string documentId)
     {
-        var response = await SendGetRequestMessage($"/api/documents/{documentId}/header");
+        var response = await SendGetRequestMessage($"/api/documents/{documentId}/header", authorize: true);
         response?.EnsureSuccessStatusCode();
         return await response?.Content.ReadFromJsonAsync<GeneratedDocumentInfo>()! ??
                throw new IOException("No document header!");
@@ -49,35 +45,31 @@ internal class LegacyDocumentGenerationApiClient : WebAssemblyBaseServiceClient<
 
     public async Task<bool> DeleteGeneratedDocumentAsync(string documentId)
     {
-        var response = await SendDeleteRequestMessage($"/api/documents/{documentId}");
+        var response = await SendDeleteRequestMessage($"/api/documents/{documentId}", authorize: true);
         response?.EnsureSuccessStatusCode();
-
         return response?.StatusCode == HttpStatusCode.NoContent;
     }
 
     public async Task<Stream> ExportDocumentAsync(string documentId)
     {
-        var response = await SendGetRequestMessage($"/api/documents/{documentId}/word-export");
+        var response = await SendGetRequestMessage($"/api/documents/{documentId}/word-export", authorize: true);
         response?.EnsureSuccessStatusCode();
-
         return await response?.Content.ReadAsStreamAsync()!;
     }
 
     public async Task<string?> GenerateExportDocumentLinkAsync(string? documentId)
     {
-        var response = await SendGetRequestMessage($"/api/documents/{documentId}/word-export/permalink");
+        var response = await SendGetRequestMessage($"/api/documents/{documentId}/word-export/permalink", authorize: true);
         response?.EnsureSuccessStatusCode();
-
         return await response?.Content.ReadAsStringAsync()!;
     }
 
     public async Task<string> GetExportDocumentLinkAsync(string documentId)
     {
-        var response = await SendGetRequestMessage($"/api/documents/{documentId}/export-link");
-        
-        if(response.IsSuccessStatusCode)
+        var response = await SendGetRequestMessage($"/api/documents/{documentId}/export-link", authorize: true);
+        if (response?.IsSuccessStatusCode == true)
         {
-            return await response.Content.ReadAsStringAsync()!;
+            return await response!.Content.ReadAsStringAsync()!;
         }
         else
         {
@@ -87,9 +79,8 @@ internal class LegacyDocumentGenerationApiClient : WebAssemblyBaseServiceClient<
 
     public async Task<List<GeneratedDocumentListItem>> GetGeneratedDocumentsAsync()
     {
-        var response = await SendGetRequestMessage($"/api/documents");
+        var response = await SendGetRequestMessage($"/api/documents", authorize: true);
         response?.EnsureSuccessStatusCode();
-
         return await response?.Content.ReadFromJsonAsync<List<GeneratedDocumentListItem>>()! ??
                throw new IOException("No documents!");
     }
@@ -98,9 +89,8 @@ internal class LegacyDocumentGenerationApiClient : WebAssemblyBaseServiceClient<
     {
         try
         {
-            var response = await SendPostRequestMessage($"/api/document-validation/{documentId}", null);
+            var response = await SendPostRequestMessage($"/api/document-validation/{documentId}", null, authorize: true);
             response?.EnsureSuccessStatusCode();
-        
             return response?.IsSuccessStatusCode ?? false;
         }
         catch (Exception ex)
@@ -109,5 +99,18 @@ internal class LegacyDocumentGenerationApiClient : WebAssemblyBaseServiceClient<
             return false;
         }
     }
+
+    public async Task<DocumentGenerationStatusInfo?> GetDocumentGenerationStatusAsync(string documentId)
+    {
+        var response = await SendGetRequestMessage($"/api/documents/{documentId}/status", authorize: true);
+        response?.EnsureSuccessStatusCode();
+        return await response?.Content.ReadFromJsonAsync<DocumentGenerationStatusInfo>()!;
+    }
+
+    public async Task<DocumentGenerationFullStatusInfo?> GetDocumentGenerationFullStatusAsync(string documentId)
+    {
+        var response = await SendGetRequestMessage($"/api/documents/{documentId}/status/full", authorize: true);
+        response?.EnsureSuccessStatusCode();
+        return await response?.Content.ReadFromJsonAsync<DocumentGenerationFullStatusInfo>()!;
+    }
 }
-#endif

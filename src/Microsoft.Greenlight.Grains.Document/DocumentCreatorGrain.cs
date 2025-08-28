@@ -32,12 +32,27 @@ public class DocumentCreatorGrain : Grain, IDocumentCreatorGrain
                 await _dbContext.SaveChangesAsync();
             }
 
+            // Author OID is optional in the DTO; if missing/invalid, use Guid.Empty
+            Guid authorGuid = Guid.Empty;
+            if (!string.IsNullOrWhiteSpace(request.AuthorOid))
+            {
+                if (!Guid.TryParse(request.AuthorOid, out authorGuid))
+                {
+                    _logger.LogWarning("Invalid AuthorOid '{AuthorOid}' for document {DocumentId}. Using Guid.Empty.", request.AuthorOid, documentId);
+                    authorGuid = Guid.Empty;
+                }
+            }
+            else
+            {
+                _logger.LogDebug("No AuthorOid provided for document {DocumentId}. Using Guid.Empty.", documentId);
+            }
+
             var generatedDocument = new GeneratedDocument
             {
                 Id = documentId,
                 Title = request.DocumentTitle,
                 GeneratedDate = DateTime.UtcNow,
-                RequestingAuthorOid = new Guid(request.AuthorOid!),
+                RequestingAuthorOid = authorGuid,
                 DocumentProcess = request.DocumentProcessName,
                 ContentNodes = []
             };

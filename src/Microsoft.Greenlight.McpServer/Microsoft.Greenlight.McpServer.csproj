@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <NoDefaultLaunchSettingsFile>true</NoDefaultLaunchSettingsFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- MCP HTTP transport (SSE) -->
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="0.3.0-preview.4" />
+    <!-- Logging and minimal hosting are in framework; JwtBearer used directly for optional auth -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.5" />
+  </ItemGroup>
+
+  <!-- Ensure launch settings are included and used similarly to the API project -->
+  <ItemGroup>
+    <Content Remove="Properties\launchSettings.json" />
+    <_WebToolingArtifacts Remove="Properties\launchSettings.json" />
+    <None Include="Properties\launchSettings.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Reuse Greenlight services and contracts -->
+    <ProjectReference Include="..\Microsoft.Greenlight.ServiceDefaults\Microsoft.Greenlight.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\Microsoft.Greenlight.Shared\Microsoft.Greenlight.Shared.csproj" />
+    <ProjectReference Include="..\Microsoft.Greenlight.Shared.Configuration\Microsoft.Greenlight.Shared.Configuration.csproj" />
+    <ProjectReference Include="..\Microsoft.Greenlight.Shared.Contracts\Microsoft.Greenlight.Shared.Contracts.csproj" />
+    <ProjectReference Include="..\Microsoft.Greenlight.Grains.Document.Contracts\Microsoft.Greenlight.Grains.Document.Contracts.csproj" />
+    <ProjectReference Include="..\Microsoft.Greenlight.Grains.Ingestion.Contracts\Microsoft.Greenlight.Grains.Ingestion.Contracts.csproj" />
+    <ProjectReference Include="..\Microsoft.Greenlight.Grains.Shared.Contracts\Microsoft.Greenlight.Grains.Shared.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>
