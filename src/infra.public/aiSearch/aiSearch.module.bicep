@@ -2,7 +2,7 @@
 param location string = resourceGroup().location
 param principalId string
 param principalType string
-@description('Deployment model: public or private')
+@description('Deployment model: public, private or hybrid')
 param deploymentModel string
 
 resource aiSearch 'Microsoft.Search/searchServices@2024-06-01-preview' = {
@@ -24,7 +24,7 @@ resource aiSearch 'Microsoft.Search/searchServices@2024-06-01-preview' = {
         aadAuthFailureMode: 'http403'
       }
     }
-    publicNetworkAccess: deploymentModel == 'private' ? 'disabled' : 'enabled'
+    publicNetworkAccess: contains(['private','hybrid'], deploymentModel) ? 'disabled' : 'enabled'
   }
 }
 

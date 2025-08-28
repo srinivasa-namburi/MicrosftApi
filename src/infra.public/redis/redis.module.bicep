@@ -4,7 +4,7 @@ targetScope = 'resourceGroup'
 param location string = resourceGroup().location
 param principalId string
 param principalName string
-@description('Deployment model: public or private')
+@description('Deployment model: public, private or hybrid')
 param deploymentModel string
 
 resource redis 'Microsoft.Cache/redis@2024-03-01' = {
@@ -22,7 +22,7 @@ resource redis 'Microsoft.Cache/redis@2024-03-01' = {
     redisConfiguration: {
       'aad-enabled': 'true'
     }
-    publicNetworkAccess: deploymentModel == 'private' ? 'Disabled' : 'Enabled'
+    publicNetworkAccess: contains(['private','hybrid'], deploymentModel) ? 'Disabled' : 'Enabled'
   }
   tags: {
     'aspire-resource-name': 'redis'

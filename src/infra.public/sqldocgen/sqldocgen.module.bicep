@@ -4,7 +4,7 @@ param location string = resourceGroup().location
 @description('SQL administrator login for the new server. Must be 1-16 characters and follow SQL Server naming rules.')
 param sqlAdminLogin string = 'sqladmin'
 
-@description('Deployment model: public or private')
+@description('Deployment model: public, private or hybrid')
 param deploymentModel string
 
 @description('Indicates whether the SQL server already exists (true) or not (false)')
@@ -12,13 +12,13 @@ param exists bool
 
 
 var sqlAdminPassword = 'P@ss${guid(resourceGroup().id)}'
-var isPrivate = deploymentModel == 'private'
+var isPrivate = contains(['private','hybrid'], deploymentModel)
 
 resource sqldocgen 'Microsoft.Sql/servers@2024-05-01-preview' = {
   name: take('sqldocgen${uniqueString(resourceGroup().id)}', 63)
   location: location
   properties: {
-    publicNetworkAccess: deploymentModel == 'private' ? 'Disabled' : 'Enabled'
+  publicNetworkAccess: contains(['private','hybrid'], deploymentModel) ? 'Disabled' : 'Enabled'
     version: '12.0'
     administratorLogin: exists ? null : sqlAdminLogin
     administratorLoginPassword: exists ? null : sqlAdminPassword

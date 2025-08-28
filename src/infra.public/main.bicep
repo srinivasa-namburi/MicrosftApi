@@ -36,8 +36,9 @@ param administratorPassword string
 @allowed([
   'public'
   'private'
+  'hybrid'
 ])
-@description('Deployment model: public or private')
+@description('Deployment model: public, private or hybrid')
 param deploymentModel string = 'public'
 
 @allowed([
@@ -47,7 +48,7 @@ param deploymentModel string = 'public'
 @description('Memory backend to use: aisearch or postgres')
 param memoryBackend string = 'aisearch'
 
-var isPrivate = deploymentModel == 'private'
+var isPrivateOrHybrid = contains(['private','hybrid'], deploymentModel)
 var usePostgresMemory = memoryBackend == 'postgres'
 var tags = {
   'azd-env-name': resourceGroupName
@@ -160,14 +161,14 @@ module kmvectordb 'kmvectordb/kmvectordb.module.bicep' = if (usePostgresMemory) 
     principalId: resources.outputs.MANAGED_IDENTITY_PRINCIPAL_ID
     principalType: 'ServicePrincipal'
     deploymentModel: deploymentModel
-    postgresSubnet: isPrivate ? postgresSubnet : ''
-    postgresDnsZoneId: isPrivate ? postgresDnsZoneId : ''
+    postgresSubnet: isPrivateOrHybrid ? postgresSubnet : ''
+    postgresDnsZoneId: isPrivateOrHybrid ? postgresDnsZoneId : ''
     administratorPassword: administratorPassword
   }
 }
 
-// Deploy private endpoints if deploymentModel is private.
-module privateEndpoints 'privateEndpoints.bicep' = if (isPrivate) {
+// Deploy private endpoints if deploymentModel is private or hybrid.
+module privateEndpoints 'privateEndpoints.bicep' = if (isPrivateOrHybrid) {
   name: 'privateEndpoints'
   scope: resourceGroup('${resourceGroupName}')
   params: {

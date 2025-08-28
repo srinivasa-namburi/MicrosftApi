@@ -2,7 +2,7 @@
 param location string = resourceGroup().location
 param principalId string
 param principalType string
-@description('Deployment model: public or private')
+@description('Deployment model: public, private or hybrid')
 param deploymentModel string
 
 resource docing 'Microsoft.Storage/storageAccounts@2023-05-01' = {
@@ -19,7 +19,7 @@ resource docing 'Microsoft.Storage/storageAccounts@2023-05-01' = {
     networkAcls: {
       defaultAction: 'Allow'
     }
-    publicNetworkAccess: deploymentModel == 'private' ? 'Disabled' : 'Enabled'
+    publicNetworkAccess: contains(['private','hybrid'], deploymentModel) ? 'Disabled' : 'Enabled'
   }
   tags: {
     'aspire-resource-name': 'docing'

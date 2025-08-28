@@ -2,7 +2,7 @@
 param location string = resourceGroup().location
 param principalId string
 param principalType string
-@description('Deployment model: public or private')
+@description('Deployment model: public, private or hybrid')
 param deploymentModel string
 
 resource signalr 'Microsoft.SignalRService/signalR@2024-03-01' = {
@@ -18,7 +18,7 @@ resource signalr 'Microsoft.SignalRService/signalR@2024-03-01' = {
   }
   kind: 'SignalR'
   properties: {
-    publicNetworkAccess: deploymentModel == 'private' ? 'Disabled' : 'Enabled'
+    publicNetworkAccess: contains(['private','hybrid'], deploymentModel) ? 'Disabled' : 'Enabled'
     features: [
       {
         flag: 'ServiceMode'

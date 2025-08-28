@@ -7,11 +7,11 @@ param principalId string = ''
 @description('The type of the principal ID')
 param principalType string = 'User'
 
-@description('Deployment model: public or private')
+@description('Deployment model: public, private or hybrid')
 param deploymentModel string = 'public'
 
 var resourceName = 'eventhub-${uniqueString(resourceGroup().id)}'
-var isPrivate = deploymentModel == 'private'
+var isPrivate = contains(['private','hybrid'], deploymentModel)
 var hubName = 'greenlight-hub'
 var consumerGroupName = 'greenlight-cg-streams'
 

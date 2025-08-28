@@ -4,11 +4,12 @@ param location string = resourceGroup().location
 param principalId string = ''
 @description('Tags that will be applied to all resources')
 param tags object = {}
-@description('The subnet of the Container Apps environment must be delegated to Microsoft.App/environments')
+@description('The subnet of the Container Apps environment must be delegated to Microsoft.App/environments. Required for private and hybrid deployment models.')
 param containerAppEnvSubnet string = ''
 @description('The type of workload profile to use (D4, D8, D16, D32 or consumption)')
 param workloadProfileType string = 'D4'
 
+@description('Deployment model for networking: public, private, or hybrid. Hybrid uses VNET + private endpoints like private, but exposes Container Apps ingress publicly.')
 param deploymentModel string = 'public'
 
 var resourceToken = uniqueString(resourceGroup().id)
@@ -59,10 +60,13 @@ resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2024-10-02-p
   }
   location: location
   properties: {
-    // Include vnet configuration only if deploymentModel is private.
-    vnetConfiguration: deploymentModel == 'private' ? {
+    // VNET configuration:
+    // - private: internal environment (only private ingress), requires workload profile
+    // - hybrid: external/public environment with VNET integration, allows public ingress while retaining VNET egress
+    // - public: no VNET integration
+    vnetConfiguration: contains(['private', 'hybrid'], deploymentModel) ? {
       infrastructureSubnetId: containerAppEnvSubnet
-      internal: true
+      internal: deploymentModel == 'private'
     } : null
     workloadProfiles: workloadProfileType != 'consumption' ? [
       {
