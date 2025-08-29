@@ -45,7 +45,7 @@ public static class GreenlightTools
     [McpServerTool(Name = "start_document_generation"), 
      Description("Starts a document generation orchestration and returns structured response with status and id." +
                  "Use the get_document_process_metadata_fields tool to get metadata fields for the document type. " +
-                 "The fields returned by get_document_process_metadata_fields go in the RequestAsJson key, and should" +
+                 "The fields returned by get_document_process_metadata_fields go in the metadataFields key, and should" +
                  "be formatted as a json array with \"fieldname\":\"value\" for each metadata field we send ")]
     public static async Task<StartDocumentGenerationResponse> StartDocumentGenerationAsync(
         IHttpContextAccessor httpContextAccessor,
@@ -105,7 +105,8 @@ public static class GreenlightTools
     /// Use the ID returned by start_document_generation.
     /// </summary>
     [McpServerTool(Name = "get_document_generation_full_status"), 
-     Description("Gets full per-section document generation status for a document. Use the id returned by start_document_generation.")]
+     Description("Gets full per-section document generation status for a document. This allows you to also get " +
+                 "the structure and document outline/section overview for a document. Use the id returned by start_document_generation.")]
     public static async Task<DocumentGenerationFullStatusInfo?> GetDocumentGenerationFullStatusAsync(
         IDocumentGenerationApiClient documentGenerationApiClient,
         GetDocumentStatusRequest request,
@@ -118,7 +119,7 @@ public static class GreenlightTools
     /// Lists generated documents available to the current user or context.
     /// </summary>
     [McpServerTool(Name = "list_generated_documents"), 
-     Description("Lists generated documents; use items' ids with get_document_generation_status or get_document_generation_full_status.")]
+     Description("Lists generated documents - returns the ID and name of those documents.")]
     public static async Task<List<GeneratedDocumentListItem>> ListGeneratedDocumentsAsync(
         IDocumentGenerationApiClient documentGenerationApiClient,
         CancellationToken cancellationToken)
