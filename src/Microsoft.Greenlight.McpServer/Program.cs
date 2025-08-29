@@ -181,18 +181,9 @@ if (authEnabled)
     app.UseAuthorization();
 }
 
-// Allow both '/' and '/mcp' (and '/mcp/*') to reach the same MCP endpoints by rewriting the path
-app.Use(async (context, next) =>
-{
-    if (context.Request.Path.StartsWithSegments("/mcp", out var remaining))
-    {
-        context.Request.Path = remaining.HasValue ? remaining : "/";
-    }
-    await next();
-});
-
-// Map MCP endpoint; require auth if configured
-var mcpEndpoint = app.MapMcp();
+// Map MCP endpoints under "/mcp" to avoid root conflicts and align with common tooling expectations
+var mcpGroup = app.MapGroup("/mcp");
+var mcpEndpoint = mcpGroup.MapMcp();
 if (authEnabled)
 {
     mcpEndpoint.RequireAuthorization();
@@ -214,6 +205,17 @@ if (authEnabled)
         grant_types_supported = (string[])["authorization_code", "refresh_token"],
         code_challenge_methods_supported = (string[])["S256"]
     }));
+}
+
+// Back-compat convenience redirects: root to /mcp and /sse to /mcp/sse (preserve method e.g., POST -> 307)
+var rootRedirect = app.Map("/", (HttpContext ctx) => Results.Redirect("/mcp", permanent: false, preserveMethod: true))
+    .ExcludeFromDescription();
+var sseRedirect = app.Map("/sse", (HttpContext ctx) => Results.Redirect("/mcp/sse", permanent: false, preserveMethod: true))
+    .ExcludeFromDescription();
+if (authEnabled)
+{
+    rootRedirect.RequireAuthorization();
+    sseRedirect.RequireAuthorization();
 }
 
 app.Run();
