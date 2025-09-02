@@ -9,6 +9,9 @@ using Microsoft.Greenlight.Shared.Models;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.KernelMemory.Pipeline;
 using Swashbuckle.AspNetCore.Annotations;
+using Microsoft.Greenlight.API.Main.Authorization;
+using Microsoft.Greenlight.Shared.Contracts.Authorization;
+using Microsoft.Greenlight.Shared.Models.Authorization;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
@@ -59,6 +62,7 @@ public class FileController : BaseController
     ///     404 Not Found: When the file can't be found using the file url provided
     /// </returns>
     [HttpGet("download/{fileUrl}")]
+    [RequiresAnyPermission(PermissionKeys.GenerateDocument, PermissionKeys.Chat)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/octet-stream")]
@@ -102,6 +106,7 @@ public class FileController : BaseController
     ///     404 Not Found: When the file can't be found using the file url provided
     /// </returns>
     [HttpGet("download/asset/{linkId}")]
+    [RequiresAnyPermission(PermissionKeys.GenerateDocument, PermissionKeys.Chat)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/octet-stream")]
@@ -149,6 +154,7 @@ public class FileController : BaseController
     ///         or the file name is missing
     /// </returns>
     [HttpPost("upload/{containerName}/{fileName}")]
+    [RequiresAnyPermission(PermissionKeys.GenerateDocument, PermissionKeys.Chat)]
     [DisableRequestSizeLimit]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -207,6 +213,7 @@ public class FileController : BaseController
     ///         or the file name is missing
     /// </returns>
     [HttpPost("upload/direct/{containerName}/{fileName}")]
+    [RequiresAnyPermission(PermissionKeys.GenerateDocument, PermissionKeys.Chat)]
     [DisableRequestSizeLimit]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -260,6 +267,7 @@ public class FileController : BaseController
     ///     400 Bad Request: When there is no file provided to upload or the file name is missing
     /// </returns>
     [HttpPost("upload/reference/{fileName}")]
+    [RequiresAnyPermission(PermissionKeys.GenerateDocument, PermissionKeys.Chat)]
     [DisableRequestSizeLimit]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -424,6 +432,7 @@ public class FileController : BaseController
     ///         or the file name is missing
     /// </returns>
     [HttpPost("upload/{containerName}/{fileName}/file-info")]
+    [RequiresAnyPermission(PermissionKeys.GenerateDocument, PermissionKeys.Chat)]
     [DisableRequestSizeLimit]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -493,6 +502,7 @@ public class FileController : BaseController
     ///     404 Not Found: When the file info could not be found using the url provided
     /// </returns>
     [HttpGet("file-info/{fileAccessUrl}")]
+    [RequiresAnyPermission(PermissionKeys.GenerateDocument, PermissionKeys.Chat)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/json")]

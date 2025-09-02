@@ -4,6 +4,8 @@
 @page "/reviews/add"
 
 @using System.Text.Json
+@using Microsoft.Greenlight.Web.DocGen.Client.Components.Authorization
+@using Microsoft.Greenlight.Shared.Contracts.Authorization
 @inject IReviewApiClient ReviewApiClient
 @inject IDocumentProcessApiClient DocumentProcessApiClient
 @inject NavigationManager Navigation
@@ -14,8 +16,10 @@
         <CardHeaderContent>
             @if (EditMode)
             {
-                <MudTextField Margin="Margin.Normal" Label="Title" @bind-Value="@CurrentReviewDefinitionInfo.Title" />
-                <MudTextField Margin="Margin.Normal" Label="Description" Lines="2" @bind-Value="@CurrentReviewDefinitionInfo.Description" />
+                <PermissionView Permission="@PermissionKeys.DefineReviews" Mode="PermissionMode.DisableControls">
+                    <MudTextField Margin="Margin.Normal" Label="Title" @bind-Value="@CurrentReviewDefinitionInfo.Title" />
+                    <MudTextField Margin="Margin.Normal" Label="Description" Lines="2" @bind-Value="@CurrentReviewDefinitionInfo.Description" />
+                </PermissionView>
             }
             else
             {
@@ -26,10 +30,12 @@
         <CardHeaderActions>
             @if (!EditMode)
             {
-                <MudTooltip Text="Edit">
-                    <MudIconButton Icon="@Icons.Material.Filled.Edit"
-                                   OnClick="EnableEditing" />
-                </MudTooltip>
+                <PermissionView Permission="@PermissionKeys.DefineReviews" Mode="PermissionMode.DisableControls">
+                    <MudTooltip Text="Edit">
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                       OnClick="EnableEditing" />
+                    </MudTooltip>
+                </PermissionView>
             }
         </CardHeaderActions>
     </MudCardHeader>
@@ -52,13 +58,15 @@
                         @if (EditMode)
                         {
                             <MudSpacer />
-                            <MudSwitch @bind-Value="processInfo.IsActive" Color="Color.Primary" Label="Active" />
-                            <MudTooltip Text="Remove Document Process">
-                                <MudIconButton Icon="@Icons.Material.Filled.Delete"
-                                               Size="Size.Small"
-                                               Color="Color.Error"
-                                               OnClick="() => RemoveDocumentProcess(processInfo)" />
-                            </MudTooltip>
+                            <PermissionView Permission="@PermissionKeys.DefineReviews" Mode="PermissionMode.DisableControls">
+                                <MudSwitch @bind-Value="processInfo.IsActive" Color="Color.Primary" Label="Active" />
+                                <MudTooltip Text="Remove Document Process">
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                   Size="Size.Small"
+                                                   Color="Color.Error"
+                                                   OnClick="() => RemoveDocumentProcess(processInfo)" />
+                                </MudTooltip>
+                            </PermissionView>
                         }
                         else
                         {
@@ -93,11 +101,13 @@
 
     @if (EditMode)
     {
-        <MudButton StartIcon="@Icons.Material.Filled.Add"
-                   Variant="Variant.Outlined"
-                   Color="Color.Primary"
-                   OnClick="OpenAddDocumentProcessDialog"
-                   Class="mb-4">Add Document Process</MudButton>
+        <PermissionView Permission="@PermissionKeys.DefineReviews" Mode="PermissionMode.DisableControls">
+            <MudButton StartIcon="@Icons.Material.Filled.Add"
+                       Variant="Variant.Outlined"
+                       Color="Color.Primary"
+                       OnClick="OpenAddDocumentProcessDialog"
+                       Class="mb-4">Add Document Process</MudButton>
+        </PermissionView>
 
         <MudDivider Class="my-4" />
     }
@@ -125,38 +135,42 @@
                         @if (EditMode)
                         {
                             <MudSpacer />
-                            <MudIconButton Icon="@Icons.Material.Filled.ArrowUpward" Disabled="@(questionIndex == 0)" OnClick="() => MoveQuestionUp(questionIndex)" />
-                            <MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Disabled="@(questionIndex == GetOrderedQuestions().Count - 1)" OnClick="() => MoveQuestionDown(questionIndex)" />
-                            <MudTooltip Text="Delete Review Item">
-                                <MudIconButton Icon="@Icons.Material.Filled.Delete"
-                                               Size="Size.Small"
-                                               Color="Color.Error"
-                                               OnClick="() => DeleteReviewItem(reviewQuestionInfo)" />
-                            </MudTooltip>
+                            <PermissionView Permission="@PermissionKeys.DefineReviews" Mode="PermissionMode.DisableControls">
+                                <MudIconButton Icon="@Icons.Material.Filled.ArrowUpward" Disabled="@(questionIndex == 0)" OnClick="() => MoveQuestionUp(questionIndex)" />
+                                <MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Disabled="@(questionIndex == GetOrderedQuestions().Count - 1)" OnClick="() => MoveQuestionDown(questionIndex)" />
+                                <MudTooltip Text="Delete Review Item">
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                   Size="Size.Small"
+                                                   Color="Color.Error"
+                                                   OnClick="() => DeleteReviewItem(reviewQuestionInfo)" />
+                                </MudTooltip>
+                            </PermissionView>
                         }
                     </div>
 
                     @if (EditMode)
                     {
-                        <MudRadioGroup @bind-Value="reviewQuestionInfo.QuestionType" T="ReviewQuestionType" Class="mb-2">
-                            <MudRadio Value="@ReviewQuestionType.Requirement" Color="Color.Primary" UnCheckedColor="Color.Default">Requirement</MudRadio>
-                            <MudRadio Value="@ReviewQuestionType.Question" Color="Color.Primary" UnCheckedColor="Color.Default">Question</MudRadio>
-                        </MudRadioGroup>
+                        <PermissionView Permission="@PermissionKeys.DefineReviews" Mode="PermissionMode.DisableControls">
+                            <MudRadioGroup @bind-Value="reviewQuestionInfo.QuestionType" T="ReviewQuestionType" Class="mb-2">
+                                <MudRadio Value="@ReviewQuestionType.Requirement" Color="Color.Primary" UnCheckedColor="Color.Default">Requirement</MudRadio>
+                                <MudRadio Value="@ReviewQuestionType.Question" Color="Color.Primary" UnCheckedColor="Color.Default">Question</MudRadio>
+                            </MudRadioGroup>
 
-                        <MudTextField @bind-Value="@reviewQuestionInfo.Question"
-                                      Lines="2"
-                                      MaxLines="10"
-                                      AutoGrow="true"
-                                      Label="@reviewQuestionInfo.QuestionType.ToString()"
-                                      Variant="Variant.Outlined"
-                                      Class="mb-2" />
+                            <MudTextField @bind-Value="@reviewQuestionInfo.Question"
+                                          Lines="2"
+                                          MaxLines="10"
+                                          AutoGrow="true"
+                                          Label="@reviewQuestionInfo.QuestionType.ToString()"
+                                          Variant="Variant.Outlined"
+                                          Class="mb-2" />
 
-                        <MudTextField @bind-Value="@reviewQuestionInfo.Rationale"
-                                      Label="Rationale"
-                                      Lines="2"
-                                      MaxLines="10"
-                                      AutoGrow="true"
-                                      Variant="Variant.Outlined" />
+                            <MudTextField @bind-Value="@reviewQuestionInfo.Rationale"
+                                          Label="Rationale"
+                                          Lines="2"
+                                          MaxLines="10"
+                                          AutoGrow="true"
+                                          Variant="Variant.Outlined" />
+                        </PermissionView>
                     }
                     else
                     {
@@ -179,17 +193,21 @@
 
     @if (EditMode)
     {
-        <MudButton StartIcon="@Icons.Material.Filled.Add"
-                   Variant="Variant.Outlined"
-                   Color="Color.Primary"
-                   OnClick="() => AddNewReviewItem()"
-                   Class="mb-4">Add New Review Item</MudButton>
+        <PermissionView Permission="@PermissionKeys.DefineReviews" Mode="PermissionMode.DisableControls">
+            <MudButton StartIcon="@Icons.Material.Filled.Add"
+                       Variant="Variant.Outlined"
+                       Color="Color.Primary"
+                       OnClick="() => AddNewReviewItem()"
+                       Class="mb-4">Add New Review Item</MudButton>
+        </PermissionView>
 
         <MudDivider Class="my-4" />
 
         <MudCardActions>
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveReviewDefinition">Save</MudButton>
-            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="Cancel">Cancel</MudButton>
+            <PermissionView Permission="@PermissionKeys.DefineReviews" Mode="PermissionMode.DisableControls">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveReviewDefinition">Save</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="Cancel">Cancel</MudButton>
+            </PermissionView>
         </MudCardActions>
     }
 </MudPaper>

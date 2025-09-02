@@ -13,7 +13,6 @@ public abstract class WebAssemblyBaseServiceClient<T> where T : IServiceClient
     protected readonly HttpClient HttpClient;
 
     private readonly AuthenticationStateProvider _authStateProvider;
-    public string AccessToken => GetAccessTokenAsync().GetAwaiter().GetResult();
 
     protected WebAssemblyBaseServiceClient(HttpClient httpClient, ILogger<T> logger, AuthenticationStateProvider authStateProvider)
     {
@@ -27,7 +26,8 @@ public abstract class WebAssemblyBaseServiceClient<T> where T : IServiceClient
         using var requestMessage = new HttpRequestMessage(HttpMethod.Get, requestUri);
         if (authorize)
         {
-            requestMessage.Headers.Authorization = new("Bearer", this.AccessToken);
+            var token = await GetAccessTokenAsync();
+            requestMessage.Headers.Authorization = new("Bearer", token);
         }
 
         Logger.LogInformation("Sending GET request to {RequestUri}", requestUri);
@@ -40,7 +40,8 @@ public abstract class WebAssemblyBaseServiceClient<T> where T : IServiceClient
         using var requestMessage = new HttpRequestMessage(HttpMethod.Delete, requestUri);
         if (authorize)
         {
-            requestMessage.Headers.Authorization = new("Bearer", this.AccessToken);
+            var token = await GetAccessTokenAsync();
+            requestMessage.Headers.Authorization = new("Bearer", token);
         }
 
         Logger.LogInformation("Sending DELETE request to {RequestUri}", requestUri);
@@ -53,7 +54,8 @@ public abstract class WebAssemblyBaseServiceClient<T> where T : IServiceClient
         using var requestMessage = new HttpRequestMessage(HttpMethod.Post, requestUri);
         if (authorize)
         {
-            requestMessage.Headers.Authorization = new("Bearer", this.AccessToken);
+            var token = await GetAccessTokenAsync();
+            requestMessage.Headers.Authorization = new("Bearer", token);
         }
 
         if (payload is IBrowserFile file)
@@ -83,7 +85,8 @@ public abstract class WebAssemblyBaseServiceClient<T> where T : IServiceClient
         using var requestMessage = new HttpRequestMessage(HttpMethod.Put, requestUri);
         if (authorize)
         {
-            requestMessage.Headers.Authorization = new("Bearer", this.AccessToken);
+            var token = await GetAccessTokenAsync();
+            requestMessage.Headers.Authorization = new("Bearer", token);
         }
 
         if (pocoPayload == null)

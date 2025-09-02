@@ -26,6 +26,8 @@
 		<_WebToolingArtifacts Remove="Properties\launchSettings.json" />
 	</ItemGroup>
 	<ItemGroup>
+		<PackageReference Include="AutoMapper" Version="13.0.1" />
+		<PackageReference Include="LazyCache" Version="2.4.0" />
 		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.5" />
 		<PackageReference Include="Microsoft.Extensions.ServiceDiscovery.Yarp" Version="9.1.0" />
 		<PackageReference Include="Microsoft.Identity.Web" Version="2.21.1" />
@@ -38,6 +40,7 @@
 		<ProjectReference Include="..\Microsoft.Greenlight.Grains.ApiSpecific.Contracts\Microsoft.Greenlight.Grains.ApiSpecific.Contracts.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.Grains.ApiSpecific\Microsoft.Greenlight.Grains.ApiSpecific.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.Grains.Contracts\Microsoft.Greenlight.Grains.Contracts.csproj" />
+		<ProjectReference Include="..\Microsoft.Greenlight.Grains.Shared.Contracts\Microsoft.Greenlight.Grains.Shared.Contracts.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.Grains.Validation.Contracts\Microsoft.Greenlight.Grains.Validation.Contracts.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.ServiceDefaults\Microsoft.Greenlight.ServiceDefaults.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.Shared.Contracts\Microsoft.Greenlight.Shared.Contracts.csproj" />

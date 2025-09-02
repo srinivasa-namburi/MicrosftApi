@@ -1,78 +1,230 @@
 @inherits LayoutComponentBase
+@implements IDisposable
 @using Microsoft.AspNetCore.SignalR.Client
 @inject ILogger<MainLayout> Logger
 @inject IAuthorizationApiClient AuthorizationApiClient
 @inject IConfigurationApiClient ConfigurationApiClient
 @inject SignalRConnectionService SignalRConnectionService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IPermissionService PermissionService
 
 <MyMudThemeProvider @bind-IsDarkMode="@IsDarkMode" />
 <MyMudProviders />
 
-<MudLayout Class="@(IsDarkMode ? "dark-mode" : "light-mode")">
-    <MudAppBar Elevation="3">
-        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
-        <MudSpacer />
-        <MudSwitch @bind-Value="IsDarkMode" Color="Color.Primary" Class="ma-1" T="bool" ThumbIcon="@Icons.Material.Filled.WbSunny" />
-    </MudAppBar>
-    <MudDrawer @bind-Open="_drawerOpen" Elevation="3">
-        <MudDrawerHeader>
-            <MudText Typo="Typo.h6">@_siteName</MudText>
-        </MudDrawerHeader>
-        <NavMenu />
-    </MudDrawer>
-    <CascadingValue TValue="HubConnection" Value="@HubConnection">
-        <CascadingValue Name="IsDarkMode" Value="IsDarkMode">
-            <MudMainContent>
-                <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="my-6 pt-6">
-                    @Body
-                </MudContainer>
-            </MudMainContent>
+@if (_isInitializing)
+{
+    <div class="loading-container d-flex justify-center align-center" style="height: 100vh;">
+        <MudStack Spacing="3" AlignItems="AlignItems.Center">
+            <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
+            <MudText Typo="Typo.h6">Loading application...</MudText>
+        </MudStack>
+    </div>
+}
+else
+{
+    <MudLayout Class="@(IsDarkMode ? "dark-mode" : "light-mode")">
+        <MudAppBar Elevation="3">
+            <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
+            <MudSpacer />
+            <UserInfoComponent />
+            <MudSwitch @bind-Value="IsDarkMode" Color="Color.Primary" Class="ma-1" T="bool" ThumbIcon="@Icons.Material.Filled.WbSunny" />
+        </MudAppBar>
+        <MudDrawer @bind-Open="_drawerOpen" Elevation="3">
+            <MudDrawerHeader>
+                <MudText Typo="Typo.h6">@_siteName</MudText>
+            </MudDrawerHeader>
+            <NavMenu />
+        </MudDrawer>
+        <CascadingValue TValue="HubConnection" Value="@HubConnection">
+            <CascadingValue Name="IsDarkMode" Value="IsDarkMode">
+                <MudMainContent>
+                    <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="my-6 pt-6">
+                        @Body
+                    </MudContainer>
+                </MudMainContent>
+            </CascadingValue>
         </CascadingValue>
-    </CascadingValue>
-</MudLayout>
+    </MudLayout>
+}
 
 @code {
     bool _drawerOpen = true;
+    private bool _isInitializing = true;
 
     private string _siteName = "Generative AI for Industry Permitting";
 
     public bool IsDarkMode { get; set; } = true;
     public HubConnection? HubConnection { get; set; }
+    
 
     void DrawerToggle()
     {
         _drawerOpen = !_drawerOpen;
     }
 
-
-
     protected override async Task OnInitializedAsync()
     {
-        // Try setting the site name from the configuration API
+        Logger.LogInformation("MainLayout initialization starting");
+        
+        try
+        {
+            // Step 1: Load site name from configuration
+            await LoadSiteNameAsync();
+
+            // Step 2: Check authentication and preload permissions
+            await PreloadUserDataAsync();
+
+            // Step 3: Start SignalR connections if authenticated
+            await StartHubConnectionsAsync();
+
+            Logger.LogInformation("MainLayout initialization completed");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error during MainLayout initialization");
+        }
+        finally
+        {
+            _isInitializing = false;
+            StateHasChanged();
+        }
+
+        // Listen for auth state changes for future updates
+        AuthenticationStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
+    }
+
+    private async Task LoadSiteNameAsync()
+    {
         try
         {
             var frontendOptions = await ConfigurationApiClient.GetFrontEndAsync();
             _siteName = frontendOptions.SiteName;
+            Logger.LogDebug("Site name loaded: {SiteName}", _siteName);
         }
         catch (Exception e)
         {
             Logger.LogError(e, "Failed to get site name from configuration API, keeping default name");
         }
+    }
 
-        // Only start the SignalR connection if the user is authenticated
+    private async Task PreloadUserDataAsync()
+    {
         try
         {
-            await StartHubConnections();
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                Logger.LogInformation("User authenticated, preloading permissions and pushing token");
+                
+                // Preload permissions early to populate the cache
+                // This prevents multiple API calls when NavMenu components check permissions
+                var preloadTask = PreloadPermissionsAsync();
+                var tokenTask = PushUserTokenOnceAsync(user);
+                
+                await Task.WhenAll(preloadTask, tokenTask);
+            }
+            else
+            {
+                Logger.LogInformation("User not authenticated, skipping permission preload");
+            }
         }
-        catch (InvalidOperationException e)
+        catch (Exception ex)
         {
-            // User isn't authenticated yet - ignore.
+            Logger.LogWarning(ex, "Error during user data preload");
         }
     }
 
-    private async Task StartHubConnections()
+    private async Task PreloadPermissionsAsync()
     {
-        // Use the shared connection service to ensure a single shared HubConnection instance
-        HubConnection = await SignalRConnectionService.GetOrCreateAsync();
+        try
+        {
+            Logger.LogInformation("Preloading user permissions to populate cache");
+            var permissions = await PermissionService.GetUserPermissionsAsync();
+            Logger.LogInformation("Successfully preloaded {PermissionCount} permissions", permissions.Count);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to preload permissions, will be loaded on demand");
+        }
+    }
+
+    private async Task StartHubConnectionsAsync()
+    {
+        try
+        {
+            // Use the shared connection service to ensure a single shared HubConnection instance
+            HubConnection = await SignalRConnectionService.GetOrCreateAsync();
+            Logger.LogDebug("SignalR connections established");
+        }
+        catch (InvalidOperationException)
+        {
+            // User isn't authenticated yet - ignore.
+            Logger.LogDebug("SignalR connection skipped - user not authenticated");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to establish SignalR connections");
+        }
+    }
+
+    private async Task PushUserTokenOnceAsync(System.Security.Claims.ClaimsPrincipal user)
+    {
+        var providerSubjectId = user.FindFirst(claim => claim.Type == "sub")?.Value;
+        if (string.IsNullOrWhiteSpace(providerSubjectId)) return;
+        
+        try
+        {
+            // Use server endpoint exposed via the host to fetch our current access token
+            var accessToken = await ConfigurationApiClient!.GetAccessTokenAsync();
+            // accessToken is expected to be non-null; GetAccessTokenAsync throws on unauthorized
+            Logger.LogInformation("Pushing user token for sub {Sub}. Token length={Len}.", providerSubjectId, accessToken.Length);
+            await AuthorizationApiClient.SetUserTokenAsync(new Microsoft.Greenlight.Shared.Contracts.DTO.Auth.UserTokenDTO
+            {
+                ProviderSubjectId = providerSubjectId,
+                AccessToken = accessToken,
+                ExpiresOnUtc = null
+            });
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to push user token");
+        }
+    }
+
+    private async void OnAuthenticationStateChanged(Task<AuthenticationState> task)
+    {
+        try
+        {
+            var state = await task;
+            if (state.User.Identity?.IsAuthenticated == true)
+            {
+                Logger.LogInformation("Auth state changed: user signed in; refreshing data");
+                
+                // Preload permissions for the newly authenticated user
+                await PreloadPermissionsAsync();
+                
+                // (Re)start hub connections and token push when user signs in
+                try { await StartHubConnectionsAsync(); } catch (InvalidOperationException) { /* ignore */ }
+                await PushUserTokenOnceAsync(state.User);
+            }
+            else
+            {
+                Logger.LogInformation("Auth state changed: user signed out; invalidating cache");
+                
+                // Invalidate permission cache when user signs out
+                await PermissionService.InvalidatePermissionCacheAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Authentication state changed handler failed");
+        }
+    }
+
+    public void Dispose()
+    {
+        AuthenticationStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
     }
 }

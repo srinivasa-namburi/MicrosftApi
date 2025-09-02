@@ -98,7 +98,7 @@ namespace Microsoft.Greenlight.Grains.Review
                     }
                     else
                     {
-                        answer = await AnswerUsingAgenticProcessAsync(question, documentProcessShortName, contentReferenceItems);
+                        answer = await AnswerUsingAgenticProcessAsync(reviewInstanceId, question, documentProcessShortName, contentReferenceItems);
                     }
                 }
                 else
@@ -176,6 +176,7 @@ namespace Microsoft.Greenlight.Grains.Review
         }
 
         private async Task<string> AnswerUsingAgenticProcessAsync(
+            Guid reviewInstanceId,
             ReviewQuestionInfo question,
             string documentProcessShortName,
             List<ContentReferenceItem> contentReferences)
@@ -191,74 +192,92 @@ namespace Microsoft.Greenlight.Grains.Review
                 throw new Exception($"Document process not found for review question answering");
             }
 
-            // Prepare kernel and plugins
-            var kernel = await _kernelFactory.GetKernelForDocumentProcessAsync(documentProcess);
-            var promptExecutionSettings = await _kernelFactory.GetPromptExecutionSettingsForDocumentProcessAsync(documentProcess, AiTaskType.QuestionAnswering);
-            var kernelArguments = new KernelArguments(promptExecutionSettings);
-
-            // Build availablePlugins dictionary
-            var availablePlugins = new Dictionary<string, object>();
-            foreach (var plugin in kernel.Plugins)
+            // Prepare kernel and plugins with per-user context when available
+            string? providerSubjectId = null;
+            try
             {
-                if (plugin.Name == "DefaultKernelPlugin") continue;
-                availablePlugins[plugin.Name] = plugin;
+                var orchestrator = GrainFactory.GetGrain<IReviewExecutionOrchestrationGrain>(reviewInstanceId);
+                var state = await orchestrator.GetStateAsync();
+                providerSubjectId = state?.StartedByProviderSubjectId;
             }
-            // Add ContentReferenceLookupPlugin and ContentStatePlugin
-            var contentReferenceLookupPlugin = new ContentReferenceLookupPlugin(_contentReferenceService);
-            var grainFactory = _sp.GetService(typeof(IGrainFactory)) as IGrainFactory;
-            var executionId = Guid.NewGuid();
-            if (grainFactory is null) throw new InvalidOperationException("GrainFactory not initialized");
-            var contentStatePlugin = new ContentStatePlugin(grainFactory, executionId, string.Empty, 100);
-            await contentStatePlugin.InitializeAsync();
-            availablePlugins["ContentReferenceLookupPlugin"] = contentReferenceLookupPlugin;
-            availablePlugins["ContentStatePlugin"] = contentStatePlugin;
-
-            // Build context using RAG
-            var maxReferences = documentProcess.NumberOfCitationsToGetFromRepository;
-            string ragContext = await _ragContextBuilder.BuildContextWithSelectedReferencesAsync(
-                question.Question,
-                contentReferences,
-                topN: maxReferences);
-
-            // Prepare reference IDs for plugin use
-            var referenceIds = contentReferences.Select(r => r.Id).ToList();
-
-            // Build the prompt using Scriban to inject context and reference IDs
-            string promptTemplate;
-            if (documentProcessShortName == null)
-                throw new InvalidOperationException("DocumentProcessShortName missing for prompt retrieval.");
-            string dpShort = documentProcessShortName!; // force non-null for analyzer
-            if (question.QuestionType == ReviewQuestionType.Requirement)
+            catch (Exception ex)
             {
-                promptTemplate = await _promptInfoService.GetPromptTextByShortCodeAndProcessNameAsync(
-                    nameof(DefaultPromptCatalogTypes.ReviewRequirementAnswerPrompt), dpShort);
-            }
-            else
-            {
-                promptTemplate = await _promptInfoService.GetPromptTextByShortCodeAndProcessNameAsync(
-                    nameof(DefaultPromptCatalogTypes.ReviewQuestionAnswerPrompt), dpShort);
-            }
-            var scribanTemplate = Template.Parse(promptTemplate);
-            var renderedPrompt = await scribanTemplate.RenderAsync(new
-            {
-                context = ragContext,
-                question = question.Question,
-                referenceIds = referenceIds
-            }, member => member.Name);
-
-            var documentProcessNameInstruction = $"You're working on a document belonging to the document process '{documentProcessShortName}'.\n";
-            var currentDocumentInstruction = string.Empty;
-            if (contentReferences.Any()) // Check if there are any content references
-            {
-                currentDocumentInstruction = "The primary document(s) you are reviewing are listed below with their Content Reference ID(s):\n";
-                currentDocumentInstruction += string.Join("\n", contentReferences.Select(r => $"- Name: '{r.DisplayName}', ID: '{r.Id}'-"));
-                currentDocumentInstruction += "\nWhen searching within these specific document(s), use the ContentReferenceLookupPlugin.SearchSimilarChunks function, passing the appropriate ID.\n";
+                _logger.LogWarning(ex, "Unable to fetch ProviderSubjectId from orchestration for review {ReviewInstanceId}", reviewInstanceId);
             }
 
-            var combinedInstructions = documentProcessNameInstruction + currentDocumentInstruction + "\n";
+            return await UserContextRunner.RunAsync(providerSubjectId, async () =>
+            {
+                var kernel = !string.IsNullOrWhiteSpace(providerSubjectId)
+                    ? await _kernelFactory.GetKernelForDocumentProcessAsync(documentProcess, providerSubjectId)
+                    : await _kernelFactory.GetKernelForDocumentProcessAsync(documentProcess);
+                var promptExecutionSettings = await _kernelFactory.GetPromptExecutionSettingsForDocumentProcessAsync(documentProcess, AiTaskType.QuestionAnswering);
+                var kernelArguments = new KernelArguments(promptExecutionSettings);
 
-            // --- Agent configuration setup ---
-            var agentConfigs = new List<AgentConfiguration>
+                // Build availablePlugins dictionary
+                var availablePlugins = new Dictionary<string, object>();
+                foreach (var plugin in kernel.Plugins)
+                {
+                    if (plugin.Name == "DefaultKernelPlugin") continue;
+                    availablePlugins[plugin.Name] = plugin;
+                }
+                // Add ContentReferenceLookupPlugin and ContentStatePlugin
+                var contentReferenceLookupPlugin = new ContentReferenceLookupPlugin(_contentReferenceService);
+                var grainFactory = _sp.GetService(typeof(IGrainFactory)) as IGrainFactory;
+                var executionId = Guid.NewGuid();
+                if (grainFactory is null) throw new InvalidOperationException("GrainFactory not initialized");
+                var contentStatePlugin = new ContentStatePlugin(grainFactory, executionId, string.Empty, 100);
+                await contentStatePlugin.InitializeAsync();
+                availablePlugins["ContentReferenceLookupPlugin"] = contentReferenceLookupPlugin;
+                availablePlugins["ContentStatePlugin"] = contentStatePlugin;
+
+                // Build context using RAG
+                var maxReferences = documentProcess.NumberOfCitationsToGetFromRepository;
+                string ragContext = await _ragContextBuilder.BuildContextWithSelectedReferencesAsync(
+                    question.Question,
+                    contentReferences,
+                    topN: maxReferences);
+
+                // Prepare reference IDs for plugin use
+                var referenceIds = contentReferences.Select(r => r.Id).ToList();
+
+                // Build the prompt using Scriban to inject context and reference IDs
+                string? promptTemplate;
+                if (documentProcessShortName == null)
+                    throw new InvalidOperationException("DocumentProcessShortName missing for prompt retrieval.");
+                string dpShort = documentProcessShortName; // non-null by contract
+                if (question.QuestionType == ReviewQuestionType.Requirement)
+                {
+                    var tmp = await _promptInfoService.GetPromptTextByShortCodeAndProcessNameAsync(
+                        nameof(DefaultPromptCatalogTypes.ReviewRequirementAnswerPrompt), dpShort);
+                    promptTemplate = tmp ?? string.Empty;
+                }
+                else
+                {
+                    var tmp = await _promptInfoService.GetPromptTextByShortCodeAndProcessNameAsync(
+                        nameof(DefaultPromptCatalogTypes.ReviewQuestionAnswerPrompt), dpShort);
+                    promptTemplate = tmp ?? string.Empty;
+                }
+                var scribanTemplate = Template.Parse(promptTemplate);
+                var renderedPrompt = await scribanTemplate.RenderAsync(new
+                {
+                    context = ragContext,
+                    question = question.Question,
+                    referenceIds = referenceIds
+                }, member => member.Name);
+
+                var documentProcessNameInstruction = $"You're working on a document belonging to the document process '{documentProcessShortName}'.\n";
+                var currentDocumentInstruction = string.Empty;
+                if (contentReferences.Any()) // Check if there are any content references
+                {
+                    currentDocumentInstruction = "The primary document(s) you are reviewing are listed below with their Content Reference ID(s):\n";
+                    currentDocumentInstruction += string.Join("\n", contentReferences.Select(r => $"- Name: '{r.DisplayName}', ID: '{r.Id}'-"));
+                    currentDocumentInstruction += "\nWhen searching within these specific document(s), use the ContentReferenceLookupPlugin.SearchSimilarChunks function, passing the appropriate ID.\n";
+                }
+
+                var combinedInstructions = documentProcessNameInstruction + currentDocumentInstruction + "\n";
+
+                // --- Agent configuration setup ---
+                var agentConfigs = new List<AgentConfiguration>
             {
                 new AgentConfiguration
                 {
@@ -433,11 +452,11 @@ CRITICAL RULES
                 }
             };
 
-            // --- Build agent summary string for orchestrator instructions ---
-            var agentSummary = string.Join("\n", agentConfigs.Select(a => $"- {a.Name}: {a.Description}"));
+                // --- Build agent summary string for orchestrator instructions ---
+                var agentSummary = string.Join("\n", agentConfigs.Select(a => $"- {a.Name}: {a.Description}"));
 
-            // --- Add OrchestratorAgent with injected agent summary ---
-            agentConfigs.Add(
+                // --- Add OrchestratorAgent with injected agent summary ---
+                agentConfigs.Add(
                 new AgentConfiguration
                 {
                     Name = "OrchestratorAgent",
@@ -502,59 +521,62 @@ EXAMPLE RESPONSES
                 }
             );
 
-            // --- Create agent group chat ---
-            var loggerFactory = _sp.GetService(typeof(ILoggerFactory)) as ILoggerFactory;
-            var agents = new List<ChatCompletionAgent>();
-            foreach (var config in agentConfigs)
-            {
-                var agentKernel = await _kernelFactory.GetKernelForDocumentProcessAsync(documentProcess);
-                agentKernel.Data.Add("System-ExecutionId", executionId.ToString());
-                agentKernel.Plugins.Clear();
-                foreach (var pluginName in config.AllowedPlugins)
+                // --- Create agent group chat ---
+                var loggerFactory = _sp.GetService(typeof(ILoggerFactory)) as ILoggerFactory;
+                var agents = new List<ChatCompletionAgent>();
+                foreach (var config in agentConfigs)
                 {
-                    if (availablePlugins.TryGetValue(pluginName, out var pluginObj))
+                    var agentKernel = !string.IsNullOrWhiteSpace(providerSubjectId)
+                        ? await _kernelFactory.GetKernelForDocumentProcessAsync(documentProcess, providerSubjectId)
+                        : await _kernelFactory.GetKernelForDocumentProcessAsync(documentProcess);
+                    agentKernel.Data.Add("System-ExecutionId", executionId.ToString());
+                    agentKernel.Plugins.Clear();
+                    foreach (var pluginName in config.AllowedPlugins)
                     {
-                        if (pluginObj is KernelPlugin kernelPluginObj)
-                            agentKernel.Plugins.Add(kernelPluginObj);
-                        else
-                            agentKernel.ImportPluginFromObject(pluginObj, pluginName);
+                        if (availablePlugins.TryGetValue(pluginName, out var pluginObj))
+                        {
+                            if (pluginObj is KernelPlugin kernelPluginObj)
+                                agentKernel.Plugins.Add(kernelPluginObj);
+                            else
+                                agentKernel.ImportPluginFromObject(pluginObj, pluginName);
+                        }
                     }
+                    var promptSettings = await _kernelFactory.GetPromptExecutionSettingsForDocumentProcessAsync(documentProcess, AiTaskType.QuestionAnswering);
+                    agents.Add(new ChatCompletionAgent
+                    {
+                        Name = config.Name,
+                        Instructions = config.Instructions,
+                        Kernel = agentKernel,
+                        Arguments = new KernelArguments(promptSettings),
+                        LoggerFactory = loggerFactory
+                    });
                 }
-                var promptSettings = await _kernelFactory.GetPromptExecutionSettingsForDocumentProcessAsync(documentProcess, AiTaskType.QuestionAnswering);
-                agents.Add(new ChatCompletionAgent
+                var selectionStrategy = new MultiAgentSelectionStrategy(_logger, orchestratorAgentName: "OrchestratorAgent");
+                var terminationStrategy = new MultiAgentTerminationStrategy(_logger, ["[COMPLETE]"], agentConfigs.Where(a => a.HasTerminationAuthority).Select(a => a.Name));
+                var agentGroupChat = new AgentGroupChat
                 {
-                    Name = config.Name,
-                    Instructions = config.Instructions,
-                    Kernel = agentKernel,
-                    Arguments = new KernelArguments(promptSettings),
-                    LoggerFactory = loggerFactory
-                });
-            }
-            var selectionStrategy = new MultiAgentSelectionStrategy(_logger, orchestratorAgentName: "OrchestratorAgent");
-            var terminationStrategy = new MultiAgentTerminationStrategy(_logger, ["[COMPLETE]"], agentConfigs.Where(a => a.HasTerminationAuthority).Select(a => a.Name));
-            var agentGroupChat = new AgentGroupChat
-            {
-                ExecutionSettings = new AgentGroupChatSettings
+                    ExecutionSettings = new AgentGroupChatSettings
+                    {
+                        SelectionStrategy = selectionStrategy,
+                        TerminationStrategy = terminationStrategy
+                    }
+                };
+                foreach (var agent in agents)
                 {
-                    SelectionStrategy = selectionStrategy,
-                    TerminationStrategy = terminationStrategy
+                    agentGroupChat.AddAgent(agent);
                 }
-            };
-            foreach (var agent in agents)
-            {
-                agentGroupChat.AddAgent(agent);
-            }
-            // Kick off the conversation
-            agentGroupChat.AddChatMessage(new ChatMessageContent(AuthorRole.User, "Please answer the review question."));
-            var cancellationToken = new System.Threading.CancellationToken(false);
-            await foreach (var message in agentGroupChat.InvokeAsync(cancellationToken))
-            {
-                _logger.LogInformation($"Agentic message: {message.AuthorName}: {message.Content}");
-                // No manual [COMPLETE] check here; only OrchestratorAgent with termination authority can end the chat.
-            }
-            // Get the answer from ContentStatePlugin
-            var finalAnswer = await contentStatePlugin.GetAssembledContent();
-            return finalAnswer;
+                // Kick off the conversation
+                agentGroupChat.AddChatMessage(new ChatMessageContent(AuthorRole.User, "Please answer the review question."));
+                var cancellationToken = new System.Threading.CancellationToken(false);
+                await foreach (var message in agentGroupChat.InvokeAsync(cancellationToken))
+                {
+                    _logger.LogInformation($"Agentic message: {message.AuthorName}: {message.Content}");
+                    // No manual [COMPLETE] check here; only OrchestratorAgent with termination authority can end the chat.
+                }
+                // Get the answer from ContentStatePlugin
+                var finalAnswer = await contentStatePlugin.GetAssembledContent();
+                return finalAnswer;
+            });
         }
     }
 }

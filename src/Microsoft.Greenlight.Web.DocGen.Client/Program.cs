@@ -22,6 +22,10 @@ builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddSingleton<AuthenticationStateProvider, PersistentAuthenticationStateProvider>();
 builder.Services.AddSingleton<DynamicComponentResolver>();
 
+// Add permission and navigation services
+builder.Services.AddScoped<IPermissionService, PermissionService>();
+builder.Services.AddScoped<INavMenuStateService, NavMenuStateService>();
+
 builder.Services.AddMudServices();
 var serverBaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
 
@@ -128,6 +132,11 @@ builder.Services.AddHttpClient<IVectorStoreApiClient, VectorStoreApiClient>(clie
 });
 
 builder.Services.AddHttpClient<IDefinitionsApiClient, DefinitionsApiClient>(client =>
+{
+    client.BaseAddress = serverBaseAddress;
+});
+
+builder.Services.AddHttpClient<IAdminAuthorizationApiClient, AdminAuthorizationApiClient>(client =>
 {
     client.BaseAddress = serverBaseAddress;
 });

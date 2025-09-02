@@ -6,9 +6,10 @@ using Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Services.Search.Abstractions;
-using Orleans;
 using Microsoft.Greenlight.Grains.Ingestion.Contracts;
 using Microsoft.Greenlight.Grains.Ingestion.Contracts.Helpers;
+using Microsoft.Greenlight.API.Main.Authorization;
+using Microsoft.Greenlight.Shared.Contracts.Authorization;
 
 namespace Microsoft.Greenlight.API.Main.Controllers
 {
@@ -146,6 +147,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         ///     400 Bad Request: When the Document Library Info isn't provided
         /// </returns>
         [HttpPost]
+        [RequiresPermission(PermissionKeys.AlterDocumentProcessesAndLibraries)]
         [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [Consumes("application/json")]
@@ -175,6 +177,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         ///     Document Library Inofo object provided
         /// </returns>
         [HttpPut("{id:guid}")]
+        [RequiresPermission(PermissionKeys.AlterDocumentProcessesAndLibraries)]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [Consumes("application/json")]
@@ -201,6 +204,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         ///     404 Not found: When the document library can't be found using the Id provided
         /// </returns>
         [HttpDelete("{id:guid}")]
+        [RequiresPermission(PermissionKeys.AlterDocumentProcessesAndLibraries)]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> DeleteDocumentLibrary(Guid id)
@@ -298,6 +302,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         ///     204 No Content: When completed sucessfully
         /// </returns>
         [HttpPost("{documentLibraryId:guid}/document-processes/{documentProcessId:guid}/associate")]
+        [RequiresPermission(PermissionKeys.AlterDocumentProcessesAndLibraries)]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         public async Task<IActionResult> AssociateDocumentProcess(Guid documentLibraryId, Guid documentProcessId)
         {
@@ -315,6 +320,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         ///     204 No Content: When completed sucessfully
         /// </returns>
         [HttpPost("{documentLibraryId:guid}/document-processes/{documentProcessId:guid}/disassociate")]
+        [RequiresPermission(PermissionKeys.AlterDocumentProcessesAndLibraries)]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         public async Task<IActionResult> DisassociateDocumentProcess(Guid documentLibraryId, Guid documentProcessId)
         {

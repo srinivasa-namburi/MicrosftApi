@@ -18,6 +18,8 @@ using Microsoft.Greenlight.Shared.Helpers;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Orleans.Streams;
+using Microsoft.Greenlight.API.Main.Authorization;
+using Microsoft.Greenlight.Shared.Contracts.Authorization;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
@@ -253,6 +255,7 @@ public class ConfigurationController : BaseController
     /// Downloads an OCR language from the configured external repository and caches it to blob storage.
     /// </summary>
     [HttpPost("ocr/download")]
+    [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [Produces("application/json")]
@@ -304,6 +307,7 @@ public class ConfigurationController : BaseController
     /// Replaces the DefaultLanguages array for OCR in configuration (clears previous values and sets the provided list).
     /// </summary>
     [HttpPost("ocr/default-languages")]
+    [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> SetDefaultOcrLanguages([FromBody] List<string>? languages)
@@ -378,6 +382,7 @@ public class ConfigurationController : BaseController
     /// <param name="request"></param>
     /// <returns></returns>
     [HttpPost("update")]
+    [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
@@ -514,6 +519,7 @@ public class ConfigurationController : BaseController
     /// <param name="aiModelInfo">The AI model to create.</param>
     /// <returns>The created AI model.</returns>
     [HttpPost("ai-models")]
+    [RequiresPermission(PermissionKeys.ManageLlmModelsAndDeployments)]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [Produces("application/json")]
@@ -539,6 +545,7 @@ public class ConfigurationController : BaseController
     /// <param name="aiModelInfo">The updated AI model.</param>
     /// <returns>The updated AI model.</returns>
     [HttpPut("ai-models/{id}")]
+    [RequiresPermission(PermissionKeys.ManageLlmModelsAndDeployments)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -569,6 +576,7 @@ public class ConfigurationController : BaseController
     /// <param name="id">The ID of the AI model to delete.</param>
     /// <returns>No content.</returns>
     [HttpDelete("ai-models/{id}")]
+    [RequiresPermission(PermissionKeys.ManageLlmModelsAndDeployments)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -633,6 +641,7 @@ public class ConfigurationController : BaseController
     /// <param name="aiModelDeploymentInfo">The AI model deployment to create.</param>
     /// <returns>The created AI model deployment.</returns>
     [HttpPost("ai-model-deployments")]
+    [RequiresPermission(PermissionKeys.ManageLlmModelsAndDeployments)]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -665,6 +674,7 @@ public class ConfigurationController : BaseController
     /// <param name="aiModelDeploymentInfo">The updated AI model deployment.</param>
     /// <returns>The updated AI model deployment.</returns>
     [HttpPut("ai-model-deployments/{id}")]
+    [RequiresPermission(PermissionKeys.ManageLlmModelsAndDeployments)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -695,6 +705,7 @@ public class ConfigurationController : BaseController
     /// <param name="id">The ID of the AI model deployment to delete.</param>
     /// <returns>No content.</returns>
     [HttpDelete("ai-model-deployments/{id}")]
+    [RequiresPermission(PermissionKeys.ManageLlmModelsAndDeployments)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult> DeleteAiModelDeployment(Guid id)
@@ -715,7 +726,8 @@ public class ConfigurationController : BaseController
     /// Starts an export job for a given index table (Postgres only).
     /// </summary>
     [HttpPost("indexes/export")]
-    public async Task<IActionResult> StartIndexExport([FromBody] IndexExportRequest request)
+    [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
+    public IActionResult StartIndexExport([FromBody] IndexExportRequest request)
     {
         if (!_serviceConfigurationOptionsMonitor.CurrentValue.GreenlightServices.Global.UsePostgresMemory)
             return BadRequest("Export is only available when UsePostgresMemory is enabled.");
@@ -732,6 +744,7 @@ public class ConfigurationController : BaseController
     /// Gets the status of an export job.
     /// </summary>
     [HttpGet("indexes/export/{jobId}")]
+    [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
     public async Task<ActionResult<IndexExportJobStatus>> GetIndexExportStatus(Guid jobId)
     {
         var grain = _clusterClient.GetGrain<IIndexExportGrain>(jobId);
@@ -743,7 +756,8 @@ public class ConfigurationController : BaseController
     /// Starts an import job for a given index table (Postgres only).
     /// </summary>
     [HttpPost("indexes/import")]
-    public async Task<IActionResult> StartIndexImport([FromBody] IndexImportRequest request)
+    [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
+    public IActionResult StartIndexImport([FromBody] IndexImportRequest request)
     {
         if (!_serviceConfigurationOptionsMonitor.CurrentValue.GreenlightServices.Global.UsePostgresMemory)
             return BadRequest("Import is only available when UsePostgresMemory is enabled.");
@@ -760,6 +774,7 @@ public class ConfigurationController : BaseController
     /// Gets the status of an import job.
     /// </summary>
     [HttpGet("indexes/import/{jobId}")]
+    [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
     public async Task<ActionResult<IndexImportJobStatus>> GetIndexImportStatus(Guid jobId)
     {
         var grain = _clusterClient.GetGrain<IIndexImportGrain>(jobId);

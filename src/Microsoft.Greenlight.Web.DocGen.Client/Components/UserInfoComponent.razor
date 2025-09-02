@@ -1,0 +1,227 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved *@
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.Greenlight.Web.Shared.Auth
+@using Microsoft.Greenlight.Web.DocGen.Client.Services
+@using System.Security.Claims
+@using System.Text.Json
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IPermissionService PermissionService
+@inject NavigationManager NavigationManager
+@inject ILogger<UserInfoComponent> Logger
+@implements IDisposable
+
+<MudMenu AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft">
+    <ActivatorContent>
+        <MudTooltip Text="@_currentUser?.Name">
+            <MudButton Variant="Variant.Text" Color="Color.Inherit" Class="pa-2">
+                <MudIcon Icon="@Icons.Material.Filled.Person" Class="mr-2" />
+                <MudText>@_displayName</MudText>
+            </MudButton>
+        </MudTooltip>
+    </ActivatorContent>
+    <ChildContent>
+        <div class="pa-4" style="min-width: 400px; max-width: 600px;">
+            <MudText Typo="Typo.h6" Class="mb-3">User Information</MudText>
+            
+            @if (_currentUser != null)
+            {
+                <MudGrid>
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.subtitle2">Name:</MudText>
+                        <MudText>@_currentUser.Name</MudText>
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.subtitle2">Email:</MudText>
+                        <MudText>@_currentUser.Email</MudText>
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.subtitle2">User ID:</MudText>
+                        <MudText Class="text-caption" Style="word-break: break-all;">@_currentUser.UserId</MudText>
+                    </MudItem>
+                </MudGrid>
+
+                <MudDivider Class="my-3" />
+
+                <MudExpansionPanels MultiExpansion="false">
+                    <MudExpansionPanel IsInitiallyExpanded="false">
+                        <TitleContent>
+                            <div style="display: flex; align-items: center;">
+                                <MudIcon Icon="@Icons.Material.Filled.Security" class="mr-3"></MudIcon>
+                                <MudText>User Permissions</MudText>
+                            </div>
+                        </TitleContent>
+                        <ChildContent>
+                            @if (_isLoadingPermissions)
+                            {
+                                <MudSkeleton Height="100px" />
+                            }
+                            else if (_userPermissions != null && _userPermissions.Count > 0)
+                            {
+                                <div style="max-height: 300px; overflow-y: auto;">
+                                    <MudText Typo="Typo.subtitle2" Class="mb-2">Active Permissions (@_userPermissions.Count):</MudText>
+                                    
+                                    <div class="d-flex flex-wrap gap-2">
+                                        @foreach (var permission in _userPermissions.OrderBy(p => p))
+                                        {
+                                            <MudChip Size="Size.Small" Color="Color.Success" Class="ma-1">
+                                                @GetPermissionDisplayName(permission)
+                                            </MudChip>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                            else if (_permissionError != null)
+                            {
+                                <MudAlert Severity="Severity.Error">
+                                    Failed to load permissions: @_permissionError
+                                </MudAlert>
+                                <MudButton Variant="Variant.Text" OnClick="LoadPermissionsAsync" Class="mt-2">
+                                    Retry
+                                </MudButton>
+                            }
+                            else
+                            {
+                                <MudAlert Severity="Severity.Info">No permissions assigned to this user</MudAlert>
+                            }
+                        </ChildContent>
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
+
+                <MudDivider Class="my-3" />
+
+                @* Logout Section *@
+                <div class="d-flex justify-center">
+                    <form method="post" action="authentication/logout">
+                        <AntiforgeryToken />
+                        <input type="hidden" name="ReturnUrl" value="@_currentUrl" />
+                        <MudButton ButtonType="ButtonType.Submit" 
+                                   Variant="Variant.Filled" 
+                                   Color="Color.Error" 
+                                   StartIcon="@Icons.Material.Filled.ExitToApp"
+                                   Class="mt-2">
+                            Logout
+                        </MudButton>
+                    </form>
+                </div>
+            }
+            else
+            {
+                <MudText>Not authenticated</MudText>
+                <MudDivider Class="my-3" />
+                <div class="d-flex justify-center">
+                    <MudButton Href="/authentication/login" 
+                               Variant="Variant.Filled" 
+                               Color="Color.Primary" 
+                               StartIcon="@Icons.Material.Filled.Login"
+                               Class="mt-2">
+                        Login
+                    </MudButton>
+                </div>
+            }
+        </div>
+    </ChildContent>
+</MudMenu>
+
+@code {
+    private UserInfo? _currentUser;
+    private AuthenticationState? _authState;
+    private string _displayName = "User";
+    private HashSet<string>? _userPermissions;
+    private string? _permissionError;
+    private bool _isLoadingPermissions;
+    private string? _currentUrl;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            
+            if (_authState.User.Identity?.IsAuthenticated == true)
+            {
+                _currentUser = UserInfo.FromClaimsPrincipal(_authState.User);
+                _displayName = GetDisplayName(_currentUser.Name);
+                Logger.LogInformation("User info loaded for {UserName}", _currentUser.Name);
+                
+                // Load permissions on initialization
+                await LoadPermissionsAsync();
+            }
+            else
+            {
+                Logger.LogInformation("User is not authenticated");
+            }
+
+            // Set up current URL tracking for logout
+            _currentUrl = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+            NavigationManager.LocationChanged += OnLocationChanged;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading user information");
+        }
+    }
+
+    private string GetDisplayName(string fullName)
+    {
+        if (string.IsNullOrWhiteSpace(fullName))
+            return "User";
+
+        // Try to get first name only, fallback to full name if it doesn't contain spaces
+        var parts = fullName.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length > 0 ? parts[0] : fullName;
+    }
+
+    private async Task LoadPermissionsAsync()
+    {
+        if (_currentUser == null) return;
+        
+        _isLoadingPermissions = true;
+        _permissionError = null;
+        StateHasChanged();
+
+        try
+        {
+            Logger.LogInformation("Loading user permissions via permission service");
+            _userPermissions = await PermissionService.GetUserPermissionsAsync();
+            Logger.LogInformation("Loaded {PermissionCount} permissions for user", _userPermissions.Count);
+        }
+        catch (Exception ex)
+        {
+            _permissionError = ex.Message;
+            Logger.LogError(ex, "Error loading user permissions");
+        }
+        finally
+        {
+            _isLoadingPermissions = false;
+            StateHasChanged();
+        }
+    }
+
+    private string GetPermissionDisplayName(string permissionKey)
+    {
+        // Convert permission keys to more readable display names
+        return permissionKey switch
+        {
+            "AlterSystemConfiguration" => "System Configuration",
+            "ManageLlmModelsAndDeployments" => "AI Model Management",
+            "GenerateDocument" => "Document Generation",
+            "ManageUsersAndRoles" => "User & Role Management",
+            "Chat" => "Chat Access",
+            "DefineReviews" => "Define Reviews",
+            "ExecuteReviews" => "Execute Reviews",
+            "AlterDocumentProcessesAndLibraries" => "Document Processes & Libraries",
+            _ => permissionKey // Fallback to original key if not mapped
+        };
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        _currentUrl = NavigationManager.ToBaseRelativePath(e.Location);
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+    }
+}}

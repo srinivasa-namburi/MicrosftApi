@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.Greenlight.Shared.Contracts.DTO.Auth;
+using Microsoft.Greenlight.Web.DocGen.ServiceClients;
 
 namespace Microsoft.Greenlight.Web.DocGen.Auth;
 
@@ -23,7 +25,9 @@ internal sealed class OidcRefreshHandler : IDisposable
 
     private readonly HttpClient refreshClient = new HttpClient();
 
-    public OidcRefreshHandler(IOptionsMonitor<OpenIdConnectOptions> oidcOptionsMonitor, ILogger<OidcRefreshHandler> logger)
+    public OidcRefreshHandler(
+        IOptionsMonitor<OpenIdConnectOptions> oidcOptionsMonitor,
+        ILogger<OidcRefreshHandler> logger)
     {
         _oidcOptionsMonitor = oidcOptionsMonitor;
         _logger = logger;
@@ -88,7 +92,7 @@ internal sealed class OidcRefreshHandler : IDisposable
         }
 
         // Create a new ClaimsIdentity with the refreshed access token
-        var claimsIdentity = validateContext.Principal.Identity as ClaimsIdentity;
+        var claimsIdentity = validateContext.Principal?.Identity as ClaimsIdentity;
         if (claimsIdentity != null)
         {
             // Remove the old access_token if it exists
@@ -97,15 +101,18 @@ internal sealed class OidcRefreshHandler : IDisposable
             {
                 claimsIdentity.RemoveClaim(existingAccessTokenClaim);
             }
-            
+
             // Add the new access_token claim
             claimsIdentity.AddClaim(new Claim("access_token", message.AccessToken));
-            
+
             // Optionally, you might want to refresh other claims as well based on the new token information
         }
 
         // Replace the principal in the context with the updated identity
-        validateContext.ReplacePrincipal(new ClaimsPrincipal(claimsIdentity));
+        if (claimsIdentity != null)
+        {
+            validateContext.ReplacePrincipal(new ClaimsPrincipal(claimsIdentity));
+        }
 
         // Indicate that the cookie should be renewed
         validateContext.ShouldRenew = true;
@@ -121,5 +128,26 @@ internal sealed class OidcRefreshHandler : IDisposable
             new AuthenticationToken { Name = "expires_at", Value = expiresAt.ToString("o", CultureInfo.InvariantCulture) },
             new AuthenticationToken { Name = "nonce", Value = message.Nonce }
         });
+
+        // Push refreshed token to backend store for Orleans/MCP usage
+        try
+        {
+            var sub = claimsIdentity?.FindFirst("sub")?.Value;
+            if (!string.IsNullOrWhiteSpace(sub) && !string.IsNullOrWhiteSpace(message.AccessToken))
+            {
+                var pushClient = validateContext.HttpContext.RequestServices.GetRequiredService<IServerTokenPushClient>();
+                await pushClient.PushUserTokenAsync(new UserTokenDTO
+                {
+                    ProviderSubjectId = sub,
+                    AccessToken = message.AccessToken,
+                    ExpiresOnUtc = expiresAt.UtcDateTime
+                }, message.AccessToken, validateContext.HttpContext.RequestAborted);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Don't fail auth on push issues; log at debug to avoid noisy logs
+            _logger.LogDebug(ex, "Failed to push refreshed user token to backend store.");
+        }
     }
 }

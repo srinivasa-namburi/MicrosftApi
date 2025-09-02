@@ -19,4 +19,8 @@ public class DocumentGenerationState
     public string? FailureReason { get; set; }
     public string? FailureDetails { get; set; }
     public Guid CorrelationId { get; set; }
+    /// <summary>
+    /// The Provider Subject ID (OID/sub) of the user who started this orchestration.
+    /// </summary>
+    public string? StartedByProviderSubjectId { get; set; }
 }

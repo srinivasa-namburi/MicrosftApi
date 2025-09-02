@@ -1,0 +1,115 @@
+@inject IPermissionService PermissionService
+
+@if (_isLoading && Authorizing != null)
+{
+    @Authorizing
+}
+else if (_hasPermission)
+{
+    @if (Mode == PermissionMode.DisableControls)
+    {
+        <div class="@ContainerClass" @attributes="AdditionalAttributes">
+            @ChildContent
+        </div>
+    }
+    else
+    {
+        @ChildContent
+    }
+}
+else
+{
+    @switch (Mode)
+    {
+        case PermissionMode.ShowHide:
+            // Render the NotAuthorized fragment if provided, otherwise render nothing
+            @NotAuthorized
+            break;
+        case PermissionMode.PreserveLayout:
+            // Use visibility:hidden to preserve layout but hide content
+            <div class="@ContainerClass" style="visibility: hidden;" @attributes="AdditionalAttributes">
+                @ChildContent
+            </div>
+            break;
+        case PermissionMode.DisableControls:
+            // Actively disable controls by wrapping them with a disabled fieldset
+            <div class="@ContainerClass" @attributes="AdditionalAttributes">
+                <fieldset disabled title="@(_controlState.UnauthorizedReason ?? "You don't have permission to use this")" style="border:0;padding:0;margin:0;">
+                    @ChildContent
+                </fieldset>
+            </div>
+            break;
+    }
+}
+
+@code {
+    [Parameter] public string? Permission { get; set; }
+    [Parameter] public string[]? AnyPermissions { get; set; }
+    [Parameter] public string[]? AllPermissions { get; set; }
+    [Parameter] public PermissionMode Mode { get; set; } = PermissionMode.ShowHide;
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? NotAuthorized { get; set; }
+    [Parameter] public RenderFragment? Authorizing { get; set; }
+
+    [Parameter] public string? ContainerClass { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool _isLoading = true;
+    private bool _hasPermission = false;
+    private PermissionControlState _controlState = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CheckPermissionsAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await CheckPermissionsAsync();
+    }
+
+    private async Task CheckPermissionsAsync()
+    {
+        _isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            if (!string.IsNullOrEmpty(Permission))
+            {
+                _hasPermission = await PermissionService.HasPermissionAsync(Permission);
+            }
+            else if (AnyPermissions != null && AnyPermissions.Length > 0)
+            {
+                _hasPermission = await PermissionService.HasAnyPermissionAsync(AnyPermissions);
+            }
+            else if (AllPermissions != null && AllPermissions.Length > 0)
+            {
+                var userPermissions = await PermissionService.GetUserPermissionsAsync();
+                _hasPermission = AllPermissions.All(p => userPermissions.Contains(p));
+            }
+            else
+            {
+                // No permissions specified, assume authorized
+                _hasPermission = true;
+            }
+
+            _controlState.IsAuthorized = _hasPermission;
+            _controlState.UnauthorizedReason = _hasPermission ? null : "You don't have permission to use this control";
+        }
+        catch
+        {
+            _hasPermission = false;
+            _controlState.IsAuthorized = false;
+            _controlState.UnauthorizedReason = "Permission check failed";
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+}

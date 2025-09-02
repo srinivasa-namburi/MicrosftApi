@@ -1,6 +1,7 @@
 using System.Net;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
+using Microsoft.Greenlight.Shared.Contracts.DTO.Auth;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Web.Shared.ServiceClients;
 
@@ -35,7 +36,7 @@ internal sealed class AuthorizationApiClient : BaseServiceClient<AuthorizationAp
         }
 
         response?.EnsureSuccessStatusCode();
-        
+
         // Return user info if found - otherwise return null
         return await response?.Content.ReadFromJsonAsync<UserInfoDTO>()!;
     }
@@ -43,19 +44,25 @@ internal sealed class AuthorizationApiClient : BaseServiceClient<AuthorizationAp
     public async Task<ThemePreference> GetThemePreferenceAsync(string providerSubjectId)
     {
         var response = await SendGetRequestMessage($"/api/authorization/theme/{providerSubjectId}");
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<ThemePreference>();
+        response?.EnsureSuccessStatusCode();
+        return await response!.Content.ReadFromJsonAsync<ThemePreference>();
     }
 
     public async Task SetThemePreferenceAsync(ThemePreferenceDTO themePreferenceDto)
     {
         var response = await SendPostRequestMessage("/api/authorization/theme", themePreferenceDto);
-        response.EnsureSuccessStatusCode();
+        response?.EnsureSuccessStatusCode();
     }
 
-    public async Task<string> GetApiAddressAsync()
+    public Task<string> GetApiAddressAsync()
     {
         var apiAddress = _configuration["services:api-main:https:0"];
-        return apiAddress;
+        return Task.FromResult(apiAddress ?? string.Empty);
+    }
+
+    public async Task SetUserTokenAsync(UserTokenDTO tokenDto)
+    {
+        var response = await SendPostRequestMessage("/api/authorization/user-token", tokenDto, authorize: true);
+        response?.EnsureSuccessStatusCode();
     }
 }

@@ -1,7 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+using Azure.Core;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Enums;
+using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.SemanticKernel;
 using ModelContextProtocol.Client;
 using System.Text.RegularExpressions;
@@ -9,37 +12,57 @@ using System.Text.RegularExpressions;
 namespace Microsoft.Greenlight.Shared.Plugins
 {
     /// <summary>
-    /// Implementation of an MCP plugin using SSE (HTTP) communication.
+    /// HTTP-first MCP plugin implementation with support for Streaming HTTP and SSE fallback.
+    /// - Uses Streaming HTTP transport by default (Authorization via HttpClient).
+    /// - Falls back to SSE when URL explicitly targets an SSE endpoint or HTTP fails with 404/406.
     /// </summary>
 #pragma warning disable SKEXP0001
-    public class SseMcpPlugin : McpPluginBase, IDisposable
+    public class HttpMcpPlugin : McpPluginBase, IDisposable
     {
-        private readonly ILogger<SseMcpPlugin>? _logger;
+        private readonly ILogger? _logger;
+        private readonly AzureCredentialHelper? _credentialHelper;
+        private readonly IConfiguration? _configuration;
+        private readonly Orleans.IClusterClient? _clusterClient;
         private bool _isInitialized;
         private bool _isDisposed;
         private bool _isStarted;
         private readonly SemaphoreSlim _lock = new(1, 1);
         private DocumentProcessInfo? _initializedDocumentProcess;
 
+        /// <summary>
+        /// Gets the underlying MCP client instance, if started.
+        /// </summary>
         public override IMcpClient? McpClient { get; protected set; }
 
-        public SseMcpPlugin(
+        /// <summary>
+        /// Initializes a new instance of the <see cref="HttpMcpPlugin"/> class.
+        /// </summary>
+        public HttpMcpPlugin(
             McpPluginManifest? manifest,
             string version,
-            ILogger<SseMcpPlugin>? logger = null)
+            ILogger? logger = null,
+            AzureCredentialHelper? credentialHelper = null,
+            IConfiguration? configuration = null,
+            Orleans.IClusterClient? clusterClient = null)
         {
             Manifest = manifest ?? throw new ArgumentNullException(nameof(manifest));
             Name = manifest.Name;
             Description = manifest.Description;
             Version = version;
-            Type = McpPluginType.Sse;
+            Type = McpPluginType.Http;
             _logger = logger;
+            _credentialHelper = credentialHelper;
+            _configuration = configuration;
+            _clusterClient = clusterClient;
         }
 
+        /// <summary>
+        /// Initializes the plugin for a document process.
+        /// </summary>
         public override async Task InitializeAsync(DocumentProcessInfo documentProcess)
         {
             if (_isDisposed)
-                throw new ObjectDisposedException(nameof(SseMcpPlugin));
+                throw new ObjectDisposedException(nameof(HttpMcpPlugin));
 
             if (_isInitialized && _initializedDocumentProcess?.Id == documentProcess.Id)
                 return;
@@ -50,7 +73,7 @@ namespace Microsoft.Greenlight.Shared.Plugins
                 if (_isInitialized && _initializedDocumentProcess?.Id == documentProcess.Id)
                     return;
 
-                _logger?.LogInformation("Initializing SSE MCP plugin: {PluginName} v{Version} for document process: {ProcessName}",
+                _logger?.LogInformation("Initializing HTTP MCP plugin: {PluginName} v{Version} for document process: {ProcessName}",
                     Name, Version, documentProcess.ShortName);
 
                 _lock.Release();
@@ -59,22 +82,25 @@ namespace Microsoft.Greenlight.Shared.Plugins
                 try
                 {
                     if (_isDisposed)
-                        throw new ObjectDisposedException(nameof(SseMcpPlugin));
+                        throw new ObjectDisposedException(nameof(HttpMcpPlugin));
                     _isInitialized = true;
                     _initializedDocumentProcess = documentProcess;
-                    _logger?.LogInformation("SSE MCP plugin initialized: {PluginName} v{Version}", Name, Version);
+                    _logger?.LogInformation("HTTP MCP plugin initialized: {PluginName} v{Version}", Name, Version);
                 }
                 finally { _lock.Release(); }
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "Error initializing SSE MCP plugin: {PluginName}", Name);
+                _logger?.LogError(ex, "Error initializing HTTP MCP plugin: {PluginName}", Name);
                 if (_lock.CurrentCount == 0) _lock.Release();
                 await StopAsync();
                 throw;
             }
         }
 
+        /// <summary>
+        /// Retrieves the kernel functions exposed by the connected MCP server.
+        /// </summary>
         public override async Task<IList<KernelFunction>> GetKernelFunctionsAsync(DocumentProcessInfo documentProcess)
         {
             if (_isDisposed)
@@ -82,7 +108,7 @@ namespace Microsoft.Greenlight.Shared.Plugins
             await InitializeAsync(documentProcess);
             if (McpClient == null)
             {
-                _logger?.LogWarning("Unable to get kernel functions for SSE MCP plugin {PluginName} - MCP client is null", Name);
+                _logger?.LogWarning("Unable to get kernel functions for HTTP MCP plugin {PluginName} - MCP client is null", Name);
                 return [];
             }
             // First attempt
@@ -92,7 +118,7 @@ namespace Microsoft.Greenlight.Shared.Plugins
             }
             catch (Exception ex)
             {
-                _logger?.LogWarning(ex, "Error getting kernel functions from SSE MCP plugin {PluginName}. Attempting to reconnect...", Name);
+                _logger?.LogWarning(ex, "Error getting kernel functions from HTTP MCP plugin {PluginName}. Attempting to reconnect...", Name);
                 // Try to reinitialize the client and retry once
                 try
                 {
@@ -102,7 +128,7 @@ namespace Microsoft.Greenlight.Shared.Plugins
                     await StartAsync();
                     if (McpClient == null)
                     {
-                        _logger?.LogError("Failed to recreate MCP client for SSE plugin {PluginName}", Name);
+                        _logger?.LogError("Failed to recreate MCP client for HTTP plugin {PluginName}", Name);
                         return Array.Empty<KernelFunction>();
                     }
                     // Retry with the new client
@@ -110,7 +136,7 @@ namespace Microsoft.Greenlight.Shared.Plugins
                 }
                 catch (Exception retryEx)
                 {
-                    _logger?.LogError(retryEx, "Error getting kernel functions from SSE MCP plugin {PluginName} after reconnect attempt. Aborting.", Name);
+                    _logger?.LogError(retryEx, "Error getting kernel functions from HTTP MCP plugin {PluginName} after reconnect attempt. Aborting.", Name);
                     return Array.Empty<KernelFunction>();
                 }
             }
@@ -121,10 +147,10 @@ namespace Microsoft.Greenlight.Shared.Plugins
             var tools = await McpClient!.ListToolsAsync();
             if (tools.Count == 0)
             {
-                _logger?.LogWarning("SSE MCP plugin {PluginName} has no tools available", Name);
+                _logger?.LogWarning("HTTP MCP plugin {PluginName} has no tools available", Name);
                 return [];
             }
-            
+
             var kernelFunctions = tools
                 .Select(tool =>
                 {
@@ -133,23 +159,26 @@ namespace Microsoft.Greenlight.Shared.Plugins
                     return renamedTool.AsKernelFunction();
                 })
                 .ToList();
-            
-            _logger?.LogInformation("Retrieved {FunctionCount} kernel functions from SSE MCP plugin {PluginName}",
+
+            _logger?.LogInformation("Retrieved {FunctionCount} kernel functions from HTTP MCP plugin {PluginName}",
                 kernelFunctions.Count, Name);
-            
+
             foreach (var tool in tools)
             {
-                _logger?.LogDebug("SSE MCP plugin {PluginName} provides tool: {ToolName}", Name, tool.Name);
+                _logger?.LogDebug("HTTP MCP plugin {PluginName} provides tool: {ToolName}", Name, tool.Name);
             }
-            
+
             return kernelFunctions;
         }
 
         /// <inheritdoc/>
+        /// <summary>
+        /// Starts the plugin by connecting to the MCP server using Streamable HTTP (preferred) or SSE fallback.
+        /// </summary>
         public override async Task StartAsync()
         {
             if (_isDisposed)
-                throw new ObjectDisposedException(nameof(SseMcpPlugin));
+                throw new ObjectDisposedException(nameof(HttpMcpPlugin));
             if (_isStarted)
                 return;
             await _lock.WaitAsync();
@@ -157,41 +186,67 @@ namespace Microsoft.Greenlight.Shared.Plugins
             {
                 if (_isStarted)
                     return;
-                _logger?.LogInformation("Starting SSE MCP plugin: {PluginName} v{Version}", Name, Version);
+                _logger?.LogInformation("Starting HTTP MCP plugin: {PluginName} v{Version}", Name, Version);
                 string? url = Manifest?.Url;
                 if (string.IsNullOrWhiteSpace(url))
-                    throw new InvalidOperationException("SSE MCP plugin requires a URL.");
-                var sseConfig = PrepareSseConfig(url);
+                    throw new InvalidOperationException("HTTP MCP plugin requires a URL.");
+                var baseUri = new Uri(url);
                 _lock.Release();
                 try
                 {
-                    // Try original endpoint, then /sse, then /mcp if needed
-                    var endpointsToTry = new List<Uri> { sseConfig.Endpoint };
-                    if (!sseConfig.Endpoint.AbsolutePath.TrimEnd('/').EndsWith("/sse", StringComparison.OrdinalIgnoreCase))
-                        endpointsToTry.Add(new Uri(AppendPath(sseConfig.Endpoint, "sse")));
-                    if (!sseConfig.Endpoint.AbsolutePath.TrimEnd('/').EndsWith("/mcp", StringComparison.OrdinalIgnoreCase))
-                        endpointsToTry.Add(new Uri(AppendPath(sseConfig.Endpoint, "mcp")));
+                    // Decide transport: explicit "/sse" path => SSE; otherwise prefer HTTP Streaming
+                    bool explicitSse = baseUri.AbsolutePath.Contains("/sse", StringComparison.OrdinalIgnoreCase);
+
+                    // Build endpoint candidates
+                    var httpEndpointsToTry = new List<Uri>();
+                    var sseEndpointsToTry = new List<Uri>();
+
+                    if (explicitSse)
+                    {
+                        sseEndpointsToTry.Add(baseUri);
+                    }
+                    else
+                    {
+                        // Prefer base URL as-is (may already be /mcp)
+                        httpEndpointsToTry.Add(baseUri);
+                        // Also try ensuring /mcp suffix
+                        if (!baseUri.AbsolutePath.TrimEnd('/').EndsWith("/mcp", StringComparison.OrdinalIgnoreCase))
+                        {
+                            httpEndpointsToTry.Add(new Uri(AppendPath(baseUri, "mcp")));
+                        }
+                        // Keep SSE fallbacks for backwards-compat
+                        sseEndpointsToTry.Add(new Uri(AppendPath(baseUri, "mcp/sse")));
+                        sseEndpointsToTry.Add(new Uri(AppendPath(baseUri, "sse")));
+                    }
 
                     Exception? lastException = null;
-                    foreach (var endpoint in endpointsToTry)
+                    // Try HTTP streaming endpoints first (if not explicitly SSE)
+                    foreach (var endpoint in httpEndpointsToTry)
                     {
                         try
                         {
-                            var tryConfig = new SseClientTransportOptions { Name = Name, Endpoint = endpoint };
-                            var mcpClient = await McpClientFactory.CreateAsync(new SseClientTransport(tryConfig));
+                            var httpClient = await CreateHttpClientAsync();
+                            var httpOptions = new SseClientTransportOptions
+                            {
+                                Name = Name,
+                                Endpoint = endpoint,
+                                TransportMode = HttpTransportMode.StreamableHttp
+                            };
+                            var transport = new SseClientTransport(httpOptions, httpClient, loggerFactory: null, ownsHttpClient: true);
+                            var mcpClient = await McpClientFactory.CreateAsync(transport);
                             await _lock.WaitAsync();
                             try
                             {
                                 if (_isDisposed)
                                 {
                                     await mcpClient.DisposeAsync();
-                                    throw new ObjectDisposedException(nameof(SseMcpPlugin));
+                                    throw new ObjectDisposedException(nameof(HttpMcpPlugin));
                                 }
                                 if (!_isStarted)
                                 {
                                     McpClient = mcpClient;
                                     _isStarted = true;
-                                    _logger?.LogInformation("SSE MCP plugin started: {PluginName} v{Version} (Endpoint: {Endpoint})", Name, Version, endpoint);
+                                    _logger?.LogInformation("HTTP MCP plugin started: {PluginName} v{Version} (Endpoint: {Endpoint})", Name, Version, endpoint);
                                     return;
                                 }
                                 else
@@ -209,18 +264,72 @@ namespace Microsoft.Greenlight.Shared.Plugins
                         }
                         catch (Exception ex)
                         {
-                            _logger?.LogError(ex, "Error creating SSE MCP client for plugin: {PluginName} (Endpoint: {Endpoint})", Name, endpoint);
+                            _logger?.LogError(ex, "Error creating HTTP MCP client for plugin: {PluginName} (Endpoint: {Endpoint})", Name, endpoint);
                             lastException = ex;
+                            // On generic failure, try SSE fallbacks next
                             break;
+                        }
+                    }
+
+                    // If we get here and were not explicitly SSE, try SSE fallbacks for back-compat
+                    if (!explicitSse && !_isStarted)
+                    {
+                        foreach (var endpoint in sseEndpointsToTry)
+                        {
+                            try
+                            {
+                                var httpClient = await CreateHttpClientAsync();
+                                var tryConfig = new SseClientTransportOptions
+                                {
+                                    Name = Name,
+                                    Endpoint = endpoint,
+                                    TransportMode = HttpTransportMode.Sse
+                                };
+                                var transport = new SseClientTransport(tryConfig, httpClient, loggerFactory: null, ownsHttpClient: true);
+                                var mcpClient = await McpClientFactory.CreateAsync(transport);
+                                await _lock.WaitAsync();
+                                try
+                                {
+                                    if (_isDisposed)
+                                    {
+                                        await mcpClient.DisposeAsync();
+                                        throw new ObjectDisposedException(nameof(HttpMcpPlugin));
+                                    }
+                                    if (!_isStarted)
+                                    {
+                                        McpClient = mcpClient;
+                                        _isStarted = true;
+                                        _logger?.LogInformation("HTTP MCP plugin (SSE fallback) started: {PluginName} v{Version} (Endpoint: {Endpoint})", Name, Version, endpoint);
+                                        return;
+                                    }
+                                    else
+                                    {
+                                        await mcpClient.DisposeAsync();
+                                    }
+                                }
+                                finally { _lock.Release(); }
+                            }
+                            catch (Exception ex) when (Is404or406(ex))
+                            {
+                                _logger?.LogInformation(ex, "SSE fallback endpoint {Endpoint} failed with 404/406. Trying next fallback.", endpoint);
+                                lastException = ex;
+                                continue;
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger?.LogError(ex, "Error creating SSE MCP client (fallback) for plugin: {PluginName} (Endpoint: {Endpoint})", Name, endpoint);
+                                lastException = ex;
+                                break;
+                            }
                         }
                     }
                     await _lock.WaitAsync();
                     try { McpClient = null; } finally { _lock.Release(); }
-                    throw lastException ?? new InvalidOperationException("Failed to create SSE MCP client for all endpoints.");
+                    throw lastException ?? new InvalidOperationException("Failed to create HTTP/SSE MCP client for all endpoints.");
                 }
                 catch (Exception ex)
                 {
-                    _logger?.LogError(ex, "Error starting SSE MCP plugin: {PluginName}", Name);
+                    _logger?.LogError(ex, "Error starting HTTP MCP plugin: {PluginName}", Name);
                     McpClient = null;
                     if (_lock.CurrentCount == 0) _lock.Release();
                     throw;
@@ -228,7 +337,7 @@ namespace Microsoft.Greenlight.Shared.Plugins
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "Error starting SSE MCP plugin: {PluginName}", Name);
+                _logger?.LogError(ex, "Error starting HTTP MCP plugin: {PluginName}", Name);
                 McpClient = null;
                 if (_lock.CurrentCount == 0) _lock.Release();
                 throw;
@@ -269,19 +378,88 @@ namespace Microsoft.Greenlight.Shared.Plugins
         }
 
         /// <summary>
-        /// Prepares the SSE configuration options.
+        /// Creates an HttpClient configured with Authorization if required.
+        /// Builds a fresh instance to ensure token freshness for HTTP transports.
         /// </summary>
-        private SseClientTransportOptions PrepareSseConfig(string url)
+        private async Task<HttpClient> CreateHttpClientAsync(string? providerSubjectId = null, CancellationToken cancellationToken = default)
         {
-            var sseConfig = new SseClientTransportOptions
+            var httpClient = new HttpClient();
+
+            var authType = Manifest?.AuthenticationType;
+            if (authType == null || authType == McpPluginAuthenticationType.None)
             {
-                Name = Name,
-                Endpoint = new Uri(url) // Convert string to Uri
-            };
-            // TODO: Add AzureCredentialHelper support if/when SseClientTransportOptions supports credentials
-            return sseConfig;
+                return httpClient; // no auth
+            }
+
+            try
+            {
+                switch (authType)
+                {
+                    case McpPluginAuthenticationType.GreenlightManagedIdentity:
+                        if (_credentialHelper != null)
+                        {
+                            var credential = _credentialHelper.GetAzureCredential();
+                            var audience = _configuration?["Mcp:Audience"] ?? _configuration?["AzureAd:Audience"];
+                            if (!string.IsNullOrWhiteSpace(audience))
+                            {
+                                // Support either bare resource or explicit scope
+                                var scope = audience!.EndsWith("/.default", StringComparison.OrdinalIgnoreCase)
+                                    ? audience!
+                                    : audience!.TrimEnd('/') + "/.default";
+                                var token = await credential.GetTokenAsync(new TokenRequestContext(new[] { scope }), cancellationToken).ConfigureAwait(false);
+                                httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.Token);
+                            }
+                            else
+                            {
+                                _logger?.LogWarning("ManagedIdentity auth requested but no Mcp:Audience/AzureAd:Audience configured. Proceeding without Authorization header.");
+                            }
+                        }
+                        else
+                        {
+                            _logger?.LogWarning("ManagedIdentity auth requested but AzureCredentialHelper is not available.");
+                        }
+                        break;
+                    case McpPluginAuthenticationType.UserBearerToken:
+                        // Allow ambient context to provide the ProviderSubjectId if not explicitly provided
+                        providerSubjectId ??= Microsoft.Greenlight.Shared.Services.UserExecutionContext.ProviderSubjectId;
+                        if (string.IsNullOrWhiteSpace(providerSubjectId))
+                        {
+                            _logger?.LogWarning("UserBearerToken auth requested but no ProviderSubjectId was supplied. Skipping Authorization header.");
+                            break;
+                        }
+                        if (_clusterClient != null)
+                        {
+                            var grain = _clusterClient.GetGrain<Microsoft.Greenlight.Grains.Shared.Contracts.IUserTokenStoreGrain>(providerSubjectId);
+                            var token = await grain.GetTokenAsync().ConfigureAwait(false);
+                            if (!string.IsNullOrWhiteSpace(token?.AccessToken))
+                            {
+                                httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token!.AccessToken);
+                            }
+                            else
+                            {
+                                _logger?.LogWarning("No access token found in UserTokenStore for ProviderSubjectId={ProviderSubjectId}", providerSubjectId);
+                            }
+                        }
+                        else
+                        {
+                            _logger?.LogWarning("UserBearerToken auth requested but Orleans IClusterClient is not available.");
+                        }
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error setting Authorization header for HTTP MCP plugin {PluginName}", Name);
+            }
+
+            return httpClient;
         }
 
+        // Note: No HttpClientTransportOptions; SseClientTransportOptions is used for both Streamable HTTP and SSE.
+
+        /// <summary>
+        /// Stops the plugin and disposes the MCP client.
+        /// </summary>
         public override async Task StopAsync()
         {
             if (_isDisposed)
@@ -293,7 +471,7 @@ namespace Microsoft.Greenlight.Shared.Plugins
             {
                 if (!_isStarted)
                     return;
-                _logger?.LogInformation("Stopping SSE MCP plugin: {PluginName}", Name);
+                _logger?.LogInformation("Stopping HTTP MCP plugin: {PluginName}", Name);
                 var client = McpClient;
                 McpClient = null;
                 _isStarted = false;
@@ -305,21 +483,24 @@ namespace Microsoft.Greenlight.Shared.Plugins
                     try
                     {
                         await client.DisposeAsync();
-                        _logger?.LogInformation("SSE MCP plugin stopped: {PluginName}", Name);
+                        _logger?.LogInformation("HTTP MCP plugin stopped: {PluginName}", Name);
                     }
                     catch (Exception ex)
                     {
-                        _logger?.LogError(ex, "Error disposing SSE MCP client for plugin: {PluginName}", Name);
+                        _logger?.LogError(ex, "Error disposing HTTP MCP client for plugin: {PluginName}", Name);
                     }
                 }
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "Error stopping SSE MCP plugin: {PluginName}", Name);
+                _logger?.LogError(ex, "Error stopping HTTP MCP plugin: {PluginName}", Name);
                 if (_lock.CurrentCount == 0) _lock.Release();
             }
         }
 
+        /// <summary>
+        /// Asynchronously disposes the plugin and its resources.
+        /// </summary>
         public override async Task DisposeAsync()
         {
             if (_isDisposed)
@@ -330,7 +511,7 @@ namespace Microsoft.Greenlight.Shared.Plugins
                 acquiredLock = await _lock.WaitAsync(TimeSpan.FromSeconds(5));
                 if (!acquiredLock)
                 {
-                    _logger?.LogWarning("Could not acquire lock when disposing SSE MCP plugin: {PluginName}. Continuing with disposal.", Name);
+                    _logger?.LogWarning("Could not acquire lock when disposing HTTP MCP plugin: {PluginName}. Continuing with disposal.", Name);
                 }
                 _isDisposed = true;
                 if (acquiredLock)
@@ -342,16 +523,16 @@ namespace Microsoft.Greenlight.Shared.Plugins
                 try
                 {
                     _lock.Dispose();
-                    _logger?.LogInformation("SSE MCP plugin disposed: {PluginName}", Name);
+                    _logger?.LogInformation("HTTP MCP plugin disposed: {PluginName}", Name);
                 }
                 catch (Exception ex)
                 {
-                    _logger?.LogError(ex, "Error disposing lock for SSE MCP plugin: {PluginName}", Name);
+                    _logger?.LogError(ex, "Error disposing lock for HTTP MCP plugin: {PluginName}", Name);
                 }
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "Error disposing SSE MCP plugin: {PluginName}", Name);
+                _logger?.LogError(ex, "Error disposing HTTP MCP plugin: {PluginName}", Name);
                 if (acquiredLock && _lock.CurrentCount == 0)
                 {
                     _lock.Release();
@@ -359,10 +540,39 @@ namespace Microsoft.Greenlight.Shared.Plugins
             }
         }
 
+        /// <summary>
+        /// Disposes the plugin synchronously.
+        /// </summary>
         public void Dispose()
         {
             DisposeAsync().ConfigureAwait(false).GetAwaiter().GetResult();
             GC.SuppressFinalize(this);
+        }
+    }
+#pragma warning restore SKEXP0001
+}
+
+// Back-compat type alias: existing references to SseMcpPlugin will now use HttpMcpPlugin behavior
+namespace Microsoft.Greenlight.Shared.Plugins
+{
+#pragma warning disable SKEXP0001
+    /// <summary>
+    /// Backward-compatible SSE plugin type alias that uses the new HTTP-capable implementation.
+    /// </summary>
+    public class SseMcpPlugin : HttpMcpPlugin
+    {
+        /// <summary>
+        /// Initializes a new instance of the <see cref="SseMcpPlugin"/> class.
+        /// </summary>
+        public SseMcpPlugin(
+            McpPluginManifest? manifest,
+            string version,
+            ILogger<SseMcpPlugin>? logger = null,
+            AzureCredentialHelper? credentialHelper = null,
+            IConfiguration? configuration = null,
+            Orleans.IClusterClient? clusterClient = null)
+            : base(manifest, version, logger, credentialHelper, configuration, clusterClient)
+        {
         }
     }
 #pragma warning restore SKEXP0001

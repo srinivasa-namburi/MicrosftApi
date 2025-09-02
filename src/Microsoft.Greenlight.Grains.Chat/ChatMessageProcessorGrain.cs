@@ -12,10 +12,10 @@ using Microsoft.Greenlight.Shared.Models;
 using Microsoft.Greenlight.Shared.Prompts;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.Shared.Services.ContentReference;
-using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel; // Needed for Kernel type
 using Microsoft.SemanticKernel.ChatCompletion; // Added for IChatCompletionService, ChatHistory
 using System.Text;
-using System.Text.Json;
+// using System.Text.Json; // removed: not used
 using System.Text.RegularExpressions;
 
 /// <summary>
@@ -168,7 +168,7 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
 
         await SendStatusNotificationAsync(messageDto.Id, "Extracting references from message...", true);
         var contentReferences = new List<ContentReferenceItem>();
-        var processingTasks = new List<Task<(string MatchKey, ContentReferenceItem Reference)>>();
+        var processingTasks = new List<Task<(string MatchKey, ContentReferenceItem? Reference)>>();
 
         foreach (Match match in matches)
         {
@@ -206,7 +206,7 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
         return contentReferences;
     }
 
-    private async Task<(string MatchKey, ContentReferenceItem Reference)> ProcessSingleReferenceAsync(
+    private async Task<(string MatchKey, ContentReferenceItem? Reference)> ProcessSingleReferenceAsync(
         Guid messageId,
         Guid referenceId,
         ContentReferenceType referenceType,
@@ -305,7 +305,7 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
                 // Send a brief message acknowledging the request
                 assistantMessageDto.Message = "I'm analyzing your request and will provide specific updates to the content. Please wait while I process this...";
                 assistantMessageDto.State = ChatMessageCreationState.Complete;
-                
+
                 // Send the response message first
                 await SendResponseReceivedNotificationAsync(userMessageDto.ConversationId, assistantMessageDto, assistantMessageDto.Message);
 
@@ -314,9 +314,10 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
                 {
                     // Get the chunk processor grain
                     var contentChunkProcessorGrain = GrainFactory.GetGrain<IContentChunkProcessorGrain>(userMessageDto.Id);
-                    
+
                     // Start the content processing task (without await to avoid blocking)
-                    _ = Task.Run(async () => {
+                    _ = Task.Run(async () =>
+                    {
                         try
                         {
                             await contentChunkProcessorGrain.ProcessContentUpdateAsync(
@@ -356,7 +357,7 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
             var contextString = await BuildContextWithSelectedReferencesAsync(userMessageDto.Message, referenceItems, 5);
 
             // Get document process info
-            DocumentProcessInfo documentProcessInfo = null;
+            DocumentProcessInfo? documentProcessInfo = null;
             try
             {
                 documentProcessInfo = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentProcessName);
@@ -383,8 +384,26 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
                 throw new InvalidOperationException($"No document process found. Tried {documentProcessName} and Default.");
             }
 
-            // Initialize the Semantic Kernel
-            var sk = await _kernelFactory.GetKernelForDocumentProcessAsync(documentProcessName);
+            // Initialize the Semantic Kernel with per-user context when available
+            string? providerSubjectId = null;
+            try
+            {
+                var convGrain = GrainFactory.GetGrain<IConversationGrain>(userMessageDto.ConversationId);
+                var convState = await convGrain.GetStateAsync();
+                providerSubjectId = convState?.StartedByProviderSubjectId;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Unable to retrieve conversation state for {ConversationId} to determine ProviderSubjectId", userMessageDto.ConversationId);
+            }
+
+            // Ensure ambient context is set during kernel creation so plugins created during enrichment see the user
+            Kernel sk = await UserContextRunner.RunAsync(providerSubjectId, async () =>
+            {
+                return !string.IsNullOrWhiteSpace(providerSubjectId)
+                    ? await _kernelFactory.GetKernelForDocumentProcessAsync(documentProcessName, providerSubjectId)
+                    : await _kernelFactory.GetKernelForDocumentProcessAsync(documentProcessName);
+            });
             var openAiSettings = await _kernelFactory.GetPromptExecutionSettingsForDocumentProcessAsync(
                 documentProcessInfo, AiTaskType.ChatReplies);
 

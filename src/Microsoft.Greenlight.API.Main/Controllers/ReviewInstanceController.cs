@@ -6,6 +6,8 @@ using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Models.Review;
 using Microsoft.Greenlight.Shared.Services;
+using Microsoft.Greenlight.API.Main.Authorization;
+using Microsoft.Greenlight.Shared.Contracts.Authorization;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
@@ -45,6 +47,7 @@ public class ReviewInstanceController : BaseController
     ///     404 Not Found: When no review instances could be found
     /// </returns>
     [HttpGet]
+    [RequiresPermission(PermissionKeys.ExecuteReviews)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/json")]
@@ -71,6 +74,7 @@ public class ReviewInstanceController : BaseController
     ///     404 Not Found: When the review instance could not be found using the review instance id provided
     /// </returns>
     [HttpGet("{reviewInstanceId:guid}")]
+    [RequiresPermission(PermissionKeys.ExecuteReviews)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/json")]
@@ -97,6 +101,7 @@ public class ReviewInstanceController : BaseController
     ///     404 Not Found: When the review instance could not be found using the review instance id provided
     /// </returns>
     [HttpGet("{reviewInstanceId:guid}/answers")]
+    [RequiresPermission(PermissionKeys.ExecuteReviews)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/json")]
@@ -138,6 +143,7 @@ public class ReviewInstanceController : BaseController
     ///     or the export link id on the review instance is not found
     /// </returns>
     [HttpPost]
+    [RequiresPermission(PermissionKeys.ExecuteReviews)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [Consumes("application/json")]
@@ -190,6 +196,7 @@ public class ReviewInstanceController : BaseController
     ///     404 Not Found: When the review instance could not be found using the review instance id provided
     /// </returns>
     [HttpPost("{reviewInstanceId:guid}/execute")]
+    [RequiresPermission(PermissionKeys.ExecuteReviews)]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ReviewInstanceInfo>> SubmitExecutionRequestForReviewInstance(Guid reviewInstanceId)

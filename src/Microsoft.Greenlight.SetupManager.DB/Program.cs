@@ -3,6 +3,7 @@ using Microsoft.Greenlight.SetupManager.DB;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Helpers;
+using Microsoft.Greenlight.Shared.Services;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -24,9 +25,9 @@ var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfig
                                                        .Get<ServiceConfigurationOptions>()!;
 builder.AddDocGenDbContext(serviceConfigurationOptions);
 
-
-var credentialHelper = new AzureCredentialHelper(builder.Configuration);
-builder.AddGreenlightServices(credentialHelper, serviceConfigurationOptions);
+// Register only the minimal services needed for setup/seeding to avoid pulling in
+// Orleans, AI, and other heavy dependencies during migrations.
+builder.Services.AddTransient<IPromptDefinitionService, PromptDefinitionService>();
 
 
 var host = builder.Build();

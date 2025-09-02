@@ -1,0 +1,484 @@
+@page "/admin/authorization"
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Authorization
+@inject IAdminAuthorizationApiClient AdminAuth
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+@using MudBlazor
+
+<MudPaper Class="pa-4">
+    <MudText Typo="Typo.h5">Authorization Management</MudText>
+    
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="() => _errorMessage = string.Empty">
+            @_errorMessage
+        </MudAlert>
+    }
+    
+    <MudTabs>
+        <MudTabPanel Text="Roles">
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudStack>
+                        <div class="d-flex justify-space-between align-center">
+                            <MudText Typo="Typo.h6">Roles</MudText>
+                            <MudButton 
+                                Variant="Variant.Filled" 
+                                Color="Color.Primary" 
+                                Size="Size.Small"
+                                OnClick="CreateNewRole">
+                                New Role
+                            </MudButton>
+                        </div>
+                        <MudTable Items="_roles" Hover="true" Dense="true" SelectedItem="_selectedRole" SelectedItemChanged="@((RoleInfo? role) => OnRoleSelectionChanged(role))">
+                            <HeaderContent>
+                                <MudTh>Name</MudTh>
+                                <MudTh>Description</MudTh>
+                                <MudTh>Entra Mapping</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="Name">@context!.Name</MudTd>
+                                <MudTd DataLabel="Description">@context!.Description</MudTd>
+                                <MudTd DataLabel="Entra Mapping">
+                                    @if (!string.IsNullOrEmpty(context.EntraAppRoleValue))
+                                    {
+                                        <MudChip Size="Size.Small" Color="Color.Primary">@context.EntraAppRoleValue</MudChip>
+                                    }
+                                    else if (context.EntraAppRoleId.HasValue)
+                                    {
+                                        <MudChip Size="Size.Small" Color="Color.Secondary">ID: @context.EntraAppRoleId.Value.ToString("N")[..8]...</MudChip>
+                                    }
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    </MudStack>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudText Typo="Typo.h6">Edit Role</MudText>
+                    <MudStack Spacing="2">
+                        <MudTextField Label="Name" @bind-Value="_editRole.Name" Required="true" />
+                        <MudTextField Label="Description" @bind-Value="_editRole.Description" />
+                        
+                        <MudText Typo="Typo.subtitle2" Class="mt-3">Entra App Role Mapping</MudText>
+                        <MudTextField 
+                            Label="Entra App Role Name (Primary)" 
+                            @bind-Value="_editRole.EntraAppRoleValue" 
+                            HelperText="Maps to the role name in user's token (e.g., 'DocumentGeneration'). This is the most common mapping method." />
+                        <MudTextField 
+                            Label="Entra App Role ID (Optional)" 
+                            @bind-Value="_entraIdText" 
+                            HelperText="Optional GUID for additional validation. Leave empty unless specifically required." />
+                        
+                        <MudButton 
+                            Variant="Variant.Filled" 
+                            Color="Color.Primary" 
+                            OnClick="SaveRole" 
+                            Disabled="_isSaving">
+                            @if (_isSaving)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-2" />
+                                <span>Saving...</span>
+                            }
+                            else
+                            {
+                                <span>Save</span>
+                            }
+                        </MudButton>
+                        
+                        @if (_selectedRole?.Id != Guid.Empty)
+                        {
+                            <MudButton 
+                                Variant="Variant.Outlined" 
+                                Color="Color.Error" 
+                                OnClick="DeleteRole" 
+                                Disabled="_isSaving">
+                                Delete Role
+                            </MudButton>
+                        }
+                    </MudStack>
+                    
+                    <MudDivider Class="my-3" />
+                    <MudText Typo="Typo.subtitle1">Permissions</MudText>
+                    <MudList>
+                        @foreach (var p in _permissions)
+                        {
+                            var has = _selectedPermissions.Contains(p.Key);
+                            <MudListItem>
+                                <div class="d-flex flex-column">
+                                    <MudCheckBox Value="has" T="bool" Label="@p.DisplayName" Immediate="true" ValueChanged="(val)=>TogglePermissionAsync(p.Key, val)" />
+                                    @if (!string.IsNullOrWhiteSpace(p.Description))
+                                    {
+                                        <MudText Typo="Typo.caption" Class="text-secondary ms-6">@p.Description</MudText>
+                                    }
+                                </div>
+                            </MudListItem>
+                        }
+                    </MudList>
+                </MudItem>
+            </MudGrid>
+        </MudTabPanel>
+        <MudTabPanel Text="Users">
+            <MudStack Spacing="2">
+                <MudTextField Label="Search users (name or email)" @bind-Value="UserQuery" Immediate="true" DebounceInterval="300" />
+                @if (_userResults.Count > 0)
+                {
+                    <MudList>
+                        @foreach (var u in _userResults)
+                        {
+                            <MudListItem>
+                                <div class="w-100">
+                                    <MudText Typo="Typo.subtitle1">@(!string.IsNullOrWhiteSpace(u.FullName) ? u.FullName : u.ProviderSubjectId)</MudText>
+                                    @if (!string.IsNullOrWhiteSpace(u.Email))
+                                    {
+                                        <MudText Typo="Typo.caption" Class="text-secondary">@u.Email</MudText>
+                                    }
+                                    <div class="my-2">
+                                        @foreach (var a in u.Assignments)
+                                        {
+                                            var canRemove = !a.IsFromEntra;
+                                            <MudChip OnClose="@(() => RemoveRoleAssignmentAsync(u, a.RoleId))" Closeable="@canRemove" Color="Color.Primary" Class="me-2 mb-1">@a.RoleName@(a.IsFromEntra ? " (Entra)" : string.Empty)</MudChip>
+                                        }
+                                    </div>
+                                    <div class="d-flex align-items-center">
+                                        <MudSelect @bind-Value="_userRoleSelection[u.ProviderSubjectId]" Label="Add role" Dense="true">
+                                            @foreach (var r in _roles)
+                                            {
+                                                <MudSelectItem Value="@r.Id">@r.Name</MudSelectItem>
+                                            }
+                                        </MudSelect>
+                                        <MudButton Class="ms-2" Disabled="@(!_userRoleSelection.TryGetValue(u.ProviderSubjectId, out var rid) || rid == Guid.Empty)" OnClick="() => AssignRoleToUserAsync(u)">Assign</MudButton>
+                                    </div>
+                                </div>
+                            </MudListItem>
+                        }
+                    </MudList>
+                }
+            </MudStack>
+        </MudTabPanel>
+    </MudTabs>
+</MudPaper>
+
+@code {
+    private List<RoleInfo> _roles = [];
+    private List<PermissionInfo> _permissions = [];
+    private RoleInfo? _selectedRole;
+    private RoleInfo _editRole = new() { Id = Guid.Empty, Name = string.Empty };
+    private string? _entraIdText;
+    private HashSet<string> _selectedPermissions = [];
+    private string _userQuery = string.Empty;
+    private List<UserSearchResult> _userResults = new();
+    private CancellationTokenSource? _userSearchCts;
+    private Dictionary<string, Guid> _userRoleSelection = new(StringComparer.Ordinal);
+    private bool _isSaving = false;
+    private string _errorMessage = string.Empty;
+
+    private string UserQuery
+    {
+        get => _userQuery;
+        set
+        {
+            if (!string.Equals(_userQuery, value, StringComparison.Ordinal))
+            {
+                _userQuery = value;
+                _ = OnUserQueryChanged(_userQuery);
+            }
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            _permissions = await AdminAuth.ListPermissionsAsync();
+            _roles = await AdminAuth.ListRolesAsync();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to load authorization data: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    private void CreateNewRole()
+    {
+        _selectedRole = null;
+        OnRoleSelectionChanged(_selectedRole);
+    }
+
+    private void OnRoleSelectionChanged(RoleInfo? selectedRole)
+    {
+        _selectedRole = selectedRole;
+        _errorMessage = string.Empty; // Clear errors when switching roles
+        
+        if (selectedRole != null)
+        {
+            _editRole = new RoleInfo
+            {
+                Id = selectedRole.Id,
+                Name = selectedRole.Name,
+                Description = selectedRole.Description,
+                EntraAppRoleId = selectedRole.EntraAppRoleId,
+                EntraAppRoleValue = selectedRole.EntraAppRoleValue,
+                IsActive = selectedRole.IsActive,
+                PermissionIds = new List<Guid>(selectedRole.PermissionIds)
+            };
+            _entraIdText = selectedRole.EntraAppRoleId?.ToString();
+            // Map selected PermissionIds to permission keys for UI toggles
+            var keys = selectedRole.PermissionIds
+                .Select(id => _permissions.FirstOrDefault(p => p.Id == id)?.Key)
+                .Where(k => !string.IsNullOrWhiteSpace(k))
+                .Cast<string>();
+            _selectedPermissions = new HashSet<string>(keys, StringComparer.Ordinal);
+        }
+        else
+        {
+            // Create new role
+            _editRole = new RoleInfo { Id = Guid.Empty, Name = string.Empty };
+            _entraIdText = null;
+            _selectedPermissions.Clear();
+        }
+    }
+
+    private async Task SaveRole()
+    {
+        if (_isSaving) return;
+        
+        _isSaving = true;
+        _errorMessage = string.Empty;
+        
+        try
+        {
+            // Validate required fields
+            if (string.IsNullOrWhiteSpace(_editRole.Name))
+            {
+                _errorMessage = "Role name is required.";
+                return;
+            }
+            
+            // Parse Entra App Role ID if provided
+            Guid? entraAppRoleId = null;
+            if (!string.IsNullOrWhiteSpace(_entraIdText))
+            {
+                if (Guid.TryParse(_entraIdText, out var gid))
+                {
+                    entraAppRoleId = gid;
+                }
+                else
+                {
+                    _errorMessage = "Invalid Entra App Role ID format. Must be a valid GUID.";
+                    return;
+                }
+            }
+
+            var request = new UpsertRoleRequest
+            {
+                Id = _editRole.Id == Guid.Empty ? null : _editRole.Id,
+                Name = _editRole.Name,
+                Description = _editRole.Description,
+                EntraAppRoleId = entraAppRoleId,
+                EntraAppRoleValue = _editRole.EntraAppRoleValue
+            };
+
+            var saved = await AdminAuth.UpsertRoleAsync(request);
+            
+            var permissionsRequest = new SetRolePermissionsRequest
+            {
+                RoleId = saved.Id,
+                PermissionKeys = _selectedPermissions.ToList()
+            };
+            
+            await AdminAuth.SetRolePermissionsAsync(permissionsRequest);
+            await LoadData();
+            
+            Snackbar.Add("Role saved successfully!", Severity.Success);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to save role: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeleteRole()
+    {
+        if (_selectedRole?.Id == Guid.Empty) return;
+
+        var confirmed = await Dialogs.ShowMessageBox(
+            "Delete Role",
+            $"Are you sure you want to delete the role '{_selectedRole?.Name}'? This action cannot be undone.",
+            yesText: "Delete",
+            cancelText: "Cancel");
+
+        if (confirmed != true) return;
+
+        try
+        {
+            _errorMessage = string.Empty;
+            await AdminAuth.DeleteRoleAsync(_selectedRole!.Id);
+            await LoadData();
+            
+            // Clear selection after deletion
+            _selectedRole = null;
+            OnRoleSelectionChanged(_selectedRole);
+            
+            Snackbar.Add("Role deleted successfully!", Severity.Success);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to delete role: {ex.Message}";
+        }
+    }
+
+    private async Task TogglePermissionAsync(string key, bool add)
+    {
+        if (add) 
+            _selectedPermissions.Add(key); 
+        else 
+            _selectedPermissions.Remove(key);
+            
+        if (_selectedRole != null)
+        {
+            try
+            {
+                var request = new SetRolePermissionsRequest
+                {
+                    RoleId = _selectedRole.Id,
+                    PermissionKeys = _selectedPermissions.ToList()
+                };
+                await AdminAuth.SetRolePermissionsAsync(request);
+            }
+            catch (InvalidOperationException ex)
+            {
+                _errorMessage = ex.Message;
+                // Revert the change
+                if (add) 
+                    _selectedPermissions.Remove(key); 
+                else 
+                    _selectedPermissions.Add(key);
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                _errorMessage = $"Failed to update permissions: {ex.Message}";
+                // Revert the change
+                if (add) 
+                    _selectedPermissions.Remove(key); 
+                else 
+                    _selectedPermissions.Add(key);
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task OnUserQueryChanged(string text)
+    {
+        _userQuery = text ?? string.Empty;
+        _userSearchCts?.Cancel();
+        if (string.IsNullOrWhiteSpace(_userQuery) || _userQuery.Trim().Length < 2)
+        {
+            _userResults.Clear();
+            StateHasChanged();
+            return;
+        }
+        var cts = new CancellationTokenSource();
+        _userSearchCts = cts;
+        try
+        {
+            var results = await AdminAuth.SearchUsersAsync(_userQuery.Trim());
+            if (!cts.IsCancellationRequested)
+            {
+                _userResults = results ?? new();
+                // ensure selection dictionary has keys
+                foreach (var u in _userResults)
+                {
+                    if (!_userRoleSelection.ContainsKey(u.ProviderSubjectId))
+                        _userRoleSelection[u.ProviderSubjectId] = Guid.Empty;
+                }
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            if (!cts.IsCancellationRequested)
+            {
+                _errorMessage = $"Failed to search users: {ex.Message}";
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task AssignRoleToUserAsync(UserSearchResult user)
+    {
+        if (!_userRoleSelection.TryGetValue(user.ProviderSubjectId, out var roleId) || roleId == Guid.Empty)
+            return;
+            
+        try
+        {
+            _errorMessage = string.Empty;
+            
+            var request = new AssignUserRoleRequest
+            {
+                ProviderSubjectId = user.ProviderSubjectId,
+                RoleId = roleId,
+                IsFromEntra = false
+            };
+            
+            await AdminAuth.AssignUserRoleAsync(request);
+            
+            // update local state
+            var role = _roles.FirstOrDefault(r => r.Id == roleId);
+            if (role != null)
+            {
+                user.Assignments.Add(new UserSearchRoleAssignment { RoleId = roleId, RoleName = role.Name, IsFromEntra = false });
+            }
+            _userRoleSelection[user.ProviderSubjectId] = Guid.Empty;
+            Snackbar.Add("Role assigned successfully!", Severity.Success);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to assign role: {ex.Message}";
+        }
+    }
+
+    private async Task RemoveRoleAssignmentAsync(UserSearchResult user, Guid roleId)
+    {
+        try
+        {
+            _errorMessage = string.Empty;
+            await AdminAuth.RemoveAssignmentAsync(user.ProviderSubjectId, roleId);
+            var idx = user.Assignments.FindIndex(a => a.RoleId == roleId);
+            if (idx >= 0) user.Assignments.RemoveAt(idx);
+            Snackbar.Add("Role assignment removed successfully!", Severity.Success);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to remove role assignment: {ex.Message}";
+        }
+    }
+}

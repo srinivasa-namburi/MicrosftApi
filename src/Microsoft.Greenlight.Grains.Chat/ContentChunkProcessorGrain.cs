@@ -68,8 +68,23 @@ namespace Microsoft.Greenlight.Grains.Chat
                 // Send initial assistant message
                 await SendAssistantMessageUpdateAsync(conversationId, assistantMessage);
 
-                // Get a kernel for the document process
-                var sk = await _kernelFactory.GetKernelForDocumentProcessAsync(documentProcessName);
+                // Resolve ProviderSubjectId from the conversation state so downstream plugins/tools run as the user
+                string? providerSubjectId = null;
+                try
+                {
+                    var convGrain = GrainFactory.GetGrain<IConversationGrain>(conversationId);
+                    var convState = await convGrain.GetStateAsync();
+                    providerSubjectId = convState?.StartedByProviderSubjectId;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Unable to retrieve conversation state for {ConversationId} to determine ProviderSubjectId", conversationId);
+                }
+
+                // Get a kernel for the document process, carrying the ProviderSubjectId when available
+                var sk = !string.IsNullOrWhiteSpace(providerSubjectId)
+                    ? await _kernelFactory.GetKernelForDocumentProcessAsync(documentProcessName, providerSubjectId)
+                    : await _kernelFactory.GetKernelForDocumentProcessAsync(documentProcessName);
                 var executionSettings = await _kernelFactory.GetPromptExecutionSettingsForDocumentProcessAsync(
                     documentProcessName, AiTaskType.ChatReplies);
 

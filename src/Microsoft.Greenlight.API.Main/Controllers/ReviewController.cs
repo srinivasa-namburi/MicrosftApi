@@ -4,6 +4,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Models.Review;
+using Microsoft.Greenlight.API.Main.Authorization;
+using Microsoft.Greenlight.Shared.Contracts.Authorization;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
@@ -38,6 +40,7 @@ public class ReviewController : BaseController
     ///     200 Ok: When completed sucessfully
     /// </returns>
     [HttpGet]
+    [RequiresPermission(PermissionKeys.ExecuteReviews)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [Produces("application/json")]
     [Produces<ActionResult<List<ReviewDefinitionInfo>>>]
@@ -59,6 +62,7 @@ public class ReviewController : BaseController
     ///     404 Not Found: When the review could not be found using the Id provided
     /// </returns>
     [HttpGet("{id:guid}")]
+    [RequiresPermission(PermissionKeys.ExecuteReviews)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/json")]
@@ -109,6 +113,7 @@ public class ReviewController : BaseController
     ///     201 Created: When completed sucessfully
     /// </returns>
     [HttpPost]
+    [RequiresPermission(PermissionKeys.DefineReviews)]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [Consumes("application/json")]
     [Produces("application/json")]
@@ -133,6 +138,7 @@ public class ReviewController : BaseController
     ///     200 OK: When completed sucessfully
     /// </returns>
     [HttpPut("{id:guid}")]
+    [RequiresPermission(PermissionKeys.DefineReviews)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [Consumes("application/json")]
     [Produces("application/json")]
@@ -340,6 +346,7 @@ public class ReviewController : BaseController
     ///     404 Not Found: When the review could not be found using the id provided
     /// </returns>
     [HttpDelete("{id:guid}")]
+    [RequiresPermission(PermissionKeys.DefineReviews)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> DeleteReview(Guid id)
@@ -369,6 +376,7 @@ public class ReviewController : BaseController
     ///     404 Not Found: When no review instances could be found
     /// </returns>
     [HttpGet("recent-instances")]
+    [RequiresPermission(PermissionKeys.ExecuteReviews)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/json")]
@@ -405,6 +413,7 @@ public class ReviewController : BaseController
     ///     404 Not Found: When the review definition could not be found using the id provided
     /// </returns>
     [HttpGet("{id:guid}/document-processes")]
+    [RequiresPermission(PermissionKeys.ExecuteReviews)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/json")]

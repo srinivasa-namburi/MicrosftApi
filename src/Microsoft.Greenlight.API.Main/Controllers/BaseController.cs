@@ -11,7 +11,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers;
 /// This class is abstract and provides common functionality for derived controllers.
 /// </remarks>
 [ApiController]
-[Authorize(Roles = "DocumentGeneration")]
+[Authorize]
 [RequiredScope("access_as_user")]
 [Route("/api/[controller]")]
 public abstract class BaseController : ControllerBase

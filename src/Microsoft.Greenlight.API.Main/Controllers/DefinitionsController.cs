@@ -11,6 +11,8 @@ using Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.Shared.Services.Search.Abstractions;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Prompts;
+using Microsoft.Greenlight.API.Main.Authorization;
+using Microsoft.Greenlight.Shared.Contracts.Authorization;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
@@ -18,7 +20,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers;
 /// Import/export controller for document process and document library definitions.
 /// </summary>
 [Route("api/definitions")]
-public sealed class DefinitionsController :BaseController
+public sealed class DefinitionsController : BaseController
 {
     private readonly DocGenerationDbContext _db;
     private readonly IDocumentProcessInfoService _documentProcessInfoService;
@@ -29,16 +31,28 @@ public sealed class DefinitionsController :BaseController
     private readonly DefaultPromptCatalogTypes _defaultPromptCatalogTypes;
 
     // Lightweight DTO defined locally to decouple API from shared contracts for this diagnostic endpoint
+    /// <summary>
+    /// DTO describing compatibility information for a vector index with the Semantic Kernel unified layout.
+    /// </summary>
     public sealed class IndexCompatibilityInfoDto
     {
+        /// <summary>The index/collection name that was checked.</summary>
         public string IndexName { get; set; } = string.Empty;
+        /// <summary>True if the index/collection exists.</summary>
         public bool Exists { get; set; }
+        /// <summary>True if the index appears to use the SK unified record layout.</summary>
         public bool IsSkLayout { get; set; }
+        /// <summary>The matched embedding dimensions if detected; otherwise null.</summary>
         public int? MatchedEmbeddingDimensions { get; set; }
+        /// <summary>Optional warnings encountered during probing.</summary>
         public List<string> Warnings { get; set; } = new();
+        /// <summary>An optional error message when probing fails.</summary>
         public string? Error { get; set; }
     }
 
+    /// <summary>
+    /// Creates a new DefinitionsController for importing and exporting process and library definitions.
+    /// </summary>
     public DefinitionsController(
         DocGenerationDbContext db,
         IDocumentProcessInfoService documentProcessInfoService,
@@ -62,6 +76,7 @@ public sealed class DefinitionsController :BaseController
     /// Exports a document process definition into a portable package.
     /// </summary>
     [HttpGet("process/{id:guid}/export")]
+    [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces(typeof(DocumentProcessDefinitionPackageDto))]
@@ -105,7 +120,7 @@ public sealed class DefinitionsController :BaseController
         return await _db.DynamicDocumentProcessDefinitions
             .Include(p => p.Prompts).ThenInclude(pi => pi.PromptDefinition)
             .Include(p => p.DocumentOutline)!
-                .ThenInclude(o => o.OutlineItems)
+                .ThenInclude(o => o!.OutlineItems)
                     .ThenInclude(a => a.Children)
                         .ThenInclude(b => b.Children)
                             .ThenInclude(c => c.Children)
@@ -224,6 +239,7 @@ public sealed class DefinitionsController :BaseController
     /// <param name="blobStorageAutoImportFolderName">Optional override for auto import folder name.</param>
     /// <returns>The ID of the created document process.</returns>
     [HttpPost("process/import")]
+    [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<Guid>> ImportProcess(
@@ -296,12 +312,12 @@ public sealed class DefinitionsController :BaseController
         {
             var shortName = shortNameProperty.GetValue(package) as string;
             var normalizedShortName = NormalizeShortName(shortName);
-            
+
             if (string.IsNullOrWhiteSpace(normalizedShortName))
             {
                 return BadRequest("Short Name is required and must contain only letters, digits, or periods.");
             }
-            
+
             shortNameProperty.SetValue(package, normalizedShortName);
         }
 
@@ -370,7 +386,7 @@ public sealed class DefinitionsController :BaseController
         // Update the process to reference the new outline
         var createdProcess = await _db.DynamicDocumentProcessDefinitions
             .FirstOrDefaultAsync(p => p.Id == processId);
-        
+
         if (createdProcess != null)
         {
             createdProcess.DocumentOutlineId = newOutline.Id;
@@ -380,7 +396,7 @@ public sealed class DefinitionsController :BaseController
 
         // Build new items with completely new IDs and proper hierarchy
         var newRootItems = BuildNewOutlineItems(outlinePackage.Items, newOutline.Id, null);
-        
+
         // Add items level by level to ensure parents are saved before children
         await AddOutlineItemsLevelByLevel(newRootItems);
     }
@@ -406,7 +422,7 @@ public sealed class DefinitionsController :BaseController
             if (promptDefinition == null)
             {
                 _logger.LogWarning("Skipping prompt implementation for '{ShortCode}' - Prompt Definition does not exist in system. " +
-                                 "Prompt Definitions are system-level and must be created separately. Process: '{ProcessShortName}'", 
+                                 "Prompt Definitions are system-level and must be created separately. Process: '{ProcessShortName}'",
                                  promptPackage.ShortCode, processShortName);
                 promptsSkipped++;
                 continue;
@@ -422,7 +438,7 @@ public sealed class DefinitionsController :BaseController
             await _db.SaveChangesAsync();
         }
 
-        _logger.LogInformation("Prompt import completed for process '{ProcessShortName}': {ProcessedCount} processed, {SkippedCount} skipped", 
+        _logger.LogInformation("Prompt import completed for process '{ProcessShortName}': {ProcessedCount} processed, {SkippedCount} skipped",
             processShortName, promptsProcessed, promptsSkipped);
 
         if (promptsSkipped > 0)
@@ -436,7 +452,7 @@ public sealed class DefinitionsController :BaseController
     {
         // Check if this process already has an implementation for this prompt
         var existingImplementation = await _db.PromptImplementations
-            .FirstOrDefaultAsync(pi => pi.DocumentProcessDefinitionId == processId && 
+            .FirstOrDefaultAsync(pi => pi.DocumentProcessDefinitionId == processId &&
                                      pi.PromptDefinitionId == promptDefinition.Id);
 
         if (existingImplementation == null)
@@ -450,7 +466,7 @@ public sealed class DefinitionsController :BaseController
                 Text = promptPackage.Text ?? string.Empty
             };
             _db.PromptImplementations.Add(newImplementation);
-            _logger.LogInformation("Created prompt implementation for '{ShortCode}' in process '{ProcessShortName}'", 
+            _logger.LogInformation("Created prompt implementation for '{ShortCode}' in process '{ProcessShortName}'",
                 promptPackage.ShortCode, processShortName);
         }
         else
@@ -460,12 +476,12 @@ public sealed class DefinitionsController :BaseController
             {
                 existingImplementation.Text = promptPackage.Text ?? string.Empty;
                 _db.PromptImplementations.Update(existingImplementation);
-                _logger.LogInformation("Updated prompt implementation text for '{ShortCode}' in process '{ProcessShortName}'", 
+                _logger.LogInformation("Updated prompt implementation text for '{ShortCode}' in process '{ProcessShortName}'",
                     promptPackage.ShortCode, processShortName);
             }
             else
             {
-                _logger.LogDebug("Prompt implementation for '{ShortCode}' unchanged in process '{ProcessShortName}'", 
+                _logger.LogDebug("Prompt implementation for '{ShortCode}' unchanged in process '{ProcessShortName}'",
                     promptPackage.ShortCode, processShortName);
             }
         }
@@ -554,7 +570,7 @@ public sealed class DefinitionsController :BaseController
     {
         // Add the current item to the DbContext
         _db.DocumentOutlineItems.Add(item);
-        
+
         // Recursively add all children
         foreach (var child in item.Children)
         {
@@ -569,11 +585,11 @@ public sealed class DefinitionsController :BaseController
     private async Task AddOutlineItemsLevelByLevel(List<DocumentOutlineItem> rootItems)
     {
         var currentLevelItems = rootItems.ToList();
-        
+
         while (currentLevelItems.Count > 0)
         {
             var nextLevelItems = new List<DocumentOutlineItem>();
-            
+
             // Add all items at the current level
             foreach (var item in currentLevelItems)
             {
@@ -591,19 +607,19 @@ public sealed class DefinitionsController :BaseController
                     OrderIndex = item.OrderIndex,
                     Children = new List<DocumentOutlineItem>() // Empty children collection
                 };
-                
+
                 _db.DocumentOutlineItems.Add(itemToSave);
-                
+
                 // Collect children for the next level
                 nextLevelItems.AddRange(item.Children);
             }
-            
+
             // Save the current level before moving to children
             if (currentLevelItems.Count > 0)
             {
                 await _db.SaveChangesAsync();
             }
-            
+
             // Move to the next level
             currentLevelItems = nextLevelItems;
         }
@@ -613,6 +629,7 @@ public sealed class DefinitionsController :BaseController
     /// Returns true if the short name is available for a new process.
     /// </summary>
     [HttpGet("process/check-shortname/{shortName}")]
+    [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
     public async Task<ActionResult<bool>> IsProcessShortNameAvailable(string shortName)
     {
         shortName = NormalizeShortName(shortName);
@@ -627,6 +644,7 @@ public sealed class DefinitionsController :BaseController
     /// Exports a document library definition into a portable package.
     /// </summary>
     [HttpGet("library/{id:guid}/export")]
+    [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces(typeof(DocumentLibraryDefinitionPackageDto))]
@@ -646,6 +664,7 @@ public sealed class DefinitionsController :BaseController
     /// Imports a document library definition package. New IDs are generated.
     /// </summary>
     [HttpPost("library/import")]
+    [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<Guid>> ImportLibrary([FromBody] DocumentLibraryDefinitionPackageDto package)
@@ -747,6 +766,7 @@ public sealed class DefinitionsController :BaseController
     /// Returns true if the short name is available for a new document library.
     /// </summary>
     [HttpGet("library/check-shortname/{shortName}")]
+    [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
     public async Task<ActionResult<bool>> IsLibraryShortNameAvailable(string shortName)
     {
         shortName = NormalizeShortName(shortName);
@@ -762,6 +782,7 @@ public sealed class DefinitionsController :BaseController
     /// <param name="indexName">The index/collection name to check.</param>
     /// <returns>Compatibility information for the index.</returns>
     [HttpGet("index/compatibility/{indexName}")]
+    [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<ActionResult<IndexCompatibilityInfoDto>> GetIndexCompatibility(string indexName)
     {
@@ -771,7 +792,7 @@ public sealed class DefinitionsController :BaseController
             // First check if the collection exists using the reliable CollectionExistsAsync method
             var exists = await _vectorStoreProvider.CollectionExistsAsync(indexName);
             info.Exists = exists;
-            
+
             if (exists)
             {
                 // If it exists, verify it has the SK layout by trying a document partition lookup
@@ -899,12 +920,12 @@ public sealed class DefinitionsController :BaseController
                     _db.PromptImplementations.Add(defaultImplementation);
                     defaultImplementationsCreated++;
 
-                    _logger.LogInformation("Created default prompt implementation for '{ShortCode}' in imported process '{ProcessShortName}'", 
+                    _logger.LogInformation("Created default prompt implementation for '{ShortCode}' in imported process '{ProcessShortName}'",
                         promptDefinition.ShortCode, processShortName);
                 }
                 else
                 {
-                    _logger.LogDebug("Prompt definition '{ShortCode}' not found in system - cannot create default implementation for process '{ProcessShortName}'", 
+                    _logger.LogDebug("Prompt definition '{ShortCode}' not found in system - cannot create default implementation for process '{ProcessShortName}'",
                         promptCatalogProperty.Name, processShortName);
                 }
             }
@@ -913,7 +934,7 @@ public sealed class DefinitionsController :BaseController
         if (defaultImplementationsCreated > 0)
         {
             await _db.SaveChangesAsync();
-            _logger.LogInformation("Created {Count} default prompt implementations for imported process '{ProcessShortName}'", 
+            _logger.LogInformation("Created {Count} default prompt implementations for imported process '{ProcessShortName}'",
                 defaultImplementationsCreated, processShortName);
         }
         else

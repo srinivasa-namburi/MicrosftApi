@@ -21,6 +21,12 @@ public record GenerateDocumentDTO
     public string? AuthorOid { get; set; }
 
     /// <summary>
+    /// Provider user identifier (subject) for the current user. This is the stable per-user id used for per-user authorization.
+    /// Typically maps to the JWT "sub" claim and may be an opaque string or GUID depending on the identity provider.
+    /// </summary>
+    public string? ProviderSubjectId { get; set; }
+
+    /// <summary>
     /// Gets the name of the metadata model.
     /// </summary>
     public string? MetadataModelName { get; }

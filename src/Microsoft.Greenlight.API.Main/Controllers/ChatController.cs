@@ -4,6 +4,8 @@ using Microsoft.Greenlight.Grains.Chat.Contracts;
 using Microsoft.Greenlight.Shared.Contracts.Chat;
 using Microsoft.Greenlight.Shared.Prompts;
 using Microsoft.Greenlight.Shared.Services;
+using Microsoft.Greenlight.API.Main.Authorization;
+using Microsoft.Greenlight.Shared.Contracts.Authorization;
 
 namespace Microsoft.Greenlight.API.Main.Controllers
 {
@@ -38,6 +40,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         /// <param name="chatMessageDto">The chat message DTO.</param>
         /// <returns>An <see cref="IActionResult"/> representing the result of the operation.</returns>
         [HttpPost("")]
+        [RequiresPermission(PermissionKeys.Chat)]
         [ProducesResponseType(StatusCodes.Status202Accepted)]
         [Consumes("application/json")]
         public async Task<IActionResult> SendChatMessage([FromBody] ChatMessageDTO chatMessageDto)
@@ -68,6 +71,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         /// <param name="conversationId">The ID of the conversation.</param>
         /// <returns>An <see cref="ActionResult"/> containing the chat messages.</returns>
         [HttpGet("{documentProcessName}/{conversationId}")]
+        [RequiresPermission(PermissionKeys.Chat)]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]

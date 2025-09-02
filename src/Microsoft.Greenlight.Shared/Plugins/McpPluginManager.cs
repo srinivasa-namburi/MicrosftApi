@@ -1,9 +1,10 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
 using System.IO.Compression;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
@@ -56,7 +57,7 @@ namespace Microsoft.Greenlight.Shared.Plugins
             {
                 var loadLock = new SemaphoreSlim(1, 1);
                 await loadLock.WaitAsync();
-                
+
                 try
                 {
                     if (!_pluginsLoaded) // Double-check locking pattern
@@ -128,11 +129,11 @@ namespace Microsoft.Greenlight.Shared.Plugins
                 {
                     return mcpPlugin;
                 }
-                
+
                 // If not in container, load it dynamically
-                _logger?.LogInformation("Plugin '{PluginName}' version '{Version}' not found in container, loading dynamically", 
+                _logger?.LogInformation("Plugin '{PluginName}' version '{Version}' not found in container, loading dynamically",
                     plugin.Name, versionToUse);
-                
+
                 // Load the plugin based on its source type
                 mcpPlugin = await LoadPluginDynamicallyAsync(plugin, versionToUse);
                 return mcpPlugin;
@@ -168,7 +169,7 @@ namespace Microsoft.Greenlight.Shared.Plugins
 
                 var pluginAssociations = await dbContext.McpPluginDocumentProcesses
                     .Include(p => p.McpPlugin)
-                        .ThenInclude(v=>v!.Versions)
+                        .ThenInclude(v => v!.Versions)
                     .Include(p => p.Version)
                     .AsNoTracking()
                     .Where(p => p.DynamicDocumentProcessDefinitionId == documentProcess.Id && p.McpPlugin != null)
@@ -204,11 +205,11 @@ namespace Microsoft.Greenlight.Shared.Plugins
                         result.Add(mcpPlugin);
                         continue;
                     }
-                    
+
                     // If not in container, load it dynamically
-                    _logger?.LogInformation("Plugin '{PluginName}' version '{Version}' not found in container, loading dynamically", 
+                    _logger?.LogInformation("Plugin '{PluginName}' version '{Version}' not found in container, loading dynamically",
                         plugin.Name, versionToUse);
-                    
+
                     // Load the plugin based on its source type
                     mcpPlugin = await LoadPluginDynamicallyAsync(plugin, versionToUse);
                     if (mcpPlugin != null)
@@ -457,7 +458,7 @@ namespace Microsoft.Greenlight.Shared.Plugins
             ILoggerFactory? loggerFactory)
         {
             var pluginStream = await azureFileHelper.GetFileAsStreamFromContainerAndBlobName(
-                plugin.BlobContainerName, plugin.GetBlobName(version));
+                plugin.BlobContainerName!, plugin.GetBlobName(version));
 
             if (pluginStream == null)
             {
@@ -634,9 +635,15 @@ namespace Microsoft.Greenlight.Shared.Plugins
                     AuthenticationType = version.AuthenticationType
                 };
 
+                // Resolve helpers for auth
+                using var scope = _serviceScopeFactory.CreateScope();
+                var credentialHelper = scope.ServiceProvider.GetService<AzureCredentialHelper>();
+                var configuration = scope.ServiceProvider.GetService<IConfiguration>();
+                var clusterClient = scope.ServiceProvider.GetService<Orleans.IClusterClient>();
+
                 // Create the plugin instance
                 var logger = loggerFactory?.CreateLogger<SseMcpPlugin>();
-                var mcpPlugin = new SseMcpPlugin(manifest, version.ToString(), logger);
+                var mcpPlugin = new SseMcpPlugin(manifest, version.ToString(), logger, credentialHelper, configuration, clusterClient);
 
                 // Add the plugin to the container
                 _pluginContainer.AddPlugin(plugin.Name, version.ToString(), mcpPlugin);

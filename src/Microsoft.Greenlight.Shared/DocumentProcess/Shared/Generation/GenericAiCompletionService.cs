@@ -6,16 +6,12 @@ using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Helpers;
-using System.Text.Json;
 using Microsoft.Greenlight.Shared.Enums;
-// Duplicate using removed
 using Microsoft.Greenlight.Shared.Models;
 using Microsoft.Greenlight.Shared.Models.SourceReferences;
 using Microsoft.Greenlight.Shared.Plugins;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.Connectors.AzureOpenAI; // AzureOpenAIPromptExecutionSettings
-using Microsoft.SemanticKernel.Connectors.OpenAI; // ToolCallBehavior, OpenAI behavior types
 using Microsoft.SemanticKernel.ChatCompletion; // IChatCompletionService, ChatHistory
 using Scriban;
 using System.Text;
@@ -26,6 +22,10 @@ namespace Microsoft.Greenlight.Shared.DocumentProcess.Shared.Generation;
 #pragma warning disable SKEXP0011
 #pragma warning disable SKEXP0010
 #pragma warning disable SKEXP0001
+/// <summary>
+/// Generic AI completion service that generates body content using a single-kernel flow with optional tool usage.
+/// Ensures per-user ProviderSubjectId is propagated into Semantic Kernel instances when available.
+/// </summary>
 public class GenericAiCompletionService : IAiCompletionService
 {
     private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
@@ -42,8 +42,11 @@ public class GenericAiCompletionService : IAiCompletionService
     private readonly IPromptInfoService _promptInfoService;
     private readonly IKernelFactory _kernelFactory;
 
-    private ContentNode _createdBodyContentNode;
+    private ContentNode _createdBodyContentNode = default!;
 
+    /// <summary>
+    /// Constructs a GenericAiCompletionService for a specific document process.
+    /// </summary>
     public GenericAiCompletionService(
         IDbContextFactory<DocGenerationDbContext> dbContextFactory,
         AiCompletionServiceParameters<GenericAiCompletionService> parameters,
@@ -69,7 +72,7 @@ public class GenericAiCompletionService : IAiCompletionService
         string sectionOrTitleNumber, string sectionOrTitleText, ContentNodeType contentNodeType,
         string tableOfContentsString, Guid? metadataId, ContentNode? sectionContentNode)
     {
-        _logger.LogInformation("Starting GetBodyContentNodes for section {SectionNumber} - {SectionTitle} with {SourceReferenceCount} source references", 
+        _logger.LogInformation("Starting GetBodyContentNodes for section {SectionNumber} - {SectionTitle} with {SourceReferenceCount} source references",
             sectionOrTitleNumber, sectionOrTitleText, sourceReferences.Count);
 
         try
@@ -94,14 +97,14 @@ public class GenericAiCompletionService : IAiCompletionService
                 }
             };
 
-            _logger.LogDebug("Created content node {ContentNodeId} for section {SectionNumber} - {SectionTitle}", 
+            _logger.LogDebug("Created content node {ContentNodeId} for section {SectionNumber} - {SectionTitle}",
                 contentNodeId, sectionOrTitleNumber, sectionOrTitleText);
 
             var documentLikeSources = sourceReferences
                 .Where(r => r is DocumentProcessRepositorySourceReferenceItem or DocumentLibrarySourceReferenceItem or VectorStoreAggregatedSourceReferenceItem)
                 .ToList();
 
-            _logger.LogDebug("Filtered to {DocumentLikeSourceCount} document-like sources from {TotalSourceCount} total sources", 
+            _logger.LogDebug("Filtered to {DocumentLikeSourceCount} document-like sources from {TotalSourceCount} total sources",
                 documentLikeSources.Count, sourceReferences.Count);
 
             foreach (var kmDoc in documentLikeSources.OfType<KernelMemoryDocumentSourceReferenceItem>())
@@ -121,14 +124,14 @@ public class GenericAiCompletionService : IAiCompletionService
             _createdBodyContentNode.Text = combinedBodyText;
             _createdBodyContentNode.GenerationState = ContentNodeGenerationState.Completed;
 
-            _logger.LogInformation("Successfully generated body content with {TextLength} characters for section {SectionNumber} - {SectionTitle}", 
+            _logger.LogInformation("Successfully generated body content with {TextLength} characters for section {SectionNumber} - {SectionTitle}",
                 combinedBodyText.Length, sectionOrTitleNumber, sectionOrTitleText);
 
             return [_createdBodyContentNode];
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error in GetBodyContentNodes for section {SectionNumber} - {SectionTitle}", 
+            _logger.LogError(ex, "Error in GetBodyContentNodes for section {SectionNumber} - {SectionTitle}",
                 sectionOrTitleNumber, sectionOrTitleText);
             throw;
         }
@@ -139,10 +142,10 @@ public class GenericAiCompletionService : IAiCompletionService
         string sectionOrTitleNumber, string sectionOrTitleText,
         ContentNodeType contentNodeType, string tableOfContentsString, Guid? metadataId, ContentNode? sectionContentNode)
     {
-        _logger.LogDebug("Starting GetStreamingBodyContentText for section {SectionNumber} - {SectionTitle}", 
+        _logger.LogDebug("Starting GetStreamingBodyContentText for section {SectionNumber} - {SectionTitle}",
             sectionOrTitleNumber, sectionOrTitleText);
 
-        DocumentProcessInfo documentProcess;
+        DocumentProcessInfo? documentProcess;
         IPluginSourceReferenceCollector pluginSourceReferenceCollector;
         string systemPrompt;
         string exampleString;
@@ -156,7 +159,7 @@ public class GenericAiCompletionService : IAiCompletionService
         try
         {
             documentProcess = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(ProcessName);
-            
+
             if (documentProcess == null)
             {
                 _logger.LogError("Document process {ProcessName} not found", ProcessName);
@@ -167,7 +170,11 @@ public class GenericAiCompletionService : IAiCompletionService
 
             pluginSourceReferenceCollector = _sp.GetRequiredService<IPluginSourceReferenceCollector>();
 
-            _sk = await _kernelFactory.GetKernelForDocumentProcessAsync(documentProcess!.ShortName);
+            // Ensure ProviderSubjectId flows into the kernel: prefer ambient context
+            string? providerSubjectId = UserExecutionContext.ProviderSubjectId;
+            _sk = !string.IsNullOrWhiteSpace(providerSubjectId)
+                ? await _kernelFactory.GetKernelForDocumentProcessAsync(documentProcess!.ShortName, providerSubjectId)
+                : await _kernelFactory.GetKernelForDocumentProcessAsync(documentProcess!.ShortName);
 
             if (_sk == null)
             {
@@ -176,7 +183,7 @@ public class GenericAiCompletionService : IAiCompletionService
             }
 
             _logger.LogDebug("Retrieved Semantic Kernel instance for document process {ProcessName}", ProcessName);
-        
+
             _sk.PrepareSemanticKernelInstanceForGeneration(documentProcess!.ShortName);
 
             var sectionExample = new StringBuilder();
@@ -189,9 +196,9 @@ public class GenericAiCompletionService : IAiCompletionService
                     .Take(10)
                     .ToList();
 
-            _logger.LogDebug("Selected top {SelectedDocumentCount} documents with highest relevance scores from {TotalDocumentCount} total documents", 
+            _logger.LogDebug("Selected top {SelectedDocumentCount} documents with highest relevance scores from {TotalDocumentCount} total documents",
                 sourceDocumentsWithHighestScoringPartitions.Count, sourceDocuments.Count);
-        
+
             foreach (var document in sourceDocumentsWithHighestScoringPartitions)
             {
                 sectionExample.AppendLine($"[EXAMPLE: Document Extract]");
@@ -228,7 +235,7 @@ public class GenericAiCompletionService : IAiCompletionService
                 await _promptInfoService.GetPromptByShortCodeAndProcessNameAsync("SectionGenerationSystemPrompt", ProcessName);
             systemPrompt = systemPromptInfo?.Text ?? string.Empty;
 
-            _logger.LogDebug("Retrieved system prompt for process {ProcessName}: {HasSystemPrompt}", 
+            _logger.LogDebug("Retrieved system prompt for process {ProcessName}: {HasSystemPrompt}",
                 ProcessName, !string.IsNullOrEmpty(systemPrompt));
 
             var documentMetaData = await _dbContext.DocumentMetadata.FindAsync(metadataId);
@@ -246,7 +253,7 @@ public class GenericAiCompletionService : IAiCompletionService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error in initialization for GetStreamingBodyContentText for section {SectionNumber} - {SectionTitle}", 
+            _logger.LogError(ex, "Error in initialization for GetStreamingBodyContentText for section {SectionNumber} - {SectionTitle}",
                 sectionOrTitleNumber, sectionOrTitleText);
             throw;
         }
@@ -254,7 +261,7 @@ public class GenericAiCompletionService : IAiCompletionService
         // Main generation loop - moved outside try-catch to allow yielding
         for (var i = 0; i < _numberOfPasses; i++)
         {
-            _logger.LogDebug("Starting pass {PassNumber} of {NumberOfPasses} for section {FullSectionName}", 
+            _logger.LogDebug("Starting pass {PassNumber} of {NumberOfPasses} for section {FullSectionName}",
                 i + 1, _numberOfPasses, fullSectionName);
 
             string prompt;
@@ -303,7 +310,7 @@ public class GenericAiCompletionService : IAiCompletionService
             await foreach (var stringUpdate in ReturnCompletionsForPromptWithSemanticKernelFunctionCalling(documentProcess, systemPrompt,
                                prompt, pluginSourceReferenceCollector))
             {
-                
+
                 // Continue building the update until we reach a new line
                 responseLine += stringUpdate;
 
@@ -342,7 +349,7 @@ public class GenericAiCompletionService : IAiCompletionService
         string? promptInstructions)
     {
         var mainPromptInfo = await _promptInfoService.GetPromptByShortCodeAndProcessNameAsync("SectionGenerationMainPrompt", ProcessName);
-        var mainPrompt = mainPromptInfo.Text;
+        var mainPrompt = mainPromptInfo?.Text ?? string.Empty;
 
         var documentProcessName = ProcessName;
 
@@ -383,7 +390,7 @@ public class GenericAiCompletionService : IAiCompletionService
         string originalPrompt)
     {
         var continuationPromptInfo = await _promptInfoService.GetPromptByShortCodeAndProcessNameAsync("SectionGenerationMultiPassContinuationPrompt", ProcessName);
-        var continuationPrompt = continuationPromptInfo.Text;
+        var continuationPrompt = continuationPromptInfo?.Text ?? string.Empty;
 
         var template = Template.Parse(continuationPrompt);
 
@@ -404,7 +411,7 @@ public class GenericAiCompletionService : IAiCompletionService
     )
     {
         var summarizePromptInfo = await _promptInfoService.GetPromptByShortCodeAndProcessNameAsync("SectionGenerationSummaryPrompt", ProcessName);
-        var summarizePrompt = summarizePromptInfo.Text;
+        var summarizePrompt = summarizePromptInfo?.Text ?? string.Empty;
 
         var template = Template.Parse(summarizePrompt);
 
@@ -431,7 +438,7 @@ public class GenericAiCompletionService : IAiCompletionService
 
         // Collect all results first, then yield them to avoid try-catch with yield
         var results = new List<string>();
-        
+
         try
         {
             var chatService = _sk!.GetRequiredService<IChatCompletionService>();
@@ -472,7 +479,7 @@ public class GenericAiCompletionService : IAiCompletionService
         // Using a streaming OpenAi ChatCompletion, summarize the originalContent with up to 8000 tokens and return the summary
         // No need to render templates for these two prompts as they don't have any placeholders
         var systemPromptInfo = await _promptInfoService.GetPromptByShortCodeAndProcessNameAsync("SectionGenerationSystemPrompt", ProcessName);
-        var systemPrompt = systemPromptInfo.Text;
+        var systemPrompt = systemPromptInfo?.Text ?? string.Empty;
 
         var summarizePrompt = await BuildSummarizePrompt(originalContent);
 

@@ -8,6 +8,7 @@ using Microsoft.Greenlight.Shared.DocumentProcess.Dynamic;
 using Microsoft.Greenlight.Shared.DocumentProcess.Shared.Generation;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Models;
+using Microsoft.Greenlight.Shared.Services; // for UserExecutionContext
 using System.Text;
 using System.Text.Json;
 
@@ -32,7 +33,7 @@ public class ReportTitleSectionGeneratorGrain : Grain, IReportTitleSectionGenera
         _logger = logger;
     }
 
-    
+
     public async Task GenerateSectionAsync(Guid documentId, string? authorOid, string contentNodeJson,
         string documentOutlineJson, Guid? metadataId)
     {
@@ -69,7 +70,7 @@ public class ReportTitleSectionGeneratorGrain : Grain, IReportTitleSectionGenera
             var requesterId = $"ReportTitleSection:{documentId}:{contentNode.Id}";
             lease = await coordinator.AcquireAsync(requesterId, weight: 1, waitTimeout: TimeSpan.FromHours(4), leaseTtl: TimeSpan.FromHours(1));
 
-            _logger.LogInformation("Processing content node {ContentNodeId} for document process {DocumentProcess}", 
+            _logger.LogInformation("Processing content node {ContentNodeId} for document process {DocumentProcess}",
                 contentNode.Id, trackedDocument.DocumentProcess);
 
             try
@@ -123,6 +124,21 @@ public class ReportTitleSectionGeneratorGrain : Grain, IReportTitleSectionGenera
                 var bodyTextGenerator =
                     await _dpServiceFactory.GetServiceAsync<IBodyTextGenerator>(trackedDocument.DocumentProcess!);
 
+                // Retrieve initiating user from orchestration state for potential downstream per-user context
+                string? providerSubjectId = null;
+                try
+                {
+                    var orchestration = GrainFactory.GetGrain<IDocumentGenerationOrchestrationGrain>(documentId);
+                    var state = await orchestration.GetStateAsync();
+                    providerSubjectId = state?.StartedByProviderSubjectId;
+                    // If downstream services use ambient context, they can read it via UserExecutionContext during plugin calls
+                    // We don’t have direct kernel calls here; this is a placeholder for future flow if needed.
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Unable to retrieve StartedByProviderSubjectId for document {DocumentId}", documentId);
+                }
+
                 if (bodyTextGenerator == null)
                 {
                     _logger.LogError("BodyTextGenerator not found for document process {DocumentProcess}", trackedDocument.DocumentProcess);
@@ -130,20 +146,24 @@ public class ReportTitleSectionGeneratorGrain : Grain, IReportTitleSectionGenera
                     return;
                 }
 
-                _logger.LogInformation("Body text generator obtained successfully for document process {DocumentProcess}, generating body text...", 
+                _logger.LogInformation("Body text generator obtained successfully for document process {DocumentProcess}, generating body text...",
                     trackedDocument.DocumentProcess);
 
-                var bodyContentNodes = await bodyTextGenerator.GenerateBodyText(
-                    existingContentNode.Type == ContentNodeType.Title ? "Title" : "Heading",
-                    sectionNumber: ExtractSectionNumber(existingContentNode.Text),
-                    sectionTitle: ExtractSectionTitle(existingContentNode.Text),
-                    tableOfContentsString,
-                    trackedDocument.DocumentProcess,
-                    metadataId,
-                    existingContentNode
-                );
+                // Flow ambient per-user context during body generation so all downstream plugin calls inherit it
+                var bodyContentNodes = await UserContextRunner.RunAsync(providerSubjectId, async () =>
+                {
+                    return await bodyTextGenerator.GenerateBodyText(
+                        existingContentNode.Type == ContentNodeType.Title ? "Title" : "Heading",
+                        sectionNumber: ExtractSectionNumber(existingContentNode.Text),
+                        sectionTitle: ExtractSectionTitle(existingContentNode.Text),
+                        tableOfContentsString,
+                        trackedDocument.DocumentProcess!,
+                        metadataId,
+                        existingContentNode
+                    );
+                });
 
-                _logger.LogInformation("Generated {BodyContentNodeCount} body content nodes for content node {ContentNodeId}", 
+                _logger.LogInformation("Generated {BodyContentNodeCount} body content nodes for content node {ContentNodeId}",
                     bodyContentNodes.Count, existingContentNode.Id);
 
                 int bodyContentNodeNumber = 1;
@@ -188,7 +208,7 @@ public class ReportTitleSectionGeneratorGrain : Grain, IReportTitleSectionGenera
                 existingContentNode.GenerationState = ContentNodeGenerationState.Completed;
                 await dbContext.SaveChangesAsync();
 
-                _logger.LogInformation("Successfully completed content generation for node {ContentNodeId} in document {DocumentId}", 
+                _logger.LogInformation("Successfully completed content generation for node {ContentNodeId} in document {DocumentId}",
                     existingContentNode.Id, documentId);
 
                 // Publish the Completed event

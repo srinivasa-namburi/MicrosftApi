@@ -4,6 +4,8 @@ using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Services.ContentReference;
+using Microsoft.Greenlight.API.Main.Authorization;
+using Microsoft.Greenlight.Shared.Contracts.Authorization;
 
 namespace Microsoft.Greenlight.API.Main.Controllers
 {
@@ -46,6 +48,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         ///     500 Internal Server Error: When an error occurs while retrieving references
         /// </returns>
         [HttpGet("all")]
+        [RequiresAnyPermission(PermissionKeys.Chat, PermissionKeys.GenerateDocument)]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         [Produces("application/json")]
@@ -73,6 +76,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         ///     500 Internal Server Error: When an error occurs while searching references
         /// </returns>
         [HttpGet("search")]
+        [RequiresAnyPermission(PermissionKeys.Chat, PermissionKeys.GenerateDocument)]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         [Produces("application/json")]
@@ -102,6 +106,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         ///     500 Internal Server Error: When an error occurs while retrieving the reference
         /// </returns>
         [HttpGet("{id}/{type}")]
+        [RequiresAnyPermission(PermissionKeys.Chat, PermissionKeys.GenerateDocument)]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
@@ -132,6 +137,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         ///     500 Internal Server Error: When an error occurs while refreshing the cache
         /// </returns>
         [HttpPost("refresh")]
+        [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         [Produces("application/json")]
@@ -156,6 +162,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         /// <param name="conversationId">The conversation from which to remove the reference.</param>
         /// <returns>A confirmation message.</returns>
         [HttpDelete("remove/{referenceId}/{conversationId}")]
+        [RequiresPermission(PermissionKeys.Chat)]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> RemoveReference(Guid referenceId, Guid conversationId)

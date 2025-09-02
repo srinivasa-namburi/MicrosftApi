@@ -9,5 +9,9 @@ namespace Microsoft.Greenlight.Shared.Contracts.Messages.Review.Commands;
 [GenerateSerializer(GenerateFieldIds = GenerateFieldIds.PublicProperties)]
 public record ExecuteReviewRequest(Guid CorrelationId)
 {
+    /// <summary>
+    /// Provider Subject ID (OID/sub) of the user who initiated the review, if available.
+    /// </summary>
+    public string? ProviderSubjectId { get; init; }
 
 }

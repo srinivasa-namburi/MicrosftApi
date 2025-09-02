@@ -15,7 +15,6 @@ using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
 using Microsoft.Extensions.AI;
-using Microsoft.SemanticKernel.Connectors.OpenAI;
 using System.Globalization;
 
 #pragma warning disable SKEXP0011
@@ -78,6 +77,17 @@ namespace Microsoft.Greenlight.Shared.Services
         }
 
         /// <inheritdoc />
+        public async Task<Kernel> GetKernelForDocumentProcessAsync(string documentProcessName, string? providerSubjectId)
+        {
+            var kernel = await GetKernelForDocumentProcessAsync(documentProcessName).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(providerSubjectId))
+            {
+                kernel.Data[KernelUserContextConstants.ProviderSubjectId] = providerSubjectId!;
+            }
+            return kernel;
+        }
+
+        /// <inheritdoc />
         public async Task<Kernel> GetKernelForDocumentProcessAsync(DocumentProcessInfo documentProcess)
         {
             // Check if we already have a kernel for this document process
@@ -95,6 +105,17 @@ namespace Microsoft.Greenlight.Shared.Services
             // Create a new kernel for this document process
             var kernel = await CreateKernelForDocumentProcessAsync(documentProcess);
             _instanceContainer.StandardKernels[documentProcess.ShortName] = kernel;
+            return kernel;
+        }
+
+        /// <inheritdoc />
+        public async Task<Kernel> GetKernelForDocumentProcessAsync(DocumentProcessInfo documentProcess, string? providerSubjectId)
+        {
+            var kernel = await GetKernelForDocumentProcessAsync(documentProcess).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(providerSubjectId))
+            {
+                kernel.Data[KernelUserContextConstants.ProviderSubjectId] = providerSubjectId!;
+            }
             return kernel;
         }
 
@@ -269,7 +290,7 @@ namespace Microsoft.Greenlight.Shared.Services
                     autoInvoke: true,
                     options: new FunctionChoiceBehaviorOptions
                     {
-                        
+
                         AllowConcurrentInvocation = false,
                         AllowParallelCalls = false
                     });
@@ -470,6 +491,9 @@ namespace Microsoft.Greenlight.Shared.Services
             kernel.FunctionInvocationFilters.Add(
                 scope.ServiceProvider.GetRequiredKeyedService<IFunctionInvocationFilter>("PluginExecutionLoggingFilter"));
 
+            // Ensure user context is available during function invocations for downstream MCP plugins
+            kernel.FunctionInvocationFilters.Add(new Microsoft.Greenlight.Shared.Plugins.ProviderSubjectInjectionFilter());
+
             return kernel;
         }
 
@@ -591,6 +615,8 @@ namespace Microsoft.Greenlight.Shared.Services
             return false;
         }
     }
+
+
 
     /// <summary>
     /// Additional model settings resolved per task type (temperature / frequency penalty or reasoning effort).

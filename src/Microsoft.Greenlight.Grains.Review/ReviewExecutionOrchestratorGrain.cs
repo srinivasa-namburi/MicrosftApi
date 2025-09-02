@@ -45,10 +45,7 @@ namespace Microsoft.Greenlight.Grains.Review
             await base.OnActivateAsync(cancellationToken);
         }
 
-        public async Task<ReviewExecutionState> GetStateAsync()
-        {
-            return _state.State;
-        }
+        public Task<ReviewExecutionState> GetStateAsync() => Task.FromResult(_state.State);
 
         public async Task ExecuteReviewAsync(ExecuteReviewRequest request)
         {
@@ -62,6 +59,11 @@ namespace Microsoft.Greenlight.Grains.Review
                 _state.State.TotalNumberOfQuestions = 0;
                 _state.State.NumberOfQuestionsAnswered = 0;
                 _state.State.NumberOfQuestionsAnalyzed = 0;
+                // Standardize on StartedByProviderSubjectId for per-user context
+                if (string.IsNullOrWhiteSpace(_state.State.StartedByProviderSubjectId) && !string.IsNullOrWhiteSpace(request.ProviderSubjectId))
+                {
+                    _state.State.StartedByProviderSubjectId = request.ProviderSubjectId;
+                }
                 await SafeWriteStateAsync();
 
                 // First, check if the review has a document to ingest
@@ -77,12 +79,14 @@ namespace Microsoft.Greenlight.Grains.Review
                     return;
                 }
 
+                // If still not set, attempt to infer StartedByProviderSubjectId from stored Author/Owner if available in DB (future enhancement)
+
                 // Document ingestion step is only necessary if the review has a document
                 if (reviewInstance.ExportedDocumentLink != null)
                 {
                     _state.State.Status = ReviewExecutionStatus.Ingesting;
                     await SafeWriteStateAsync();
-                    
+
                     // Get document ingestor grain and start the process
                     var ingestorGrain = GrainFactory.GetGrain<IReviewDocumentIngestorGrain>(this.GetPrimaryKey());
                     var ingestResult = await ingestorGrain.IngestDocumentAsync();
@@ -93,13 +97,16 @@ namespace Microsoft.Greenlight.Grains.Review
                         return;
                     }
 
-                    await OnDocumentIngestedAsync(ingestResult.Data);
+                    if (ingestResult.Data != null)
+                    {
+                        await OnDocumentIngestedAsync(ingestResult.Data);
+                    }
                 }
                 else
                 {
                     // Skip document ingestion if there's no document, but still need to distribute questions
                     _logger.LogInformation("No document to ingest for review instance {Id}, skipping to question distribution", this.GetPrimaryKey());
-                    
+
                     _state.State.Status = ReviewExecutionStatus.DistributingQuestions;
                     await SafeWriteStateAsync();
 

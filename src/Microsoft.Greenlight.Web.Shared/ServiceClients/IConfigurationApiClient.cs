@@ -1,7 +1,6 @@
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Contracts.DTO.Configuration;
-using Microsoft.Greenlight.Web.Shared.ServiceClients;
 
 namespace Microsoft.Greenlight.Web.Shared.ServiceClients;
 

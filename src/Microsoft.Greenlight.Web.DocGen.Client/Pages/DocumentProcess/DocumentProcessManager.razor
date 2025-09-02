@@ -1,10 +1,16 @@
 @page "/document-processes"
 @using System.Text.Json
+@using Microsoft.Greenlight.Web.DocGen.Client.Components.Authorization
+@using Microsoft.Greenlight.Web.DocGen.Client.Services
+@using Microsoft.Greenlight.Shared.Contracts.Authorization
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
 
 @inject IDocumentProcessApiClient DocumentProcessApiClient
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @inject NavigationManager Navigation
+@inject INavMenuStateService NavMenuStateService
+@inject IPermissionService PermissionService
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
     <MudPaper Class="pa-4">
@@ -19,25 +25,35 @@
             <ToolBarContent>
                 <MudText Typo="Typo.h6">Document Processes</MudText>
                 <MudSpacer />
-                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="OpenImportDialog">Import</MudButton>
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddProcess">Add New Process</MudButton>
+                <PermissionView Permission="@PermissionKeys.AlterDocumentProcessesAndLibraries">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="OpenImportDialog">Import</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddProcess">Add New Process</MudButton>
+                </PermissionView>
             </ToolBarContent>
             <Columns>
                 <PropertyColumn Property="x => x.ShortName" Title="Short Name" />
                 <PropertyColumn Property="x => x.Description" Title="Description" />
-                <PropertyColumn Property="x => x.LogicType" Title="Logic Type" />
+                <PropertyColumn Property="x => x.LogicType.ToString()" Title="Logic Type" />
                 <TemplateColumn Title="Actions" CellClass="d-flex justify-end">
                     <CellTemplate>
                         <MudStack Row="true" Spacing="3">
-                            <MudTooltip Delay="400" Text="Edit Document Process">
-                                <MudIconButton Disabled="@IsStaticProcess(context.Item)" OnClick="() => EditProcess(context.Item.Id)" Size="@Size.Small" Icon="@Icons.Material.Filled.StickyNote2"></MudIconButton>
-                            </MudTooltip>
-                            <MudTooltip Delay="400" Text="Delete Document Process (you will be asked to confirm)">
-                                <MudIconButton Disabled="@IsStaticProcess(context.Item)" OnClick="() => ShowDeleteConfirmation(context.Item)" Size="@Size.Small" Icon="@Icons.Material.Filled.Delete"></MudIconButton>
-                            </MudTooltip>
-                            <MudTooltip Delay="400" Text="Export Document Process as Json (you will be asked to confirm)">
-                                <MudIconButton Disabled="@IsStaticProcess(context.Item)" OnClick="() => ExportProcess(context.Item.Id)" Size="@Size.Small" Icon="@Icons.Material.Filled.ArrowDownward"></MudIconButton>
-                            </MudTooltip>
+                            <PermissionView Permission="@PermissionKeys.AlterDocumentProcessesAndLibraries" Mode="PermissionMode.DisableControls">
+                                <MudTooltip Delay="400" Text="Edit Document Process">
+                                    <MudIconButton Disabled="@IsStaticProcess(context.Item)" OnClick="() => EditProcess(context.Item.Id)" Size="@Size.Small" Icon="@Icons.Material.Filled.StickyNote2"></MudIconButton>
+                                </MudTooltip>
+                            </PermissionView>
+                            
+                            <PermissionView Permission="@PermissionKeys.AlterDocumentProcessesAndLibraries" Mode="PermissionMode.DisableControls">
+                                <MudTooltip Delay="400" Text="Delete Document Process (you will be asked to confirm)">
+                                    <MudIconButton Disabled="@IsStaticProcess(context.Item)" OnClick="() => ShowDeleteConfirmation(context.Item)" Size="@Size.Small" Icon="@Icons.Material.Filled.Delete"></MudIconButton>
+                                </MudTooltip>
+                            </PermissionView>
+                            
+                            <PermissionView Permission="@PermissionKeys.AlterDocumentProcessesAndLibraries" Mode="PermissionMode.DisableControls">
+                                <MudTooltip Delay="400" Text="Export Document Process as Json (you will be asked to confirm)">
+                                    <MudIconButton Disabled="@IsStaticProcess(context.Item)" OnClick="() => ExportProcess(context.Item.Id)" Size="@Size.Small" Icon="@Icons.Material.Filled.ArrowDownward"></MudIconButton>
+                                </MudTooltip>
+                            </PermissionView>
                         </MudStack>
                     </CellTemplate>
                 </TemplateColumn>
@@ -67,6 +83,8 @@
         if (!result.Canceled)
         {
             _documentProcesses = await DocumentProcessApiClient.GetAllDocumentProcessInfoAsync();
+            // Notify NavMenu that document processes have changed
+            await NavMenuStateService.NotifyDocumentProcessesChangedAsync();
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -116,6 +134,8 @@
             if (deleteResult)
             {
                 _documentProcesses = await DocumentProcessApiClient.GetAllDocumentProcessInfoAsync();
+                // Notify NavMenu that document processes have changed
+                await NavMenuStateService.NotifyDocumentProcessesChangedAsync();
                 Snackbar.Add("Document process deleted successfully.", Severity.Success);
                 await InvokeAsync(StateHasChanged);
             }

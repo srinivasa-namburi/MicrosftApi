@@ -11,7 +11,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using Npgsql;
-using Microsoft.Extensions.Configuration;
+using Microsoft.Greenlight.Shared.Authorization;
 
 namespace Microsoft.Greenlight.SetupManager.DB;
 
@@ -94,6 +94,11 @@ public class SetupDataInitializerService(
 
         var builder = new NpgsqlConnectionStringBuilder(connectionString);
         var targetDb = builder.Database;
+        if (string.IsNullOrWhiteSpace(targetDb))
+        {
+            _logger.LogWarning("Connection string for 'kmvectordb' is missing the database name. Skipping vector DB setup.");
+            return;
+        }
         // Connect to the server's default DB (postgres or template1)
         builder.Database = "postgres";
         var adminConnectionString = builder.ToString();
@@ -184,6 +189,12 @@ public class SetupDataInitializerService(
         // Ensure prompt definitions are up-to-date
         var promptDefinitionService = scope.ServiceProvider.GetRequiredService<IPromptDefinitionService>();
         await promptDefinitionService.EnsurePromptDefinitionsAsync(cancellationToken);
+
+        // Seed Authorization (permissions, roles, and bootstrap assignments)
+        // Runs here so it's guaranteed before the rest of the app cluster comes online.
+        var authSeederLogger = scope.ServiceProvider.GetRequiredService<ILogger<AuthorizationSeeder>>();
+        var authSeeder = new AuthorizationSeeder(dbContext, authSeederLogger);
+        await authSeeder.EnsureSeededAsync(cancellationToken);
 
         await Seed2024_05_24_OrphanedChatMessagesCleanup(dbContext, cancellationToken);
         await Seed2025_02_27_CreateDefaultSequentialValidationPipeline(dbContext, cancellationToken);

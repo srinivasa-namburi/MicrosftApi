@@ -13,8 +13,7 @@ public abstract class BaseServiceClient<T> where T : IServiceClient
     private readonly HttpClient HttpClient;
 
     private readonly AuthenticationStateProvider _authStateProvider;
-    
-    public string AccessToken => GetAccessTokenAsync().GetAwaiter().GetResult();
+    // Avoid sync-over-async token access; always fetch tokens asynchronously in request methods
 
     protected BaseServiceClient(HttpClient httpClient, ILogger<T> logger, AuthenticationStateProvider authStateProvider)
     {
@@ -26,7 +25,8 @@ public abstract class BaseServiceClient<T> where T : IServiceClient
     protected async Task<HttpResponseMessage?> SendGetRequestMessage(string requestUri)
     {
         using var requestMessage = new HttpRequestMessage(HttpMethod.Get, requestUri);
-        requestMessage.Headers.Authorization = new("Bearer", this.AccessToken);
+        var token = await GetAccessTokenAsync();
+        requestMessage.Headers.Authorization = new("Bearer", token);
 
         Logger.LogInformation("Sending GET request to {RequestUri}", requestUri);
         var response = await HttpClient.SendAsync(requestMessage);
@@ -36,20 +36,22 @@ public abstract class BaseServiceClient<T> where T : IServiceClient
     protected async Task<HttpResponseMessage> SendDeleteRequestMessage(string requestUri)
     {
         using var requestMessage = new HttpRequestMessage(HttpMethod.Delete, requestUri);
-        requestMessage.Headers.Authorization = new ("Bearer", this.AccessToken);
+        var token = await GetAccessTokenAsync();
+        requestMessage.Headers.Authorization = new("Bearer", token);
 
         Logger.LogInformation("Sending DELETE request to {RequestUri}", requestUri);
         var response = await HttpClient.SendAsync(requestMessage);
         return response;
     }
-    
+
 
     protected async Task<HttpResponseMessage?> SendPostRequestMessage(string requestUri, object? payload, bool authorize = true)
     {
         using var requestMessage = new HttpRequestMessage(HttpMethod.Post, requestUri);
         if (authorize)
         {
-            requestMessage.Headers.Authorization = new("Bearer", this.AccessToken);
+            var token = await GetAccessTokenAsync();
+            requestMessage.Headers.Authorization = new("Bearer", token);
         }
 
         if (payload is IFormFile file)
@@ -69,7 +71,7 @@ public abstract class BaseServiceClient<T> where T : IServiceClient
         }
 
         Logger.LogInformation("Sending POST request to {RequestUri}", requestUri);
-    
+
         return await HttpClient.SendAsync(requestMessage);
     }
 
@@ -78,7 +80,8 @@ public abstract class BaseServiceClient<T> where T : IServiceClient
         using var requestMessage = new HttpRequestMessage(HttpMethod.Put, requestUri);
         if (authorize)
         {
-            requestMessage.Headers.Authorization = new("Bearer", this.AccessToken);
+            var token = await GetAccessTokenAsync();
+            requestMessage.Headers.Authorization = new("Bearer", token);
         }
 
         if (pocoPayload == null)
@@ -89,7 +92,7 @@ public abstract class BaseServiceClient<T> where T : IServiceClient
         requestMessage.Content = new StringContent(JsonSerializer.Serialize(pocoPayload), Encoding.UTF8, "application/json");
 
         Logger.LogInformation("Sending PUT request to {RequestUri}", requestUri);
-        
+
         var response = await HttpClient.SendAsync(requestMessage);
         return response;
     }

@@ -17,6 +17,10 @@ namespace Microsoft.Greenlight.Grains.Review.Contracts.State
         public string? ContentType { get; set; }
         public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
         public DateTime LastUpdatedUtc { get; set; } = DateTime.UtcNow;
+        /// <summary>
+        /// The Provider Subject ID (OID/sub) of the user who started this orchestration.
+        /// </summary>
+        public string? StartedByProviderSubjectId { get; set; }
     }
 
     public enum ReviewExecutionStatus

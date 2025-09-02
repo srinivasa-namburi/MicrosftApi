@@ -37,6 +37,115 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.ToTable("DomainGroupDynamicDocumentProcessDefinition");
                 });
 
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Authorization.GreenlightPermission", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Key")
+                        .IsUnique();
+
+                    b.ToTable("Auth_Permissions", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Authorization.GreenlightRole", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("EntraAppRoleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("EntraAppRoleValue")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EntraAppRoleId");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("Auth_Roles", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Authorization.GreenlightRolePermission", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("PermissionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("RoleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PermissionId");
+
+                    b.HasIndex("RoleId", "PermissionId")
+                        .IsUnique();
+
+                    b.ToTable("Auth_RolePermissions", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Authorization.GreenlightUserRole", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("AssignedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsFromEntra")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ProviderSubjectId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<Guid>("RoleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProviderSubjectId", "RoleId")
+                        .IsUnique();
+
+                    b.ToTable("Auth_UserRoles", (string)null);
+                });
+
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.ChatConversation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2047,6 +2156,25 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Authorization.GreenlightRolePermission", b =>
+                {
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.Authorization.GreenlightPermission", "Permission")
+                        .WithMany()
+                        .HasForeignKey("PermissionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.Authorization.GreenlightRole", "Role")
+                        .WithMany("RolePermissions")
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Permission");
+
+                    b.Navigation("Role");
+                });
+
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.ChatMessage", b =>
                 {
                     b.HasOne("Microsoft.Greenlight.Shared.Models.UserInformation", "AuthorUserInformation")
@@ -2477,6 +2605,11 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .IsRequired();
 
                     b.Navigation("PromptDefinition");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Authorization.GreenlightRole", b =>
+                {
+                    b.Navigation("RolePermissions");
                 });
 
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.ChatConversation", b =>

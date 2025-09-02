@@ -2,7 +2,8 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Components.Authorization;
-using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.DataProtection.KeyManagement;
+using Microsoft.AspNetCore.DataProtection.StackExchangeRedis;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
@@ -15,7 +16,6 @@ using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Management;
 using Microsoft.Greenlight.Web.DocGen.Auth;
 using Microsoft.Greenlight.Web.DocGen.Components;
-using Microsoft.Greenlight.Web.DocGen.ServiceClients;
 using Microsoft.Greenlight.Web.Shared;
 using Microsoft.Greenlight.Web.Shared.Auth;
 using Microsoft.Greenlight.Web.Shared.ServiceClients;
@@ -26,6 +26,8 @@ using StackExchange.Redis;
 using System.Net.Http.Headers;
 using System.Security.Claims;
 using Yarp.ReverseProxy.Transforms;
+using Microsoft.Greenlight.Shared.Contracts.DTO.Auth;
+using Microsoft.Greenlight.Web.DocGen.ServiceClients;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -64,7 +66,8 @@ var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfig
 
 var azureAdSection = builder.Configuration.GetSection("AzureAd");
 builder.Services.Configure<AzureAdOptions>(azureAdSection);
-var azureAdSettings = azureAdSection.Get<AzureAdOptions>();
+var azureAdSettings = azureAdSection.Get<AzureAdOptions>()
+    ?? throw new InvalidOperationException("AzureAd settings are not configured. Please ensure the AzureAd section is present in configuration.");
 
 builder.Services.AddSingleton<AzureCredentialHelper>();
 var credentialHelper = new AzureCredentialHelper(builder.Configuration);
@@ -92,6 +95,10 @@ builder.Services.AddHttpClient<IConfigurationApiClient, ConfigurationApiClient>(
 {
     httpClient.BaseAddress = apiUri;
 });
+builder.Services.AddHttpClient<Microsoft.Greenlight.Web.DocGen.ServiceClients.IServerTokenPushClient, Microsoft.Greenlight.Web.DocGen.ServiceClients.ServerTokenPushClient>(httpClient =>
+{
+    httpClient.BaseAddress = apiUri;
+});
 
 // Authentication configuration
 builder.Services.AddAuthentication("MicrosoftOidc")
@@ -99,7 +106,8 @@ builder.Services.AddAuthentication("MicrosoftOidc")
     {
         oidcOptions.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
         oidcOptions.Scope.Add(OpenIdConnectScope.OfflineAccess);
-        foreach (var scope in azureAdSettings.Scopes.Split(' '))
+        var scopesStr = azureAdSettings.Scopes ?? string.Empty;
+        foreach (var scope in scopesStr.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             oidcOptions.Scope.Add(scope);
         }
@@ -123,11 +131,15 @@ builder.Services.AddAuthentication("MicrosoftOidc")
             OnTokenValidated = async context =>
             {
                 var authorizationClient = context.HttpContext.RequestServices.GetRequiredService<IAuthorizationApiClient>();
-                if (!string.IsNullOrWhiteSpace(context.SecurityToken.RawData) &&
-                    context.Principal.Identity is ClaimsIdentity identity &&
+                if (context.Principal?.Identity is ClaimsIdentity identity &&
+                    !string.IsNullOrWhiteSpace(context.SecurityToken?.RawData) &&
                     !identity.HasClaim(c => c.Type == "access_token"))
                 {
-                    identity.AddClaim(new Claim("access_token", context.SecurityToken.RawData));
+                    identity.AddClaim(new Claim("access_token", context.SecurityToken!.RawData));
+                }
+                if (context.Principal is null || context.SecurityToken is null)
+                {
+                    return;
                 }
                 var userInfo = UserInfo.FromClaimsPrincipal(context.Principal, context.SecurityToken);
                 var user = new UserInfoDTO(userInfo.UserId, userInfo.Name)
@@ -135,6 +147,32 @@ builder.Services.AddAuthentication("MicrosoftOidc")
                     Email = userInfo.Email
                 };
                 await authorizationClient.StoreOrUpdateUserDetailsAsync(user);
+
+                // Push the initial access token to backend token store for Orleans/MCP
+                try
+                {
+                    var accessToken = context.SecurityToken.RawData;
+                    var sub = context.Principal.FindFirst("sub")?.Value;
+                    var expiresOnUtc = context.SecurityToken.ValidTo;
+                    if (!string.IsNullOrWhiteSpace(accessToken) && !string.IsNullOrWhiteSpace(sub))
+                    {
+                        var serverPush = context.HttpContext.RequestServices.GetRequiredService<Microsoft.Greenlight.Web.DocGen.ServiceClients.IServerTokenPushClient>();
+                        await serverPush.PushUserTokenAsync(new UserTokenDTO
+                        {
+                            ProviderSubjectId = sub,
+                            AccessToken = accessToken,
+                            ExpiresOnUtc = expiresOnUtc == default ? null : expiresOnUtc
+                        }, accessToken, context.HttpContext.RequestAborted);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Don't block sign-in on token push issues
+                    context.HttpContext.RequestServices
+                        .GetRequiredService<ILoggerFactory>()
+                        .CreateLogger("Auth")
+                        .LogDebug(ex, "Failed to push user token during OnTokenValidated");
+                }
             }
         };
     })
@@ -203,13 +241,13 @@ builder.Services.Configure<FormOptions>(options =>
 
 builder.Services.AddSingleton<IHostedService, ShutdownCleanupService>();
 
-builder.Services.AddDataProtection()
-    .PersistKeysToStackExchangeRedis(() =>
+// Configure DataProtection keys to persist in Redis without building a secondary ServiceProvider
+builder.Services.AddDataProtection();
+builder.Services.AddOptions<KeyManagementOptions>()
+    .Configure<IConnectionMultiplexer>((options, multiplexer) =>
     {
-        var serviceProvider = builder.Services.BuildServiceProvider();
-        var redisConnection = serviceProvider.GetRequiredService<IConnectionMultiplexer>();
-        return redisConnection.GetDatabase();
-    }, "DataProtection-Keys");
+        options.XmlRepository = new RedisXmlRepository(() => multiplexer.GetDatabase(), "DataProtection-Keys");
+    });
 
 var app = builder.Build();
 
@@ -282,6 +320,10 @@ app.MapGet("/api-address", () =>
     // replace the host name with the one from the configuration
     // keep the port from the original address
 
+    if (string.IsNullOrEmpty(apiAddress))
+    {
+        return Results.NotFound();
+    }
     var uri = new Uri(apiAddress);
     var port = uri.Port;
     var hostName = serviceConfigurationOptions.HostNameOverride.Api;
@@ -316,7 +358,7 @@ string ComputeRedirectUri(RedirectContext redirectContext, ServiceConfigurationO
     string selectedScheme = !redirectContext.ProtocolMessage.RedirectUri.Contains("localhost") ? "https" : request.Scheme;
 
     var hostName = request.Host.ToString();
-    if (!string.IsNullOrEmpty(serviceConfigurationOptions1.HostNameOverride.Web))
+    if (!string.IsNullOrEmpty(serviceConfigurationOptions1?.HostNameOverride?.Web))
     {
         hostName = serviceConfigurationOptions1.HostNameOverride.Web;
         // We need to retain the port from the request in the redirect URI

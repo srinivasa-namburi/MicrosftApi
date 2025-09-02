@@ -1,7 +1,8 @@
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
-using Azure.Storage;
+using LazyCache;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Greenlight.ServiceDefaults;
@@ -54,6 +55,16 @@ builder.RegisterStaticPlugins(serviceConfigurationOptions);
 builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
 
 builder.Services.AddControllers();
+
+// Configure caching for authorization (LazyCache with hybrid local+remote capabilities)
+builder.Services.AddSingleton<IAppCache, CachingService>();
+
+// Authorization policies based on dynamic permissions
+builder.Services.AddSingleton<IAuthorizationPolicyProvider, Microsoft.Greenlight.API.Main.Authorization.PermissionPolicyProvider>();
+builder.Services.AddScoped<Microsoft.Greenlight.API.Main.Authorization.ICachedPermissionService, Microsoft.Greenlight.API.Main.Authorization.CachedPermissionService>();
+builder.Services.AddScoped<IAuthorizationHandler, Microsoft.Greenlight.API.Main.Authorization.RequiresPermissionHandler>();
+builder.Services.AddScoped<IAuthorizationHandler, Microsoft.Greenlight.API.Main.Authorization.RequiresAnyPermissionHandler>();
+builder.Services.AddScoped<Microsoft.Greenlight.Shared.Authorization.AuthorizationProtectionService>();
 
 builder.Services.Configure<FormOptions>(options =>
 {

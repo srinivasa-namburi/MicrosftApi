@@ -12,6 +12,8 @@ using System.Text.Json;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Services.Search.Abstractions;
+using Microsoft.Greenlight.API.Main.Authorization;
+using Microsoft.Greenlight.Shared.Contracts.Authorization;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
@@ -159,6 +161,7 @@ public class DocumentProcessController : BaseController
     ///     201 Created: When the document process was sucessfully created
     /// </returns>
     [HttpPost]
+    [RequiresPermission(PermissionKeys.AlterDocumentProcessesAndLibraries)]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [Consumes("application/json")]
     [Produces("application/json")]
@@ -181,6 +184,7 @@ public class DocumentProcessController : BaseController
     ///     404 Not Found: When no document processes are found using the Document Process Id provided
     /// </returns>
     [HttpPut("{id:guid}")]
+    [RequiresPermission(PermissionKeys.AlterDocumentProcessesAndLibraries)]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/json")]
@@ -213,6 +217,7 @@ public class DocumentProcessController : BaseController
     ///     400 Bad Request: When no document processes are found using the Document Process Id provided
     /// </returns>
     [HttpDelete("{id:guid}")]
+    [RequiresPermission(PermissionKeys.AlterDocumentProcessesAndLibraries)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [Produces("application/json")]
@@ -282,7 +287,7 @@ public class DocumentProcessController : BaseController
                 .Include(x => x.ValidationPipelineExecutions)
                 .ThenInclude(y => y.ExecutionSteps)
                 .ThenInclude(y => y.ValidationPipelineExecutionStepResult)
-                .ThenInclude(y => y.ContentNodeResults)
+                .ThenInclude(y => y!.ContentNodeResults)
                 .ToListAsync();
 
             if (validationPipelines.Count > 0)
@@ -358,6 +363,7 @@ public class DocumentProcessController : BaseController
     ///     404 Not found: When no document processes are found using the Id provided
     /// </returns>
     [HttpGet("{id:guid}/export")]
+    [RequiresPermission(PermissionKeys.AlterDocumentProcessesAndLibraries)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/json")]
@@ -440,6 +446,7 @@ public class DocumentProcessController : BaseController
     ///   400 Bad Request: When no metadata fields were passed in the request or the Id is empty
     /// </returns>
     [HttpPost("{id:guid}/metadata-fields")]
+    [RequiresPermission(PermissionKeys.AlterDocumentProcessesAndLibraries)]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [Consumes("application/json")]
@@ -492,6 +499,7 @@ public class DocumentProcessController : BaseController
     ///     404 Not found: When no validation pipeline is found
     /// </returns>
     [HttpGet("{id:guid}/validation-pipeline")]
+    [RequiresPermission(PermissionKeys.AlterDocumentProcessesAndLibraries)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/json")]
@@ -550,6 +558,7 @@ public class DocumentProcessController : BaseController
     ///     404 Not found: When no document process is found
     /// </returns>
     [HttpPost("{id:guid}/validation-pipeline")]
+    [RequiresPermission(PermissionKeys.AlterDocumentProcessesAndLibraries)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -660,6 +669,7 @@ public class DocumentProcessController : BaseController
     ///     404 Not found: When no validation pipeline is found
     /// </returns>
     [HttpDelete("{id:guid}/validation-pipeline")]
+    [RequiresPermission(PermissionKeys.AlterDocumentProcessesAndLibraries)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult> DeleteValidationPipeline(Guid id)

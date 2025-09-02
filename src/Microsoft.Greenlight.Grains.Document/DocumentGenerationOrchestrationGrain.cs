@@ -40,10 +40,7 @@ public class DocumentGenerationOrchestrationGrain : Grain, IDocumentGenerationOr
         await base.OnActivateAsync(cancellationToken);
     }
 
-    public async Task<DocumentGenerationState> GetStateAsync()
-    {
-        return _state.State;
-    }
+    public Task<DocumentGenerationState> GetStateAsync() => Task.FromResult(_state.State);
 
     public async Task StartDocumentGenerationAsync(GenerateDocumentDTO request)
     {
@@ -58,6 +55,14 @@ public class DocumentGenerationOrchestrationGrain : Grain, IDocumentGenerationOr
             _state.State.MetadataJson = request.RequestAsJson;
             _state.State.Status = DocumentGenerationStatus.Creating;
             _state.State.CorrelationId = this.GetPrimaryKey();
+            // Standardize on StartedByProviderSubjectId for per-user context
+            if (string.IsNullOrWhiteSpace(_state.State.StartedByProviderSubjectId))
+            {
+                // Prefer ProviderSubjectId ("sub"), fall back to AuthorOid for backward compatibility
+                _state.State.StartedByProviderSubjectId = !string.IsNullOrWhiteSpace(request.ProviderSubjectId)
+                    ? request.ProviderSubjectId
+                    : request.AuthorOid;
+            }
             await SafeWriteStateAsync();
 
             // Get document creation grain and start the process
@@ -87,8 +92,8 @@ public class DocumentGenerationOrchestrationGrain : Grain, IDocumentGenerationOr
             _ = outlineGeneratorGrain.GenerateOutlineAsync(
                 _state.State.Id,
                 _state.State.DocumentTitle,
-                _state.State.AuthorOid,
-                _state.State.DocumentProcessName);
+                _state.State.AuthorOid ?? string.Empty,
+                _state.State.DocumentProcessName ?? string.Empty);
         }
         catch (Exception ex)
         {
@@ -118,7 +123,7 @@ public class DocumentGenerationOrchestrationGrain : Grain, IDocumentGenerationOr
                 _state.State.Id,
                 _state.State.AuthorOid,
                 generatedDocumentJson,
-                _state.State.DocumentProcessName,
+                _state.State.DocumentProcessName ?? string.Empty,
                 _state.State.MetadataId);
         }
         catch (Exception ex)
@@ -184,7 +189,7 @@ public class DocumentGenerationOrchestrationGrain : Grain, IDocumentGenerationOr
 
                 await PublishNotificationAsync(new ContentNodeGenerationStateChanged(_state.State.Id)
                 {
-                    ContentNodeId = contentNodeId, 
+                    ContentNodeId = contentNodeId,
                     GenerationState = ContentNodeGenerationState.Completed
                 });
 
@@ -259,7 +264,7 @@ public class DocumentGenerationOrchestrationGrain : Grain, IDocumentGenerationOr
         {
             // Get the SignalR notifier grain
             var notifierGrain = GrainFactory.GetGrain<ISignalRNotifierGrain>(Guid.Empty);
-        
+
             if (notification is DocumentOutlineGeneratedNotification outlineNotification)
             {
                 await notifierGrain.NotifyDocumentOutlineGeneratedAsync(outlineNotification);

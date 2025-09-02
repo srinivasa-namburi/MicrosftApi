@@ -9,7 +9,7 @@ using Microsoft.Greenlight.Shared.Models;
 using Microsoft.Greenlight.Shared.Prompts;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.Connectors.OpenAI;
+// using Microsoft.SemanticKernel.Connectors.OpenAI;
 using Orleans.Concurrency;
 using System.Text;
 
@@ -24,7 +24,7 @@ public class ConversationGrain : Grain, IConversationGrain
     private readonly IPromptInfoService _promptInfoService;
     private readonly ILogger<ConversationGrain> _logger;
     private readonly IKernelFactory _kernelFactory;
-    private Kernel _sk;
+    private Kernel? _sk;
 
     // Semaphore lock for concurrent access in a reentrant grain
     private readonly SemaphoreSlim _stateLock = new(1, 1);
@@ -74,15 +74,15 @@ public class ConversationGrain : Grain, IConversationGrain
         await base.OnActivateAsync(cancellationToken);
     }
 
-    public async Task<ConversationState> GetStateAsync()
-    {
-        return _state.State;
-    }
+    public Task<ConversationState> GetStateAsync() => Task.FromResult(_state.State);
 
     public async Task InitializeAsync(string documentProcessName, string systemPrompt)
     {
         _state.State.DocumentProcessName = documentProcessName;
         _state.State.SystemPrompt = systemPrompt;
+
+        // If not already set, capture who started this conversation from the most recent user message later.
+        // The explicit setter might be added via a separate API in the future.
 
         if (string.IsNullOrEmpty(_state.State.SystemPrompt))
         {
@@ -110,9 +110,9 @@ public class ConversationGrain : Grain, IConversationGrain
         return true;
     }
 
-    public async Task<List<ChatMessageDTO>> GetMessagesAsync()
+    public Task<List<ChatMessageDTO>> GetMessagesAsync()
     {
-        return _state.State.Messages
+        var list = _state.State.Messages
             .Select(m =>
             {
                 var dto = _mapper.Map<ChatMessageDTO>(m);
@@ -125,6 +125,7 @@ public class ConversationGrain : Grain, IConversationGrain
             })
             .OrderBy(x => x.CreatedUtc)
             .ToList();
+        return Task.FromResult(list);
     }
 
     public async Task<ChatMessageDTO> ProcessMessageAsync(ChatMessageDTO userMessageDto)
@@ -144,6 +145,12 @@ public class ConversationGrain : Grain, IConversationGrain
                     ProviderSubjectId = userMessageDto.UserId,
                     FullName = userMessageDto.UserFullName
                 };
+
+                // Capture StartedByProviderSubjectId if not already set
+                if (string.IsNullOrWhiteSpace(_state.State.StartedByProviderSubjectId))
+                {
+                    _state.State.StartedByProviderSubjectId = userMessageDto.UserId;
+                }
             }
             else
             {
@@ -156,11 +163,11 @@ public class ConversationGrain : Grain, IConversationGrain
 
             // 2. Fire-and-forget: Dispatch message processing to the ChatMessageProcessorGrain
             var messageProcessorGrain = GrainFactory.GetGrain<IChatMessageProcessorGrain>(userMessageDto.Id);
-            _= messageProcessorGrain.ProcessMessageAsync(
+            _ = messageProcessorGrain.ProcessMessageAsync(
                 userMessageDto,
                 this.GetPrimaryKey(), // Pass the conversation ID
-                _state.State.DocumentProcessName, // Pass the document process name
-                _state.State.SystemPrompt, // Pass the system promptø
+                _state.State.DocumentProcessName ?? string.Empty, // Pass the document process name
+                _state.State.SystemPrompt ?? string.Empty, // Pass the system promptø
                 _state.State.ReferenceItemIds, // Pass the reference item IDs
                 _state.State.Messages, // Pass the conversation messages
                 _state.State.Summaries // Pass the conversation summaries
@@ -217,7 +224,7 @@ public class ConversationGrain : Grain, IConversationGrain
             _logger.LogError(ex, "Error handling message processing completion for conversation {ConversationId}", _state.State.Id);
         }
     }
-    
+
     public async Task GenerateSummaryAsync(DateTime summaryTime)
     {
         try
@@ -285,14 +292,17 @@ public class ConversationGrain : Grain, IConversationGrain
                       """;
 
         // Create a temporary kernel for the summary if needed
-        var summaryKernel = await _kernelFactory.GetKernelForDocumentProcessAsync(_state.State.DocumentProcessName);
+        var processName = _state.State.DocumentProcessName ?? string.Empty;
+        var summaryKernel = !string.IsNullOrWhiteSpace(_state.State.StartedByProviderSubjectId)
+            ? await _kernelFactory.GetKernelForDocumentProcessAsync(processName, _state.State.StartedByProviderSubjectId)
+            : await _kernelFactory.GetKernelForDocumentProcessAsync(processName);
 
         var executionSettings = await _kernelFactory.GetPromptExecutionSettingsForDocumentProcessAsync(
-            _state.State.DocumentProcessName,
+            processName,
             AiTaskType.Summarization);
 
         var kernelArguments = new KernelArguments(executionSettings);
-        
+
         var response = await summaryKernel.InvokePromptAsync(prompt, kernelArguments);
 
         _logger.LogInformation("Generated summary: {Summary}", response.ToString());

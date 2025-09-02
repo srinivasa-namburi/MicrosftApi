@@ -10,7 +10,6 @@ using Microsoft.Greenlight.Shared.Models;
 using System.Text.RegularExpressions;
 using AutoMapper;
 using Microsoft.Greenlight.Grains.Document.Contracts;
-// using Microsoft.Greenlight.Shared.Contracts.DTO.Document; // already included below
 using Microsoft.Greenlight.Shared.Models.Validation;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.Grains.Ingestion.Contracts;
@@ -19,6 +18,8 @@ using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Services.Caching;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Contracts.DTO.Document;
+using Microsoft.Greenlight.API.Main.Authorization;
+using Microsoft.Greenlight.Shared.Contracts.Authorization;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
@@ -78,6 +79,7 @@ public partial class DocumentsController : BaseController
     ///     202 Accepted: When the request to generate documents has been posted to the workers to perform
     /// </returns>
     [HttpPost("generatemultiple")]
+    [RequiresPermission(PermissionKeys.GenerateDocument)]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     [Consumes("application/json")]
     public IActionResult GenerateDocuments([FromBody] GenerateDocumentsDTO generateDocumentsDto)
@@ -87,6 +89,8 @@ public partial class DocumentsController : BaseController
         foreach (var generateDocumentDto in generateDocumentsDto.Documents)
         {
             generateDocumentDto.AuthorOid = claimsPrincipal.GetObjectId();
+            // Also capture ProviderSubjectId ("sub") for per-user authorization consistency
+            generateDocumentDto.ProviderSubjectId = claimsPrincipal.FindFirst("sub")?.Value;
             var grain = _clusterClient.GetGrain<IDocumentGenerationOrchestrationGrain>(generateDocumentDto.Id);
             // Fire and forget the document creation process - this progresses
             // asynchronously and will be tracked by the orchestration grain
@@ -105,12 +109,15 @@ public partial class DocumentsController : BaseController
     ///     202 Accepted: When the request to generate documents has been posted to the workers to perform
     /// </returns>
     [HttpPost("generate")]
+    [RequiresPermission(PermissionKeys.GenerateDocument)]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     [Consumes("application/json")]
     public IActionResult GenerateDocument([FromBody] GenerateDocumentDTO generateDocumentDto)
     {
         var claimsPrincipal = HttpContext.User;
         generateDocumentDto.AuthorOid = claimsPrincipal.GetObjectId();
+        // Also capture ProviderSubjectId ("sub") for per-user authorization consistency
+        generateDocumentDto.ProviderSubjectId = claimsPrincipal.FindFirst("sub")?.Value;
 
         var grain = _clusterClient.GetGrain<IDocumentGenerationOrchestrationGrain>(generateDocumentDto.Id);
 
@@ -131,6 +138,7 @@ public partial class DocumentsController : BaseController
     ///     404 Not Found: When no document can be found using the document id provided
     /// </returns>
     [HttpGet("{documentId}")]
+    [RequiresPermission(PermissionKeys.GenerateDocument)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/json")]
@@ -162,6 +170,7 @@ public partial class DocumentsController : BaseController
     ///     404 Not Found: When no document can be found using the document id provided
     /// </returns>
     [HttpGet("{documentId}/header")]
+    [RequiresPermission(PermissionKeys.GenerateDocument)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/json")]
@@ -221,6 +230,7 @@ public partial class DocumentsController : BaseController
     ///     404 Not Found: When no document links can be found using the document id provided
     /// </returns>
     [HttpGet("{documentId}/export-link")]
+    [RequiresPermission(PermissionKeys.GenerateDocument)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/json")]
@@ -251,6 +261,7 @@ public partial class DocumentsController : BaseController
     ///     404 Not Found: When the document can't be found using the document id provided
     /// </returns>
     [HttpGet("{documentId}/word-export")]
+    [RequiresPermission(PermissionKeys.GenerateDocument)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/octet-stream")]
@@ -305,6 +316,7 @@ public partial class DocumentsController : BaseController
     ///     404 Not Found: When the document can't be found using the Id provided
     /// </returns>
     [HttpGet("{documentId}/word-export/permalink")]
+    [RequiresPermission(PermissionKeys.GenerateDocument)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/json")]
@@ -349,6 +361,7 @@ public partial class DocumentsController : BaseController
     /// <param name="documentId">The ID of the document.</param>
     /// <returns>Aggregated status computed from all content nodes.</returns>
     [HttpGet("{documentId}/status")]
+    [RequiresPermission(PermissionKeys.GenerateDocument)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/json")]
@@ -395,6 +408,7 @@ public partial class DocumentsController : BaseController
     /// <param name="documentId">The ID of the document.</param>
     /// <returns>Full status JSON including node-level aggregated statuses.</returns>
     [HttpGet("{documentId}/status/full")]
+    [RequiresPermission(PermissionKeys.GenerateDocument)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/json")]
@@ -585,6 +599,7 @@ public partial class DocumentsController : BaseController
     ///     404 Not Found: When the document can't be found using the Id provided
     /// </returns>
     [HttpDelete("{documentId}")]
+    [RequiresPermission(PermissionKeys.GenerateDocument)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> DeleteDocument(string documentId)
@@ -728,6 +743,7 @@ public partial class DocumentsController : BaseController
     ///     404 Not Found: When there are documents found
     /// </returns>
     [HttpGet]
+    [RequiresPermission(PermissionKeys.GenerateDocument)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Produces("application/json")]

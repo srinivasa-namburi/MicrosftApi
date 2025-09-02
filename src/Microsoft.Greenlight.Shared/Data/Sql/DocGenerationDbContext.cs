@@ -13,6 +13,7 @@ using Microsoft.Greenlight.Shared.Models.DomainGroups;
 using Microsoft.Greenlight.Shared.Models.Review;
 using Microsoft.Greenlight.Shared.Models.Plugins;
 using Microsoft.Greenlight.Shared.Contracts.Components;
+using Microsoft.Greenlight.Shared.Models.Authorization;
 
 namespace Microsoft.Greenlight.Shared.Data.Sql;
 
@@ -167,7 +168,7 @@ public class DocGenerationDbContext : DbContext
         modelBuilder.Entity<ContentReferenceItem>()
             .HasIndex(nameof(ContentReferenceItem.ContentReferenceSourceId))
             .IsUnique(false);
-            
+
         modelBuilder.Entity<ContentNodeVersionTracker>()
             .ToTable("ContentNodeVersionTrackers");
 
@@ -294,16 +295,16 @@ public class DocGenerationDbContext : DbContext
             .WithMany(x => x.ValidationPipelineExecutions)
             .HasForeignKey(x => x.DocumentProcessValidationPipelineId)
             .IsRequired();
-        
+
         modelBuilder.Entity<ValidationPipelineExecution>()
-            .HasMany(x=>x.ExecutionSteps)
+            .HasMany(x => x.ExecutionSteps)
             .WithOne(x => x.ValidationPipelineExecution)
             .HasForeignKey(x => x.ValidationPipelineExecutionId)
             .IsRequired()
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<ValidationPipelineExecution>()
-            .HasOne(x=>x.GeneratedDocument)
+            .HasOne(x => x.GeneratedDocument)
             .WithMany(x => x.ValidationPipelineExecutions)
             .HasForeignKey(x => x.GeneratedDocumentId)
             .IsRequired()
@@ -345,7 +346,7 @@ public class DocGenerationDbContext : DbContext
             .IsUnique();
 
         modelBuilder.Entity<ValidationPipelineExecutionStepResult>()
-            .HasMany(x=>x.ContentNodeResults)
+            .HasMany(x => x.ContentNodeResults)
             .WithOne(x => x.ValidationPipelineExecutionStepResult)
             .HasForeignKey(x => x.ValidationPipelineExecutionStepResultId)
             .IsRequired(false)
@@ -354,7 +355,7 @@ public class DocGenerationDbContext : DbContext
         modelBuilder.Entity<ValidationExecutionStepContentNodeResult>()
             .ToTable("ValidationExecutionStepContentNodeResults");
 
-        
+
         modelBuilder.Entity<ValidationExecutionStepContentNodeResult>()
             .HasIndex(nameof(ValidationExecutionStepContentNodeResult.ValidationPipelineExecutionStepResultId))
             .IsUnique(false);
@@ -380,7 +381,7 @@ public class DocGenerationDbContext : DbContext
             .OnDelete(DeleteBehavior.ClientSetNull);
 
         modelBuilder.Entity<ValidationExecutionStepContentNodeResult>()
-            .HasOne(x=>x.ResultantContentNode)
+            .HasOne(x => x.ResultantContentNode)
             .WithMany()
             .HasForeignKey(x => x.ResultantContentNodeId)
             .IsRequired(false)
@@ -407,7 +408,7 @@ public class DocGenerationDbContext : DbContext
 
         modelBuilder.Entity<ContentNodeSystemItem>()
             .HasMany(x => x.SourceReferences)
-            .WithOne(x=>x.ContentNodeSystemItem)
+            .WithOne(x => x.ContentNodeSystemItem)
             .HasForeignKey(x => x.ContentNodeSystemItemId)
             .IsRequired(false)
             .OnDelete(DeleteBehavior.Cascade);
@@ -437,7 +438,7 @@ public class DocGenerationDbContext : DbContext
             .HasValue<VectorStoreAggregatedSourceReferenceItem>("VectorStoreAggregatedSourceReferenceItem")
             .HasValue<VectorStoreSourceReferenceItem>("VectorStoreSourceReferenceItem")
             .HasValue<LegacySourceReferenceItem>("SourceReferenceItem");
-            
+
 
         modelBuilder.Entity<SourceReferenceItem>()
             .Property("Discriminator")
@@ -487,7 +488,7 @@ public class DocGenerationDbContext : DbContext
 
         modelBuilder.Entity<DocumentLibraryDocumentProcessAssociation>()
             .HasOne(x => x.DynamicDocumentProcessDefinition)
-            .WithMany(x=>x.AdditionalDocumentLibraries)
+            .WithMany(x => x.AdditionalDocumentLibraries)
             .HasForeignKey(x => x.DynamicDocumentProcessDefinitionId)
             .IsRequired(true)
             .OnDelete(DeleteBehavior.Cascade);
@@ -807,7 +808,7 @@ public class DocGenerationDbContext : DbContext
             .HasForeignKey(x => x.PromptDefinitionId)
             .IsRequired(true)
             .OnDelete(DeleteBehavior.Cascade);
-       
+
         modelBuilder.Entity<ChatConversation>()
             .ToTable("ChatConversations");
 
@@ -935,7 +936,7 @@ public class DocGenerationDbContext : DbContext
             .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<ContentNode>()
-            .HasOne(x=>x.AssociatedGeneratedDocument)
+            .HasOne(x => x.AssociatedGeneratedDocument)
             .WithMany()
             .HasForeignKey(x => x.AssociatedGeneratedDocumentId)
             .IsRequired(false)
@@ -1039,8 +1040,52 @@ public class DocGenerationDbContext : DbContext
             entity.HasIndex(e => new { e.McpPluginId, e.DynamicDocumentProcessDefinitionId })
                 .IsUnique(false);
         });
+
+        // Authorization entities
+        modelBuilder.Entity<GreenlightPermission>(entity =>
+        {
+            entity.ToTable("Auth_Permissions");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Key).IsRequired();
+            entity.Property(e => e.DisplayName).IsRequired();
+            entity.HasIndex(e => e.Key).IsUnique();
+        });
+
+        modelBuilder.Entity<GreenlightRole>(entity =>
+        {
+            entity.ToTable("Auth_Roles");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired();
+            entity.HasIndex(e => e.Name).IsUnique();
+            entity.HasIndex(e => e.EntraAppRoleId).IsUnique(false);
+        });
+
+        modelBuilder.Entity<GreenlightRolePermission>(entity =>
+        {
+            entity.ToTable("Auth_RolePermissions");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.RoleId, e.PermissionId }).IsUnique();
+            entity.HasOne(e => e.Role)
+                .WithMany(r => r.RolePermissions)
+                .HasForeignKey(e => e.RoleId)
+                .IsRequired()
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Permission)
+                .WithMany()
+                .HasForeignKey(e => e.PermissionId)
+                .IsRequired()
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<GreenlightUserRole>(entity =>
+        {
+            entity.ToTable("Auth_UserRoles");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.ProviderSubjectId).IsRequired();
+            entity.HasIndex(e => new { e.ProviderSubjectId, e.RoleId }).IsUnique();
+        });
     }
-    
+
     /// <summary>
     /// Gets or sets the source reference items.
     /// </summary>
@@ -1243,5 +1288,23 @@ public class DocGenerationDbContext : DbContext
     /// Gets or sets the associations between MCP plugins and document processes.
     /// </summary>
     public DbSet<McpPluginDocumentProcess> McpPluginDocumentProcesses { get; set; }
+
+    // Authorization
+    /// <summary>
+    /// Greenlight permissions catalog.
+    /// </summary>
+    public DbSet<GreenlightPermission> Permissions { get; set; }
+    /// <summary>
+    /// Greenlight roles.
+    /// </summary>
+    public DbSet<GreenlightRole> Roles { get; set; }
+    /// <summary>
+    /// Role-permission assignments.
+    /// </summary>
+    public DbSet<GreenlightRolePermission> RolePermissions { get; set; }
+    /// <summary>
+    /// User-role assignments.
+    /// </summary>
+    public DbSet<GreenlightUserRole> UserRoles { get; set; }
 }
 

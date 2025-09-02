@@ -5,6 +5,8 @@ using Microsoft.Greenlight.Grains.Ingestion.Contracts;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Services;
+using Microsoft.Greenlight.API.Main.Authorization;
+using Microsoft.Greenlight.Shared.Contracts.Authorization;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
@@ -50,6 +52,7 @@ public class DocumentReindexController : BaseController
     ///     404 NotFound: When the document library is not found
     /// </returns>
     [HttpPost("document-library/{documentLibraryShortName}")]
+    [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
     [ProducesResponseType(typeof(ReindexStartResponse), StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -111,6 +114,7 @@ public class DocumentReindexController : BaseController
     ///     404 NotFound: When the document process is not found
     /// </returns>
     [HttpPost("document-process/{documentProcessShortName}")]
+    [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
     [ProducesResponseType(typeof(ReindexStartResponse), StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -171,6 +175,7 @@ public class DocumentReindexController : BaseController
     ///     404 NotFound: When the orchestration is not found
     /// </returns>
     [HttpGet("status/{orchestrationId}")]
+    [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
     [ProducesResponseType(typeof(DocumentReindexStateInfo), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetReindexingStatus(string orchestrationId)

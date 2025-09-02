@@ -19,11 +19,21 @@ namespace Microsoft.Greenlight.Shared.Services
         /// <returns></returns>
         public Task<Kernel> GetKernelForDocumentProcessAsync(DocumentProcessInfo documentProcess);
         /// <summary>
+        /// Retrieve a Semantic Kernel instance with plugins for a document process, injecting optional per-user context.
+        /// </summary>
+        /// <param name="documentProcess">Document process.</param>
+        /// <param name="providerSubjectId">Optional user ProviderSubjectId to inject into Kernel.Data.</param>
+        public Task<Kernel> GetKernelForDocumentProcessAsync(DocumentProcessInfo documentProcess, string? providerSubjectId);
+        /// <summary>
         /// Retrieve a Semantic Kernel instance with plugins for a document process.
         /// </summary>
         /// <param name="documentProcessName">ShortName for a document process</param>
         /// <returns></returns>
         public Task<Kernel> GetKernelForDocumentProcessAsync(string documentProcessName);
+        /// <summary>
+        /// Retrieve a Semantic Kernel instance with plugins for a document process by name, injecting optional per-user context.
+        /// </summary>
+        public Task<Kernel> GetKernelForDocumentProcessAsync(string documentProcessName, string? providerSubjectId);
 
         /// <summary>
         /// Retrieve a Semantic Kernel instance used for validation for a document process.

@@ -1,68 +1,150 @@
 @using Microsoft.Greenlight.Shared.Configuration
+@using Microsoft.Greenlight.Web.DocGen.Client.Components.Authorization
+@using Microsoft.Greenlight.Web.DocGen.Client.Services
+@using Microsoft.Greenlight.Shared.Contracts.Authorization
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
 
 @inject IDocumentProcessApiClient DocumentProcessApiClient
 @inject IConfigurationApiClient ConfigurationApiClient
 @inject IDialogService DialogService
+@inject IAdminAuthorizationApiClient AdminAuthorizationApiClient
+@inject NavigationManager NavigationManager
+@inject ILogger<NavMenu> Logger
+@inject IPermissionService PermissionService
+@inject INavMenuStateService NavMenuStateService
+@implements IDisposable
 
 <MudNavMenu>
     <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">Home</MudNavLink>
-    <MudNavLink Href="/docs" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ViewList">All Documents</MudNavLink>
+    
+    <PermissionView Permission="@PermissionKeys.GenerateDocument">
+        <MudNavLink Href="/docs" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ViewList">All Documents</MudNavLink>
+    </PermissionView>
 
-    <MudNavGroup Title="New Document" Icon="@Icons.Material.Filled.Description">
-        @foreach (var dp in _documentProcesses)
-        {
-            var url = $"/{dp.ShortName}/generate";
-            var description = !string.IsNullOrEmpty(dp.Description) ? dp.Description : dp.ShortName;
-            <MudNavLink Href="@url">@description</MudNavLink>
-        }
-    </MudNavGroup>
+    <PermissionView Permission="@PermissionKeys.GenerateDocument">
+        <MudNavGroup Title="New Document" Icon="@Icons.Material.Filled.Description">
+            @foreach (var dp in _documentProcesses)
+            {
+                var url = $"/{dp.ShortName}/generate";
+                var description = !string.IsNullOrEmpty(dp.Description) ? dp.Description : dp.ShortName;
+                <MudNavLink Href="@url">@description</MudNavLink>
+            }
+        </MudNavGroup>
+    </PermissionView>
 
-    <MudNavGroup Title="Permitting CoPilot" Icon="@Icons.Material.Filled.AssistantDirection">
-        @foreach (var dp in _documentProcesses)
-        {
-            var url = $"/copilot/{dp.ShortName}";
-            var description = !string.IsNullOrEmpty(dp.Description) ? dp.Description : dp.ShortName;
-            <MudNavLink Href="@url" Match="NavLinkMatch.Prefix">@description</MudNavLink>
-        }
-    </MudNavGroup>
+    <PermissionView Permission="@PermissionKeys.Chat">
+        <MudNavGroup Title="Permitting CoPilot" Icon="@Icons.Material.Filled.AssistantDirection">
+            @foreach (var dp in _documentProcesses)
+            {
+                var url = $"/copilot/{dp.ShortName}";
+                var description = !string.IsNullOrEmpty(dp.Description) ? dp.Description : dp.ShortName;
+                <MudNavLink Href="@url" Match="NavLinkMatch.Prefix">@description</MudNavLink>
+            }
+        </MudNavGroup>
+    </PermissionView>
 
     @if (_featureFlags?.EnableReviews == true)
     {
-        <MudNavLink Href="/reviews" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Reviews">Reviews</MudNavLink>
+        <PermissionView AnyPermissions="@(new[] { PermissionKeys.DefineReviews, PermissionKeys.ExecuteReviews })">
+            <MudNavLink Href="/reviews" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Reviews">Reviews</MudNavLink>
+        </PermissionView>
     }
+    
     @if (_featureFlags?.EnableMassDocumentProduction == true)
     {
-        <MudNavLink Href="/mass-document-creation" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Receipt">Mass Document Creation</MudNavLink>
+        <PermissionView Permission="@PermissionKeys.GenerateDocument">
+            <MudNavLink Href="/mass-document-creation" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Receipt">Mass Document Creation</MudNavLink>
+        </PermissionView>
     }
 
-    <MudNavGroup Title="Administration" Icon="@Icons.Material.Filled.AdminPanelSettings">
-        <MudNavLink Href="/document-processes" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Build">Document Processes</MudNavLink>
-        <MudNavLink Href="/document-libraries" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.LibraryBooks">Document Libraries</MudNavLink>
-        <MudNavLink Href="/plugins" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Api">MCP Servers</MudNavLink>
-        <MudNavLink Href="/domain-groups" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Group">Domain Groups</MudNavLink>
-        <MudNavLink Href="/configuration" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Settings">Configuration</MudNavLink>
-        @* Removed this temporarily - index maintenance is changing due to the switch to Semantic Kernel Vector Store *@
-        @* <MudNavLink Href="/admin/indexes" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Storage">Index Management</MudNavLink> *@
-    </MudNavGroup>
+    <PermissionView AnyPermissions="@(new[] { 
+        PermissionKeys.AlterDocumentProcessesAndLibraries, 
+        PermissionKeys.AlterSystemConfiguration, 
+        PermissionKeys.ManageUsersAndRoles 
+    })">
+        <MudNavGroup Title="Administration" Icon="@Icons.Material.Filled.AdminPanelSettings">
+            <PermissionView Permission="@PermissionKeys.AlterDocumentProcessesAndLibraries">
+                <MudNavLink Href="/document-processes" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Build">Document Processes</MudNavLink>
+            </PermissionView>
+            
+            <PermissionView Permission="@PermissionKeys.AlterDocumentProcessesAndLibraries">
+                <MudNavLink Href="/document-libraries" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.LibraryBooks">Document Libraries</MudNavLink>
+            </PermissionView>
+            
+            <PermissionView Permission="@PermissionKeys.AlterSystemConfiguration">
+                <MudNavLink Href="/plugins" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Api">MCP Servers</MudNavLink>
+            </PermissionView>
+            
+            <PermissionView Permission="@PermissionKeys.AlterDocumentProcessesAndLibraries">
+                <MudNavLink Href="/domain-groups" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Group">Domain Groups</MudNavLink>
+            </PermissionView>
+            
+            <PermissionView Permission="@PermissionKeys.AlterSystemConfiguration">
+                <MudNavLink Href="/configuration" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Settings">Configuration</MudNavLink>
+            </PermissionView>
+            
+            <PermissionView Permission="@PermissionKeys.ManageUsersAndRoles">
+                <MudNavLink Href="/admin/authorization" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Security">Authorization</MudNavLink>
+            </PermissionView>
 
-    <LogInOrOut />
+        </MudNavGroup>
+    </PermissionView>
 </MudNavMenu>
 
 @code
 {
     private List<DocumentProcessInfo> _documentProcesses = new List<DocumentProcessInfo>();
-    private ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions _featureFlags;
+    private ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions? _featureFlags;
 
     protected override async Task OnInitializedAsync()
     {
+        Logger.LogInformation("NavMenu OnInitializedAsync starting");
+        
         try
         {
-            _documentProcesses = await DocumentProcessApiClient.GetAllDocumentProcessInfoAsync();
-            _featureFlags = await ConfigurationApiClient.GetFeatureFlagsAsync();
+            // Subscribe to NavMenu state changes
+            NavMenuStateService.NavMenuChanged += OnNavMenuStateChanged;
+
+            Logger.LogInformation("Loading NavMenu data through state service");
+            await LoadNavMenuDataAsync();
+            
+            Logger.LogInformation("NavMenu initialization completed. Document processes: {ProcessCount}", _documentProcesses.Count);
         }
-        catch
+        catch (Exception ex)
         {
-            return;
+            Logger.LogError(ex, "Error during NavMenu initialization");
         }
+    }
+
+    private async Task LoadNavMenuDataAsync()
+    {
+        try
+        {
+            // Load data through the state service (handles caching)
+            var processesTask = NavMenuStateService.GetDocumentProcessesAsync();
+            var featureFlagsTask = NavMenuStateService.GetFeatureFlagsAsync();
+
+            await Task.WhenAll(processesTask, featureFlagsTask);
+
+            _documentProcesses = await processesTask;
+            _featureFlags = await featureFlagsTask as ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions;
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading NavMenu data");
+        }
+    }
+
+    private async void OnNavMenuStateChanged()
+    {
+        Logger.LogInformation("NavMenu state changed, refreshing...");
+        await LoadNavMenuDataAsync();
+    }
+
+    public void Dispose()
+    {
+        NavMenuStateService.NavMenuChanged -= OnNavMenuStateChanged;
     }
 }

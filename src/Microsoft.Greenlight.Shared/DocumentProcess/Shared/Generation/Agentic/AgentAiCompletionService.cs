@@ -91,8 +91,11 @@ namespace Microsoft.Greenlight.Shared.DocumentProcess.Shared.Generation.Agentic
                 throw new InvalidOperationException($"Document process '{_processName}' not found.");
             }
 
-            // Retrieve a Semantic Kernel instance for this document process
-            _sk = await _kernelFactory.GetKernelForDocumentProcessAsync(documentProcess);
+            // Retrieve a Semantic Kernel instance for this document process, carrying ProviderSubjectId when available
+            var providerSubjectId = UserExecutionContext.ProviderSubjectId;
+            _sk = !string.IsNullOrWhiteSpace(providerSubjectId)
+                ? await _kernelFactory.GetKernelForDocumentProcessAsync(documentProcess, providerSubjectId)
+                : await _kernelFactory.GetKernelForDocumentProcessAsync(documentProcess);
 
             // Extract custom metadata (if any)
             var documentMetaData = await _dbContext.DocumentMetadata.FindAsync(metadataId);
@@ -401,7 +404,10 @@ namespace Microsoft.Greenlight.Shared.DocumentProcess.Shared.Generation.Agentic
             foreach (var config in agentConfigs)
             {
                 // Each agent gets its own kernel instance
-                var agentKernel = await _kernelFactory.GetKernelForDocumentProcessAsync(documentProcess);
+                var psid = UserExecutionContext.ProviderSubjectId;
+                var agentKernel = !string.IsNullOrWhiteSpace(psid)
+                    ? await _kernelFactory.GetKernelForDocumentProcessAsync(documentProcess, psid)
+                    : await _kernelFactory.GetKernelForDocumentProcessAsync(documentProcess);
                 agentKernel.Data.Add("System-ExecutionId", _executionIdString);
 
                 // Clear all plugins before adding only the allowed ones

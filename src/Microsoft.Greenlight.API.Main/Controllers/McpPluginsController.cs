@@ -9,6 +9,8 @@ using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Models.Plugins;
 using Microsoft.Greenlight.Shared.Plugins;
 using Microsoft.Greenlight.Grains.Shared.Contracts;
+using Microsoft.Greenlight.API.Main.Authorization;
+using Microsoft.Greenlight.Shared.Contracts.Authorization;
 
 namespace Microsoft.Greenlight.API.Main.Controllers
 {
@@ -242,6 +244,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         ///     404 Not Found: When the plugin or document process was not found
         /// </returns>
         [HttpPost("{pluginId:guid}/{version}/associate/{documentProcessId:guid}")]
+        [RequiresPermission(PermissionKeys.AlterDocumentProcessesAndLibraries)]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -336,6 +339,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         ///     404 Not Found: When the plugin or document process was not found
         /// </returns>
         [HttpPut("/api/document-processes/{documentProcessId:guid}/mcp-plugins/{pluginId:guid}/association")]
+        [RequiresPermission(PermissionKeys.AlterDocumentProcessesAndLibraries)]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -415,6 +419,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         ///     204 No Content: When completed successfully
         /// </returns>
         [HttpPost("{pluginId:guid}/disassociate/{documentProcessId:guid}")]
+        [RequiresPermission(PermissionKeys.AlterDocumentProcessesAndLibraries)]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         public async Task<IActionResult> DisassociateMcpPluginFromDocumentProcess(Guid pluginId, Guid documentProcessId)
         {
@@ -438,6 +443,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         /// <param name="file">The plugin file.</param>
         /// <returns>The uploaded plugin information and a flag indicating if overrides are needed.</returns>
         [HttpPost("upload")]
+        [RequiresAnyPermission(PermissionKeys.AlterSystemConfiguration, PermissionKeys.AlterDocumentProcessesAndLibraries)]
         [DisableRequestSizeLimit]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -575,6 +581,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         ///     400 Bad Request: When parameters are invalid
         /// </returns>
         [HttpPost("command-only")]
+        [RequiresAnyPermission(PermissionKeys.AlterSystemConfiguration, PermissionKeys.AlterDocumentProcessesAndLibraries)]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [Produces("application/json")]
@@ -695,6 +702,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         ///     400 Bad Request: When parameters are invalid
         /// </returns>
         [HttpPost("sse")]
+        [RequiresAnyPermission(PermissionKeys.AlterSystemConfiguration, PermissionKeys.AlterDocumentProcessesAndLibraries)]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [Produces("application/json")]
@@ -827,6 +835,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         ///     404 Not Found: When the plugin was not found
         /// </returns>
         [HttpPut("update")]
+        [RequiresAnyPermission(PermissionKeys.AlterSystemConfiguration, PermissionKeys.AlterDocumentProcessesAndLibraries)]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -961,6 +970,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         ///     404 Not Found: When the plugin was not found
         /// </returns>
         [HttpDelete("{pluginId:guid}")]
+        [RequiresAnyPermission(PermissionKeys.AlterSystemConfiguration, PermissionKeys.AlterDocumentProcessesAndLibraries)]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> DeleteMcpPlugin(Guid pluginId)

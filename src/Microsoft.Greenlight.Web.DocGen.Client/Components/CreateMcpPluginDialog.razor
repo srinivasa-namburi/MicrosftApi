@@ -64,11 +64,18 @@
                         <MudSelect @bind-Value="_sseAuthType" Label="Authentication Type">
                             <MudSelectItem Value="@McpPluginAuthenticationType.None">None</MudSelectItem>
                             <MudSelectItem Value="@McpPluginAuthenticationType.GreenlightManagedIdentity">Greenlight Managed Identity</MudSelectItem>
+                            <MudSelectItem Value="@McpPluginAuthenticationType.UserBearerToken">User Bearer Token</MudSelectItem>
                         </MudSelect>
                         @if (_sseAuthType == McpPluginAuthenticationType.GreenlightManagedIdentity)
                         {
                             <MudText Typo="Typo.caption" Color="Color.Info" Class="my-2">
                                 Using Greenlight's managed identity for authentication
+                            </MudText>
+                        }
+                        else if (_sseAuthType == McpPluginAuthenticationType.UserBearerToken)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Info" Class="my-2">
+                                Uses the signed-in user's bearer token (automatically flowed to the plugin on each call)
                             </MudText>
                         }
                     </MudItem>

@@ -1,4 +1,7 @@
 @page "/docs"
+@using Microsoft.Greenlight.Web.DocGen.Client.Components.Authorization
+@using Microsoft.Greenlight.Shared.Contracts.Authorization
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
 
 @inject IDocumentGenerationApiClient DocumentGenerationApiClient
 @inject NavigationManager Navigation
@@ -35,13 +38,17 @@ else
         <ToolBarContent>
             <MudText Typo="Typo.h4">Generated Documents List</MudText>
             <MudSpacer />
-            @if (selectedDocuments.Count > 0)
-            {
-                <MudButton OnClick="@DeleteSelectedDocuments" Variant="Variant.Filled" Color="Color.Error" Class="float-right">Delete Selected</MudButton>
-            }
+            <PermissionView Permission="@PermissionKeys.GenerateDocument">
+                @if (selectedDocuments.Count > 0)
+                {
+                    <MudButton OnClick="@DeleteSelectedDocuments" Variant="Variant.Filled" Color="Color.Error" Class="float-right">Delete Selected</MudButton>
+                }
+            </PermissionView>
         </ToolBarContent>
         <Columns>
-            <SelectColumn T="GeneratedDocumentListItem" ShowInFooter="false" ShowInHeader="true" />
+            <PermissionView Permission="@PermissionKeys.GenerateDocument">
+                <SelectColumn T="GeneratedDocumentListItem" ShowInFooter="false" ShowInHeader="true" />
+            </PermissionView>
             <PropertyColumn Property="x => x.GeneratedDate.ToShortDateString()" Title="Date Generated"  />
             <PropertyColumn Property="x => x.Title" />
             <TemplateColumn CellClass="d-flex justify-end">
@@ -50,9 +57,11 @@ else
                         <MudTooltip Delay="400" Text="View Document">
                             <MudIconButton OnClick="@(() => ViewDocument(context.Item))" Size="@Size.Small" Icon="@Icons.Material.Filled.StickyNote2"></MudIconButton>
                         </MudTooltip>
-                        <MudTooltip Delay="400" Text="Delete (you will be asked to confirm)">
-                            <MudIconButton OnClick="@(async () => await DeleteDocument(context.Item))" Size="@Size.Small" Icon="@Icons.Material.Filled.Delete"></MudIconButton>
-                        </MudTooltip>
+                        <PermissionView Permission="@PermissionKeys.GenerateDocument">
+                            <MudTooltip Delay="400" Text="Delete (you will be asked to confirm)">
+                                <MudIconButton OnClick="@(async () => await DeleteDocument(context.Item))" Size="@Size.Small" Icon="@Icons.Material.Filled.Delete"></MudIconButton>
+                            </MudTooltip>
+                        </PermissionView>
                     </MudStack>
                 </CellTemplate>
             </TemplateColumn>
