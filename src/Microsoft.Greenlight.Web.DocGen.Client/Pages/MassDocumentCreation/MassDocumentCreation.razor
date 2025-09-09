@@ -11,15 +11,16 @@
 
 <PageTitle>Mass Documents Creation</PageTitle>
 
-<MudPaper Class="pa-4">
-    <MudText Typo="Typo.h4">Upload CSV File</MudText>
-    <InputFile OnChange="OnFileChange" />
-</MudPaper>
+<MudPaper Class="pa-6">
+    <MudText Typo="Typo.h5">Mass Documents Creation</MudText>
+    <MudDivider Class="mt-2 mb-5" />
 
-@if (csvContent.Any())
-{
-    <MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
-        <MudTable Items="csvContent.Skip(1).Select((value, index) => new { value, index })" Hover="true" Bordered="true" Striped="true">
+    <MudText Typo="Typo.h6" Class="mb-3">Upload CSV File</MudText>
+    <InputFile OnChange="OnFileChange" />
+
+    @if (csvContent.Any())
+    {
+        <MudTable T="dynamic" Items="csvContent.Skip(1).Select((value, index) => new { value, index })" Hover="true" Bordered="true" Striped="true">
             <HeaderContent>
                 <MudTh Class="my-header">Select</MudTh> <!-- Empty header for the select checkbox -->
                 @foreach (var header in csvContent.First())
@@ -29,7 +30,7 @@
             </HeaderContent>
             <RowTemplate>
                 <MudTd>
-                    <MudCheckBox Value="@IsSelected(context.index)" ValueChanged="@((bool value) => ToggleSelection(context.index, value))" />
+                    <MudCheckBox T="bool" Value="@IsSelected(context.index)" ValueChanged="@((bool value) => ToggleSelection(context.index, value))" />
                 </MudTd>
                 @foreach (var cell in context.value)
                 {
@@ -38,8 +39,8 @@
             </RowTemplate>
         </MudTable>
         <MudButton OnClick="GenerateDocuments" Disabled="@(selectedRows.Count == 0)" Class="mt-4">Generate Documents</MudButton>
-    </MudContainer>
-}
+    }
+</MudPaper>
 
 @code {
     private List<string[]> csvContent = new List<string[]>();

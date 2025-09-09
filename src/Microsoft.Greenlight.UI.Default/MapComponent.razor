@@ -3,9 +3,11 @@
 @using Azure.Maps.Search
 @using System.Threading
 @using Microsoft.Greenlight.Web.Shared.ServiceClients
+@using Microsoft.Extensions.Logging
 
 @inject IJSRuntime JSRuntime
 @inject IConfigurationApiClient ConfigurationApiClient
+@inject ILogger<MapComponent> Logger
 
 @inherits ComponentBase
 
@@ -46,11 +48,11 @@
         Label="Search map"
         Value="@CurrentItem"
         ValueChanged="CurrentItemChanged"
-        SearchFuncWithCancel="@Search"
+        SearchFunc="@Search"
         ToStringFunc="@(item => item is null ? null : $"{item.DisplayAddress}")"
         Variant="Variant.Outlined"
         CoerceValue="true"
-        DisableUnderLine="true"
+        Underline="false"
         ShowProgressIndicator="true"
         Margin="Margin.Normal"
         AdornmentIcon="@Icons.Material.Filled.Search"
@@ -61,7 +63,7 @@
 
     <MudStack id="coordinateBox" @onchange="HandleMarkerDragChange" Row="true">
         <MudField Label="Latitude"
-                  DisableUnderLine="true"
+                  Underline="false"
                   Variant="Variant.Filled"
                   Margin="Margin.Normal"
                   FullWidth="true">
@@ -70,7 +72,7 @@
             </p>
         </MudField>
         <MudField Label="Longitude"
-                  DisableUnderLine="true"
+                  Underline="false"
                   Variant="Variant.Filled"
                   Margin="Margin.Normal"
                   FullWidth="true">
@@ -90,40 +92,95 @@
     {
         if (firstRender)
         {
-            SubscriptionKey = await ConfigurationApiClient.GetAzureMapsKeyAsync();
-            credential = new AzureKeyCredential(SubscriptionKey);
-            client = new MapsSearchClient(credential);
-
-            if (DocumentGenerationRequestLocation is not null)
+            Logger.LogDebug("MapComponent: Starting initialization");
+            
+            try
             {
-                await JSRuntime.InvokeVoidAsync(
-                    "initializeMap",
-                    SubscriptionKey,
-                    (float)DocumentGenerationRequestLocation.Latitude,
-                    (float)DocumentGenerationRequestLocation.Longitude
-                );
+                SubscriptionKey = await ConfigurationApiClient.GetAzureMapsKeyAsync();
+                Logger.LogDebug("MapComponent: Retrieved Azure Maps key, length: {KeyLength}", SubscriptionKey?.Length ?? 0);
+                
+                if (string.IsNullOrEmpty(SubscriptionKey))
+                {
+                    Logger.LogError("MapComponent: Azure Maps subscription key is null or empty");
+                    return;
+                }
+
+                credential = new AzureKeyCredential(SubscriptionKey);
+                client = new MapsSearchClient(credential);
+                Logger.LogDebug("MapComponent: MapsSearchClient initialized successfully");
+
+                if (DocumentGenerationRequestLocation is not null)
+                {
+                    Logger.LogDebug("MapComponent: Initializing map with coordinates Lat={Latitude}, Lng={Longitude}", 
+                        DocumentGenerationRequestLocation.Latitude, 
+                        DocumentGenerationRequestLocation.Longitude);
+                        
+                    await JSRuntime.InvokeVoidAsync(
+                        "initializeMap",
+                        SubscriptionKey,
+                        (float)DocumentGenerationRequestLocation.Latitude,
+                        (float)DocumentGenerationRequestLocation.Longitude
+                    );
+                }
+                else
+                {
+                    Logger.LogWarning("MapComponent: DocumentGenerationRequestLocation is null, cannot initialize map");
+                }
+                
+                Logger.LogDebug("MapComponent: Initialization completed successfully");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "MapComponent: Error during initialization");
             }
         }
     }
 
     private async Task<IEnumerable<CustomAddressResultItem?>> Search(string searchText, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrEmpty(searchText)) return Enumerable.Empty<CustomAddressResultItem?>();
+        if (string.IsNullOrEmpty(searchText)) 
+        {
+            Logger.LogDebug("Search called with empty search text");
+            return Enumerable.Empty<CustomAddressResultItem?>();
+        }
+
+        Logger.LogDebug("Search called with text: {SearchText}", searchText);
+
+        if (client is null)
+        {
+            Logger.LogError("MapsSearchClient is null - cannot perform search");
+            return [];
+        }
+
+        if (string.IsNullOrEmpty(SubscriptionKey))
+        {
+            Logger.LogError("Azure Maps subscription key is null or empty");
+            return [];
+        }
 
         try
         {
+            var longitude = DocumentGenerationRequestLocation?.Longitude ?? 0;
+            var latitude = DocumentGenerationRequestLocation?.Latitude ?? 0;
+            
+            Logger.LogDebug("Searching with coordinates: Lat={Latitude}, Lng={Longitude}", latitude, longitude);
+
+            // Validate coordinates are reasonable (not exactly 0,0 which indicates no location set)
+            if (latitude == 0 && longitude == 0)
+            {
+                Logger.LogWarning("Search called with default coordinates (0,0) - this may return poor results");
+            }
+
             var searchAddressOptions = new SearchAddressOptions
                 {
-                    Coordinates = new GeoPosition(
-                        DocumentGenerationRequestLocation?.Longitude ?? 0,
-                        DocumentGenerationRequestLocation?.Latitude ?? 0
-                    ),
+                    Coordinates = new GeoPosition(longitude, latitude),
                     IsTypeAhead = true,
                     Top = 5
                 };
 
-            var searchResult = await client!.SearchAddressAsync(searchText, searchAddressOptions, cancellationToken);
-            return searchResult.Value.Results.Select(item => new CustomAddressResultItem
+            var searchResult = await client.SearchAddressAsync(searchText, searchAddressOptions, cancellationToken);
+            
+            var results = searchResult.Value.Results.Select(item => new CustomAddressResultItem
                 {
                     Id = item.Id,
                     DisplayAddress = item.Address.FreeformAddress,
@@ -132,28 +189,55 @@
                         Latitude = item.Position.Latitude,
                         Longitude = item.Position.Longitude
                     }
-                });
+                }).ToList();
+
+            Logger.LogDebug("Search returned {ResultCount} results", results.Count);
+            return results;
         }
-        catch
+        catch (Exception ex)
         {
-            // Handle exceptions gracefully
+            Logger.LogError(ex, "Error occurred during Azure Maps search for text: {SearchText}", searchText);
             return [];
         }
     }
 
     private async Task HandleMarkerDragChange()
     {
-        var latitudeString = await JSRuntime.InvokeAsync<string>("getInnerText", "latitude");
-        var longitudeString = await JSRuntime.InvokeAsync<string>("getInnerText", "longitude");
-
-        if (double.TryParse(latitudeString, out double latitude) &&
-            double.TryParse(longitudeString, out double longitude))
+        try
         {
-            DocumentGenerationRequestLocation.Latitude = latitude;
-            DocumentGenerationRequestLocation.Longitude = longitude;
-            await DocumentGenerationRequestLocationChanged.InvokeAsync(DocumentGenerationRequestLocation);
-        }
+            Logger.LogDebug("HandleMarkerDragChange: Getting coordinates from DOM");
+            
+            var latitudeString = await JSRuntime.InvokeAsync<string>("getInnerText", "latitude");
+            var longitudeString = await JSRuntime.InvokeAsync<string>("getInnerText", "longitude");
+            
+            Logger.LogDebug("HandleMarkerDragChange: Got latitude='{Latitude}', longitude='{Longitude}'", latitudeString, longitudeString);
 
-        await InvokeAsync(StateHasChanged);
+            if (double.TryParse(latitudeString, out double latitude) &&
+                double.TryParse(longitudeString, out double longitude))
+            {
+                if (DocumentGenerationRequestLocation is not null)
+                {
+                    DocumentGenerationRequestLocation.Latitude = latitude;
+                    DocumentGenerationRequestLocation.Longitude = longitude;
+                    await DocumentGenerationRequestLocationChanged.InvokeAsync(DocumentGenerationRequestLocation);
+                    Logger.LogDebug("HandleMarkerDragChange: Updated location to Lat={Latitude}, Lng={Longitude}", latitude, longitude);
+                }
+                else
+                {
+                    Logger.LogError("HandleMarkerDragChange: DocumentGenerationRequestLocation is null");
+                }
+            }
+            else
+            {
+                Logger.LogWarning("HandleMarkerDragChange: Failed to parse coordinates - lat='{LatString}', lng='{LngString}'", 
+                    latitudeString, longitudeString);
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "HandleMarkerDragChange: Error occurred while handling marker drag change");
+        }
     }
 }

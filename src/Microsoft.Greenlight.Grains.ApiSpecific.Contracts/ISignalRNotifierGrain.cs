@@ -4,6 +4,8 @@ using Microsoft.Greenlight.Shared.Contracts.Messages.DocumentGeneration.Events;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Reindexing.Events;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Review.Events;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Validation.Events;
+using Microsoft.Greenlight.Shared.Contracts.DTO.SystemStatus;
+using Microsoft.Greenlight.Grains.Shared.Contracts;
 using Orleans;
 
 namespace Microsoft.Greenlight.Grains.ApiSpecific.Contracts
@@ -87,5 +89,30 @@ namespace Microsoft.Greenlight.Grains.ApiSpecific.Contracts
         Task NotifyDocumentReindexProgressAsync(DocumentReindexProgressNotification notification);
         Task NotifyDocumentReindexCompletedAsync(DocumentReindexCompletedNotification notification);
         Task NotifyDocumentReindexFailedAsync(DocumentReindexFailedNotification notification);
+
+        // Content Reference reindexing notifications
+        Task NotifyContentReferenceReindexStartedAsync(ContentReferenceReindexStartedNotification notification);
+        Task NotifyContentReferenceReindexProgressAsync(ContentReferenceReindexProgressNotification notification);
+        Task NotifyContentReferenceReindexCompletedAsync(ContentReferenceReindexCompletedNotification notification);
+        Task NotifyContentReferenceReindexFailedAsync(ContentReferenceReindexFailedNotification notification);
+        
+        // System status monitoring
+        /// <summary>
+        /// Gets the current system status snapshot aggregated from all notifications.
+        /// This provides a centralized view of system health without requiring manual status updates.
+        /// </summary>
+        Task<SystemStatusSnapshot> GetSystemStatusAsync();
+        
+        /// <summary>
+        /// Gets the system status for a specific subsystem.
+        /// </summary>
+        /// <param name="source">The subsystem source (e.g., "VectorStore", "WorkerThreads", "Ingestion")</param>
+        Task<SubsystemStatus?> GetSubsystemStatusAsync(string source);
+        
+        /// <summary>
+        /// Notifies all clients in the system-status group about system status updates.
+        /// </summary>
+        /// <param name="statusSnapshot">The current system status snapshot</param>
+        Task NotifySystemStatusUpdateAsync(SystemStatusSnapshot statusSnapshot);
     }
 }

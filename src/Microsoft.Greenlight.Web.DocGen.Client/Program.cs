@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Web;
-using Microsoft.AspNetCore.Components.WebAssembly.Authentication;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Microsoft.Greenlight.Web.DocGen.Client.Auth;
 using Microsoft.Greenlight.Web.DocGen.Client.Components;
@@ -29,12 +28,13 @@ builder.Services.AddScoped<INavMenuStateService, NavMenuStateService>();
 builder.Services.AddMudServices();
 var serverBaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
 
+// For server-side authentication, we need a custom message handler that uses the token from the authentication state
+builder.Services.AddScoped<ServerAuthenticationMessageHandler>();
+
 builder.Services.AddHttpClient("Microsoft.Greenlight.Web.DocGen.ServerAPI", client => client.BaseAddress = serverBaseAddress)
-    .AddHttpMessageHandler<BaseAddressAuthorizationMessageHandler>();
+    .AddHttpMessageHandler<ServerAuthenticationMessageHandler>();
 
 builder.Services.AddScoped(sp => sp.GetRequiredService<IHttpClientFactory>().CreateClient("Microsoft.Greenlight.Web.DocGen.ServerAPI"));
-
-builder.Services.AddApiAuthorization();
 
 builder.Services.AddHttpClient<IConfigurationApiClient, ConfigurationApiClient>(client =>
 {
@@ -126,6 +126,11 @@ builder.Services.AddHttpClient<IDocumentReindexApiClient, DocumentReindexApiClie
     client.BaseAddress = serverBaseAddress;
 });
 
+builder.Services.AddHttpClient<IContentReferenceReindexApiClient, ContentReferenceReindexApiClient>(client =>
+{
+    client.BaseAddress = serverBaseAddress;
+});
+
 builder.Services.AddHttpClient<IVectorStoreApiClient, VectorStoreApiClient>(client =>
 {
     client.BaseAddress = serverBaseAddress;
@@ -141,13 +146,32 @@ builder.Services.AddHttpClient<IAdminAuthorizationApiClient, AdminAuthorizationA
     client.BaseAddress = serverBaseAddress;
 });
 
+builder.Services.AddHttpClient<IFileStorageSourceApiClient, FileStorageSourceApiClient>(client =>
+{
+    client.BaseAddress = serverBaseAddress;
+});
+
+builder.Services.AddHttpClient<IFileStorageHostApiClient, FileStorageHostApiClient>(client =>
+{
+    client.BaseAddress = serverBaseAddress;
+});
+
+builder.Services.AddHttpClient<ISystemStatusApiClient, SystemStatusApiClient>(client =>
+{
+    client.BaseAddress = serverBaseAddress;
+});
+
 // Service used to aid in constructing editors
 builder.Services.AddScoped<ValidationEditorService>();
 
 // Shared SignalR connection provider
 builder.Services.AddSingleton<SignalRConnectionService>();
 
-// Factory for robust subscription management
-builder.Services.AddSingleton<SignalRSubscriptionFactory>();
+// Factory for robust subscription management with logging support
+builder.Services.AddSingleton<SignalRSubscriptionFactory>(serviceProvider =>
+{
+    var loggerFactory = serviceProvider.GetService<ILoggerFactory>();
+    return new SignalRSubscriptionFactory(loggerFactory);
+});
 
 await builder.Build().RunAsync();

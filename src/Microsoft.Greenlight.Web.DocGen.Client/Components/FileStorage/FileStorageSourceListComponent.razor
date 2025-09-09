@@ -1,0 +1,491 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+
+@using Microsoft.Greenlight.Shared.Contracts.DTO.FileStorage
+@using Microsoft.Greenlight.Shared.Contracts.Requests.FileStorage
+@using Microsoft.Greenlight.Web.DocGen.Client.Components.Authorization
+@using Microsoft.Greenlight.Web.DocGen.Client.Components.FileStorage
+@inject IFileStorageSourceApiClient FileStorageSourceApiClient
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+@namespace Microsoft.Greenlight.Web.DocGen.Client.Components.FileStorage
+
+<MudCard>
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.h6">File Storage Sources</MudText>
+                <PermissionView Permission="@GetRequiredPermission()">
+                    <MudStack Row="true" Spacing="1">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ShowAddSourceDialog" StartIcon="@Icons.Material.Filled.Add">
+                            Add Source
+                        </MudButton>
+                        @if (ShowAssociations && (DocumentProcessId.HasValue || DocumentLibraryId.HasValue))
+                        {
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="ShowLinkExistingDialog" StartIcon="@Icons.Material.Filled.Link">
+                                Link Existing
+                            </MudButton>
+                        }
+                    </MudStack>
+                </PermissionView>
+            </MudStack>
+        </CardHeaderContent>
+    </MudCardHeader>
+    <MudCardContent>
+        @if (!ShowAssociations)
+        {
+            <MudPaper Class="pa-2 mb-2" Elevation="0">
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                    <MudTextField @bind-Value="_search" Label="Search" Variant="Variant.Outlined" Immediate="true" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
+
+                    <MudSelect T="FileStorageSourceDataType" MultiSelection="true" Label="Roles" Dense="true" SelectedValues="@_roleFilter" SelectedValuesChanged="@((IEnumerable<FileStorageSourceDataType> values) => OnRoleFilterChanged(values))">
+                        @foreach (var role in Enum.GetValues(typeof(FileStorageSourceDataType)).Cast<FileStorageSourceDataType>())
+                        {
+                            <MudSelectItem Value="@role">@role.ToString()</MudSelectItem>
+                        }
+                    </MudSelect>
+
+                    <MudSelect T="FileStorageProviderType" MultiSelection="true" Label="Provider" Dense="true" SelectedValues="@_providerFilter" SelectedValuesChanged="@((IEnumerable<FileStorageProviderType> values) => OnProviderFilterChanged(values))">
+                        @foreach (var pv in Enum.GetValues(typeof(FileStorageProviderType)).Cast<FileStorageProviderType>())
+                        {
+                            <MudSelectItem Value="@pv">@pv.ToString()</MudSelectItem>
+                        }
+                    </MudSelect>
+
+                    <MudSwitch T="bool" @bind-Checked="_activeOnly" Color="Color.Primary" Label="Active only" />
+                </MudStack>
+            </MudPaper>
+        }
+        @if (_isLoading)
+        {
+            <MudProgressLinear Indeterminate="true" />
+        }
+        else if (!HasAnySources())
+        {
+            <MudAlert Severity="Severity.Warning" Class="mb-2">
+                @if (ShowBackwardCompatibility && !string.IsNullOrEmpty(LegacyContainerName))
+                {
+                    <div>
+                        <MudText Typo="Typo.body1"><strong>Legacy Configuration Detected</strong></MudText>
+                        <MudText Typo="Typo.body2">Currently using legacy blob storage: <strong>@LegacyContainerName</strong></MudText>
+                        <PermissionView Permission="@GetRequiredPermission()">
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" Class="mt-2" OnClick="MigrateLegacyConfiguration">
+                                Migrate to File Storage Sources
+                            </MudButton>
+                        </PermissionView>
+                    </div>
+                }
+                else
+                {
+                    <span>At least one file storage source is required.</span>
+                }
+            </MudAlert>
+        }
+        else
+        {
+            @if (ShowAssociations && (DocumentProcessId.HasValue || DocumentLibraryId.HasValue))
+            {
+                @* Show associations with upload configuration *@
+                @foreach (var processAssociation in _processAssociations)
+                {
+                    <FileStorageSourceAssociationCard ProcessAssociation="processAssociation" 
+                                                    OnConfigure="ConfigureAssociation" 
+                                                    OnDelete="DeleteAssociation" 
+                                                    ShowDeleteButton="@GetShowDeleteButton()"
+                                                    RequiredPermission="@GetRequiredPermission()" />
+                }
+                @foreach (var libraryAssociation in _libraryAssociations)
+                {
+                    <FileStorageSourceAssociationCard LibraryAssociation="libraryAssociation" 
+                                                    OnConfigure="ConfigureAssociation" 
+                                                    OnDelete="DeleteAssociation" 
+                                                    ShowDeleteButton="@GetShowDeleteButton()"
+                                                    RequiredPermission="@GetRequiredPermission()" />
+                }
+            }
+            else
+            {
+                @* Grouped view by roles/categories *@
+                @foreach (var group in GetGroupedSources())
+                {
+                    <MudText Typo="Typo.subtitle2" Class="mt-2 mb-1">@group.Key</MudText>
+                    @foreach (var source in group)
+                    {
+                        <FileStorageSourceDisplayComponent Source="source" OnEdit="EditSource" />
+                    }
+                }
+            }
+        }
+
+        @if (ShowBackwardCompatibility && !string.IsNullOrEmpty(LegacyContainerName) && HasAnySources())
+        {
+            <MudDivider Class="my-2" />
+            <MudAlert Severity="Severity.Info" Dense="true">
+                <MudText Typo="Typo.caption">
+                    <strong>Note:</strong> Legacy blob storage configuration (@LegacyContainerName) is still present. 
+                    The system will use the file storage sources above instead.
+                </MudText>
+            </MudAlert>
+        }
+    </MudCardContent>
+</MudCard>
+
+@code {
+    [Parameter] public Guid? DocumentProcessId { get; set; }
+    [Parameter] public Guid? DocumentLibraryId { get; set; }
+    [Parameter] public string? LegacyContainerName { get; set; }
+    [Parameter] public string? LegacyAutoImportFolder { get; set; }
+    [Parameter] public bool ShowBackwardCompatibility { get; set; } = true;
+    [Parameter] public bool ShowAssociations { get; set; } = true;
+    [Parameter] public EventCallback OnSourcesChanged { get; set; }
+
+    private List<FileStorageSourceInfo> _sources = new();
+    private List<DocumentProcessFileStorageSourceInfo> _processAssociations = new();
+    private List<DocumentLibraryFileStorageSourceInfo> _libraryAssociations = new();
+    private bool _isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSourcesAsync();
+    }
+
+    private async Task LoadSourcesAsync()
+    {
+        _isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            if (ShowAssociations && DocumentProcessId.HasValue)
+            {
+                _processAssociations = await FileStorageSourceApiClient.GetFileStorageSourceAssociationsByProcessIdAsync(DocumentProcessId.Value);
+                _sources.Clear();
+                _libraryAssociations.Clear();
+            }
+            else if (ShowAssociations && DocumentLibraryId.HasValue)
+            {
+                _libraryAssociations = await FileStorageSourceApiClient.GetFileStorageSourceAssociationsByLibraryIdAsync(DocumentLibraryId.Value);
+                _sources.Clear();
+                _processAssociations.Clear();
+            }
+            else
+            {
+                _sources = await FileStorageSourceApiClient.GetAllFileStorageSourcesAsync();
+                _processAssociations.Clear();
+                _libraryAssociations.Clear();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading file storage sources: {ex.Message}", Severity.Error);
+            _sources = new List<FileStorageSourceInfo>();
+            _processAssociations = new List<DocumentProcessFileStorageSourceInfo>();
+            _libraryAssociations = new List<DocumentLibraryFileStorageSourceInfo>();
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private bool HasAnySources() => _sources.Any() || _processAssociations.Any() || _libraryAssociations.Any();
+
+    private bool GetShowDeleteButton() => 
+        (_sources.Count > 1) || 
+        (_processAssociations.Count > 1) || 
+        (_libraryAssociations.Count > 1);
+
+    private async Task ShowAddSourceDialog()
+    {
+        var parameters = new DialogParameters
+        {
+            { "IsCreateMode", true },
+            { "DocumentProcessId", DocumentProcessId },
+            { "DocumentLibraryId", DocumentLibraryId }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<FileStorageSourceEditDialog>("Add File Storage Source", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            await LoadSourcesAsync();
+            await OnSourcesChanged.InvokeAsync();
+        }
+    }
+
+    private async Task EditSource(FileStorageSourceInfo source)
+    {
+        var parameters = new DialogParameters
+        {
+            { "Source", source },
+            { "IsCreateMode", false }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<FileStorageSourceEditDialog>("Edit File Storage Source", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            await LoadSourcesAsync();
+            await OnSourcesChanged.InvokeAsync();
+        }
+    }
+
+    private IEnumerable<IGrouping<string, FileStorageSourceInfo>> GetGroupedSources()
+    {
+        IEnumerable<FileStorageSourceInfo> ApplyFilters(IEnumerable<FileStorageSourceInfo> src)
+        {
+            if (_roleFilter.Count > 0)
+            {
+                src = src.Where(s =>
+                    (s.StorageSourceDataTypes != null && s.StorageSourceDataTypes.Any(r => _roleFilter.Contains(r))) ||
+                    _roleFilter.Contains(s.StorageSourceDataType));
+            }
+
+            if (_providerFilter.Count > 0)
+            {
+                src = src.Where(s => _providerFilter.Contains(s.ProviderType));
+            }
+
+            if (_activeOnly)
+            {
+                src = src.Where(s => s.IsActive);
+            }
+
+            if (!string.IsNullOrWhiteSpace(_search))
+            {
+                var term = _search.Trim();
+                src = src.Where(s =>
+                    (s.Name?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (s.ContainerOrPath?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (s.Description?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+
+            return src;
+        }
+
+        IEnumerable<string> Roles(FileStorageSourceInfo s)
+        {
+            if (s.StorageSourceDataTypes != null && s.StorageSourceDataTypes.Count > 0)
+            {
+                return s.StorageSourceDataTypes.Select(d => d.ToString());
+            }
+            return new[] { s.StorageSourceDataType.ToString() };
+        }
+
+        var filtered = ApplyFilters(_sources);
+        var expanded = filtered
+            .SelectMany(s => Roles(s).Select(role => new { role, s }))
+            .GroupBy(x => x.role, x => x.s)
+            .OrderBy(g => g.Key);
+
+        return expanded;
+    }
+
+    private string? _search;
+    private HashSet<FileStorageSourceDataType> _roleFilter = new();
+    private HashSet<FileStorageProviderType> _providerFilter = new();
+    private bool _activeOnly = false;
+
+    private Task OnRoleFilterChanged(IEnumerable<FileStorageSourceDataType> values)
+    {
+        _roleFilter = values != null ? values.ToHashSet() : new HashSet<FileStorageSourceDataType>();
+        return Task.CompletedTask;
+    }
+
+    private Task OnProviderFilterChanged(IEnumerable<FileStorageProviderType> values)
+    {
+        _providerFilter = values != null ? values.ToHashSet() : new HashSet<FileStorageProviderType>();
+        return Task.CompletedTask;
+    }
+
+    private async Task ShowLinkExistingDialog()
+    {
+        var parameters = new DialogParameters
+        {
+            { "DocumentProcessId", DocumentProcessId },
+            { "DocumentLibraryId", DocumentLibraryId }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<FileStorageSourceLinkExistingDialog>("Link Existing Storage Source", parameters, options);
+        var result = await dialog.Result;
+        if (!result.Canceled)
+        {
+            await LoadSourcesAsync();
+            await OnSourcesChanged.InvokeAsync();
+        }
+    }
+
+    private async Task ConfigureAssociation(object association)
+    {
+        var parameters = new DialogParameters();
+        
+        if (association is DocumentProcessFileStorageSourceInfo processAssociation)
+        {
+            parameters.Add("ProcessAssociation", processAssociation);
+        }
+        else if (association is DocumentLibraryFileStorageSourceInfo libraryAssociation)
+        {
+            parameters.Add("LibraryAssociation", libraryAssociation);
+        }
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<FileStorageSourceAssociationConfigDialog>("Configure Storage Source", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            await LoadSourcesAsync();
+            await OnSourcesChanged.InvokeAsync();
+        }
+    }
+
+    private async Task DeleteSource(FileStorageSourceInfo source)
+    {
+        var parameters = new DialogParameters
+        {
+            { "ContentText", $"Are you sure you want to delete the file storage source '{source.Name}'? This action cannot be undone." },
+            { "ButtonText", "Delete" },
+            { "DialogColor", Color.Error }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = DialogService.Show<ConfirmationDialog>("Delete File Storage Source", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            try
+            {
+                if (DocumentProcessId.HasValue)
+                {
+                    await FileStorageSourceApiClient.DisassociateSourceFromProcessAsync(DocumentProcessId.Value, source.Id);
+                }
+                else if (DocumentLibraryId.HasValue)
+                {
+                    await FileStorageSourceApiClient.DisassociateSourceFromLibraryAsync(DocumentLibraryId.Value, source.Id);
+                }
+                else
+                {
+                    await FileStorageSourceApiClient.DeleteFileStorageSourceAsync(source.Id);
+                }
+
+                Snackbar.Add("File storage source removed successfully.", Severity.Success);
+                await LoadSourcesAsync();
+                await OnSourcesChanged.InvokeAsync();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error removing file storage source: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task DeleteAssociation(object association)
+    {
+        string sourceName;
+        Guid sourceId;
+        
+        if (association is DocumentProcessFileStorageSourceInfo processAssociation)
+        {
+            sourceName = processAssociation.FileStorageSourceName;
+            sourceId = processAssociation.FileStorageSourceId;
+        }
+        else if (association is DocumentLibraryFileStorageSourceInfo libraryAssociation)
+        {
+            sourceName = libraryAssociation.FileStorageSourceName;
+            sourceId = libraryAssociation.FileStorageSourceId;
+        }
+        else
+        {
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            { "ContentText", $"Are you sure you want to remove the association with '{sourceName}'? This will not delete the storage source itself." },
+            { "ButtonText", "Remove" },
+            { "DialogColor", Color.Error }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = DialogService.Show<ConfirmationDialog>("Remove Association", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            try
+            {
+                if (DocumentProcessId.HasValue)
+                {
+                    await FileStorageSourceApiClient.DisassociateSourceFromProcessAsync(DocumentProcessId.Value, sourceId);
+                }
+                else if (DocumentLibraryId.HasValue)
+                {
+                    await FileStorageSourceApiClient.DisassociateSourceFromLibraryAsync(DocumentLibraryId.Value, sourceId);
+                }
+
+                Snackbar.Add("Association removed successfully.", Severity.Success);
+                await LoadSourcesAsync();
+                await OnSourcesChanged.InvokeAsync();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error removing association: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task MigrateLegacyConfiguration()
+    {
+        if (string.IsNullOrEmpty(LegacyContainerName))
+        {
+            return;
+        }
+
+        var newSource = new CreateFileStorageSourceRequest
+        {
+            Name = $"Migrated - {LegacyContainerName}",
+            FileStorageHostId = Guid.Empty, // Placeholder - requires user to set real host later
+            ContainerOrPath = LegacyContainerName,
+            AutoImportFolderName = LegacyAutoImportFolder ?? "ingest-auto",
+            IsDefault = false,
+            IsActive = true,
+            ShouldMoveFiles = true
+        };
+
+        try
+        {
+            var createdSource = await FileStorageSourceApiClient.CreateFileStorageSourceAsync(newSource);
+
+            if (DocumentProcessId.HasValue)
+            {
+                await FileStorageSourceApiClient.AssociateSourceWithProcessAsync(DocumentProcessId.Value, createdSource.Id);
+            }
+            else if (DocumentLibraryId.HasValue)
+            {
+                await FileStorageSourceApiClient.AssociateSourceWithLibraryAsync(DocumentLibraryId.Value, createdSource.Id);
+            }
+
+            Snackbar.Add("Legacy configuration migrated successfully.", Severity.Success);
+            await LoadSourcesAsync();
+            await OnSourcesChanged.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error migrating legacy configuration: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private string GetRequiredPermission()
+    {
+        return DocumentProcessId.HasValue || DocumentLibraryId.HasValue 
+            ? Microsoft.Greenlight.Shared.Contracts.Authorization.PermissionKeys.AlterDocumentProcessesAndLibraries
+            : Microsoft.Greenlight.Shared.Contracts.Authorization.PermissionKeys.AlterSystemConfiguration;
+    }
+}

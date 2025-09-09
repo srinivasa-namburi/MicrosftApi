@@ -65,7 +65,15 @@ public class ConfigurationApiClient : BaseServiceClient<ConfigurationApiClient>,
         return _serviceConfigurationOptions.CurrentValue.GreenlightServices.VectorStore;
     }
 
-    // OCR endpoints: forward to API since server-side UI may also leverage the REST flows for consistency
+    // Document Ingestion and OCR endpoints: forward to API since server-side UI may also leverage the REST flows for consistency
+    public async Task<ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions> GetDocumentIngestionOptionsAsync()
+    {
+        var response = await SendGetRequestMessage("/api/configuration/document-ingestion-options");
+        response?.EnsureSuccessStatusCode();
+        return await response?.Content.ReadFromJsonAsync<ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions>()
+               ?? _serviceConfigurationOptions.CurrentValue.GreenlightServices.DocumentIngestion;
+    }
+
     public async Task<ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions.OcrOptions> GetOcrOptionsAsync()
     {
         var response = await SendGetRequestMessage("/api/configuration/ocr-options");
@@ -223,5 +231,29 @@ public class ConfigurationApiClient : BaseServiceClient<ConfigurationApiClient>,
         var response = await SendGetRequestMessage($"/api/configuration/indexes/import/{jobId}");
         response?.EnsureSuccessStatusCode();
         return await response?.Content.ReadFromJsonAsync<IndexImportJobStatus>() ?? throw new IOException($"No import job status for {jobId}");
+    }
+
+    public async Task<SecretOverrideInfo> GetSecretOverrideInfoAsync(string configurationKey)
+    {
+        var response = await SendGetRequestMessage($"/api/configuration/secret-override?configurationKey={Uri.EscapeDataString(configurationKey)}");
+        response?.EnsureSuccessStatusCode();
+        return await response?.Content.ReadFromJsonAsync<SecretOverrideInfo>() ?? 
+               throw new IOException("Failed to get secret override info!");
+    }
+
+    public async Task<SecretOverrideInfo> SetSecretOverrideAsync(SecretOverrideRequest request)
+    {
+        var response = await SendPostRequestMessage("/api/configuration/secret-override", request);
+        response?.EnsureSuccessStatusCode();
+        return await response?.Content.ReadFromJsonAsync<SecretOverrideInfo>() ?? 
+               throw new IOException("Failed to set secret override!");
+    }
+
+    public async Task<SecretOverrideInfo> RemoveSecretOverrideAsync(string configurationKey)
+    {
+        var response = await SendDeleteRequestMessage($"/api/configuration/secret-override?configurationKey={Uri.EscapeDataString(configurationKey)}");
+        response?.EnsureSuccessStatusCode();
+        return await response?.Content.ReadFromJsonAsync<SecretOverrideInfo>() ?? 
+               throw new IOException("Failed to remove secret override!");
     }
 }

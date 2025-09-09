@@ -12,18 +12,19 @@
 @inject INavMenuStateService NavMenuStateService
 @inject IPermissionService PermissionService
 
-<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
-    <MudPaper Class="pa-4">
-        <MudDataGrid Items="_documentProcesses"
-                     T="DocumentProcessInfo"
-                     Hover="true"
-                     Filterable="false"
-                     SortMode="SortMode.Single"
-                     Groupable="false"
-                     RowClick="@RowClicked"
-                     Dense="true">
-            <ToolBarContent>
-                <MudText Typo="Typo.h6">Document Processes</MudText>
+<MudPaper Class="pa-6">
+    <MudText Typo="Typo.h5">Document Processes</MudText>
+    <MudDivider Class="mt-2 mb-5" />
+    
+    <MudDataGrid Items="_documentProcesses"
+                 T="DocumentProcessInfo"
+                 Hover="true"
+                 Filterable="false"
+                 SortMode="SortMode.Single"
+                 Groupable="false"
+                 RowClick="@RowClicked"
+                 Size="Size.Small">
+        <ToolBarContent>
                 <MudSpacer />
                 <PermissionView Permission="@PermissionKeys.AlterDocumentProcessesAndLibraries">
                     <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="OpenImportDialog">Import</MudButton>
@@ -39,19 +40,19 @@
                         <MudStack Row="true" Spacing="3">
                             <PermissionView Permission="@PermissionKeys.AlterDocumentProcessesAndLibraries" Mode="PermissionMode.DisableControls">
                                 <MudTooltip Delay="400" Text="Edit Document Process">
-                                    <MudIconButton Disabled="@IsStaticProcess(context.Item)" OnClick="() => EditProcess(context.Item.Id)" Size="@Size.Small" Icon="@Icons.Material.Filled.StickyNote2"></MudIconButton>
+                                    <MudIconButton Disabled="@IsStaticProcess(context.Item)" OnClick="@(() => EditProcessAsync(context.Item.Id))" Size="@Size.Small" Icon="@Icons.Material.Filled.StickyNote2"></MudIconButton>
                                 </MudTooltip>
                             </PermissionView>
                             
                             <PermissionView Permission="@PermissionKeys.AlterDocumentProcessesAndLibraries" Mode="PermissionMode.DisableControls">
                                 <MudTooltip Delay="400" Text="Delete Document Process (you will be asked to confirm)">
-                                    <MudIconButton Disabled="@IsStaticProcess(context.Item)" OnClick="() => ShowDeleteConfirmation(context.Item)" Size="@Size.Small" Icon="@Icons.Material.Filled.Delete"></MudIconButton>
+                                    <MudIconButton Disabled="@IsStaticProcess(context.Item)" OnClick="@(() => ShowDeleteConfirmationAsync(context.Item))" Size="@Size.Small" Icon="@Icons.Material.Filled.Delete"></MudIconButton>
                                 </MudTooltip>
                             </PermissionView>
                             
                             <PermissionView Permission="@PermissionKeys.AlterDocumentProcessesAndLibraries" Mode="PermissionMode.DisableControls">
                                 <MudTooltip Delay="400" Text="Export Document Process as Json (you will be asked to confirm)">
-                                    <MudIconButton Disabled="@IsStaticProcess(context.Item)" OnClick="() => ExportProcess(context.Item.Id)" Size="@Size.Small" Icon="@Icons.Material.Filled.ArrowDownward"></MudIconButton>
+                                    <MudIconButton Disabled="@IsStaticProcess(context.Item)" OnClick="@(() => ExportProcessAsync(context.Item.Id))" Size="@Size.Small" Icon="@Icons.Material.Filled.ArrowDownward"></MudIconButton>
                                 </MudTooltip>
                             </PermissionView>
                         </MudStack>
@@ -59,8 +60,7 @@
                 </TemplateColumn>
             </Columns>
         </MudDataGrid>
-    </MudPaper>
-</MudContainer>
+</MudPaper>
 
 @code {
     private List<DocumentProcessInfo> _documentProcesses = new();
@@ -94,63 +94,105 @@
         Navigation.NavigateTo("/document-processes/edit");
     }
 
+    private async Task EditProcessAsync(Guid processId)
+    {
+        await Task.Yield(); // Ensure we're async
+        Navigation.NavigateTo($"/document-processes/edit/{processId}");
+    }
+
     private void EditProcess(Guid processId)
     {
         Navigation.NavigateTo($"/document-processes/edit/{processId}");
     }
 
+    private async Task ExportProcessAsync(Guid processId)
+    {
+        try
+        {
+            var documentProcess = await DocumentProcessApiClient.ExportDocumentProcessByIdAsync(processId);
+            var json = JsonSerializer.Serialize(documentProcess, new JsonSerializerOptions { WriteIndented = true });
+            //var fileName = $"{documentProcess.ShortName}.json";
+            //await JSRuntime.InvokeVoidAsync("downloadFile", fileName, json);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error exporting process: {ex.Message}", Severity.Error);
+        }
+    }
+
     private async Task ExportProcess(Guid processId)
     {
-        var documentProcess = await DocumentProcessApiClient.ExportDocumentProcessByIdAsync(processId);
-        var json = JsonSerializer.Serialize(documentProcess, new JsonSerializerOptions { WriteIndented = true });
-        //var fileName = $"{documentProcess.ShortName}.json";
-        //await JSRuntime.InvokeVoidAsync("downloadFile", fileName, json);
+        await ExportProcessAsync(processId);
+    }
+
+    private async Task ShowDeleteConfirmationAsync(DocumentProcessInfo process)
+    {
+        try
+        {
+            var parameters = new DialogParameters
+            {
+                { "ContentText", $"Are you sure you want to delete the document process '{process.ShortName}'? This deletes the vector index/collection (if SK), its blob container and all ingested document records." },
+                { "ButtonText", "Delete" },
+                { "DialogColor", Color.Error }
+            };
+
+            var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+            var dialog = await DialogService.ShowAsync<ConfirmationDialog>("Delete Document Process", parameters, options);
+            var result = await dialog.Result;
+
+            if (!result.Canceled)
+            {
+                await DeleteDocumentProcessAsync(process.Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error showing delete confirmation: {ex.Message}", Severity.Error);
+        }
     }
 
     private async Task ShowDeleteConfirmation(DocumentProcessInfo process)
     {
-        var parameters = new DialogParameters
-        {
-            { "ContentText", $"Are you sure you want to delete the document process '{process.ShortName}'? This deletes the vector index/collection (if SK), its blob container and all ingested document records." },
-            { "ButtonText", "Delete" },
-            { "DialogColor", Color.Error }
-        };
+        await ShowDeleteConfirmationAsync(process);
+    }
 
-        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
-        var dialog = await DialogService.ShowAsync<ConfirmationDialog>("Delete Document Process", parameters, options);
-        var result = await dialog.Result;
-
-        if (!result.Canceled)
+    private async Task DeleteDocumentProcessAsync(Guid processId)
+    {
+        try
         {
-            await DeleteDocumentProcess(process.Id);
+            if (processId != Guid.Empty)
+            {
+                var deleteResult = await DocumentProcessApiClient.DeleteDocumentProcessAsync(processId);
+                if (deleteResult)
+                {
+                    _documentProcesses = await DocumentProcessApiClient.GetAllDocumentProcessInfoAsync();
+                    // Notify NavMenu that document processes have changed
+                    await NavMenuStateService.NotifyDocumentProcessesChangedAsync();
+                    Snackbar.Add("Document process deleted successfully.", Severity.Success);
+                    await InvokeAsync(StateHasChanged);
+                }
+                else
+                {
+                    Snackbar.Add("Document process NOT deleted due to an error", Severity.Error);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error deleting document process: {ex.Message}", Severity.Error);
         }
     }
 
     private async Task DeleteDocumentProcess(Guid processId)
     {
-        if (processId != Guid.Empty)
-        {
-            var deleteResult = await DocumentProcessApiClient.DeleteDocumentProcessAsync(processId);
-            if (deleteResult)
-            {
-                _documentProcesses = await DocumentProcessApiClient.GetAllDocumentProcessInfoAsync();
-                // Notify NavMenu that document processes have changed
-                await NavMenuStateService.NotifyDocumentProcessesChangedAsync();
-                Snackbar.Add("Document process deleted successfully.", Severity.Success);
-                await InvokeAsync(StateHasChanged);
-            }
-            else
-            {
-                Snackbar.Add("Document process NOT deleted due to an error", Severity.Error);
-            }
-        }
+        await DeleteDocumentProcessAsync(processId);
     }
 
-    private void RowClicked(DataGridRowClickEventArgs<DocumentProcessInfo> args)
+    private async Task RowClicked(DataGridRowClickEventArgs<DocumentProcessInfo> args)
     {
         if (!IsStaticProcess(args.Item))
         {
-            EditProcess(args.Item.Id);
+            await EditProcessAsync(args.Item.Id);
         }
     }
 

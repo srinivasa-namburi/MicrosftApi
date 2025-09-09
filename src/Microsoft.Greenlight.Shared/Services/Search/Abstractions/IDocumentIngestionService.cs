@@ -16,7 +16,7 @@ public interface IDocumentIngestionService
     /// <param name="documentId">The ID of the ingested document entity.</param>
     /// <param name="fileStream">Stream containing the document content.</param>
     /// <param name="fileName">Name of the file.</param>
-    /// <param name="documentUrl">URL of the document.</param>
+    /// <param name="documentReference">Document reference identifier for dynamic URL resolution.</param>
     /// <param name="documentLibraryName">Name of the document library or process.</param>
     /// <param name="indexName">Name of the index to store in.</param>
     /// <param name="userId">Optional user ID.</param>
@@ -26,7 +26,7 @@ public interface IDocumentIngestionService
         Guid documentId,
         Stream fileStream,
         string fileName,
-        string documentUrl,
+        string documentReference,
         string documentLibraryName,
         string indexName,
         string? userId = null,

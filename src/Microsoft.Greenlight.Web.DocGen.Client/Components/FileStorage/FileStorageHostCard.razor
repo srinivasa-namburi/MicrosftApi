@@ -1,0 +1,101 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+
+@using Microsoft.Greenlight.Shared.Contracts.DTO.FileStorage
+@using Microsoft.Greenlight.Web.DocGen.Client.Components.Authorization
+
+@namespace Microsoft.Greenlight.Web.DocGen.Client.Components.FileStorage
+
+<MudCard Class="mb-2">
+    <MudCardContent>
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudStack Spacing="1">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudText Typo="Typo.h6">@Host.Name</MudText>
+                    @if (Host.IsDefault)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled">Default</MudChip>
+                    }
+                    @if (!Host.IsActive)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled">Inactive</MudChip>
+                    }
+                </MudStack>
+                
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    <strong>Provider:</strong> @Host.ProviderType.ToString()
+                </MudText>
+                
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    <strong>Connection:</strong> @GetMaskedConnectionString()
+                </MudText>
+                
+                @if (!string.IsNullOrEmpty(Host.Description))
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        @Host.Description
+                    </MudText>
+                }
+                
+                @if (Host.Sources?.Any() == true)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        <strong>Sources:</strong> @Host.Sources.Count (@Host.Sources.Count(s => s.IsActive) active)
+                    </MudText>
+                }
+            </MudStack>
+
+            <MudStack Row="true" Spacing="1">
+                <PermissionView Permission="@RequiredPermission">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" 
+                                   Color="Color.Primary" 
+                                   Size="Size.Small"
+                                   OnClick="() => OnEdit.InvokeAsync(Host)"
+                                   Aria-Label="Edit Host" />
+                    
+                    @if (ShowDeleteButton)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" 
+                                       Color="Color.Error" 
+                                       Size="Size.Small"
+                                       OnClick="() => OnDelete.InvokeAsync(Host)"
+                                       Aria-Label="Delete Host" />
+                    }
+                    
+                    <MudIconButton Icon="@Icons.Material.Filled.NetworkCheck" 
+                                   Color="Color.Secondary" 
+                                   Size="Size.Small"
+                                   OnClick="() => OnTestConnection.InvokeAsync(Host)"
+                                   Aria-Label="Test Connection" />
+                </PermissionView>
+            </MudStack>
+        </MudStack>
+    </MudCardContent>
+</MudCard>
+
+@code {
+    [Parameter] public FileStorageHostInfo Host { get; set; } = new();
+    [Parameter] public EventCallback<FileStorageHostInfo> OnEdit { get; set; }
+    [Parameter] public EventCallback<FileStorageHostInfo> OnDelete { get; set; }
+    [Parameter] public EventCallback<FileStorageHostInfo> OnTestConnection { get; set; }
+    [Parameter] public bool ShowDeleteButton { get; set; } = true;
+    [Parameter] public string RequiredPermission { get; set; } = Microsoft.Greenlight.Shared.Contracts.Authorization.PermissionKeys.AlterSystemConfiguration;
+
+    private string GetMaskedConnectionString()
+    {
+        if (string.IsNullOrEmpty(Host.ConnectionString))
+        {
+            return "Not configured";
+        }
+
+        // For security, mask sensitive parts of connection strings
+        if (Host.ConnectionString.Contains("AccountKey=") || Host.ConnectionString.Contains("password=", StringComparison.OrdinalIgnoreCase))
+        {
+            return "****** (configured)";
+        }
+
+        // For non-sensitive connection strings (like "default" or file paths), show as-is but truncate if too long
+        return Host.ConnectionString.Length > 50 
+            ? Host.ConnectionString.Substring(0, 47) + "..."
+            : Host.ConnectionString;
+    }
+}

@@ -5,6 +5,7 @@
         GeneratedDocument = 100,
         GeneratedSection = 150,
         ReviewItem = 200,
-        ExternalFile = 300
+        ExternalFile = 300,
+        ExternalLinkAsset = 400
     }
 }

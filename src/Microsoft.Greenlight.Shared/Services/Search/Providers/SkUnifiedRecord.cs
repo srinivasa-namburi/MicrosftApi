@@ -23,16 +23,22 @@ internal sealed class SkUnifiedRecord
     [VectorStoreData(IsIndexed = true)]
     public required string FileName { get; init; }
 
-    // Not full-text; simple equality queries only (leave IsIndexed true for future filter support if needed).
+    // Document reference for dynamic URL resolution (replaces OriginalDocumentUrl)
+    // Stores identifier that can be resolved to proxied URL at search time
     [VectorStoreData(IsIndexed = true)]
-    public string? OriginalDocumentUrl { get; init; }
+    public string? DocumentReference { get; init; }
 
     // Full text for optional hybrid search / future metadata prefilter.
     [VectorStoreData(IsIndexed = false, IsFullTextIndexed = false)]
     public required string ChunkText { get; init; }
 
-    // Vector field - dimensions fixed by current embedding model.
-    // Make optional for search result deserialization when vectors are excluded by the connector.
+    // Vector field - attribute dimension (1536) is a fallback ONLY.
+    // Our provider always supplies an explicit VectorStoreCollectionDefinition
+    // with the correct embedding dimension at runtime (per index/model),
+    // which overrides this attribute. This enables multiple embedding sizes
+    // across different collections, including content reference indexes.
+    // The property remains optional for cases where connectors omit vectors
+    // on retrieval (e.g., point lookups or neighbor expansion).
     [VectorStoreVector(1536)]
     public float[]? Embedding { get; init; }
 

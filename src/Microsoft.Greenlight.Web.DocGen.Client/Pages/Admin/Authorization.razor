@@ -7,6 +7,7 @@
 
 <MudPaper Class="pa-4">
     <MudText Typo="Typo.h5">Authorization Management</MudText>
+    <MudDivider Class="mt-2 mb-3" />
     
     @if (!string.IsNullOrEmpty(_errorMessage))
     {
@@ -30,7 +31,7 @@
                                 New Role
                             </MudButton>
                         </div>
-                        <MudTable Items="_roles" Hover="true" Dense="true" SelectedItem="_selectedRole" SelectedItemChanged="@((RoleInfo? role) => OnRoleSelectionChanged(role))">
+                        <MudTable T="RoleInfo" Items="_roles" Hover="true" Size="Size.Small" SelectedItem="_selectedRole" SelectedItemChanged="@((RoleInfo? role) => OnRoleSelectionChanged(role))">
                             <HeaderContent>
                                 <MudTh>Name</MudTh>
                                 <MudTh>Description</MudTh>
@@ -42,11 +43,11 @@
                                 <MudTd DataLabel="Entra Mapping">
                                     @if (!string.IsNullOrEmpty(context.EntraAppRoleValue))
                                     {
-                                        <MudChip Size="Size.Small" Color="Color.Primary">@context.EntraAppRoleValue</MudChip>
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Primary">@context.EntraAppRoleValue</MudChip>
                                     }
                                     else if (context.EntraAppRoleId.HasValue)
                                     {
-                                        <MudChip Size="Size.Small" Color="Color.Secondary">ID: @context.EntraAppRoleId.Value.ToString("N")[..8]...</MudChip>
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Secondary">ID: @context.EntraAppRoleId.Value.ToString("N")[..8]...</MudChip>
                                     }
                                 </MudTd>
                             </RowTemplate>
@@ -59,15 +60,7 @@
                         <MudTextField Label="Name" @bind-Value="_editRole.Name" Required="true" />
                         <MudTextField Label="Description" @bind-Value="_editRole.Description" />
                         
-                        <MudText Typo="Typo.subtitle2" Class="mt-3">Entra App Role Mapping</MudText>
-                        <MudTextField 
-                            Label="Entra App Role Name (Primary)" 
-                            @bind-Value="_editRole.EntraAppRoleValue" 
-                            HelperText="Maps to the role name in user's token (e.g., 'DocumentGeneration'). This is the most common mapping method." />
-                        <MudTextField 
-                            Label="Entra App Role ID (Optional)" 
-                            @bind-Value="_entraIdText" 
-                            HelperText="Optional GUID for additional validation. Leave empty unless specifically required." />
+                        @* Entra mapping moved to dedicated tab *@
                         
                         <MudButton 
                             Variant="Variant.Filled" 
@@ -99,13 +92,13 @@
                     
                     <MudDivider Class="my-3" />
                     <MudText Typo="Typo.subtitle1">Permissions</MudText>
-                    <MudList>
+                    <MudList T="object">
                         @foreach (var p in _permissions)
                         {
                             var has = _selectedPermissions.Contains(p.Key);
-                            <MudListItem>
+                            <MudListItem T="object">
                                 <div class="d-flex flex-column">
-                                    <MudCheckBox Value="has" T="bool" Label="@p.DisplayName" Immediate="true" ValueChanged="(val)=>TogglePermissionAsync(p.Key, val)" />
+                                    <MudCheckBox T="bool" Value="has" Label="@p.DisplayName" ValueChanged="(val)=>TogglePermissionAsync(p.Key, val)" />
                                     @if (!string.IsNullOrWhiteSpace(p.Description))
                                     {
                                         <MudText Typo="Typo.caption" Class="text-secondary ms-6">@p.Description</MudText>
@@ -122,10 +115,10 @@
                 <MudTextField Label="Search users (name or email)" @bind-Value="UserQuery" Immediate="true" DebounceInterval="300" />
                 @if (_userResults.Count > 0)
                 {
-                    <MudList>
+                    <MudList T="object">
                         @foreach (var u in _userResults)
                         {
-                            <MudListItem>
+                            <MudListItem T="object">
                                 <div class="w-100">
                                     <MudText Typo="Typo.subtitle1">@(!string.IsNullOrWhiteSpace(u.FullName) ? u.FullName : u.ProviderSubjectId)</MudText>
                                     @if (!string.IsNullOrWhiteSpace(u.Email))
@@ -136,11 +129,11 @@
                                         @foreach (var a in u.Assignments)
                                         {
                                             var canRemove = !a.IsFromEntra;
-                                            <MudChip OnClose="@(() => RemoveRoleAssignmentAsync(u, a.RoleId))" Closeable="@canRemove" Color="Color.Primary" Class="me-2 mb-1">@a.RoleName@(a.IsFromEntra ? " (Entra)" : string.Empty)</MudChip>
+                                            <MudChip T="string" OnClose="@(canRemove ? () => RemoveRoleAssignmentAsync(u, a.RoleId) : null)" Color="Color.Primary" Class="me-2 mb-1">@a.RoleName@(a.IsFromEntra ? " (Entra)" : string.Empty)</MudChip>
                                         }
                                     </div>
                                     <div class="d-flex align-items-center">
-                                        <MudSelect @bind-Value="_userRoleSelection[u.ProviderSubjectId]" Label="Add role" Dense="true">
+                                        <MudSelect T="Guid" @bind-Value="_userRoleSelection[u.ProviderSubjectId]" Label="Add role">
                                             @foreach (var r in _roles)
                                             {
                                                 <MudSelectItem Value="@r.Id">@r.Name</MudSelectItem>
@@ -155,6 +148,42 @@
                 }
             </MudStack>
         </MudTabPanel>
+
+        <MudTabPanel Text="Entra Role Mappings">
+            <MudStack>
+                <div class="d-flex justify-space-between align-center">
+                    <MudText Typo="Typo.h6">Map Microsoft Entra roles to internal roles</MudText>
+                    <div class="d-flex align-center">
+                        <MudTextField Label="New Entra role value" @bind-Value="_newEntraRoleValue" Class="me-2" />
+                        <MudButton Variant="Variant.Outlined" OnClick="AddEntraRoleRow" Disabled="string.IsNullOrWhiteSpace(_newEntraRoleValue)">Add</MudButton>
+                    </div>
+                </div>
+
+                <MudTable T="EntraRoleMappingInfo" Items="_entraMappings" Hover="true" Dense="true">
+                    <HeaderContent>
+                        <MudTh>Entra Role</MudTh>
+                        <MudTh>Mapped Internal Role</MudTh>
+                        <MudTh></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Entra Role">
+                            @context!.EntraAppRoleValue
+                        </MudTd>
+                        <MudTd DataLabel="Mapped Internal Role">
+                            <MudSelect T="Guid" @bind-Value="_entraSelection[context.EntraAppRoleValue ?? string.Empty]" Label="Select role" Dense="true">
+                                @foreach (var r in _roles)
+                                {
+                                    <MudSelectItem Value="@r.Id">@r.Name</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudTd>
+                        <MudTd>
+                            <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!_entraSelection.TryGetValue(context.EntraAppRoleValue ?? string.Empty, out var sel) || sel == Guid.Empty)" OnClick="() => SaveEntraMappingAsync(context)">Save</MudButton>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudStack>
+        </MudTabPanel>
     </MudTabs>
 </MudPaper>
 
@@ -164,6 +193,9 @@
     private RoleInfo? _selectedRole;
     private RoleInfo _editRole = new() { Id = Guid.Empty, Name = string.Empty };
     private string? _entraIdText;
+    private List<EntraRoleMappingInfo> _entraMappings = new();
+    private Dictionary<string, Guid> _entraSelection = new(StringComparer.OrdinalIgnoreCase);
+    private string _newEntraRoleValue = string.Empty;
     private HashSet<string> _selectedPermissions = [];
     private string _userQuery = string.Empty;
     private List<UserSearchResult> _userResults = new();
@@ -196,6 +228,14 @@
         {
             _permissions = await AdminAuth.ListPermissionsAsync();
             _roles = await AdminAuth.ListRolesAsync();
+            _entraMappings = await AdminAuth.ListEntraRoleMappingsAsync();
+            // Initialize selection map
+            _entraSelection.Clear();
+            foreach (var m in _entraMappings)
+            {
+                var key = m.EntraAppRoleValue ?? string.Empty;
+                _entraSelection[key] = m.MappedRoleId ?? Guid.Empty;
+            }
             StateHasChanged();
         }
         catch (Exception ex)
@@ -281,8 +321,8 @@
                 Id = _editRole.Id == Guid.Empty ? null : _editRole.Id,
                 Name = _editRole.Name,
                 Description = _editRole.Description,
-                EntraAppRoleId = entraAppRoleId,
-                EntraAppRoleValue = _editRole.EntraAppRoleValue
+                EntraAppRoleId = null,
+                EntraAppRoleValue = null
             };
 
             var saved = await AdminAuth.UpsertRoleAsync(request);
@@ -480,5 +520,54 @@
         {
             _errorMessage = $"Failed to remove role assignment: {ex.Message}";
         }
+    }
+}
+
+@code {
+    private async Task SaveEntraMappingAsync(EntraRoleMappingInfo mapping)
+    {
+        try
+        {
+            _errorMessage = string.Empty;
+            if (!_entraSelection.TryGetValue(mapping.EntraAppRoleValue ?? string.Empty, out var roleId) || roleId == Guid.Empty)
+            {
+                _errorMessage = "Please select a role to map.";
+                return;
+            }
+
+            var req = new UpsertEntraRoleMappingRequest
+            {
+                EntraAppRoleValue = mapping.EntraAppRoleValue,
+                EntraAppRoleId = mapping.EntraAppRoleId,
+                TargetRoleId = roleId
+            };
+
+            await AdminAuth.UpsertEntraRoleMappingAsync(req);
+            Snackbar.Add($"Mapped '{mapping.EntraAppRoleValue}' to selected role.", Severity.Success);
+            await LoadData();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to save mapping: {ex.Message}";
+        }
+        StateHasChanged();
+    }
+
+    private void AddEntraRoleRow()
+    {
+        var val = _newEntraRoleValue?.Trim();
+        if (string.IsNullOrWhiteSpace(val)) return;
+        if (_entraMappings.Any(m => string.Equals(m.EntraAppRoleValue, val, StringComparison.OrdinalIgnoreCase)))
+        {
+            _newEntraRoleValue = string.Empty;
+            return;
+        }
+        _entraMappings.Add(new EntraRoleMappingInfo { EntraAppRoleValue = val });
+        _entraSelection[val] = Guid.Empty;
+        _newEntraRoleValue = string.Empty;
     }
 }

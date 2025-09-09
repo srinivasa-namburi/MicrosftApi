@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>MudBlazor Navigation Test</title>
+    <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/mudblazor@8.1.0/MudBlazor.min.css" rel="stylesheet" />
+    <style>
+        /* Copy of your navigation.css */
+        .greenlight-nav-menu,
+        .greenlight-nav-menu * {
+            list-style: none !important;
+            list-style-type: none !important;
+            margin: 0;
+            padding: 0;
+        }
+
+        .greenlight-nav-menu {
+            padding: 8px !important;
+            margin: 0 !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+        }
+
+        .greenlight-nav-menu .mud-nav-link,
+        .greenlight-nav-menu .mud-nav-group,
+        .greenlight-nav-menu .mud-nav-group-header,
+        .greenlight-nav-menu .mud-list,
+        .greenlight-nav-menu .mud-list-item {
+            margin: 0 !important;
+            padding: 0 !important;
+            list-style: none !important;
+            list-style-type: none !important;
+            box-sizing: border-box !important;
+        }
+
+        .greenlight-nav-menu .mud-nav-link {
+            margin: 2px 0 !important;
+            padding: 8px 16px !important;
+            border-radius: 8px;
+            transition: background-color 0.15s ease;
+            min-height: 40px;
+            display: flex !important;
+            align-items: center !important;
+            width: 100% !important;
+            max-width: none !important;
+        }
+
+        .greenlight-nav-menu .mud-nav-group-header {
+            margin: 2px 0 !important;
+            padding: 8px 16px !important;
+            border-radius: 8px;
+            transition: background-color 0.15s ease;
+            min-height: 40px;
+            display: flex !important;
+            align-items: center !important;
+            width: 100% !important;
+            max-width: none !important;
+        }
+
+        .greenlight-nav-menu .mud-nav-group .mud-nav-link {
+            padding-left: 48px !important;
+            font-size: 0.9rem;
+            min-height: 36px;
+            width: 100% !important;
+            max-width: none !important;
+        }
+
+        /* Mini drawer overrides */
+        .mud-drawer.mud-drawer--mini .greenlight-nav-menu .mud-nav-group .mud-nav-link {
+            width: 100% !important;
+            max-width: none !important;
+            min-width: auto !important;
+        }
+
+        .mud-drawer.mud-drawer--mini .greenlight-nav-menu .mud-nav-group {
+            width: 100% !important;
+            max-width: none !important;
+        }
+
+        /* Test container to simulate drawer */
+        .test-container {
+            width: 280px;
+            height: 100vh;
+            border: 1px solid #ccc;
+            background: #f5f5f5;
+        }
+
+        .test-container.mini {
+            width: 64px;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container" id="navContainer">
+        <div class="greenlight-nav-menu">
+            <!-- Simulated MudNavLink -->
+            <div class="mud-nav-link">
+                <span>??</span>
+                <span style="margin-left: 8px;">Home</span>
+            </div>
+            
+            <div class="mud-nav-link">
+                <span>??</span>
+                <span style="margin-left: 8px;">All Documents</span>
+            </div>
+            
+            <!-- Simulated MudNavGroup -->
+            <div class="mud-nav-group">
+                <div class="mud-nav-group-header">
+                    <span>?</span>
+                    <span style="margin-left: 8px;">Create Document</span>
+                </div>
+                
+                <!-- Nested items -->
+                <div class="mud-nav-link">
+                    <span style="margin-left: 16px;">?</span>
+                    <span style="margin-left: 8px;">Document Type 1</span>
+                </div>
+                
+                <div class="mud-nav-link">
+                    <span style="margin-left: 16px;">?</span>
+                    <span style="margin-left: 8px;">Document Type 2</span>
+                </div>
+            </div>
+            
+            <!-- Another group -->
+            <div class="mud-nav-group">
+                <div class="mud-nav-group-header">
+                    <span>??</span>
+                    <span style="margin-left: 8px;">AI Assistant</span>
+                </div>
+                
+                <div class="mud-nav-link">
+                    <span style="margin-left: 16px;">??</span>
+                    <span style="margin-left: 8px;">AI Type 1</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <button onclick="toggleMini()">Toggle Mini</button>
+    
+    <script>
+        function toggleMini() {
+            const container = document.getElementById('navContainer');
+            container.classList.toggle('mini');
+        }
+    </script>
+</body>
+</html>

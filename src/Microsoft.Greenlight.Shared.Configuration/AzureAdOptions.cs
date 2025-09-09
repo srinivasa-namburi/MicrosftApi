@@ -39,4 +39,10 @@ public class AzureAdOptions
     /// Scopes for the Microsoft Entra App Registration.
     /// </summary>
     public string Scopes { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Optional list of trusted caller Client IDs (application IDs) allowed to invoke protected API flows.
+    /// When not set, deployment fills this with the current application's ClientId by default.
+    /// </summary>
+    public List<string> TrustedCallerClientIds { get; set; } = new();
 }

@@ -1,4 +1,6 @@
-﻿using Microsoft.Greenlight.Shared.Enums;
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+
+using Microsoft.Greenlight.Shared.Enums;
 
 namespace Microsoft.Greenlight.Shared.Models
 {
@@ -19,6 +21,8 @@ namespace Microsoft.Greenlight.Shared.Models
 
         /// <summary>
         /// Gets or sets the type of the content reference.
+        /// For file references, prefer <see cref="ContentReferenceType.ExternalLinkAsset"/> (new path).
+        /// <see cref="ContentReferenceType.ExternalFile"/> is legacy and points to <see cref="ExportedDocumentLink"/>.
         /// </summary>
         public ContentReferenceType ReferenceType { get; set; }
 
@@ -33,13 +37,10 @@ namespace Microsoft.Greenlight.Shared.Models
         public string? RagText { get; set; }
 
         /// <summary>
-        /// Hash of the file content for ExternalFile type references
+        /// Hash of the file content for ExternalFile type references (used for deduplication).
         /// </summary>
         public string? FileHash { get; set; }
 
-        /// <summary>
-        /// Generated Embeddings, if any, for this content reference item
-        /// </summary>
-        public List<ContentEmbedding> Embeddings { get; set; } = [];
+        // Legacy embeddings removed; SK vector store is authoritative.
     }
 }

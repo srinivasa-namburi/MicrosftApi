@@ -1,0 +1,21 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+
+@page "/admin/external-data"
+@using Microsoft.Greenlight.Web.DocGen.Client.Components.FileStorage
+@using Microsoft.Greenlight.Shared.Contracts.Authorization
+
+<MudPaper Class="pa-4">
+  <MudText Typo="Typo.h5">External Data</MudText>
+  <MudDivider Class="mt-2 mb-3" />
+
+  <PermissionView Permission="@PermissionKeys.AlterSystemConfiguration">
+    <MudTabs>
+      <MudTabPanel Text="File Storage Sources">
+        <FileStorageSourceListComponent />
+      </MudTabPanel>
+      <MudTabPanel Text="Content Reference Mappings">
+        <ContentReferenceStorageMatrix />
+      </MudTabPanel>
+    </MudTabs>
+  </PermissionView>
+</MudPaper>

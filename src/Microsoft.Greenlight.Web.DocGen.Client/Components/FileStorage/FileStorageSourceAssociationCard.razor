@@ -1,0 +1,96 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+
+@using Microsoft.Greenlight.Shared.Contracts.DTO.FileStorage
+@using Microsoft.Greenlight.Shared.Contracts.Requests.FileStorage
+@using Microsoft.Greenlight.Shared.Enums
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@inject IFileStorageSourceApiClient FileStorageSourceApiClient
+
+@namespace Microsoft.Greenlight.Web.DocGen.Client.Components.FileStorage
+
+<MudCard Class="mb-2">
+    <MudCardContent>
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                @if (_source != null)
+                {
+                    <FileStorageSourceDisplayComponent Source="@_source" ViewMode="FileStorageSourceDisplayViewMode.Light" />
+                }
+                else
+                {
+                    <MudText Typo="Typo.subtitle2">@FileStorageSourceName</MudText>
+                }
+                @if (AcceptsUploads)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Filled">
+                        <MudIcon Icon="@Icons.Material.Filled.CloudUpload" Size="Size.Small" Class="mr-1" />
+                        Accepts Uploads
+                    </MudChip>
+                }
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Association • @ProviderType.ToString() • Priority: @Priority</MudText>
+            </MudStack>
+            
+            <MudStack Row="true" Spacing="1">
+                @if (!IsActive)
+                {
+                    <MudChip T="string" Color="Color.Error" Size="Size.Small">Inactive</MudChip>
+                }
+                
+                <PermissionView Permission="@RequiredPermission">
+                    <MudIconButton Icon="@Icons.Material.Filled.Settings" 
+                                 Color="Color.Primary" 
+                                 Size="Size.Small"
+                                 OnClick="() => OnConfigure.InvokeAsync(Association)"
+                                 Aria-Label="Configure association" />
+                </PermissionView>
+                
+                <PermissionView Permission="@RequiredPermission">
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" 
+                                 Color="Color.Error" 
+                                 Size="Size.Small"
+                                 OnClick="() => OnDelete.InvokeAsync(Association)"
+                                 Disabled="@(!ShowDeleteButton)"
+                                 Aria-Label="@(ShowDeleteButton ? "Remove association" : "Cannot remove - at least one source is required")" />
+                </PermissionView>
+            </MudStack>
+        </MudStack>
+    </MudCardContent>
+</MudCard>
+
+@code {
+    [Parameter] public DocumentProcessFileStorageSourceInfo? ProcessAssociation { get; set; }
+    [Parameter] public DocumentLibraryFileStorageSourceInfo? LibraryAssociation { get; set; }
+    [Parameter] public EventCallback<object> OnConfigure { get; set; }
+    [Parameter] public EventCallback<object> OnDelete { get; set; }
+    [Parameter] public bool ShowDeleteButton { get; set; } = true;
+    [Parameter] public string RequiredPermission { get; set; } = string.Empty;
+
+    private string FileStorageSourceName => ProcessAssociation?.FileStorageSourceName ?? LibraryAssociation?.FileStorageSourceName ?? string.Empty;
+    private bool AcceptsUploads => ProcessAssociation?.AcceptsUploads ?? LibraryAssociation?.AcceptsUploads ?? false;
+    private FileStorageProviderType ProviderType => ProcessAssociation?.ProviderType ?? LibraryAssociation?.ProviderType ?? FileStorageProviderType.BlobStorage;
+    private int Priority => ProcessAssociation?.Priority ?? LibraryAssociation?.Priority ?? 0;
+    private bool IsActive => ProcessAssociation?.IsActive ?? LibraryAssociation?.IsActive ?? true;
+    private DateTime? Created => ProcessAssociation?.CreatedDate ?? LibraryAssociation?.CreatedDate;
+    private DateTime? Updated => ProcessAssociation?.LastUpdatedDate ?? LibraryAssociation?.LastUpdatedDate;
+    
+    private object Association => (object?)ProcessAssociation ?? LibraryAssociation ?? throw new InvalidOperationException("Either ProcessAssociation or LibraryAssociation must be provided");
+
+    private string GetProviderIcon() => ProviderType switch
+    {
+        FileStorageProviderType.BlobStorage => Icons.Material.Filled.Cloud,
+        FileStorageProviderType.LocalFileSystem => Icons.Material.Filled.Folder,
+        FileStorageProviderType.SharePoint => Icons.Material.Filled.ShareLocation,
+        _ => Icons.Material.Filled.Storage
+    };
+
+    private FileStorageSourceInfo? _source;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var id = ProcessAssociation?.FileStorageSourceId ?? LibraryAssociation?.FileStorageSourceId;
+        if (id.HasValue)
+        {
+            try { _source = await FileStorageSourceApiClient.GetFileStorageSourceByIdAsync(id.Value); } catch { }
+        }
+    }
+}

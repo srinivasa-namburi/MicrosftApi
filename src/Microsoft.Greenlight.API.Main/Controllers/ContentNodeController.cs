@@ -8,6 +8,7 @@ using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Models; // Added for ContentNode
 using Microsoft.Greenlight.Shared.Services; // Added for IContentNodeService
+using Microsoft.Greenlight.Shared.Services.FileStorage;
 using Microsoft.Greenlight.Shared.Services.Search.Abstractions;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
@@ -22,6 +23,7 @@ public class ContentNodeController : BaseController
     private readonly IContentNodeService _contentNodeService;
     private readonly IMapper _mapper;
     private readonly AzureFileHelper _fileHelper;
+    private readonly IFileUrlResolverService _fileUrlResolver;
     private readonly IServiceScopeFactory _scopeFactory;
 
     /// <summary>
@@ -37,12 +39,14 @@ public class ContentNodeController : BaseController
         IMapper mapper,
         IContentNodeService contentNodeService,
         AzureFileHelper fileHelper,
+        IFileUrlResolverService fileUrlResolver,
         IServiceScopeFactory scopeFactory)
     {
         _dbContext = dbContext;
         _contentNodeService = contentNodeService;
         _mapper = mapper;
         _fileHelper = fileHelper;
+        _fileUrlResolver = fileUrlResolver;
         _scopeFactory = scopeFactory;
     }
 
@@ -307,28 +311,38 @@ public class ContentNodeController : BaseController
                     .AsNoTracking()
                     .FirstOrDefaultAsync(d => d.VectorStoreDocumentId == vs.DocumentId && d.VectorStoreIndexName == vs.IndexName);
 
-                var rawUrl = ingested?.FinalBlobUrl ?? ingested?.OriginalDocumentUrl;
+                string? resolvedUrl = null;
+                if (ingested != null)
+                {
+                    // Prefer resolver based on the ingested document record
+                    resolvedUrl = await _fileUrlResolver.ResolveUrlAsync(ingested);
+                }
+                else
+                {
+                    // Resolve via vector store identifiers when we cannot locate the ingested document
+                    resolvedUrl = await _fileUrlResolver.ResolveUrlByVectorStoreIdAsync(vs.DocumentId, vs.IndexName);
+                }
 
-                // Fallback: extract from chunk tags if present
-                if (string.IsNullOrEmpty(rawUrl) && vs.Chunks != null)
+                // Legacy fallback: extract original URL from tags then proxy it
+                if (string.IsNullOrEmpty(resolvedUrl) && vs.Chunks != null)
                 {
                     var withUrl = vs.Chunks.FirstOrDefault(c => c.Tags != null && (c.Tags.ContainsKey("OriginalDocumentUrl") || c.Tags.ContainsKey("originaldocumenturl")));
                     if (withUrl != null)
                     {
-                        if (withUrl.Tags.TryGetValue("OriginalDocumentUrl", out var urls) && urls.Count > 0)
+                        if (withUrl.Tags.TryGetValue("OriginalDocumentUrl", out var urls) && urls.Count > 0 && !string.IsNullOrWhiteSpace(urls[0]))
                         {
-                            rawUrl = urls[0] ?? rawUrl;
+                            resolvedUrl = _fileHelper.GetProxiedBlobUrl(urls[0]!);
                         }
-                        else if (withUrl.Tags.TryGetValue("originaldocumenturl", out var urls2) && urls2.Count > 0)
+                        else if (withUrl.Tags.TryGetValue("originaldocumenturl", out var urls2) && urls2.Count > 0 && !string.IsNullOrWhiteSpace(urls2[0]))
                         {
-                            rawUrl = urls2[0] ?? rawUrl;
+                            resolvedUrl = _fileHelper.GetProxiedBlobUrl(urls2[0]!);
                         }
                     }
                 }
 
-                if (!string.IsNullOrEmpty(rawUrl))
+                if (!string.IsNullOrEmpty(resolvedUrl))
                 {
-                    reference.SourceReferenceLink = _fileHelper.GetProxiedBlobUrl(rawUrl);
+                    reference.SourceReferenceLink = resolvedUrl;
                     reference.SourceReferenceLinkType = Microsoft.Greenlight.Shared.Enums.SourceReferenceLinkType.SystemProxiedUrl;
                 }
             }

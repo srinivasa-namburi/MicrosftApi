@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.Greenlight.Shared.Contracts.DTO.Auth;
-using Microsoft.Greenlight.Web.DocGen.ServiceClients;
+using Microsoft.Greenlight.Web.Shared.ServiceClients;
 
 namespace Microsoft.Greenlight.Web.DocGen.Auth;
 
@@ -130,24 +130,55 @@ internal sealed class OidcRefreshHandler : IDisposable
         });
 
         // Push refreshed token to backend store for Orleans/MCP usage
-        try
+        // Use background task to avoid blocking refresh if Orleans has issues
+        var sub = claimsIdentity?.FindFirst("sub")?.Value;
+        if (!string.IsNullOrWhiteSpace(sub) && !string.IsNullOrWhiteSpace(message.AccessToken))
         {
-            var sub = claimsIdentity?.FindFirst("sub")?.Value;
-            if (!string.IsNullOrWhiteSpace(sub) && !string.IsNullOrWhiteSpace(message.AccessToken))
+            _ = Task.Run(async () =>
             {
-                var pushClient = validateContext.HttpContext.RequestServices.GetRequiredService<IServerTokenPushClient>();
-                await pushClient.PushUserTokenAsync(new UserTokenDTO
+                try
                 {
-                    ProviderSubjectId = sub,
-                    AccessToken = message.AccessToken,
-                    ExpiresOnUtc = expiresAt.UtcDateTime
-                }, message.AccessToken, validateContext.HttpContext.RequestAborted);
-            }
-        }
-        catch (Exception ex)
-        {
-            // Don't fail auth on push issues; log at debug to avoid noisy logs
-            _logger.LogDebug(ex, "Failed to push refreshed user token to backend store.");
+                    var authClient = validateContext.HttpContext.RequestServices.GetRequiredService<IAuthorizationApiClient>();
+                    
+                    _logger.LogInformation("Attempting to push refreshed user token for sub {Sub}", sub);
+                    
+                    // Retry logic for Orleans connectivity issues
+                    const int maxRetries = 5;
+                    var delayBetweenRetries = TimeSpan.FromSeconds(2);
+                    
+                    for (var attempt = 1; attempt <= maxRetries; attempt++)
+                    {
+                        try
+                        {
+                            await authClient.SetUserTokenWithBearerAsync(new UserTokenDTO
+                            {
+                                ProviderSubjectId = sub,
+                                AccessToken = message.AccessToken,
+                                ExpiresOnUtc = expiresAt.UtcDateTime
+                            }, message.AccessToken, CancellationToken.None);
+                            
+                            _logger.LogInformation("Successfully pushed refreshed token for sub {Sub} on attempt {Attempt}", sub, attempt);
+                            break; // Success - exit retry loop
+                        }
+                        catch (Exception ex) when (attempt < maxRetries)
+                        {
+                            _logger.LogWarning("Attempt {Attempt} to push refreshed token for sub {Sub} failed: {Error}. Retrying in {Delay}...", 
+                                attempt, sub, ex.Message, delayBetweenRetries);
+                            await Task.Delay(delayBetweenRetries);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "All {MaxRetries} attempts to push refreshed token for sub {Sub} failed", maxRetries, sub);
+                            break; // Exit retry loop after final attempt
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Final catch-all to prevent background task exceptions
+                    _logger.LogError(ex, "Unexpected error in background refreshed token push task for sub {Sub}", sub);
+                }
+            });
         }
     }
 }

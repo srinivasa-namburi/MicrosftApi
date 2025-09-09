@@ -1,0 +1,103 @@
+/**************************************/
+/* Dialog & Modal Styles              */
+/**************************************/
+
+/* Content AI Dialog (AI Assistant Dialog) */
+/* Dialog container */
+.content-ai-dialog .mud-dialog-content {
+    padding: 0 !important;
+    overflow: hidden !important;
+}
+
+.content-ai-dialog .mud-dialog-container .mud-dialog {
+    height: 90vh;
+    max-height: 90vh;
+    width: 95vw;
+    max-width: 95vw;
+}
+
+/* Dialog grid layout */
+.ai-assistant-dialog-content {
+    height: 75vh;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+/* Optimize space taken by dividers */
+.mud-divider {
+    margin: 0 !important;
+}
+
+/* Panel containers */
+.editor-panel-container,
+.assistant-panel-container {
+    height: 100%;
+    padding: 8px;
+}
+
+/* Content editor panel */
+.editor-panel,
+.assistant-panel {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Content area */
+.editor-content {
+    flex: 1;
+    overflow: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+/* Editor actions area */
+.editor-actions {
+    padding: 8px 12px;
+    min-height: 52px;
+    border-top: 1px solid var(--mud-palette-divider);
+}
+
+/* Content preview area */
+.content-preview {
+    white-space: pre-wrap;
+    padding: 16px;
+    min-height: 200px;
+    overflow-y: auto;
+    flex-grow: 1;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    max-width: 100%;
+}
+
+/* Assistant content area */
+.assistant-content {
+    flex: 1;
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+}
+
+/* Card headers - more compact */
+.editor-panel .mud-card-header,
+.assistant-panel .mud-card-header {
+    padding: 8px 16px;
+    min-height: 56px;
+    border-bottom: 1px solid var(--mud-palette-divider);
+}
+
+/* Ensure card content doesn't overflow */
+.mud-card-content {
+    overflow-x: hidden;
+}
+
+/* Text content wrapping */
+.content-ai-dialog .mud-typography {
+    word-break: break-word;
+    max-width: 100%;
+}

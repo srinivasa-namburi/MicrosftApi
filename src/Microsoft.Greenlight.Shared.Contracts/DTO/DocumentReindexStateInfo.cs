@@ -73,6 +73,11 @@ public class DocumentReindexStateInfo
     /// Timestamp when the reindexing operation completed.
     /// </summary>
     public DateTime? CompletedUtc { get; set; }
+
+    /// <summary>
+    /// Progress information for each FileStorageSource involved in this reindexing operation.
+    /// </summary>
+    public List<FileStorageSourceReindexProgress> SourceProgress { get; set; } = new();
 }
 
 /// <summary>

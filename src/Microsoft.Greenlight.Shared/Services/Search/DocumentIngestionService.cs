@@ -51,7 +51,7 @@ public class DocumentIngestionService : IDocumentIngestionService
         Guid documentId,
         Stream fileStream,
         string fileName,
-        string documentUrl,
+        string documentReference,
         string documentLibraryName,
         string indexName,
         string? userId = null,
@@ -86,12 +86,13 @@ public class DocumentIngestionService : IDocumentIngestionService
             fileStream.Position = 0;
 
             // Store the document using repository (which will handle chunking)
+            // Pass documentReference instead of documentUrl for dynamic URL resolution
             await repository.StoreContentAsync(
                 documentLibraryName,
                 indexName,
                 fileStream,
                 fileName,
-                documentUrl,
+                documentReference,
                 userId,
                 additionalTags);
 

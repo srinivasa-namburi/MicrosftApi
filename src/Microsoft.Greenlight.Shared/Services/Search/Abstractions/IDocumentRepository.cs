@@ -18,12 +18,12 @@ public interface IDocumentRepository
     /// <param name="indexName">Name of the index.</param>
     /// <param name="fileStream">Stream containing the file data.</param>
     /// <param name="fileName">Name of the file.</param>
-    /// <param name="documentUrl">Optional URL of the original document.</param>
+    /// <param name="documentReference">Document reference identifier for dynamic URL resolution.</param>
     /// <param name="userId">Optional user ID.</param>
     /// <param name="additionalTags">Optional additional metadata tags.</param>
     /// <returns>Task representing the asynchronous operation.</returns>
     Task StoreContentAsync(string documentLibraryName, string indexName, Stream fileStream, string fileName,
-        string? documentUrl, string? userId = null, Dictionary<string, string>? additionalTags = null);
+        string? documentReference, string? userId = null, Dictionary<string, string>? additionalTags = null);
 
     /// <summary>
     /// Deletes document content from the repository.

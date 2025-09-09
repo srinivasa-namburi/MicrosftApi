@@ -1,6 +1,6 @@
 ﻿<MudText Class="mt-6" Typo="Typo.h6">Validation Pipeline Settings</MudText>
 
-    <MudCheckBox @bind-Value="RunAutomatically" Label="Run Validation Pipeline Steps automatically after Generation" Class="mb-4" />
+    <MudCheckBox T="bool" @bind-Value="RunAutomatically" Label="Run Validation Pipeline Steps automatically after Generation" Class="mb-4" />
 
     <MudText Typo="Typo.subtitle1" Class="mb-2">Validation Steps</MudText>
 
@@ -10,13 +10,13 @@
     }
     else
     {
-        <MudList Dense="true" DisablePadding="true">
+        <MudList T="object" Dense="true" Padding="false">
             @for (int i = 0; i < _steps.Count; i++)
             {
                 var step = _steps[i];
                 var index = i;
 
-                <MudListItem>
+                <MudListItem T="object">
                     <div class="d-flex align-center gap-2">
                         <div style="width: 30px; text-align: center;">
                             <MudText Typo="Typo.body2">@(index + 1)</MudText>

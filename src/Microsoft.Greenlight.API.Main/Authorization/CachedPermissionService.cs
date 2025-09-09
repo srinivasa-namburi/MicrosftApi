@@ -113,7 +113,8 @@ public sealed class CachedPermissionService : ICachedPermissionService
             {
                 if (mappedByName.TryGetValue(roleName, out var roleInfo))
                 {
-                    if (!existingAssignments.Any(a => a.RoleId == roleInfo.Id && a.IsFromEntra))
+                    var existingForRole = existingAssignments.FirstOrDefault(a => a.RoleId == roleInfo.Id);
+                    if (existingForRole is null)
                     {
                         db.UserRoles.Add(new GreenlightUserRole
                         {
@@ -125,6 +126,14 @@ public sealed class CachedPermissionService : ICachedPermissionService
                         hasChanges = true;
                         userAssignedFromEntra = true;
                         _logger.LogDebug("Added Entra role {RoleName} to user {ProviderSubjectId} via role name mapping", roleInfo.Name, providerSubjectId);
+                    }
+                    else if (!existingForRole.IsFromEntra)
+                    {
+                        existingForRole.IsFromEntra = true;
+                        db.UserRoles.Update(existingForRole);
+                        hasChanges = true;
+                        userAssignedFromEntra = true;
+                        _logger.LogDebug("Promoted existing local role {RoleName} to Entra-sourced for user {ProviderSubjectId}", roleInfo.Name, providerSubjectId);
                     }
                     else
                     {
@@ -138,8 +147,8 @@ public sealed class CachedPermissionService : ICachedPermissionService
             {
                 if (mappedById.TryGetValue(roleId, out var roleInfo))
                 {
-                    // Only add if not already added by name mapping
-                    if (!existingAssignments.Any(a => a.RoleId == roleInfo.Id && a.IsFromEntra))
+                    var existingForRole = existingAssignments.FirstOrDefault(a => a.RoleId == roleInfo.Id);
+                    if (existingForRole is null)
                     {
                         db.UserRoles.Add(new GreenlightUserRole
                         {
@@ -152,6 +161,14 @@ public sealed class CachedPermissionService : ICachedPermissionService
                         userAssignedFromEntra = true;
                         _logger.LogDebug("Added Entra role {RoleName} to user {ProviderSubjectId} via role ID mapping", roleInfo.Name, providerSubjectId);
                     }
+                    else if (!existingForRole.IsFromEntra)
+                    {
+                        existingForRole.IsFromEntra = true;
+                        db.UserRoles.Update(existingForRole);
+                        hasChanges = true;
+                        userAssignedFromEntra = true;
+                        _logger.LogDebug("Promoted existing local role {RoleName} to Entra-sourced for user {ProviderSubjectId}", roleInfo.Name, providerSubjectId);
+                    }
                     else
                     {
                         userAssignedFromEntra = true;
@@ -162,6 +179,12 @@ public sealed class CachedPermissionService : ICachedPermissionService
             // Remove Entra-sourced assignments that aren't in token anymore
             foreach (var existing in existingAssignments.Where(a => a.IsFromEntra).ToList())
             {
+                // Do not remove FullAccess from users due to Entra mapping changes
+                if (existing.RoleId == AuthorizationIds.Roles.FullAccess)
+                {
+                    continue;
+                }
+
                 if (mappedRoles.TryGetValue(existing.RoleId, out var roleInfo))
                 {
                     var shouldRemove = true;

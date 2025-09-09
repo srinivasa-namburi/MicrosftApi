@@ -5,6 +5,7 @@ using Microsoft.Greenlight.Shared.Models.DocumentLibrary;
 using Microsoft.Greenlight.Shared.Models.DomainGroups;
 using Microsoft.Greenlight.Shared.Models.Validation;
 using Microsoft.Greenlight.Shared.Models.Plugins;
+using Microsoft.Greenlight.Shared.Models.FileStorage;
 using System.Text.Json.Serialization;
 
 namespace Microsoft.Greenlight.Shared.Models.DocumentProcess;
@@ -47,11 +48,13 @@ public class DynamicDocumentProcessDefinition : EntityBase, IDocumentProcessInfo
 
     /// <summary>
     /// Name of the blob storage container where documents are stored.
+    /// Legacy property - use FileStorageSources for new implementations.
     /// </summary>
     public required string BlobStorageContainerName { get; set; }
 
     /// <summary>
     /// Name of the auto-import folder in the blob storage.
+    /// Legacy property - use FileStorageSources for new implementations.
     /// </summary>
     public required string BlobStorageAutoImportFolderName { get; set; } = "ingest-auto";
 
@@ -120,6 +123,12 @@ public class DynamicDocumentProcessDefinition : EntityBase, IDocumentProcessInfo
     /// </summary>
     [JsonIgnore]
     public List<McpPluginDocumentProcess>? McpServerAssociations { get; set; } = [];
+
+    /// <summary>
+    /// File storage sources associated with this document process.
+    /// </summary>
+    [JsonIgnore]
+    public List<DocumentProcessFileStorageSource> FileStorageSources { get; set; } = [];
 
     /// <summary>
     /// Validation pipeline ID associated with the document process.

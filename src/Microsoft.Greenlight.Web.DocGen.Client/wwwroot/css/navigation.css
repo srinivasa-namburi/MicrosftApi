@@ -1,0 +1,89 @@
+/* Copyright (c) Microsoft Corporation. All rights reserved. */
+/**************************************/
+/* Enhanced Navigation Styles         */
+/**************************************/
+
+/* Navigation menu alignment - add top margin to align with main content */
+.mud-nav-menu {
+    margin-top: 0;
+    padding-top: 0;
+}
+
+/* Smaller icons - 75% of default size */
+.mud-nav-link .mud-icon,
+.mud-nav-group-header .mud-icon {
+    font-size: 0.75em;
+    width: 18px;
+    height: 18px;
+}
+
+/* Smaller text - 75% of default size */
+.mud-nav-link,
+.mud-nav-group-header {
+    font-size: 0.875rem;
+}
+
+/* Hover effect */
+.mud-nav-link:hover,
+.mud-nav-group-header:hover {
+    background-color: var(--mud-palette-action-hover);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s ease;
+}
+
+/* Active indicator - left bar and subtle button effect */
+.mud-nav-link.active {
+    position: relative;
+    background-color: var(--mud-palette-action-selected);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* Active left bar indicator */
+.mud-nav-link.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 60%;
+    background: var(--mud-palette-primary);
+    border-radius: 0 2px 2px 0;
+}
+
+/* Remove browser default focus outlines on navigation */
+.mud-nav-link:focus,
+.mud-nav-group-header:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(var(--mud-palette-primary-rgb), 0.3);
+}
+
+/* Remove browser default focus outline */
+.mud-nav-link:focus-visible,
+.mud-nav-group-header:focus-visible {
+    outline: none;
+}
+
+/* Ensure proper link behavior */
+.mud-nav-link:visited {
+    color: inherit;
+}
+
+/* Reduce indentation for nav links inside nav groups */
+.mud-nav-group .mud-collapse .mud-nav-link {
+    padding-left: calc(var(--mud-nav-link-padding-left, 16px) + 22px) !important;
+}
+
+
+/* Drawer content overflow handling */
+.mud-drawer .mud-drawer-content {
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+/* Dark mode adjustments */
+.dark-mode .mud-nav-link:hover,
+.dark-mode .mud-nav-group-header:hover {
+    color: var(--mud-palette-text-primary);
+    box-shadow: 0 1px 3px rgba(255, 255, 255, 0.1);
+}

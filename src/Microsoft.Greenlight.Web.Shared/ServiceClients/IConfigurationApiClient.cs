@@ -54,9 +54,15 @@ public interface IConfigurationApiClient : IServiceClient
     /// </summary>
     Task<IndexImportJobStatus> GetIndexImportStatusAsync(Guid jobId);
 
-    // OCR endpoints
+    // Document Ingestion and OCR endpoints
+    Task<ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions> GetDocumentIngestionOptionsAsync();
     Task<ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions.OcrOptions> GetOcrOptionsAsync();
     Task<List<LanguageDisplayInfo>> GetCachedOcrLanguagesAsync();
     Task<OcrLanguageDownloadResponse> DownloadOcrLanguageAsync(string languageCode);
     Task<DbConfigurationInfo> SetDefaultOcrLanguagesAsync(List<string> languages);
+
+    // Secret configuration override endpoints
+    Task<SecretOverrideInfo> GetSecretOverrideInfoAsync(string configurationKey);
+    Task<SecretOverrideInfo> SetSecretOverrideAsync(SecretOverrideRequest request);
+    Task<SecretOverrideInfo> RemoveSecretOverrideAsync(string configurationKey);
 }

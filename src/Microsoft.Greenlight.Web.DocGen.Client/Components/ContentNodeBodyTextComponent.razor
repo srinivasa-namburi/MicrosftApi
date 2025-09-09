@@ -76,7 +76,7 @@
             <MudCard>
                 <MudCardContent>
                     <MudText Typo="Typo.h6" Class="mb-2">Version History</MudText>
-                    <MudTable Items="versions?.OrderByDescending(x => x.Version)" Hover="true" Striped="true">
+                    <MudTable T="ContentNodeVersion" Items="versions?.OrderByDescending(x => x.Version)" Hover="true" Striped="true">
                         <HeaderContent>
                             <MudTh>Version</MudTh>
                             <MudTh>Time</MudTh>
@@ -253,12 +253,12 @@
             ["IsDarkMode"] = IsDarkMode
         };
 
-        var dialog = DialogService.Show<ContentNodeCoPilotDialog>("AI Content Assistant", parameters, new DialogOptions
+        var dialog = DialogService.Show<ContentNodeAiAssistantDialog>("AI Content Assistant", parameters, new DialogOptions
         {
             MaxWidth = MaxWidth.ExtraExtraLarge,
             FullWidth = true,
             CloseButton = true,
-            DisableBackdropClick = false,
+            BackdropClick = true,
             Position = DialogPosition.Center
         });
 

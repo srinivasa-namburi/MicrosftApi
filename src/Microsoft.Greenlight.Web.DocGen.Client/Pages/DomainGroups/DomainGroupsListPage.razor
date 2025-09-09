@@ -6,11 +6,12 @@
 
 <PageTitle>Domain Groups</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.Large" Class="pa-4">
-    <MudPaper Class="pa-4">
-        <MudText Typo="Typo.h4" GutterBottom="true">Domain Groups</MudText>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateNewDomainGroup" Class="mb-4">Create New Domain Group</MudButton>
-        <MudTable Items="_domainGroups" Hover="true" Striped="true">
+<MudPaper Class="pa-4">
+    <MudText Typo="Typo.h5">Domain Groups</MudText>
+    <MudDivider Class="mt-2 mb-3" />
+    
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateNewDomainGroup" Class="mb-4">Create New Domain Group</MudButton>
+        <MudTable T="DomainGroupInfo" Items="_domainGroups" Hover="true" Striped="true">
             <HeaderContent>
                 <MudTh>Name</MudTh>
                 <MudTh>Description</MudTh>
@@ -24,9 +25,8 @@
                     <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="() => DeleteDomainGroup(context.Id)">Delete</MudButton>
                 </MudTd>
             </RowTemplate>
-        </MudTable>
-    </MudPaper>
-</MudContainer>
+    </MudTable>
+</MudPaper>
 
 @code {
     private List<DomainGroupInfo> _domainGroups = new();

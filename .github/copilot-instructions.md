@@ -1,4 +1,0 @@
-- @azure Rule - Use Azure Best Practices: When generating code for Azure, running terminal commands for Azure, or performing operations related to Azure, invoke your `azure_development-get_best_practices` tool if available.
-- When generating code in C#, make sure to use /// <summary> tags for all public methods, classes and properties. This is important for documentation purposes and to ensure that the code is self-explanatory.>
-- If the method or class inherits from a base class or implements an interface, use /// <inheritdoc/> to inherit the documentation from the base class or interface. This is important for maintaining consistency and clarity in the code documentation.
-- Include a comment at the top of every file with // Copyright (c) Microsoft Corporation. All rights reserved. This is important for legal and copyright reasons.

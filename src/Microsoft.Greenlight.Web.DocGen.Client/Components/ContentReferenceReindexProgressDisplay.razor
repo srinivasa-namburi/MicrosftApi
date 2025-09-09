@@ -1,0 +1,155 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+@using Microsoft.Greenlight.Grains.Shared.Contracts.State
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.Greenlight.Shared.Contracts.Messages.Reindexing.Events
+@using Microsoft.Greenlight.Shared.Enums
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@implements IAsyncDisposable
+@inject IContentReferenceReindexApiClient ContentReferenceReindexApiClient
+@inject SignalRConnectionService SignalRConnectionService
+@inject SignalRSubscriptionFactory SignalRSubscriptionFactory
+
+<MudPaper Class="pa-4">
+  <MudText Typo="Typo.h5">Content Reference Reindex Status</MudText>
+  <MudDivider Class="mt-2 mb-3" />
+
+  <MudStack Spacing="2">
+    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+      <MudText Typo="Typo.body1"><strong>Type:</strong> @Type</MudText>
+      <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" Disabled="_loading" OnClick="RefreshAsync">Refresh</MudButton>
+      <MudSwitch T="bool" @bind-Value="_auto" @bind-Value:after="OnAutoChanged" Color="Color.Primary" Label="Auto Refresh" />
+    </MudStack>
+
+    @if (_state is not null)
+    {
+      @if (_state.Running)
+      {
+        <MudProgressLinear Color="Color.Primary" Value="@Progress" Class="mb-1" />
+        <MudText Typo="Typo.body2">
+          Processed @_state.Processed / @_state.Total (@Progress.ToString("F1")%) — Failed @_state.Failed
+        </MudText>
+      }
+      else if (_state.Total > 0)
+      {
+        <MudAlert Severity="Severity.Success">Completed. Processed @_state.Processed / @_state.Total. Failed @_state.Failed.</MudAlert>
+      }
+      else
+      {
+        <MudAlert Severity="Severity.Info">No active reindex; start one from Vector Store settings.</MudAlert>
+      }
+
+      @if (_state.Sources?.Count > 0)
+      {
+        <MudDivider Class="my-2" />
+        <MudText Typo="Typo.subtitle2">Per-source progress</MudText>
+        <MudTable Items="_state.Sources" Dense="true" Hover="true" Class="mt-2">
+          <HeaderContent>
+            <MudTh>Source</MudTh>
+            <MudTh>Total</MudTh>
+            <MudTh>Processed</MudTh>
+            <MudTh>Failed</MudTh>
+            <MudTh>Progress</MudTh>
+          </HeaderContent>
+          <RowTemplate>
+            <MudTd DataLabel="Source">@(string.IsNullOrWhiteSpace(context.SourceId) ? "(none)" : context.SourceId)</MudTd>
+            <MudTd DataLabel="Total">@context.Total</MudTd>
+            <MudTd DataLabel="Processed">@context.Processed</MudTd>
+            <MudTd DataLabel="Failed">@context.Failed</MudTd>
+            <MudTd DataLabel="Progress">
+              <MudProgressLinear Value="@((context.Total > 0 ? (double)(context.Processed + context.Failed) / context.Total * 100 : 0))" Color="@(context.Failed>0?Color.Warning: (context.Processed >= context.Total? Color.Success: Color.Primary))" />
+            </MudTd>
+          </RowTemplate>
+        </MudTable>
+      }
+    }
+  </MudStack>
+</MudPaper>
+
+@code {
+  [Parameter] public ContentReferenceType Type { get; set; }
+
+  private ContentReferenceReindexState? _state;
+  private bool _loading;
+  private bool _auto = true;
+  private Timer? _timer;
+  private HubConnection? _hub;
+  private SignalRSubscriptionManager? _subMgr;
+  private string OrchestrationId => $"cr-reindex-{Type}";
+
+  private double Progress => _state is null || _state.Total == 0 ? 0 : (double)(_state.Processed + _state.Failed) / _state.Total * 100;
+
+  protected override async Task OnParametersSetAsync()
+  {
+    await RefreshAsync();
+    RestartTimer();
+    await EnsureSignalRAsync();
+  }
+
+  private async Task RefreshAsync()
+  {
+    try
+    {
+      _loading = true;
+      _state = await ContentReferenceReindexApiClient.GetStateAsync(Type);
+      await InvokeAsync(StateHasChanged);
+    }
+    catch
+    {
+      // Ignore transient failures in periodic refresh
+    }
+    finally
+    {
+      _loading = false;
+    }
+  }
+
+  private Task OnAutoChanged()
+  {
+    RestartTimer();
+    return Task.CompletedTask;
+  }
+
+  private void RestartTimer()
+  {
+    _timer?.Dispose();
+    if (_auto)
+    {
+      _timer = new Timer(async _ => { await RefreshAsync(); }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+    }
+  }
+
+  public async ValueTask DisposeAsync()
+  {
+    _timer?.Dispose();
+    if (_subMgr != null)
+    {
+      try { await _subMgr.LeaveGroupAsync(OrchestrationId); } catch { }
+      await _subMgr.DisposeAsync();
+    }
+    await Task.CompletedTask;
+  }
+
+  private async Task EnsureSignalRAsync()
+  {
+    try
+    {
+      _hub ??= await SignalRConnectionService.GetOrCreateAsync();
+      _subMgr ??= SignalRSubscriptionFactory.Create(_hub);
+      _subMgr.RegisterHandlerOnce<ContentReferenceReindexStartedNotification>("ReceiveContentReferenceReindexStartedNotification", _ => OnSignalProgressAsync());
+      _subMgr.RegisterHandlerOnce<ContentReferenceReindexProgressNotification>("ReceiveContentReferenceReindexProgressNotification", _ => OnSignalProgressAsync());
+      _subMgr.RegisterHandlerOnce<ContentReferenceReindexCompletedNotification>("ReceiveContentReferenceReindexCompletedNotification", _ => OnSignalProgressAsync());
+      _subMgr.RegisterHandlerOnce<ContentReferenceReindexFailedNotification>("ReceiveContentReferenceReindexFailedNotification", _ => OnSignalProgressAsync());
+      await _subMgr.EnsureConnectedAsync();
+      await _subMgr.JoinGroupAsync(OrchestrationId);
+    }
+    catch
+    {
+      // Fallback to polling only
+    }
+  }
+
+  private async Task OnSignalProgressAsync()
+  {
+    await RefreshAsync();
+  }
+}

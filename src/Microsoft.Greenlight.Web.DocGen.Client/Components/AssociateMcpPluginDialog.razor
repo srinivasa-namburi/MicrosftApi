@@ -5,7 +5,7 @@
 
 <MudDialog>
     <DialogContent>
-        <MudForm @ref="form" OnValidSubmit="HandleValidSubmit">
+        <MudForm @ref="form">
             <MudSelect T="Guid" @bind-Value="selectedDocumentProcessId" Label="Select Document Process" Required="true">
                 @foreach (var process in _documentProcesses)
                 {
@@ -13,22 +13,22 @@
                 }
             </MudSelect>
 
-            <MudSelect T="McpPluginVersionInfo" @bind-Value="selectedPluginVersion" Label="Select Plugin Version" Required="true" Disabled="keepOnLatestVersion">
+            <MudSelect T="McpPluginVersionInfo?" @bind-Value="selectedPluginVersion" Label="Select Plugin Version" Required="true" Disabled="keepOnLatestVersion">
                 @foreach (var version in Plugin?.Versions?.OrderByDescending(v => v.Major).ThenByDescending(v => v.Minor).ThenByDescending(v => v.Patch) ?? Enumerable.Empty<McpPluginVersionInfo>())
                 {
                     <MudSelectItem Value="@version">@version.ToString()</MudSelectItem>
                 }
             </MudSelect>
 
-            <MudCheckBox @bind-Checked="keepOnLatestVersion" Label="Keep on latest version" Class="mt-2" />
+            <MudCheckBox @bind-Value="keepOnLatestVersion" Label="Keep on latest version" Class="mt-2" />
 
-            <MudButton Class="mt-4" Type="Submit" Variant="Variant.Filled" Color="Color.Primary">Associate</MudButton>
+            <MudButton Class="mt-4" Variant="Variant.Filled" Color="Color.Primary" OnClick="HandleValidSubmit">Associate</MudButton>
         </MudForm>
     </DialogContent>
 </MudDialog>
 
 @code {
-    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
     [Parameter] public McpPluginInfo Plugin { get; set; } = new();
     private List<DocumentProcessInfo> _documentProcesses = new();
     private Guid selectedDocumentProcessId;

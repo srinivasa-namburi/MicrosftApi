@@ -169,6 +169,9 @@ public class DocumentReindexProcessorGrain : Grain, IDocumentReindexProcessorGra
                 return;
             }
 
+            // Generate document reference for vector store indexing (identifier instead of URL)
+            var documentReference = $"doc:{document.Id}";
+
             // Determine the correct index name as per ingestion rules
             string indexName;
             if (document.DocumentLibraryType == DocumentLibraryType.PrimaryDocumentProcessLibrary)
@@ -194,12 +197,12 @@ public class DocumentReindexProcessorGrain : Grain, IDocumentReindexProcessorGra
                 indexName = documentLibrary.IndexName;
             }
 
-            // Re-ingest the document
+            // Re-ingest the document using document reference instead of URL
             DocumentIngestionResult result = await _documentIngestionService.IngestDocumentAsync(
                 document.Id,
                 documentStream,
                 document.FileName,
-                documentUrl,
+                documentReference,
                 document.DocumentLibraryOrProcessName,
                 indexName);
 

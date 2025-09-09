@@ -1,5 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 
+using Microsoft.Greenlight.Shared.Enums;
+
 namespace Microsoft.Greenlight.Shared.Contracts.Messages.Reindexing.Events;
 
 /// <summary>
@@ -20,7 +22,24 @@ public record DocumentReindexStartedNotification(
     /// The reason for reindexing.
     /// </summary>
     string Reason
-);
+) : ISystemStatusNotification
+{
+    /// <inheritdoc />
+    public SystemStatusContribution GetStatusContribution() => new()
+    {
+        Source = "VectorStore",
+        StatusType = SystemStatusType.OperationStarted,
+        ItemKey = DocumentLibraryOrProcessName,
+        Status = "Reindexing",
+        StatusMessage = $"Started reindexing: {Reason}",
+        Severity = SystemStatusSeverity.Info,
+        Properties = new Dictionary<string, string>
+        {
+            ["OrchestrationId"] = OrchestrationId,
+            ["Reason"] = Reason
+        }
+    };
+}
 
 /// <summary>
 /// Notification sent when document reindexing progress updates.
@@ -50,7 +69,27 @@ public record DocumentReindexProgressNotification(
     /// Number of documents that failed reindexing.
     /// </summary>
     int FailedDocuments
-);
+) : ISystemStatusNotification
+{
+    /// <inheritdoc />
+    public SystemStatusContribution GetStatusContribution() => new()
+    {
+        Source = "VectorStore",
+        StatusType = SystemStatusType.ProgressUpdate,
+        ItemKey = DocumentLibraryOrProcessName,
+        Status = "Reindexing",
+        StatusMessage = $"Progress: {ProcessedDocuments}/{TotalDocuments} processed, {FailedDocuments} failed",
+        Severity = FailedDocuments > 0 ? SystemStatusSeverity.Warning : SystemStatusSeverity.Info,
+        Properties = new Dictionary<string, string>
+        {
+            ["OrchestrationId"] = OrchestrationId,
+            ["TotalDocuments"] = TotalDocuments.ToString(),
+            ["ProcessedDocuments"] = ProcessedDocuments.ToString(),
+            ["FailedDocuments"] = FailedDocuments.ToString(),
+            ["PercentComplete"] = TotalDocuments > 0 ? ((double)ProcessedDocuments / TotalDocuments * 100).ToString("F1") : "0"
+        }
+    };
+}
 
 /// <summary>
 /// Notification sent when document reindexing completes.
@@ -85,7 +124,29 @@ public record DocumentReindexCompletedNotification(
     /// Whether the reindexing operation completed successfully.
     /// </summary>
     bool Success
-);
+) : ISystemStatusNotification
+{
+    /// <inheritdoc />
+    public SystemStatusContribution GetStatusContribution() => new()
+    {
+        Source = "VectorStore",
+        StatusType = SystemStatusType.OperationCompleted,
+        ItemKey = DocumentLibraryOrProcessName,
+        Status = Success ? "Healthy" : "Warning",
+        StatusMessage = Success 
+            ? $"Reindexing completed: {ProcessedDocuments}/{TotalDocuments} processed"
+            : $"Reindexing completed with issues: {ProcessedDocuments}/{TotalDocuments} processed, {FailedDocuments} failed",
+        Severity = Success && FailedDocuments == 0 ? SystemStatusSeverity.Info : SystemStatusSeverity.Warning,
+        Properties = new Dictionary<string, string>
+        {
+            ["OrchestrationId"] = OrchestrationId,
+            ["TotalDocuments"] = TotalDocuments.ToString(),
+            ["ProcessedDocuments"] = ProcessedDocuments.ToString(),
+            ["FailedDocuments"] = FailedDocuments.ToString(),
+            ["Success"] = Success.ToString()
+        }
+    };
+}
 
 /// <summary>
 /// Notification sent when document reindexing fails.
@@ -105,4 +166,21 @@ public record DocumentReindexFailedNotification(
     /// The error message describing why reindexing failed.
     /// </summary>
     string ErrorMessage
-);
+) : ISystemStatusNotification
+{
+    /// <inheritdoc />
+    public SystemStatusContribution GetStatusContribution() => new()
+    {
+        Source = "VectorStore",
+        StatusType = SystemStatusType.OperationFailed,
+        ItemKey = DocumentLibraryOrProcessName,
+        Status = "Error",
+        StatusMessage = $"Reindexing failed: {ErrorMessage}",
+        Severity = SystemStatusSeverity.Critical,
+        Properties = new Dictionary<string, string>
+        {
+            ["OrchestrationId"] = OrchestrationId,
+            ["ErrorMessage"] = ErrorMessage
+        }
+    };
+}

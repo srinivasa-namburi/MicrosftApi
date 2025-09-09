@@ -21,6 +21,9 @@ resource redis 'Microsoft.Cache/redis@2024-03-01' = {
     minimumTlsVersion: '1.2'
     redisConfiguration: {
       'aad-enabled': 'true'
+      // Eviction policy: prefer LRU across all keys to avoid OOM
+      // We do not rely on Redis persistence; prioritize availability.
+      'maxmemory-policy': 'allkeys-lru'
     }
     publicNetworkAccess: contains(['private','hybrid'], deploymentModel) ? 'Disabled' : 'Enabled'
   }

@@ -164,10 +164,15 @@ public class ReviewInstanceController : BaseController
             return BadRequest("ReviewId is invalid");
         }
 
+        // Accept either legacy ExportedDocumentLink ID or a newer ExternalLinkAsset ID (from ContentReference upload)
         var exportedDocumentLink = await _dbContext.ExportedDocumentLinks.FindAsync(reviewInstanceInfo.ExportedLinkId);
         if (exportedDocumentLink == null)
         {
-            return BadRequest("ExportedLinkId is invalid");
+            var externalLinkAsset = await _dbContext.ExternalLinkAssets.FindAsync(reviewInstanceInfo.ExportedLinkId);
+            if (externalLinkAsset == null)
+            {
+                return BadRequest("ExportedLinkId is invalid");
+            }
         }
 
         // Map into a domain model

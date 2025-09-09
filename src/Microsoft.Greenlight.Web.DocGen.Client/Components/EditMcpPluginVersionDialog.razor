@@ -32,7 +32,7 @@
 </MudDialog>
 
 @code {
-    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
     
     [Parameter] public McpPluginVersionInfo? Version { get; set; }
     [Parameter] public McpPluginInfo? PluginInfo { get; set; }

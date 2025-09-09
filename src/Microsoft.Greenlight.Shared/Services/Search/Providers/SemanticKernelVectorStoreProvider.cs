@@ -62,7 +62,8 @@ public sealed class SemanticKernelVectorStoreProvider : ISemanticKernelVectorSto
         // Data properties (align with attributes on SkUnifiedRecord)
         def.Properties.Add(new VectorStoreDataProperty("DocumentId", typeof(string)) { IsIndexed = true });
         def.Properties.Add(new VectorStoreDataProperty("FileName", typeof(string)) { IsIndexed = true });
-        def.Properties.Add(new VectorStoreDataProperty("OriginalDocumentUrl", typeof(string)) { IsIndexed = true, IsFullTextIndexed = false });
+        // Store document reference for dynamic URL resolution instead of fixed URL
+        def.Properties.Add(new VectorStoreDataProperty("DocumentReference", typeof(string)) { IsIndexed = true, IsFullTextIndexed = false });
         def.Properties.Add(new VectorStoreDataProperty("ChunkText", typeof(string)) { IsIndexed = false, IsFullTextIndexed = false });
         def.Properties.Add(new VectorStoreDataProperty("PartitionNumber", typeof(int)) { IsIndexed = true });
         def.Properties.Add(new VectorStoreDataProperty("IngestedAt", typeof(DateTimeOffset)) { IsIndexed = true });
@@ -507,7 +508,7 @@ public sealed class SemanticKernelVectorStoreProvider : ISemanticKernelVectorSto
         ChunkId = $"{r.DocumentId}={r.PartitionNumber}",
         DocumentId = r.DocumentId,
         FileName = r.FileName,
-        OriginalDocumentUrl = r.OriginalDocumentUrl,
+        DocumentReference = r.DocumentReference,
         ChunkText = r.ChunkText,
         Embedding = r.Embedding,
         PartitionNumber = r.PartitionNumber,
@@ -519,7 +520,7 @@ public sealed class SemanticKernelVectorStoreProvider : ISemanticKernelVectorSto
     {
         DocumentId = r.DocumentId,
         FileName = r.FileName,
-        OriginalDocumentUrl = r.OriginalDocumentUrl,
+        DocumentReference = r.DocumentReference,
         ChunkText = r.ChunkText,
         Embedding = r.Embedding ?? Array.Empty<float>(),
         PartitionNumber = r.PartitionNumber,

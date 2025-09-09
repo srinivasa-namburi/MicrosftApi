@@ -121,5 +121,37 @@ public class EfCoreConfigurationProvider : ConfigurationProvider
             _logger.LogError(ex, "Error updating options through configuration");
         }
     }
+
+    /// <summary>
+    /// Removes the specified configuration keys from the runtime configuration.
+    /// </summary>
+    /// <param name="keys">Configuration keys to remove.</param>
+    public void RemoveOptions(IEnumerable<string> keys)
+    {
+        try
+        {
+            bool hasChanges = false;
+            foreach (var key in keys)
+            {
+                if (Data.ContainsKey(key))
+                {
+                    Data.Remove(key);
+                    // Clear from configuration root by setting to null
+                    _configurationRoot[key] = null;
+                    hasChanges = true;
+                }
+            }
+
+            if (hasChanges)
+            {
+                OnReload();
+                _logger.LogInformation("Removed {Count} configuration values", keys.Count());
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error removing configuration options");
+        }
+    }
 }
 

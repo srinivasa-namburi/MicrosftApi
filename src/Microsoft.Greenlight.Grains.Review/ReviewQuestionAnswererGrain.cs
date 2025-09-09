@@ -11,6 +11,7 @@ using Microsoft.Greenlight.Shared.Models.Review;
 using Microsoft.Greenlight.Shared.Prompts;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.Shared.Services.ContentReference;
+using Microsoft.Greenlight.Shared.Services.Search.Abstractions;
 // Removed legacy ReviewKernelMemoryRepository dependency
 using Microsoft.Greenlight.Shared.DocumentProcess.Shared.Generation.Agentic;
 using Microsoft.SemanticKernel;
@@ -148,31 +149,8 @@ namespace Microsoft.Greenlight.Grains.Review
 
         private async Task<List<ContentReferenceItem>> GetReviewContentReferenceItemsAsync(Guid reviewInstanceId)
         {
-            try
-            {
-                await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
-
-                // Try to find a content reference item for this review
-                var reviewContentReference = await dbContext.ContentReferenceItems
-                    .FirstOrDefaultAsync(r => r.ContentReferenceSourceId == reviewInstanceId &&
-                                            r.ReferenceType == ContentReferenceType.ReviewItem);
-
-                if (reviewContentReference != null)
-                {
-                    // Get the content reference item with its RAG text populated
-                    var contentReferenceItem = await _contentReferenceService.GetOrCreateContentReferenceItemAsync(
-                        reviewContentReference.Id, ContentReferenceType.ReviewItem);
-
-                    return new List<ContentReferenceItem> { contentReferenceItem };
-                }
-
-                return new List<ContentReferenceItem>();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting content reference items for review {ReviewId}", reviewInstanceId);
-                return new List<ContentReferenceItem>();
-            }
+            // Use ContentReferenceService to get review content references (handles RAG text population, etc.)
+            return await _contentReferenceService.GetReviewContentReferenceItemsAsync(reviewInstanceId);
         }
 
         private async Task<string> AnswerUsingAgenticProcessAsync(
@@ -221,7 +199,9 @@ namespace Microsoft.Greenlight.Grains.Review
                     availablePlugins[plugin.Name] = plugin;
                 }
                 // Add ContentReferenceLookupPlugin and ContentStatePlugin
-                var contentReferenceLookupPlugin = new ContentReferenceLookupPlugin(_contentReferenceService);
+                var vectorProvider = _sp.GetService(typeof(ISemanticKernelVectorStoreProvider)) as ISemanticKernelVectorStoreProvider
+                    ?? throw new InvalidOperationException("ISemanticKernelVectorStoreProvider not available");
+                var contentReferenceLookupPlugin = new ContentReferenceLookupPlugin(_contentReferenceService, _ragContextBuilder, vectorProvider);
                 var grainFactory = _sp.GetService(typeof(IGrainFactory)) as IGrainFactory;
                 var executionId = Guid.NewGuid();
                 if (grainFactory is null) throw new InvalidOperationException("GrainFactory not initialized");

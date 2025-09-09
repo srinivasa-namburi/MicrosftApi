@@ -1,8 +1,10 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Greenlight.Shared.Contracts.Chat;
 using Microsoft.Greenlight.Web.Shared.ServiceClients;
 using System.Net.Http.Json;
 using System.Net;
+using Microsoft.Greenlight.Shared.Contracts.Chat.Commands;
 
 namespace Microsoft.Greenlight.Web.DocGen.Client.ServiceClients;
 
@@ -37,5 +39,11 @@ public class ChatApiClient : WebAssemblyBaseServiceClient<ChatApiClient>, IChatA
         // Return chat history for the conversation if found - otherwise return an empty list
         return await response?.Content.ReadFromJsonAsync<List<ChatMessageDTO>>()! ??
                new List<ChatMessageDTO>();
+    }
+
+    public async Task SetConversationDocumentProcessAsync(Guid conversationId, SetConversationDocumentProcessRequest request)
+    {
+        var response = await SendPostRequestMessage($"/api/chat/conversation/{conversationId}/document-process", request);
+        response?.EnsureSuccessStatusCode();
     }
 }

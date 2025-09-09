@@ -12,10 +12,10 @@
 		<CodeAnalysisTreatWarningsAsErrors>true</CodeAnalysisTreatWarningsAsErrors>
 	</PropertyGroup>
 	<ItemGroup>
-	  <None Remove="appsettings.Development .json" />
+		<None Remove="appsettings.Development .json" />
 	</ItemGroup>
 	<ItemGroup>
-		<PackageReference Include="Aspire.Hosting.AppHost" Version="9.1.0" />		
+		<PackageReference Include="Aspire.Hosting.AppHost" Version="9.1.0" />
 		<PackageReference Include="Aspire.Hosting.Azure" Version="9.1.0" />
 		<PackageReference Include="Aspire.Hosting.Azure.ApplicationInsights" Version="9.1.0" />
 		<PackageReference Include="Aspire.Hosting.Azure.EventHubs" Version="9.1.0" />
@@ -48,10 +48,11 @@
 		<ProjectReference Include="..\Microsoft.Greenlight.Grains.Shared\Microsoft.Greenlight.Grains.Shared.csproj" IsAspireProjectResource="false" />
 	</ItemGroup>
 	<ItemGroup>
-	  <None Update="appsettings.json">
-	    <CopyToOutputDirectory>Never</CopyToOutputDirectory>
-	  </None>
+		<None Update="appsettings.json">
+			<CopyToOutputDirectory>Never</CopyToOutputDirectory>
+		</None>
 	</ItemGroup>
+
 	<ProjectExtensions>
 		<VisualStudio>
 			<UserProperties appsettings_1json__JsonSchema="" />

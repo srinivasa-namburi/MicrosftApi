@@ -14,6 +14,8 @@ using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Services.Search.Abstractions;
 using Microsoft.Greenlight.API.Main.Authorization;
 using Microsoft.Greenlight.Shared.Contracts.Authorization;
+using Microsoft.Greenlight.Grains.Ingestion.Contracts;
+using Microsoft.Greenlight.Grains.Ingestion.Contracts.Helpers;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
@@ -31,6 +33,7 @@ public class DocumentProcessController : BaseController
     private readonly AzureFileHelper _fileHelper;
     private readonly IDocumentIngestionService _documentIngestionService;
     private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
+    private readonly IClusterClient _clusterClient;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DocumentProcessController"/> class.
@@ -42,7 +45,8 @@ public class DocumentProcessController : BaseController
         IMapper mapper,
         AzureFileHelper fileHelper,
         IDocumentIngestionService documentIngestionService,
-        IDbContextFactory<DocGenerationDbContext> dbContextFactory)
+        IDbContextFactory<DocGenerationDbContext> dbContextFactory,
+        IClusterClient clusterClient)
     {
         _dbContext = dbContext;
         _documentProcessInfoService = documentProcessInfoService;
@@ -51,6 +55,7 @@ public class DocumentProcessController : BaseController
         _fileHelper = fileHelper;
         _documentIngestionService = documentIngestionService;
         _dbContextFactory = dbContextFactory;
+        _clusterClient = clusterClient;
     }
 
     /// <summary>
@@ -230,6 +235,40 @@ public class DocumentProcessController : BaseController
             var processSnapshot = await _dbContext.DynamicDocumentProcessDefinitions
                 .AsNoTracking()
                 .FirstOrDefaultAsync(x => x.Id == id);
+
+            // First: attempt to deactivate any active ingestion/reindex orchestrations tied to this process
+            if (processSnapshot != null)
+            {
+                try
+                {
+                    // Deactivate ingestion orchestrations for all FileStorageSources linked to this process
+                    var fileStorageSources = await _dbContext.DocumentProcessFileStorageSources
+                        .Include(dpfs => dpfs.FileStorageSource)
+                        .Where(dpfs => dpfs.DocumentProcessId == id)
+                        .ToListAsync();
+
+                    foreach (var source in fileStorageSources)
+                    {
+                        // Use FileStorageSource-centric orchestration ID for ingestion
+                        var ingestionOrchestrationId = IngestionOrchestrationIdHelper.GenerateOrchestrationIdForFileStorageSource(
+                            source.FileStorageSourceId);
+                        
+                        var ingestionGrain = _clusterClient.GetGrain<IDocumentIngestionOrchestrationGrain>(ingestionOrchestrationId);
+                        await ingestionGrain.DeactivateAsync();
+                    }
+
+                    // Deactivate reindex orchestration (remains DP-centric)
+                    var reindexOrchestrationId = IngestionOrchestrationIdHelper.GenerateReindexOrchestrationId(
+                        processSnapshot.ShortName, DocumentLibraryType.PrimaryDocumentProcessLibrary);
+                    var reindexGrain = _clusterClient.GetGrain<IDocumentReindexOrchestrationGrain>(reindexOrchestrationId);
+                    await reindexGrain.DeactivateAsync();
+                }
+                catch (Exception ex)
+                {
+                    // Log and continue with best-effort cleanup
+                    Console.WriteLine($"Error deactivating orchestrations for process {processSnapshot.ShortName}: {ex.Message}");
+                }
+            }
 
             // Existing delete logic (plugins, associations, outlines, validation) will run below
 

@@ -95,7 +95,8 @@ namespace Microsoft.Greenlight.Grains.Ingestion
             try
             {
                 // 1. Copy file if needed
-                if (_entity.IngestionState is IngestionState.Discovered or IngestionState.FileCopying)
+                // Also route DiscoveredForConsumer through the copy grain to honor queueing, but skip physical copy internally
+                if (_entity.IngestionState is IngestionState.Discovered or IngestionState.FileCopying or IngestionState.DiscoveredForConsumer)
                 {
                     // Set to FileCopying only when actually starting processing
                     _entity.IngestionState = IngestionState.FileCopying;

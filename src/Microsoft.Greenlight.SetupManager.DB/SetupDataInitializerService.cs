@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Greenlight.Shared.Contracts.Components;
 using Microsoft.Greenlight.Shared.Data.Sql;
@@ -43,6 +45,20 @@ public class SetupDataInitializerService(
     private readonly Guid _textEmbeddingAda002ModelDeploymentId = Guid.Parse("a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d", CultureInfo.InvariantCulture);
 
     private readonly Guid _nrcEnvironmentalReportId = Guid.Parse("88ffae0a-22a3-42e0-a538-72dd1a589216", CultureInfo.InvariantCulture);
+
+    // Fixed IDs for content reference storage entities to ensure idempotency
+    private readonly Guid _contentReferenceStorageSourceId = Guid.Parse("7f3e4b9a-2c5d-4e8f-9a1b-3c6d8e9f0a1b", CultureInfo.InvariantCulture);
+    private readonly Guid _contentReferenceStorageCategoryId = Guid.Parse("8a4f5c0b-3d6e-5f9a-0b2c-4d7e9f0b2c3d", CultureInfo.InvariantCulture);
+    
+    // Fixed IDs for ContentReferenceType to FileStorageSource mappings
+    private readonly Dictionary<ContentReferenceType, Guid> _contentReferenceTypeMappingIds = new()
+    {
+        [ContentReferenceType.GeneratedDocument] = Guid.Parse("9b5a6d1c-4e7f-6a0b-1c3d-5e8f0c3d4e5f", CultureInfo.InvariantCulture),
+        [ContentReferenceType.GeneratedSection] = Guid.Parse("0c6b7e2d-5f8a-7b1c-2d4e-6f9a1d4e5f6a", CultureInfo.InvariantCulture),
+        [ContentReferenceType.ReviewItem] = Guid.Parse("1d7c8f3e-6a9b-8c2d-3e5f-7a0b2e5f6a7b", CultureInfo.InvariantCulture),
+        [ContentReferenceType.ExternalFile] = Guid.Parse("2e8d9a4f-7b0c-9d3e-4f6a-8b1c3f6a7b8c", CultureInfo.InvariantCulture),
+        [ContentReferenceType.ExternalLinkAsset] = Guid.Parse("3f9e0b5a-8c1d-0e4f-5a7b-9c2d4a7b8c9d", CultureInfo.InvariantCulture)
+    };
 
 
     /// <summary>
@@ -111,7 +127,7 @@ public class SetupDataInitializerService(
         {
             try
             {
-                using var conn = new NpgsqlConnection(adminConnectionString);
+                await using var conn = new NpgsqlConnection(adminConnectionString);
                 await conn.OpenAsync(cancellationToken);
                 serverReady = true;
             }
@@ -130,9 +146,9 @@ public class SetupDataInitializerService(
         // Create database if it doesn't exist
         try
         {
-            using var conn = new NpgsqlConnection(adminConnectionString);
+            await using var conn = new NpgsqlConnection(adminConnectionString);
             await conn.OpenAsync(cancellationToken);
-            using var cmd = conn.CreateCommand();
+            await using var cmd = conn.CreateCommand();
             cmd.CommandText = $"SELECT 1 FROM pg_database WHERE datname = @dbname;";
             cmd.Parameters.AddWithValue("@dbname", targetDb);
             var exists = await cmd.ExecuteScalarAsync(cancellationToken);
@@ -160,9 +176,9 @@ public class SetupDataInitializerService(
         {
             builder.Database = targetDb;
             var vectorDbConnectionString = builder.ToString();
-            using var conn = new NpgsqlConnection(vectorDbConnectionString);
+            await using var conn = new NpgsqlConnection(vectorDbConnectionString);
             await conn.OpenAsync(cancellationToken);
-            using var cmd = conn.CreateCommand();
+            await using var cmd = conn.CreateCommand();
             // Ensure pgvector extension
             cmd.CommandText = "CREATE EXTENSION IF NOT EXISTS vector;";
             await cmd.ExecuteNonQueryAsync(cancellationToken);
@@ -202,7 +218,12 @@ public class SetupDataInitializerService(
         await Seed2025_04_24_AiModelSettings(dbContext, cancellationToken);
         await Seed2025_04_24_DefaultAiModelDeploymentForDocumentProcesses(dbContext, cancellationToken);
         await Seed2025_12_15_EmbeddingModelSettings(dbContext, cancellationToken);
-        //await Seed2025_09_20_EnvironmentalReportDocumentProcess(dbContext, cancellationToken);
+        await Seed2025_09_02_DefaultFileStorageSource(dbContext, cancellationToken);
+        await Seed2025_09_02_MigrateFileStorageToHostArchitecture(dbContext, cancellationToken);
+        await Seed2025_09_02_MigrateLegacyBlobStorageToFileStorageSources(dbContext, cancellationToken);
+        await Seed2025_09_04_RebuildAllFileAcknowledgmentRecords(dbContext, cancellationToken);
+        await Seed2025_09_08_BackfillFileStorageSourceDataType(dbContext, cancellationToken);
+
 
         sw.Stop();
         _logger.LogInformation(
@@ -210,305 +231,7 @@ public class SetupDataInitializerService(
 
         activity!.Stop();
     }
-
-    private async Task Seed2025_09_20_EnvironmentalReportDocumentProcess(DocGenerationDbContext dbContext, CancellationToken cancellationToken)
-    {
-        const string documentProcessShortName = "NRC.EnvironmentalReview";
-
-        // Check if the document process already exists
-        var existingProcess = await dbContext.DynamicDocumentProcessDefinitions
-            .FindAsync(_nrcEnvironmentalReportId, cancellationToken);
-
-        if (existingProcess != null)
-        {
-            _logger.LogInformation("Environmental Report document process already exists. Skipping seeding.");
-            return;
-        }
-
-        _logger.LogInformation("Seeding the US.NRC.EnvironmentalReport document process");
-
-        // Create the document outline
-        var documentOutline = new DocumentOutline();
-        documentOutline.OutlineItems = new List<DocumentOutlineItem>();
-
-        // Create the outline items programmatically
-        // Level 0 items (top-level sections)
-        var section1 = CreateOutlineItem("1", "Introduction", 0);
-        var section2 = CreateOutlineItem("2", "Environmental Description", 0);
-        var section3 = CreateOutlineItem("3", "Plant Description", 0);
-        var section4 = CreateOutlineItem("4", "Environmental Impacts of Construction", 0);
-        var section5 = CreateOutlineItem("5", "Environmental Impacts of Station Operation", 0);
-        var section6 = CreateOutlineItem("6", "Environmental Measurement and Monitoring Programs", 0);
-        var section7 = CreateOutlineItem("7", "Environmental Impacts of Postulated Accidents Involving Radioactive Materials", 0);
-        var section8 = CreateOutlineItem("8", "Need for Power", 0);
-        var section9 = CreateOutlineItem("9", "Alternatives to the Proposed Action", 0);
-        var section10 = CreateOutlineItem("10", "Non-Radiological Health Impacts", 0);
-        var section11 = CreateOutlineItem("11", "Radiological Health Impacts", 0);
-        var section12 = CreateOutlineItem("12", "Cumulative Impacts", 0);
-        var section13 = CreateOutlineItem("13", "Mitigation Measures", 0);
-        var section14 = CreateOutlineItem("14", "Conclusions", 0);
-        var section15 = CreateOutlineItem("15", "References", 0);
-        var section16 = CreateOutlineItem("16", "Appendices", 0);
-
-        section1.RenderTitleOnly = true;
-        section2.RenderTitleOnly = true;
-        section3.RenderTitleOnly = true;
-        section4.RenderTitleOnly = true;
-        section5.RenderTitleOnly = true;
-        section6.RenderTitleOnly = true;
-        section7.RenderTitleOnly = true;
-        section8.RenderTitleOnly = true;
-        section9.RenderTitleOnly = true;
-        section10.RenderTitleOnly = true;
-        section11.RenderTitleOnly = true;
-        section12.RenderTitleOnly = true;
-        section13.RenderTitleOnly = true;
-        section14.RenderTitleOnly = true;
-        section15.RenderTitleOnly = true;
-        section16.RenderTitleOnly = true;
-
-        // Add top-level items to the outline
-        documentOutline.OutlineItems.Add(section1);
-        documentOutline.OutlineItems.Add(section2);
-        documentOutline.OutlineItems.Add(section3);
-        documentOutline.OutlineItems.Add(section4);
-        documentOutline.OutlineItems.Add(section5);
-        documentOutline.OutlineItems.Add(section6);
-        documentOutline.OutlineItems.Add(section7);
-        documentOutline.OutlineItems.Add(section8);
-        documentOutline.OutlineItems.Add(section9);
-        documentOutline.OutlineItems.Add(section10);
-        documentOutline.OutlineItems.Add(section11);
-        documentOutline.OutlineItems.Add(section12);
-        documentOutline.OutlineItems.Add(section13);
-        documentOutline.OutlineItems.Add(section14);
-        documentOutline.OutlineItems.Add(section15);
-        documentOutline.OutlineItems.Add(section16);
-
-        // Level 1 items for section 1
-        var section1_1 = CreateOutlineItem("1.1", "Project Overview", 1, section1);
-        var section1_2 = CreateOutlineItem("1.2", "Applicant Information", 1, section1);
-        var section1_3 = CreateOutlineItem("1.3", "Site Location", 1, section1);
-        var section1_4 = CreateOutlineItem("1.4", "Regulatory Requirements", 1, section1);
-
-        // Level 1 items for section 2
-        var section2_1 = CreateOutlineItem("2.1", "Land Use and Geology", 1, section2);
-        var section2_2 = CreateOutlineItem("2.2", "Water Resources", 1, section2);
-        var section2_3 = CreateOutlineItem("2.3", "Ecology", 1, section2);
-        var section2_4 = CreateOutlineItem("2.4", "Climate and Meteorology", 1, section2);
-
-        // Level 2 items for section 2.1
-        var section2_1_1 = CreateOutlineItem("2.1.1", "Topography", 2, section2_1);
-        var section2_1_2 = CreateOutlineItem("2.1.2", "Soil Characteristics", 2, section2_1);
-        var section2_1_3 = CreateOutlineItem("2.1.3", "Seismic Conditions", 2, section2_1);
-
-        // Level 2 items for section 2.2
-        var section2_2_1 = CreateOutlineItem("2.2.1", "Surface Water", 2, section2_2);
-        var section2_2_2 = CreateOutlineItem("2.2.2", "Groundwater", 2, section2_2);
-
-        // Level 2 items for section 2.3
-        var section2_3_1 = CreateOutlineItem("2.3.1", "Terrestrial Ecology", 2, section2_3);
-        var section2_3_2 = CreateOutlineItem("2.3.2", "Aquatic Ecology", 2, section2_3);
-
-        // Level 2 items for section 2.4
-        var section2_4_1 = CreateOutlineItem("2.4.1", "Local Climate", 2, section2_4);
-        var section2_4_2 = CreateOutlineItem("2.4.2", "Meteorological Data", 2, section2_4);
-
-        // Level 1 items for section 3
-        var section3_1 = CreateOutlineItem("3.1", "Plant Layout", 1, section3);
-        var section3_2 = CreateOutlineItem("3.2", "Reactor Design", 1, section3);
-        var section3_3 = CreateOutlineItem("3.3", "Auxiliary Systems", 1, section3);
-
-        // Level 2 items for section 3.2
-        var section3_2_1 = CreateOutlineItem("3.2.1", "Reactor Core", 2, section3_2);
-        var section3_2_2 = CreateOutlineItem("3.2.2", "Safety Systems", 2, section3_2);
-
-        // Level 2 items for section 3.3
-        var section3_3_1 = CreateOutlineItem("3.3.1", "Cooling Systems", 2, section3_3);
-        var section3_3_2 = CreateOutlineItem("3.3.2", "Waste Management Systems", 2, section3_3);
-
-        // Level 1 items for section 4
-        var section4_1 = CreateOutlineItem("4.1", "Land Disturbance", 1, section4);
-        var section4_2 = CreateOutlineItem("4.2", "Air Quality", 1, section4);
-        var section4_3 = CreateOutlineItem("4.3", "Water Quality", 1, section4);
-        var section4_4 = CreateOutlineItem("4.4", "Noise Levels", 1, section4);
-        var section4_5 = CreateOutlineItem("4.5", "Waste Generation", 1, section4);
-
-        // Level 2 items for section 4.2
-        var section4_2_1 = CreateOutlineItem("4.2.1", "Dust Generation", 2, section4_2);
-        var section4_2_2 = CreateOutlineItem("4.2.2", "Emissions from Equipment", 2, section4_2);
-
-        // Level 2 items for section 4.5
-        var section4_5_1 = CreateOutlineItem("4.5.1", "Solid Waste", 2, section4_5);
-        var section4_5_2 = CreateOutlineItem("4.5.2", "Hazardous Waste", 2, section4_5);
-
-        // Level 1 items for section 5
-        var section5_1 = CreateOutlineItem("5.1", "Air Quality", 1, section5);
-        var section5_2 = CreateOutlineItem("5.2", "Water Quality", 1, section5);
-        var section5_3 = CreateOutlineItem("5.3", "Land Use", 1, section5);
-        var section5_4 = CreateOutlineItem("5.4", "Ecology", 1, section5);
-
-        // Level 2 items for section 5.1
-        var section5_1_1 = CreateOutlineItem("5.1.1", "Routine Emissions", 2, section5_1);
-        var section5_1_2 = CreateOutlineItem("5.1.2", "Accidental Releases", 2, section5_1);
-
-        // Level 2 items for section 5.2
-        var section5_2_1 = CreateOutlineItem("5.2.1", "Thermal Discharge", 2, section5_2);
-        var section5_2_2 = CreateOutlineItem("5.2.2", "Chemical Discharge", 2, section5_2);
-
-        // Level 2 items for section 5.4
-        var section5_4_1 = CreateOutlineItem("5.4.1", "Terrestrial Impacts", 2, section5_4);
-        var section5_4_2 = CreateOutlineItem("5.4.2", "Aquatic Impacts", 2, section5_4);
-
-        // Level 1 items for section 6
-        var section6_1 = CreateOutlineItem("6.1", "Air Monitoring", 1, section6);
-        var section6_2 = CreateOutlineItem("6.2", "Water Monitoring", 1, section6);
-        var section6_3 = CreateOutlineItem("6.3", "Ecological Monitoring", 1, section6);
-        var section6_4 = CreateOutlineItem("6.4", "Program Management", 1, section6);
-
-        // Level 2 items for section 6.4
-        var section6_4_1 = CreateOutlineItem("6.4.1", "Data Collection", 2, section6_4);
-        var section6_4_2 = CreateOutlineItem("6.4.2", "Data Analysis", 2, section6_4);
-
-        // Level 1 items for section 7
-        var section7_1 = CreateOutlineItem("7.1", "Accident Scenarios", 1, section7);
-        var section7_2 = CreateOutlineItem("7.2", "Radiological Consequences", 1, section7);
-        var section7_3 = CreateOutlineItem("7.3", "Mitigation Measures", 1, section7);
-        var section7_4 = CreateOutlineItem("7.4", "Health Risks", 1, section7);
-
-        // Level 1 items for section 8
-        var section8_1 = CreateOutlineItem("8.1", "Regional Energy Demand", 1, section8);
-        var section8_2 = CreateOutlineItem("8.2", "Alternative Energy Sources", 1, section8);
-        var section8_3 = CreateOutlineItem("8.3", "Future Projections", 1, section8);
-        var section8_4 = CreateOutlineItem("8.4", "Justification for the Proposed Project", 1, section8);
-
-        // Level 1 items for section 9
-        var section9_1 = CreateOutlineItem("9.1", "No-Action Alternative", 1, section9);
-        var section9_2 = CreateOutlineItem("9.2", "Alternative Sites", 1, section9);
-        var section9_3 = CreateOutlineItem("9.3", "Alternative Technologies", 1, section9);
-        var section9_4 = CreateOutlineItem("9.4", "Comparison of Alternatives", 1, section9);
-
-        // Level 1 items for section 10
-        var section10_1 = CreateOutlineItem("10.1", "Occupational Health", 1, section10);
-        var section10_2 = CreateOutlineItem("10.2", "Public Health", 1, section10);
-        var section10_3 = CreateOutlineItem("10.3", "Noise", 1, section10);
-        var section10_4 = CreateOutlineItem("10.4", "Air Emissions", 1, section10);
-
-        // Level 1 items for section 11
-        var section11_1 = CreateOutlineItem("11.1", "Worker Exposure", 1, section11);
-        var section11_2 = CreateOutlineItem("11.2", "Public Exposure", 1, section11);
-        var section11_3 = CreateOutlineItem("11.3", "Dose Assessment", 1, section11);
-        var section11_4 = CreateOutlineItem("11.4", "Radiation Protection", 1, section11);
-
-        // Level 1 items for section 12
-        var section12_1 = CreateOutlineItem("12.1", "Past Actions", 1, section12);
-        var section12_2 = CreateOutlineItem("12.2", "Present Actions", 1, section12);
-        var section12_3 = CreateOutlineItem("12.3", "Future Actions", 1, section12);
-        var section12_4 = CreateOutlineItem("12.4", "Combined Impacts", 1, section12);
-
-        // Level 1 items for section 13
-        var section13_1 = CreateOutlineItem("13.1", "Design Features", 1, section13);
-        var section13_2 = CreateOutlineItem("13.2", "Operational Controls", 1, section13);
-        var section13_3 = CreateOutlineItem("13.3", "Monitoring Programs", 1, section13);
-        var section13_4 = CreateOutlineItem("13.4", "Contingency Plans", 1, section13);
-
-        // Level 1 items for section 14
-        var section14_1 = CreateOutlineItem("14.1", "Summary of Findings", 1, section14);
-        var section14_2 = CreateOutlineItem("14.2", "Environmental Significance", 1, section14);
-        var section14_3 = CreateOutlineItem("14.3", "Effectiveness of Mitigation", 1, section14);
-        var section14_4 = CreateOutlineItem("14.4", "Recommendations", 1, section14);
-
-        // Level 1 items for section 15
-        var section15_1 = CreateOutlineItem("15.1", "Scientific Studies", 1, section15);
-        var section15_2 = CreateOutlineItem("15.2", "Regulatory Documents", 1, section15);
-        var section15_3 = CreateOutlineItem("15.3", "Technical Reports", 1, section15);
-        var section15_4 = CreateOutlineItem("15.4", "Other Sources", 1, section15);
-
-        // Level 1 items for section 16
-        var section16_1 = CreateOutlineItem("16.1", "Technical Data", 1, section16);
-        var section16_2 = CreateOutlineItem("16.2", "Modeling Results", 1, section16);
-        var section16_3 = CreateOutlineItem("16.3", "Supporting Documentation", 1, section16);
-        var section16_4 = CreateOutlineItem("16.4", "Additional Information", 1, section16);
-
-        const string containerName = "ingest-nrc-environmental-review"; // Default value
-        const string autoImportFolderName = "ingest-auto"; // Default value
-
-        var indexNames = new[] { "index-us-nrc-envrep-sections" };
-
-        // Create the document process definition
-
-        var documentProcess = new DynamicDocumentProcessDefinition
-        {
-            Id = _nrcEnvironmentalReportId,
-            ShortName = documentProcessShortName,
-            Description = "NRC Environmental Review",
-            BlobStorageContainerName = containerName,
-            BlobStorageAutoImportFolderName = autoImportFolderName,
-            LogicType = DocumentProcessLogicType.SemanticKernelVectorStore,
-            Status = DocumentProcessStatus.Created,
-            CompletionServiceType = DocumentProcessCompletionServiceType.GenericAiCompletionService,
-            ClassifyDocuments = false,
-            PrecedingSearchPartitionInclusionCount = 1,
-            FollowingSearchPartitionInclusionCount = 1,
-            NumberOfCitationsToGetFromRepository = 10,
-            MinimumRelevanceForCitations = 0.7,
-            DocumentOutline = documentOutline,
-            Repositories = [.. indexNames],
-            AiModelDeploymentId = _gpt4OModelDeploymentId,
-            AiModelDeploymentForValidationId = _gpt4OModelDeploymentId,
-            // Ensure an embedding deployment is set so UI binds and resolver works
-            EmbeddingModelDeploymentId = _textEmbeddingAda002ModelDeploymentId,
-            // Do not override dimensions here; use deployment default (1536)
-            EmbeddingDimensionsOverride = null
-        };
-
-        // Associate the outline with the document process
-        documentOutline.DocumentProcessDefinitionId = _nrcEnvironmentalReportId;
-
-        // Add the document process to the database
-        dbContext.DynamicDocumentProcessDefinitions.Add(documentProcess);
-        await dbContext.SaveChangesAsync(cancellationToken);
-
-        //// Create a default sequential validation pipeline
-        //var pipelineId = Guid.NewGuid();
-        //var pipeline = new DocumentProcessValidationPipeline
-        //{
-        //    Id = pipelineId,
-        //    DocumentProcessId = _nrcEnvironmentalReportId,
-        //    RunValidationAutomatically = false,
-        //    ValidationPipelineSteps =
-        //    [
-        //        new DocumentProcessValidationPipelineStep
-        //    {
-        //        Id = Guid.NewGuid(),
-        //        DocumentProcessValidationPipelineId = pipelineId,
-        //        PipelineExecutionType = ValidationPipelineExecutionType.SequentialFullDocument,
-        //        Order = 0
-        //    }
-        //    ]
-        //};
-
-        //// Associate the validation pipeline with the document process
-        //documentProcess.ValidationPipelineId = pipelineId;
-
-        //dbContext.DocumentProcessValidationPipelines.Add(pipeline);
-
-        await dbContext.SaveChangesAsync(cancellationToken);
-
-        // Create prompt implementations directly
-        await CreatePromptImplementationsForEnvironmentalReport(dbContext, _nrcEnvironmentalReportId, cancellationToken);
-
-        // Create metadata fields to match the current form fields
-        await CreateMetadataFieldsForEnvironmentalReport(dbContext, _nrcEnvironmentalReportId, cancellationToken);
-
-        // Update the document process status to active
-        documentProcess.Status = DocumentProcessStatus.Active;
-
-        await dbContext.SaveChangesAsync(cancellationToken);
-
-        _logger.LogInformation("Environmental Report document process seeded successfully");
-    }
-
+    
     /// <summary>
     /// Creates a document outline item with the specified parameters and appropriate order
     /// </summary>
@@ -546,234 +269,93 @@ public class SetupDataInitializerService(
         return item;
     }
 
-
-    private async Task CreateMetadataFieldsForEnvironmentalReport(DocGenerationDbContext dbContext, Guid documentProcessId, CancellationToken cancellationToken)
+    private async Task Seed2025_09_08_BackfillFileStorageSourceDataType(DocGenerationDbContext dbContext, CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Creating metadata fields for Environmental Report document process");
+        // Only run if there are existing sources with an invalid/legacy value (0) for StorageSourceDataType
+        var zeroTypeCount = await dbContext.FileStorageSources
+            .CountAsync(s => (int)s.StorageSourceDataType == 0, cancellationToken);
 
-        var metadataFields = new List<DynamicDocumentProcessMetaDataField>
-    {
-        // Plant Details Section
-        new()
+        if (zeroTypeCount == 0)
         {
-            Id = Guid.NewGuid(),
-            DynamicDocumentProcessDefinitionId = documentProcessId,
-            Name = "PlantName",
-            DisplayName = "Plant Name",
-            DescriptionToolTip = "Enter the full name of your plant (e.g., ABC Power Plant)",
-            FieldType = DynamicDocumentProcessMetaDataFieldType.Text,
-            IsRequired = true,
-            Order = 0
-        },
-        new()
-        {
-            Id = Guid.NewGuid(),
-            DynamicDocumentProcessDefinitionId = documentProcessId,
-            Name = "Location",
-            DisplayName = "Location",
-            DescriptionToolTip = "Select the location of your plant on the map",
-            FieldType = DynamicDocumentProcessMetaDataFieldType.MapComponent,
-            IsRequired = true,
-            Order = 1
-        },
-        new()
-        {
-            Id = Guid.NewGuid(),
-            DynamicDocumentProcessDefinitionId = documentProcessId,
-            Name = "PlantDesign",
-            DisplayName = "Plant Design",
-            DescriptionToolTip = "Select the design type(s) of your plant",
-            FieldType = DynamicDocumentProcessMetaDataFieldType.MultiSelectWithPossibleValues,
-            IsRequired = false,
-            Order = 2,
-            HasPossibleValues = true,
-            PossibleValues =
-            [
-                "Light-Water Reactor (LWR)",
-                "Pressurized Water Reactor (PWR)",
-                "Boiling Water Reactor (BWR)"
-            ],
-        },
-        new()
-        {
-            Id = Guid.NewGuid(),
-            DynamicDocumentProcessDefinitionId = documentProcessId,
-            Name = "OperatingHistory",
-            DisplayName = "Operating History",
-            DescriptionToolTip = "Provide a brief history of your plant's operation, including operational dates, outages, and any significant performance data",
-            FieldType = DynamicDocumentProcessMetaDataFieldType.MultilineText,
-            IsRequired = false,
-            Order = 3
-        },
-        
-        // Proposed Changes Section
-        new()
-        {
-            Id = Guid.NewGuid(),
-            DynamicDocumentProcessDefinitionId = documentProcessId,
-            Name = "ReactorModel",
-            DisplayName = "Reactor Model",
-            DescriptionToolTip = "Specify the model of the reactor",
-            FieldType = DynamicDocumentProcessMetaDataFieldType.Text,
-            IsRequired = false,
-            Order = 4
-        },
-        new()
-        {
-            Id = Guid.NewGuid(),
-            DynamicDocumentProcessDefinitionId = documentProcessId,
-            Name = "ProjectedProjectStartDate",
-            DisplayName = "Projected Project Start Date",
-            DescriptionToolTip = "The date when the project is expected to start",
-            FieldType = DynamicDocumentProcessMetaDataFieldType.Date,
-            IsRequired = false,
-            Order = 5
-        },
-        new()
-        {
-            Id = Guid.NewGuid(),
-            DynamicDocumentProcessDefinitionId = documentProcessId,
-            Name = "ProjectedProjectEndDate",
-            DisplayName = "Projected Project End Date",
-            DescriptionToolTip = "The date when the project is expected to be completed",
-            FieldType = DynamicDocumentProcessMetaDataFieldType.Date,
-            IsRequired = false,
-            Order = 6
-        },
-        new()
-        {
-            Id = Guid.NewGuid(),
-            DynamicDocumentProcessDefinitionId = documentProcessId,
-            Name = "ModificationDescription",
-            DisplayName = "Modification Description",
-            DescriptionToolTip = "Describe the proposed changes in detail. Include the purpose, scope, and impact on safety, security, and environmental aspects",
-            FieldType = DynamicDocumentProcessMetaDataFieldType.MultilineText,
-            IsRequired = false,
-            Order = 7
-        },
-        
-        // Licensee Information Section
-        new()
-        {
-            Id = Guid.NewGuid(),
-            DynamicDocumentProcessDefinitionId = documentProcessId,
-            Name = "ApplicantName",
-            DisplayName = "Applicant Name",
-            DescriptionToolTip = "Contact name for the licensee",
-            FieldType = DynamicDocumentProcessMetaDataFieldType.Text,
-            IsRequired = false,
-            Order = 8
-        },
-        new()
-        {
-            Id = Guid.NewGuid(),
-            DynamicDocumentProcessDefinitionId = documentProcessId,
-            Name = "OrganizationalStructure",
-            DisplayName = "Organizational Structure",
-            DescriptionToolTip = "Describe the organizational structure of your company or organization. Include roles and responsibilities related to nuclear operations",
-            FieldType = DynamicDocumentProcessMetaDataFieldType.MultilineText,
-            IsRequired = false,
-            Order = 9
-        },
-        new()
-        {
-            Id = Guid.NewGuid(),
-            DynamicDocumentProcessDefinitionId = documentProcessId,
-            Name = "FinancialAssurance",
-            DisplayName = "Financial Assurance",
-            DescriptionToolTip = "Select the type of financial assurance you have in place",
-            FieldType = DynamicDocumentProcessMetaDataFieldType.SelectDropdown,
-            IsRequired = false,
-            Order = 10,
-            HasPossibleValues = true,
-            PossibleValues =
-            [
-                "Self-assurance",
-                "Third-party assurance",
-            ]
-        },
-        new()
-        {
-            Id = Guid.NewGuid(),
-            DynamicDocumentProcessDefinitionId = documentProcessId,
-            Name = "ExperienceAndQualifications",
-            DisplayName = "Experience and Qualifications",
-            DescriptionToolTip = "Describe the relevant expertise and qualifications of key personnel involved in nuclear operations",
-            FieldType = DynamicDocumentProcessMetaDataFieldType.MultilineText,
-            IsRequired = false,
-            Order = 11
-        }
-    };
-
-        await dbContext.DynamicDocumentProcessMetaDataFields.AddRangeAsync(metadataFields, cancellationToken);
-        await dbContext.SaveChangesAsync(cancellationToken);
-
-        _logger.LogInformation("Created {Count} metadata fields for Environmental Report document process", metadataFields.Count);
-    }
-
-    private async Task CreatePromptImplementationsForEnvironmentalReport(DocGenerationDbContext dbContext, Guid documentProcessId, CancellationToken cancellationToken)
-    {
-        var documentProcess = await dbContext.DynamicDocumentProcessDefinitions
-            .FindAsync([documentProcessId], cancellationToken);
-
-        if (documentProcess == null)
-        {
-            _logger.LogWarning(
-                "Cannot create prompt implementations: Document Process with Id {DocumentProcessId} not found",
-                documentProcessId);
+            _logger.LogInformation("No FileStorageSources with legacy StorageSourceDataType=0 found. Skipping backfill.");
             return;
         }
 
-        // Create a DefaultPromptCatalogTypes instance to get default prompt texts
-        var defaultPromptCatalogTypes = new DefaultPromptCatalogTypes();
+        _logger.LogInformation("Backfilling StorageSourceDataType for {Count} FileStorageSources with legacy value 0", zeroTypeCount);
 
-        // Get all prompt definitions from the database
-        var promptDefinitions = await dbContext.PromptDefinitions.ToListAsync(cancellationToken);
+        // Identify sources that are the content-reference container or already mapped for content references
+        var contentRefContainerName = "content-references";
 
-        // Count of created prompt implementations
-        int numberOfPromptImplementationsAdded = 0;
+        var contentRefMappedSourceIds = await dbContext.ContentReferenceTypeFileStorageSources
+            .Select(m => m.FileStorageSourceId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
 
-        // Loop through all properties in DefaultPromptCatalogTypes to create implementations
-        foreach (var promptCatalogProperty in defaultPromptCatalogTypes.GetType()
-                                                                 .GetProperties()
-                                                                 .Where(p => p.PropertyType == typeof(string)))
+        var contentRefSources = await dbContext.FileStorageSources
+            .Include(s => s.Categories)
+            .Where(s => (int)s.StorageSourceDataType == 0 &&
+                        (s.ContainerOrPath == contentRefContainerName ||
+                         s.Categories.Any(c => c.DataType == FileStorageSourceDataType.ContentReference) ||
+                         contentRefMappedSourceIds.Contains(s.Id)))
+            .ToListAsync(cancellationToken);
+
+        foreach (var src in contentRefSources)
         {
-            // Find the corresponding prompt definition
-            var promptDefinition = promptDefinitions.FirstOrDefault(pd => pd.ShortCode == promptCatalogProperty.Name);
-
-            if (promptDefinition == null)
-            {
-                continue;
-            }
-
-            // Create a new prompt implementation
-            var promptImplementation = new PromptImplementation
-            {
-                Id = Guid.NewGuid(),
-                DocumentProcessDefinitionId = documentProcessId,
-                PromptDefinitionId = promptDefinition.Id,
-                Text = promptCatalogProperty.GetValue(defaultPromptCatalogTypes)?.ToString() ?? string.Empty
-            };
-
-            _logger.LogInformation(
-                "Creating prompt implementation of prompt {PromptName} for DP {DocumentProcessShortname}",
-                promptDefinition.ShortCode,
-                documentProcess.ShortName);
-
-            dbContext.PromptImplementations.Add(promptImplementation);
-            numberOfPromptImplementationsAdded++;
+            src.StorageSourceDataType = FileStorageSourceDataType.ContentReference;
         }
 
-        if (numberOfPromptImplementationsAdded > 0)
+        // Identify sources tied to any DocumentProcess or DocumentLibrary and still at 0
+        var ingestionLinkedSourceIds = await dbContext.DocumentProcessFileStorageSources
+            .Select(dpfs => dpfs.FileStorageSourceId)
+            .Union(dbContext.DocumentLibraryFileStorageSources.Select(dlfs => dlfs.FileStorageSourceId))
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        var ingestionSources = await dbContext.FileStorageSources
+            .Where(s => (int)s.StorageSourceDataType == 0 && ingestionLinkedSourceIds.Contains(s.Id))
+            .ToListAsync(cancellationToken);
+
+        foreach (var src in ingestionSources)
+        {
+            src.StorageSourceDataType = FileStorageSourceDataType.Ingestion;
+        }
+
+        // If some sources remain with legacy value 0 and were not matched by the above heuristics,
+        // set them to a sensible default to avoid rerunning this migration on every startup.
+        var remainingZeroSources = await dbContext.FileStorageSources
+            .Where(s => (int)s.StorageSourceDataType == 0)
+            .ToListAsync(cancellationToken);
+
+        if (remainingZeroSources.Any())
+        {
+            foreach (var src in remainingZeroSources)
+            {
+                // Heuristic: if the container/path contains "content-reference" treat as ContentReference
+                // otherwise default to Ingestion so sources are usable by ingestion flows.
+                if (!string.IsNullOrEmpty(src.ContainerOrPath) &&
+                    (src.ContainerOrPath.Contains("content-reference", StringComparison.OrdinalIgnoreCase) ||
+                     src.ContainerOrPath.Contains("content-references", StringComparison.OrdinalIgnoreCase)))
+                {
+                    src.StorageSourceDataType = FileStorageSourceDataType.ContentReference;
+                }
+                else
+                {
+                    src.StorageSourceDataType = FileStorageSourceDataType.Ingestion;
+                }
+            }
+        }
+
+        if (dbContext.ChangeTracker.HasChanges())
         {
             await dbContext.SaveChangesAsync(cancellationToken);
-            _logger.LogInformation(
-                "Created {NumberOfPromptImplementationsAdded} prompt implementations for DP {DocumentProcessShortname}",
-                numberOfPromptImplementationsAdded,
-                documentProcess.ShortName);
+            _logger.LogInformation("Backfill complete: updated {ContentRefCount} ContentReference and {IngestionCount} Ingestion sources (plus {RemainingCount} remaining defaults applied).",
+                contentRefSources.Count, ingestionSources.Count, remainingZeroSources.Count);
+        }
+        else
+        {
+            _logger.LogInformation("Backfill made no changes (all sources already set).");
         }
     }
-
 
     private async Task Seed2025_04_24_DefaultAiModelDeploymentForDocumentProcesses(DocGenerationDbContext dbContext,
         CancellationToken cancellationToken)
@@ -1082,6 +664,671 @@ public class SetupDataInitializerService(
             {
                 _logger.LogInformation("Default configuration record already exists with required values. No updates needed.");
             }
+        }
+    }
+
+    private async Task Seed2025_09_02_DefaultFileStorageSource(DocGenerationDbContext dbContext, CancellationToken cancellationToken)
+    {
+        var existingHostsCount = await dbContext.FileStorageHosts.CountAsync(cancellationToken);
+        
+        if (existingHostsCount > 0)
+        {
+            _logger.LogInformation("File storage hosts already exist ({Count} found). Skipping default file storage host/source creation.", existingHostsCount);
+
+            var existingDefaultHost = await dbContext.FileStorageHosts
+                .FirstOrDefaultAsync(h => h.IsDefault || h.ConnectionString == "default", cancellationToken);
+
+            if (existingDefaultHost != null)
+            {
+                const string contentRefContainerExistingHost = "content-references";
+                var existingContentRefSourceExistingHost = await dbContext.FileStorageSources
+                    .FirstOrDefaultAsync(s => s.FileStorageHostId == existingDefaultHost.Id && s.ContainerOrPath == contentRefContainerExistingHost, cancellationToken);
+
+                if (existingContentRefSourceExistingHost == null)
+                {
+                    var contentRefSource = new Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageSource
+                    {
+                        Id = _contentReferenceStorageSourceId,
+                        Name = "Content References",
+                        FileStorageHostId = existingDefaultHost.Id,
+                        ContainerOrPath = contentRefContainerExistingHost,
+                        AutoImportFolderName = null,
+                        IsDefault = false,
+                        IsActive = true,
+                        ShouldMoveFiles = false,
+                        Description = "Container for ContentReference file uploads",
+                        StorageSourceDataType = Microsoft.Greenlight.Shared.Enums.FileStorageSourceDataType.ContentReference
+                    };
+
+                    dbContext.FileStorageSources.Add(contentRefSource);
+                    await dbContext.SaveChangesAsync(cancellationToken);
+                    
+                    // Check if category already exists
+                    var existingCategory = await dbContext.FileStorageSourceCategories
+                        .FirstOrDefaultAsync(c => c.Id == _contentReferenceStorageCategoryId, cancellationToken);
+                    
+                    if (existingCategory == null)
+                    {
+                        dbContext.FileStorageSourceCategories.Add(new Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageSourceCategory
+                        {
+                            Id = _contentReferenceStorageCategoryId,
+                            FileStorageSourceId = contentRefSource.Id,
+                            DataType = Microsoft.Greenlight.Shared.Enums.FileStorageSourceDataType.ContentReference
+                        });
+                        await dbContext.SaveChangesAsync(cancellationToken);
+                    }
+
+                    foreach (var typeValue in Enum.GetValues(typeof(Microsoft.Greenlight.Shared.Enums.ContentReferenceType)).Cast<Microsoft.Greenlight.Shared.Enums.ContentReferenceType>())
+                    {
+                        // Check if mapping already exists before creating
+                        var mappingId = _contentReferenceTypeMappingIds[typeValue];
+                        var existingMapping = await dbContext.ContentReferenceTypeFileStorageSources
+                            .FirstOrDefaultAsync(m => m.Id == mappingId, cancellationToken);
+                        
+                        if (existingMapping == null)
+                        {
+                            dbContext.ContentReferenceTypeFileStorageSources.Add(new Microsoft.Greenlight.Shared.Models.FileStorage.ContentReferenceTypeFileStorageSource
+                            {
+                                Id = mappingId,
+                                ContentReferenceType = typeValue,
+                                FileStorageSourceId = contentRefSource.Id,
+                                Priority = 0,
+                                IsActive = true,
+                                AcceptsUploads = typeValue == Microsoft.Greenlight.Shared.Enums.ContentReferenceType.ExternalLinkAsset
+                            });
+                        }
+                    }
+                    await dbContext.SaveChangesAsync(cancellationToken);
+                    _logger.LogInformation("Created content reference storage source on existing host: {SourceName} (ID: {SourceId})", contentRefSource.Name, contentRefSource.Id);
+                }
+            }
+            return;
+        }
+
+        _logger.LogInformation("Creating default file storage host and source for primary blob storage account");
+
+        const string defaultHostName = "Default Blob Storage Host";
+        var existingHost = await dbContext.FileStorageHosts
+            .FirstOrDefaultAsync(h => h.Name == defaultHostName, cancellationToken);
+        if (existingHost != null)
+        {
+            _logger.LogInformation("Default file storage host with name '{HostName}' already exists. Skipping creation.", defaultHostName);
+            return;
+        }
+
+        var defaultFileStorageHost = new Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageHost
+        {
+            Id = Guid.NewGuid(),
+            Name = defaultHostName,
+            ProviderType = Microsoft.Greenlight.Shared.Enums.FileStorageProviderType.BlobStorage,
+            ConnectionString = "default",
+            IsDefault = true,
+            IsActive = true,
+            AuthenticationKey = null,
+            Description = "Default Azure Blob Storage host using the primary storage account"
+        };
+        dbContext.FileStorageHosts.Add(defaultFileStorageHost);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        const string defaultContainerName = "default-container";
+        var existingSource = await dbContext.FileStorageSources
+            .FirstOrDefaultAsync(s => s.FileStorageHostId == defaultFileStorageHost.Id && s.ContainerOrPath == defaultContainerName, cancellationToken);
+        if (existingSource != null)
+        {
+            _logger.LogInformation("Default file storage source for container '{Container}' already exists. Skipping creation.", defaultContainerName);
+            return;
+        }
+
+        var defaultFileStorageSource = new Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageSource
+        {
+            Id = Guid.NewGuid(),
+            Name = "Default Blob Storage",
+            FileStorageHostId = defaultFileStorageHost.Id,
+            ContainerOrPath = defaultContainerName,
+            AutoImportFolderName = "ingest-auto",
+            IsDefault = true,
+            IsActive = true,
+            ShouldMoveFiles = true,
+            Description = "Default container for blob storage operations",
+            StorageSourceDataType = Microsoft.Greenlight.Shared.Enums.FileStorageSourceDataType.Ingestion
+        };
+        dbContext.FileStorageSources.Add(defaultFileStorageSource);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        dbContext.FileStorageSourceCategories.Add(new Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageSourceCategory
+        {
+            Id = Guid.NewGuid(),
+            FileStorageSourceId = defaultFileStorageSource.Id,
+            DataType = Microsoft.Greenlight.Shared.Enums.FileStorageSourceDataType.Ingestion
+        });
+        await dbContext.SaveChangesAsync(cancellationToken);
+        _logger.LogInformation("Created default file storage host: {HostName} (ID: {HostId})", defaultFileStorageHost.Name, defaultFileStorageHost.Id);
+        _logger.LogInformation("Created default file storage source: {SourceName} (ID: {SourceId})", defaultFileStorageSource.Name, defaultFileStorageSource.Id);
+
+        const string contentRefContainerNewHost = "content-references";
+        var existingContentRefSourceNewHost = await dbContext.FileStorageSources
+            .FirstOrDefaultAsync(s => s.FileStorageHostId == defaultFileStorageHost.Id && s.ContainerOrPath == contentRefContainerNewHost, cancellationToken);
+        if (existingContentRefSourceNewHost == null)
+        {
+            var contentRefSource = new Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageSource
+            {
+                Id = _contentReferenceStorageSourceId,
+                Name = "Content References",
+                FileStorageHostId = defaultFileStorageHost.Id,
+                ContainerOrPath = contentRefContainerNewHost,
+                AutoImportFolderName = null,
+                IsDefault = false,
+                IsActive = true,
+                ShouldMoveFiles = false,
+                Description = "Container for ContentReference file uploads",
+                StorageSourceDataType = Microsoft.Greenlight.Shared.Enums.FileStorageSourceDataType.ContentReference
+            };
+            dbContext.FileStorageSources.Add(contentRefSource);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            
+            // Check if category already exists
+            var existingCategory = await dbContext.FileStorageSourceCategories
+                .FirstOrDefaultAsync(c => c.Id == _contentReferenceStorageCategoryId, cancellationToken);
+            
+            if (existingCategory == null)
+            {
+                dbContext.FileStorageSourceCategories.Add(new Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageSourceCategory
+                {
+                    Id = _contentReferenceStorageCategoryId,
+                    FileStorageSourceId = contentRefSource.Id,
+                    DataType = Microsoft.Greenlight.Shared.Enums.FileStorageSourceDataType.ContentReference
+                });
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+            foreach (var typeValue in Enum.GetValues(typeof(Microsoft.Greenlight.Shared.Enums.ContentReferenceType)).Cast<Microsoft.Greenlight.Shared.Enums.ContentReferenceType>())
+            {
+                // Check if mapping already exists before creating
+                var mappingId = _contentReferenceTypeMappingIds[typeValue];
+                var existingMapping = await dbContext.ContentReferenceTypeFileStorageSources
+                    .FirstOrDefaultAsync(m => m.Id == mappingId, cancellationToken);
+                
+                if (existingMapping == null)
+                {
+                    dbContext.ContentReferenceTypeFileStorageSources.Add(new Microsoft.Greenlight.Shared.Models.FileStorage.ContentReferenceTypeFileStorageSource
+                    {
+                        Id = mappingId,
+                        ContentReferenceType = typeValue,
+                        FileStorageSourceId = contentRefSource.Id,
+                        Priority = 0,
+                        IsActive = true,
+                        AcceptsUploads = typeValue == Microsoft.Greenlight.Shared.Enums.ContentReferenceType.ExternalFile
+                    });
+                }
+            }
+            await dbContext.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation("Created content reference storage source: {SourceName} (ID: {SourceId})", contentRefSource.Name, contentRefSource.Id);
+        }
+    }
+
+    private async Task Seed2025_09_02_MigrateFileStorageToHostArchitecture(DocGenerationDbContext dbContext, CancellationToken cancellationToken)
+    {
+        // This method handles any remaining file storage sources that need host assignment after migration
+        
+        _logger.LogInformation("Checking for file storage sources that need host assignment after migration");
+
+        // Check for any file storage sources that don't have a valid FileStorageHostId assigned
+        // (excluding Guid.Empty which might have been set by migration)
+        var sourcesWithoutHost = await dbContext.FileStorageSources
+            .Where(s => s.FileStorageHostId == Guid.Empty)
+            .ToListAsync(cancellationToken);
+
+        if (!sourcesWithoutHost.Any())
+        {
+            _logger.LogInformation("All file storage sources have proper host assignments");
+            return;
+        }
+
+        _logger.LogInformation("Found {Count} file storage sources without host assignments, assigning them to existing or new default host", sourcesWithoutHost.Count);
+
+        // Get existing default host or create one
+        var defaultHost = await dbContext.FileStorageHosts
+            .FirstOrDefaultAsync(h => h.IsDefault, cancellationToken);
+
+        if (defaultHost == null)
+        {
+            // Check if a host with our default name already exists but isn't marked as default
+            const string defaultHostName = "Post-Migration Default Blob Storage Host";
+            var existingHostByName = await dbContext.FileStorageHosts
+                .FirstOrDefaultAsync(h => h.Name == defaultHostName, cancellationToken);
+
+            if (existingHostByName != null)
+            {
+                // Use the existing host and mark it as default
+                existingHostByName.IsDefault = true;
+                defaultHost = existingHostByName;
+                _logger.LogInformation("Found existing host '{HostName}', marking as default", defaultHostName);
+            }
+            else
+            {
+                // Create a default host if none exists (shouldn't happen if migration worked correctly)
+                defaultHost = new Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageHost
+                {
+                    Id = Guid.NewGuid(),
+                    Name = defaultHostName,
+                    ProviderType = Microsoft.Greenlight.Shared.Enums.FileStorageProviderType.BlobStorage,
+                    ConnectionString = "default",
+                    IsDefault = true,
+                    IsActive = true,
+                    AuthenticationKey = null,
+                    Description = "Default host created during post-migration cleanup"
+                };
+
+                dbContext.FileStorageHosts.Add(defaultHost);
+                _logger.LogInformation("Created post-migration default host: {HostName} (ID: {HostId})", defaultHost.Name, defaultHost.Id);
+            }
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        // Assign all orphaned sources to the default host
+        foreach (var source in sourcesWithoutHost)
+        {
+            source.FileStorageHostId = defaultHost.Id;
+            _logger.LogInformation("Assigned source {SourceName} (ID: {SourceId}) to host {HostName}", 
+                source.Name, source.Id, defaultHost.Name);
+        }
+
+        if (sourcesWithoutHost.Any())
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation("Successfully assigned {Count} file storage sources to default host", sourcesWithoutHost.Count);
+        }
+    }
+
+    private async Task Seed2025_09_02_MigrateLegacyBlobStorageToFileStorageSources(DocGenerationDbContext dbContext, CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Starting migration of legacy blob storage properties to FileStorageSource architecture");
+
+        // Get the default host (should exist from previous migration)
+        var defaultHost = await dbContext.FileStorageHosts
+            .FirstOrDefaultAsync(h => h.IsDefault && h.IsActive, cancellationToken);
+
+        if (defaultHost == null)
+        {
+            _logger.LogError("Default FileStorageHost not found. Cannot migrate legacy blob storage properties.");
+            return;
+        }
+
+        // Migrate DocumentProcess entities
+        var processesWithLegacyStorage = await dbContext.DynamicDocumentProcessDefinitions
+            .Where(p => !string.IsNullOrEmpty(p.BlobStorageContainerName) && 
+                       !p.FileStorageSources.Any())
+            .ToListAsync(cancellationToken);
+
+        _logger.LogInformation("Found {Count} document processes with legacy blob storage properties to migrate", processesWithLegacyStorage.Count);
+
+        foreach (var process in processesWithLegacyStorage)
+        {
+            // Check if a FileStorageSource already exists for this container/host combination
+            var existingSource = await dbContext.FileStorageSources
+                .FirstOrDefaultAsync(s => s.FileStorageHostId == defaultHost.Id && 
+                                         s.ContainerOrPath == process.BlobStorageContainerName, cancellationToken);
+
+            Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageSource fileStorageSource;
+
+            if (existingSource != null)
+            {
+                // Use existing source
+                fileStorageSource = existingSource;
+                _logger.LogInformation("Using existing FileStorageSource for process: {ProcessName} -> Container: {Container}", 
+                    process.ShortName, process.BlobStorageContainerName);
+            }
+            else
+            {
+                // Create FileStorageSource for this process
+                fileStorageSource = new Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageSource
+                {
+                    Id = Guid.NewGuid(),
+                    Name = $"Legacy Storage - {process.ShortName}",
+                    FileStorageHostId = defaultHost.Id,
+                    ContainerOrPath = process.BlobStorageContainerName,
+                    AutoImportFolderName = process.BlobStorageAutoImportFolderName ?? "ingest-auto",
+                    IsDefault = false,
+                    IsActive = true,
+                    ShouldMoveFiles = true, // Legacy behavior
+                    Description = $"Migrated from legacy blob storage properties for document process: {process.ShortName}"
+                };
+
+                dbContext.FileStorageSources.Add(fileStorageSource);
+                _logger.LogInformation("Created FileStorageSource for process: {ProcessName} -> Container: {Container}", 
+                    process.ShortName, process.BlobStorageContainerName);
+            }
+
+            // Check if association already exists
+            var existingAssociation = await dbContext.DocumentProcessFileStorageSources
+                .FirstOrDefaultAsync(dpfs => dpfs.DocumentProcessId == process.Id && 
+                                            dpfs.FileStorageSourceId == fileStorageSource.Id, cancellationToken);
+
+            if (existingAssociation == null)
+            {
+                // Create the association
+                var processAssociation = new Microsoft.Greenlight.Shared.Models.FileStorage.DocumentProcessFileStorageSource
+                {
+                    Id = Guid.NewGuid(),
+                    DocumentProcessId = process.Id,
+                    FileStorageSourceId = fileStorageSource.Id,
+                    Priority = 1,
+                    IsActive = true,
+                    AcceptsUploads = true
+                };
+
+                dbContext.DocumentProcessFileStorageSources.Add(processAssociation);
+                _logger.LogInformation("Created association for process: {ProcessName} -> Source: {SourceId}", 
+                    process.ShortName, fileStorageSource.Id);
+            }
+            else
+            {
+                _logger.LogInformation("Association already exists for process: {ProcessName} -> Source: {SourceId}", 
+                    process.ShortName, fileStorageSource.Id);
+            }
+        }
+
+        // Migrate DocumentLibrary entities
+        var librariesWithLegacyStorage = await dbContext.DocumentLibraries
+            .Where(l => !string.IsNullOrEmpty(l.BlobStorageContainerName) && 
+                       !l.FileStorageSources.Any())
+            .ToListAsync(cancellationToken);
+
+        _logger.LogInformation("Found {Count} document libraries with legacy blob storage properties to migrate", librariesWithLegacyStorage.Count);
+
+        foreach (var library in librariesWithLegacyStorage)
+        {
+            // Check if a FileStorageSource already exists for this container/host combination
+            var existingSource = await dbContext.FileStorageSources
+                .FirstOrDefaultAsync(s => s.FileStorageHostId == defaultHost.Id && 
+                                         s.ContainerOrPath == library.BlobStorageContainerName, cancellationToken);
+
+            Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageSource fileStorageSource;
+
+            if (existingSource != null)
+            {
+                // Use existing source
+                fileStorageSource = existingSource;
+                _logger.LogInformation("Using existing FileStorageSource for library: {LibraryName} -> Container: {Container}", 
+                    library.ShortName, library.BlobStorageContainerName);
+            }
+            else
+            {
+                // Create FileStorageSource for this library
+                fileStorageSource = new Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageSource
+                {
+                    Id = Guid.NewGuid(),
+                    Name = $"Legacy Storage - {library.ShortName}",
+                    FileStorageHostId = defaultHost.Id,
+                    ContainerOrPath = library.BlobStorageContainerName,
+                    AutoImportFolderName = library.BlobStorageAutoImportFolderName ?? "ingest-auto",
+                    IsDefault = false,
+                    IsActive = true,
+                    ShouldMoveFiles = true, // Legacy behavior
+                    Description = $"Migrated from legacy blob storage properties for document library: {library.ShortName}"
+                };
+
+                dbContext.FileStorageSources.Add(fileStorageSource);
+                _logger.LogInformation("Created FileStorageSource for library: {LibraryName} -> Container: {Container}", 
+                    library.ShortName, library.BlobStorageContainerName);
+            }
+
+            // Check if association already exists
+            var existingAssociation = await dbContext.DocumentLibraryFileStorageSources
+                .FirstOrDefaultAsync(dlfs => dlfs.DocumentLibraryId == library.Id && 
+                                            dlfs.FileStorageSourceId == fileStorageSource.Id, cancellationToken);
+
+            if (existingAssociation == null)
+            {
+                // Create the association
+                var libraryAssociation = new Microsoft.Greenlight.Shared.Models.FileStorage.DocumentLibraryFileStorageSource
+                {
+                    Id = Guid.NewGuid(),
+                    DocumentLibraryId = library.Id,
+                    FileStorageSourceId = fileStorageSource.Id,
+                    Priority = 1,
+                    IsActive = true,
+                    AcceptsUploads = true
+                };
+
+                dbContext.DocumentLibraryFileStorageSources.Add(libraryAssociation);
+                _logger.LogInformation("Created association for library: {LibraryName} -> Source: {SourceId}", 
+                    library.ShortName, fileStorageSource.Id);
+            }
+            else
+            {
+                _logger.LogInformation("Association already exists for library: {LibraryName} -> Source: {SourceId}", 
+                    library.ShortName, fileStorageSource.Id);
+            }
+        }
+
+        if (processesWithLegacyStorage.Any() || librariesWithLegacyStorage.Any())
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation("Successfully migrated {ProcessCount} document processes and {LibraryCount} document libraries to FileStorageSource architecture", 
+                processesWithLegacyStorage.Count, librariesWithLegacyStorage.Count);
+        }
+        else
+        {
+            _logger.LogInformation("No document processes or libraries found that need legacy blob storage migration");
+        }
+    }
+
+    private async Task Seed2025_09_04_RebuildAllFileAcknowledgmentRecords(DocGenerationDbContext dbContext, CancellationToken cancellationToken)
+    {
+        // Check if we have corrupted records (containing "ingest-auto") or if this migration has already been run
+        // If we find no corrupted records and we have valid FileAcknowledgmentRecords, skip
+        var corruptedRecordsCount = await dbContext.FileAcknowledgmentRecords
+            .CountAsync(far => far.RelativeFilePath.Contains("ingest-auto"), cancellationToken);
+            
+        var totalRecordsCount = await dbContext.FileAcknowledgmentRecords.CountAsync(cancellationToken);
+        
+        if (corruptedRecordsCount == 0 && totalRecordsCount > 0)
+        {
+            _logger.LogInformation("No corrupted FileAcknowledgmentRecords found and {TotalCount} valid records exist. Migration already completed.", totalRecordsCount);
+            return;
+        }
+
+        _logger.LogInformation("Starting complete rebuild of FileAcknowledgmentRecords from IngestedDocument records");
+
+        // 1. Delete ALL FileAcknowledgmentRecords and their associations
+        var acknowledgmentAssociations = await dbContext.IngestedDocumentFileAcknowledgments.ToListAsync(cancellationToken);
+        var acknowledgmentRecords = await dbContext.FileAcknowledgmentRecords.ToListAsync(cancellationToken);
+        
+        _logger.LogInformation("Deleting {AssociationCount} acknowledgment associations and {RecordCount} acknowledgment records", 
+            acknowledgmentAssociations.Count, acknowledgmentRecords.Count);
+        
+        dbContext.IngestedDocumentFileAcknowledgments.RemoveRange(acknowledgmentAssociations);
+        dbContext.FileAcknowledgmentRecords.RemoveRange(acknowledgmentRecords);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        // 2. Rebuild from IngestedDocuments using correct logic
+        var validIngestionStates = new[] { 
+            IngestionState.FileCopied, 
+            IngestionState.Processing, 
+            IngestionState.Complete 
+        };
+        
+        var documentsToMigrate = await dbContext.IngestedDocuments
+            .Where(d => !string.IsNullOrEmpty(d.FinalBlobUrl) && validIngestionStates.Contains(d.IngestionState))
+            .ToListAsync(cancellationToken);
+            
+        _logger.LogInformation("Rebuilding FileAcknowledgmentRecords for {DocumentCount} IngestedDocuments", documentsToMigrate.Count);
+
+        int processedCount = 0;
+        int batchSize = 500;
+        int totalCount = documentsToMigrate.Count;
+
+        for (int i = 0; i < totalCount; i += batchSize)
+        {
+            var batch = documentsToMigrate.Skip(i).Take(batchSize);
+
+            foreach (var document in batch)
+            {
+                try
+                {
+                    // Get the correct FileStorageSource
+                    var fileStorageSourceId = await GetFileStorageSourceForDocumentAsync(dbContext, document, cancellationToken);
+                    if (!fileStorageSourceId.HasValue)
+                    {
+                        // Fall back to default FileStorageSource
+                        var defaultSource = await dbContext.FileStorageSources
+                            .FirstOrDefaultAsync(s => s.IsDefault && s.IsActive, cancellationToken);
+                        if (defaultSource == null)
+                        {
+                            _logger.LogWarning("No default FileStorageSource found for document {DocumentId} ({FileName}). Skipping.", 
+                                document.Id, document.FileName);
+                            continue;
+                        }
+                        fileStorageSourceId = defaultSource.Id;
+                    }
+
+                    // Extract correct relative path from FinalBlobUrl (not OriginalDocumentUrl!)
+                    var relativeFilePath = ExtractRelativePathFromFinalBlobUrl(document.FinalBlobUrl!, fileStorageSourceId.Value, dbContext);
+                    var fullFilePath = document.FinalBlobUrl!; // Use the actual current location
+                    var fileHash = document.FileHash ?? string.Empty;
+
+                    if (string.IsNullOrEmpty(relativeFilePath))
+                    {
+                        _logger.LogWarning("Could not determine relative file path for document {DocumentId} ({FileName}). Skipping.", 
+                            document.Id, document.FileName);
+                        continue;
+                    }
+
+                    // Create/reuse FileAcknowledgmentRecord with correct paths
+                    var acknowledgmentRecord = await dbContext.FileAcknowledgmentRecords
+                        .FirstOrDefaultAsync(far => far.FileStorageSourceId == fileStorageSourceId.Value &&
+                                                   far.RelativeFilePath == relativeFilePath, cancellationToken);
+
+                    if (acknowledgmentRecord == null)
+                    {
+                        acknowledgmentRecord = new Microsoft.Greenlight.Shared.Models.FileStorage.FileAcknowledgmentRecord
+                        {
+                            Id = Guid.NewGuid(),
+                            FileStorageSourceId = fileStorageSourceId.Value,
+                            RelativeFilePath = relativeFilePath,
+                            FileStorageSourceInternalUrl = fullFilePath,
+                            FileHash = fileHash,
+                            AcknowledgedDate = document.IngestedDate
+                        };
+                        dbContext.FileAcknowledgmentRecords.Add(acknowledgmentRecord);
+                    }
+
+                    // Create the association
+                    var association = new Microsoft.Greenlight.Shared.Models.FileStorage.IngestedDocumentFileAcknowledgment
+                    {
+                        IngestedDocumentId = document.Id,
+                        FileAcknowledgmentRecordId = acknowledgmentRecord.Id
+                    };
+                    dbContext.IngestedDocumentFileAcknowledgments.Add(association);
+                    processedCount++;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error rebuilding FileAcknowledgmentRecord for document {DocumentId}", document.Id);
+                }
+            }
+
+            // Save batch changes
+            try
+            {
+                await dbContext.SaveChangesAsync(cancellationToken);
+                _logger.LogInformation("Processed batch: {BatchProcessed}/{TotalCount} documents rebuilt", 
+                    Math.Min(i + batchSize, totalCount), totalCount);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error saving batch of rebuilt FileAcknowledgmentRecords");
+            }
+        }
+
+        // Migration completed successfully
+
+        _logger.LogInformation("Successfully rebuilt {ProcessedCount} FileAcknowledgmentRecords from IngestedDocument records", processedCount);
+    }
+
+    private async Task<Guid?> GetFileStorageSourceForDocumentAsync(DocGenerationDbContext dbContext, Microsoft.Greenlight.Shared.Models.IngestedDocument document, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (document.DocumentLibraryType == Microsoft.Greenlight.Shared.Enums.DocumentLibraryType.AdditionalDocumentLibrary)
+            {
+                // Find FileStorageSource via DocumentLibrary association
+                var fileStorageSource = await dbContext.DocumentLibraryFileStorageSources
+                    .Include(dlfs => dlfs.DocumentLibrary)
+                    .Include(dlfs => dlfs.FileStorageSource)
+                    .Where(dlfs => dlfs.DocumentLibrary.ShortName == document.DocumentLibraryOrProcessName && 
+                                   dlfs.IsActive)
+                    .Select(dlfs => dlfs.FileStorageSource)
+                    .FirstOrDefaultAsync(fss => (fss.ContainerOrPath == document.Container || 
+                                                (string.IsNullOrEmpty(fss.ContainerOrPath) && document.Container == "default-container")) &&
+                                               fss.IsActive, cancellationToken);
+
+                return fileStorageSource?.Id;
+            }
+            else // PrimaryDocumentProcessLibrary
+            {
+                // Find FileStorageSource via DocumentProcess association
+                var fileStorageSource = await dbContext.DocumentProcessFileStorageSources
+                    .Include(dpfs => dpfs.DocumentProcess)
+                    .Include(dpfs => dpfs.FileStorageSource)
+                    .Where(dpfs => dpfs.DocumentProcess.ShortName == document.DocumentLibraryOrProcessName && 
+                                   dpfs.IsActive)
+                    .Select(dpfs => dpfs.FileStorageSource)
+                    .FirstOrDefaultAsync(fss => (fss.ContainerOrPath == document.Container || 
+                                                (string.IsNullOrEmpty(fss.ContainerOrPath) && document.Container == "default-container")) &&
+                                               fss.IsActive, cancellationToken);
+
+                return fileStorageSource?.Id;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error determining FileStorageSource for document {DocumentId}", document.Id);
+            return null;
+        }
+    }
+
+
+
+    private string? ExtractRelativePathFromFinalBlobUrl(string finalBlobUrl, Guid fileStorageSourceId, DocGenerationDbContext dbContext)
+    {
+        try
+        {
+            // Get the FileStorageSource and its host to understand the base URL structure
+            var fileStorageSource = dbContext.FileStorageSources
+                .Include(fss => fss.FileStorageHost)
+                .FirstOrDefault(fss => fss.Id == fileStorageSourceId);
+
+            if (fileStorageSource?.FileStorageHost == null)
+            {
+                _logger.LogWarning("FileStorageSource or FileStorageHost not found for FileStorageSourceId {SourceId}", fileStorageSourceId);
+                return null;
+            }
+
+            var uri = new Uri(finalBlobUrl);
+            
+            // For blob storage URLs, the format is typically:
+            // https://<account>.blob.core.windows.net/<container>/<path>
+            // We want to extract everything after the container name as the relative path
+            
+            var pathSegments = uri.AbsolutePath.TrimStart('/').Split('/', 2);
+            if (pathSegments.Length >= 2)
+            {
+                // The first segment should be the container, the second is the relative path
+                return pathSegments[1];
+            }
+            else if (pathSegments.Length == 1)
+            {
+                // Only container name, no relative path
+                return string.Empty;
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error extracting relative path from FinalBlobUrl: {Url}", finalBlobUrl);
+            return null;
         }
     }
 }

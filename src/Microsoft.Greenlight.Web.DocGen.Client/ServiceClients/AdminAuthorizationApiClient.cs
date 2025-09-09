@@ -146,6 +146,19 @@ public sealed class AdminAuthorizationApiClient : WebAssemblyBaseServiceClient<A
         await EnsureSuccessWithValidationAsync(resp, "Role deletion failed", "role deletion");
     }
 
+    public async Task<List<EntraRoleMappingInfo>> ListEntraRoleMappingsAsync()
+    {
+        var resp = await SendGetRequestMessage("/api/adminauthorization/entra-roles", authorize: true);
+        resp!.EnsureSuccessStatusCode();
+        return await resp.Content.ReadFromJsonAsync<List<EntraRoleMappingInfo>>() ?? [];
+    }
+
+    public async Task UpsertEntraRoleMappingAsync(UpsertEntraRoleMappingRequest request)
+    {
+        var resp = await SendPostRequestMessage("/api/adminauthorization/entra-roles", request, authorize: true);
+        await EnsureSuccessWithValidationAsync(resp!, "Entra role mapping failed", "entra role mapping");
+    }
+
     /// <summary>
     /// Helper method to handle HTTP response validation and extract validation error messages from BadRequest responses.
     /// </summary>

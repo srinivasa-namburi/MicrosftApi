@@ -1,0 +1,207 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+
+@using Microsoft.Greenlight.Shared.Contracts.DTO.FileStorage
+@using Microsoft.Greenlight.Shared.Contracts.Requests.FileStorage
+@using Microsoft.Greenlight.Shared.Enums
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@using Microsoft.Greenlight.Shared.Configuration
+@inject IFileStorageHostApiClient FileStorageHostApiClient
+@inject IConfigurationApiClient ConfigurationApiClient
+@inject ISnackbar Snackbar
+
+@namespace Microsoft.Greenlight.Web.DocGen.Client.Components.FileStorage
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" Model="_request">
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_request.Name" 
+                                  Label="Name" 
+                                  Required="true"
+                                  For="@(() => _request.Name)"
+                                  HelperText="Display name for this file storage host" />
+                </MudItem>
+                
+                <MudItem xs="12" md="6">
+                    <MudSelect T="FileStorageProviderType" 
+                               @bind-Value="_request.ProviderType" 
+                               Label="Provider Type"
+                               For="@(() => _request.ProviderType)">
+                        @foreach (FileStorageProviderType providerType in Enum.GetValues<FileStorageProviderType>())
+                        {
+                            @if (providerType != FileStorageProviderType.LocalFileSystem || _documentIngestionOptions?.LocalFileStorageAvailable == true)
+                            {
+                                <MudSelectItem Value="@providerType">@providerType.ToString()</MudSelectItem>
+                            }
+                        }
+                    </MudSelect>
+                </MudItem>
+                
+                <MudItem xs="12" md="6">
+                    <MudStack Row="true" AlignItems="AlignItems.Center">
+                        <MudSwitch @bind-Value="_request.IsDefault" 
+                                   Label="Default Host" 
+                                   Color="Color.Primary" />
+                        <MudSwitch @bind-Value="_request.IsActive" 
+                                   Label="Active" 
+                                   Color="Color.Primary" />
+                    </MudStack>
+                </MudItem>
+                
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_request.ConnectionString" 
+                                  Label="Connection String" 
+                                  Required="true"
+                                  For="@(() => _request.ConnectionString)"
+                                  Lines="2"
+                                  HelperText="@GetConnectionStringHelperText()" />
+                </MudItem>
+                
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_request.AuthenticationKey" 
+                                  Label="Authentication Key (Optional)" 
+                                  For="@(() => _request.AuthenticationKey)"
+                                  InputType="InputType.Password"
+                                  Lines="2"
+                                  HelperText="Optional authentication key or token for secure access" />
+                </MudItem>
+                
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_request.Description" 
+                                  Label="Description (Optional)" 
+                                  For="@(() => _request.Description)"
+                                  Lines="3"
+                                  HelperText="Notes or description about this storage host" />
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save" Disabled="_isSaving">
+            @if (_isSaving)
+            {
+                <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                <MudText Class="ms-2">Saving...</MudText>
+            }
+            else
+            {
+                <MudText>@(_isCreateMode ? "Create" : "Update")</MudText>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public FileStorageHostInfo? Host { get; set; }
+    [Parameter] public bool IsCreateMode { get; set; } = true;
+
+    private MudForm _form = new();
+    private bool _isSaving;
+    private bool _isCreateMode => IsCreateMode;
+    private ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions? _documentIngestionOptions;
+    
+    private CreateFileStorageHostRequest _request = new()
+    {
+        Name = string.Empty,
+        ConnectionString = string.Empty,
+        ProviderType = FileStorageProviderType.BlobStorage,
+        IsActive = true
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _documentIngestionOptions = await ConfigurationApiClient.GetDocumentIngestionOptionsAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading configuration: {ex.Message}", Severity.Warning);
+            _documentIngestionOptions = new ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions();
+        }
+        
+        if (!_isCreateMode && Host != null)
+        {
+            _request = new CreateFileStorageHostRequest
+            {
+                Name = Host.Name,
+                ProviderType = Host.ProviderType,
+                ConnectionString = Host.ConnectionString,
+                IsDefault = Host.IsDefault,
+                IsActive = Host.IsActive,
+                AuthenticationKey = Host.AuthenticationKey,
+                Description = Host.Description
+            };
+        }
+    }
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+
+    private async Task Save()
+    {
+        await _form.Validate();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        _isSaving = true;
+        StateHasChanged();
+
+        try
+        {
+            FileStorageHostInfo result;
+            
+            if (_isCreateMode)
+            {
+                result = await FileStorageHostApiClient.CreateFileStorageHostAsync(_request);
+                Snackbar.Add("File storage host created successfully.", Severity.Success);
+            }
+            else
+            {
+                var updateRequest = new UpdateFileStorageHostRequest
+                {
+                    Id = Host!.Id,
+                    Name = _request.Name,
+                    ProviderType = _request.ProviderType,
+                    ConnectionString = _request.ConnectionString,
+                    IsDefault = _request.IsDefault,
+                    IsActive = _request.IsActive,
+                    AuthenticationKey = _request.AuthenticationKey,
+                    Description = _request.Description
+                };
+                
+                result = await FileStorageHostApiClient.UpdateFileStorageHostAsync(updateRequest);
+                Snackbar.Add("File storage host updated successfully.", Severity.Success);
+            }
+
+            MudDialog.Close(DialogResult.Ok(result));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving file storage host: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private string GetConnectionStringHelperText()
+    {
+        return _request.ProviderType switch
+        {
+            FileStorageProviderType.BlobStorage => "Azure Storage connection string or 'default' for primary account",
+            FileStorageProviderType.LocalFileSystem => "Root directory path for local file storage",
+            FileStorageProviderType.SharePoint => "SharePoint site URL",
+            _ => "Connection configuration for the selected provider"
+        };
+    }
+}

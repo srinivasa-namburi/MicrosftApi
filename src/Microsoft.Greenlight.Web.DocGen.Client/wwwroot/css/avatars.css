@@ -1,0 +1,70 @@
+/**************************************/
+/* Avatar Styling                     */
+/**************************************/
+
+.avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    color: white;
+    font-weight: 500;
+    flex-shrink: 0;
+}
+
+.avatar-user {
+    background-color: var(--mud-palette-primary);
+}
+
+.dark-mode .avatar-user {
+    background-color: var(--mud-palette-primary-darken);
+}
+
+.avatar-assistant {
+    background-color: var(--mud-palette-info);
+}
+
+.dark-mode .avatar-assistant {
+    background-color: var(--mud-palette-info-darken);
+}
+
+.avatar-other {
+    background-color: var(--mud-palette-tertiary);
+}
+
+.dark-mode .avatar-other {
+    background-color: var(--mud-palette-tertiary-darken);
+}
+
+.avatar-system {
+    background-color: var(--mud-palette-tertiary);
+}
+
+.dark-mode .avatar-system {
+    background-color: var(--mud-palette-tertiary-darken);
+}
+
+.avatar-space-right,
+.avatar-space-left {
+    display: flex !important;
+    min-width: 40px !important;
+    max-width: 40px !important;
+    flex: 0 0 40px !important;
+    justify-content: center !important;
+    align-items: center !important;
+}
+
+.avatar-space-right {
+    margin-right: 8px !important;
+}
+
+.avatar-space-left {
+    margin-left: 8px !important;
+}
+
+/* Hide any avatar placeholder */
+.avatar-placeholder {
+    display: none !important;
+}

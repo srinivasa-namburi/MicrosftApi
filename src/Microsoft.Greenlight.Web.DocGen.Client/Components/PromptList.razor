@@ -1,7 +1,7 @@
 @inject IDocumentProcessApiClient DocumentProcessApiClient
 @inject IDialogService DialogService
 
-<MudTable Items="SortedPrompts" Hover="true" Striped="true">
+<MudTable T="PromptInfo" Items="SortedPrompts" Hover="true" Striped="true">
     <HeaderContent>
         <MudTh>Short Code</MudTh>
         <MudTh>Text</MudTh>

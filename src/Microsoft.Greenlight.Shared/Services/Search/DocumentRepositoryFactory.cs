@@ -11,6 +11,7 @@ using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Models.DocumentLibrary;
 using Microsoft.Greenlight.Shared.Models.DocumentProcess;
 using Microsoft.Greenlight.Shared.Services.Search.Abstractions;
+using Microsoft.Greenlight.Shared.Services.FileStorage;
 
 namespace Microsoft.Greenlight.Shared.Services.Search;
 
@@ -196,6 +197,7 @@ public class DocumentRepositoryFactory : IDocumentRepositoryFactory
                 : sp.GetRequiredService<ChunkingService>();
 
             var kernelFactory = sp.GetService<IKernelFactory>();
+            var fileUrlResolver = sp.GetRequiredService<IFileUrlResolverService>();
 
             _logger.LogDebug("All required services resolved successfully for context {ContextName}", contextName);
 
@@ -206,6 +208,7 @@ public class DocumentRepositoryFactory : IDocumentRepositoryFactory
                 provider,
                 textExtractionService,
                 textChunkingService,
+                fileUrlResolver,
                 processOptions,
                 kernelFactory,
                 documentLibraryType);

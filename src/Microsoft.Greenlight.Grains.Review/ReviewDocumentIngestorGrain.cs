@@ -21,17 +21,20 @@ namespace Microsoft.Greenlight.Grains.Review
         private readonly ILogger<ReviewDocumentIngestorGrain> _logger;
         private readonly AzureFileHelper _fileHelper;
         private readonly IContentReferenceService _contentReferenceService;
+        private readonly IContentReferenceVectorRepository _contentReferenceVectorRepository;
 
         public ReviewDocumentIngestorGrain(
             IDbContextFactory<DocGenerationDbContext> dbContextFactory,
             ILogger<ReviewDocumentIngestorGrain> logger,
             AzureFileHelper fileHelper,
-            IContentReferenceService contentReferenceService)
+            IContentReferenceService contentReferenceService,
+            IContentReferenceVectorRepository contentReferenceVectorRepository)
         {
             _dbContextFactory = dbContextFactory;
             _logger = logger;
             _fileHelper = fileHelper;
             _contentReferenceService = contentReferenceService;
+            _contentReferenceVectorRepository = contentReferenceVectorRepository;
         }
 
         public async Task<GenericResult<ReviewDocumentIngestionResult>> IngestDocumentAsync()
@@ -90,61 +93,40 @@ namespace Microsoft.Greenlight.Grains.Review
 
                 var totalNumberOfQuestions = reviewInstance.ReviewDefinition!.ReviewQuestions.Count;
 
-                if (reviewInstance.ExportedDocumentLink == null)
-                {
-                    return GenericResult<ReviewDocumentIngestionResult>.Failure(
-                        $"Review Instance with ID {reviewInstanceId} does not have an ExportedDocumentLink");
-                }
-
-                var documentAccessUrl = _fileHelper.GetProxiedAssetBlobUrl(reviewInstance.ExportedDocumentLink.Id);
-
-                // We need to retrieve a file stream from the exported document link
-                var fileBlobStream = await _fileHelper.GetFileAsStreamFromFullBlobUrlAsync(reviewInstance.ExportedDocumentLink.AbsoluteUrl);
-
-                if (fileBlobStream == null)
-                {
-                    return GenericResult<ReviewDocumentIngestionResult>.Failure(
-                        $"Could not retrieve file stream from ExportedDocumentLink for review instance {reviewInstanceId}");
-                }
+                // Determine file name for display from EDL (legacy) or ExternalLinkAsset (new path)
+                string? displayFileName = reviewInstance.ExportedDocumentLink?.FileName;
 
                 try
                 {
-                    // Calculate a hash of the file content for deduplication
-                    string fileHash;
-                    using (var sha256 = SHA256.Create())
+                    // If we have an EDL, optionally compute a hash (legacy path). For ExternalLinkAsset path, skip.
+                    string? fileHash = null;
+                    if (reviewInstance.ExportedDocumentLink != null)
                     {
-                        fileBlobStream.Position = 0;
-                        var hashBytes = await sha256.ComputeHashAsync(fileBlobStream);
-                        fileHash = BitConverter.ToString(hashBytes).Replace("-", "").ToLowerInvariant();
-
-                        // Reset stream position for further use
-                        fileBlobStream.Position = 0;
+                        var fileBlobStream = await _fileHelper.GetFileAsStreamFromFullBlobUrlAsync(reviewInstance.ExportedDocumentLink.AbsoluteUrl);
+                        if (fileBlobStream != null)
+                        {
+                            using var sha256 = SHA256.Create();
+                            fileBlobStream.Position = 0;
+                            var hashBytes = await sha256.ComputeHashAsync(fileBlobStream);
+                            fileHash = BitConverter.ToString(hashBytes).Replace("-", "").ToLowerInvariant();
+                        }
                     }
 
-                    // Create a new ContentReferenceItem for this review
-                    var contentReference = new ContentReferenceItem
+                    // Use ContentReferenceService to create the review reference (handles deduplication, RAG text, etc.)
+                    var contentReference = await _contentReferenceService.CreateReviewReferenceAsync(
+                        reviewInstanceId,
+                        displayFileName ?? "Review Document",
+                        fileHash);
+
+                    // Index into SK vector store (non-blocking best-effort)
+                    try
                     {
-                        Id = Guid.NewGuid(), // Generate a new ID for this reference
-                        ContentReferenceSourceId = reviewInstanceId, // Link to the review instance
-                        DisplayName = reviewInstance.ExportedDocumentLink.FileName,
-                        Description = $"Review Document: {reviewInstance.ExportedDocumentLink.FileName}",
-                        ReferenceType = ContentReferenceType.ReviewItem,
-                        FileHash = fileHash
-                    };
-
-                    // Store the content reference in the database
-                    dbContext.ContentReferenceItems.Add(contentReference);
-                    await dbContext.SaveChangesAsync();
-
-                    _logger.LogInformation("Created content reference {ContentReferenceId} for review {ReviewInstanceId}",
-                        contentReference.Id, reviewInstanceId);
-
-                    // Let the content reference service handle generating RAG text and embeddings
-                    // We need to update the item directly here since we're only passing in the ID.
-                    contentReference = await _contentReferenceService.GetOrCreateContentReferenceItemAsync(contentReference.Id, ContentReferenceType.ReviewItem);
-
-                    // Pre-generate embeddings for this content reference
-                    await _contentReferenceService.GetOrCreateEmbeddingsForContentAsync(new List<ContentReferenceItem> { contentReference });
+                        await _contentReferenceVectorRepository.IndexAsync(contentReference);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug(ex, "Content reference vector indexing failed for review {ReviewId} (best-effort)", reviewInstanceId);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -154,7 +136,7 @@ namespace Microsoft.Greenlight.Grains.Review
                 // Return success with document info
                 return GenericResult<ReviewDocumentIngestionResult>.Success(new ReviewDocumentIngestionResult
                 {
-                    ExportedDocumentLinkId = reviewInstance.ExportedDocumentLink.Id,
+                    ExportedDocumentLinkId = reviewInstance.ExportedDocumentLink?.Id,
                     TotalNumberOfQuestions = totalNumberOfQuestions,
                     DocumentProcessShortName = trackedReviewInstance.DocumentProcessShortName ?? string.Empty,
                     ContentType = ReviewContentType.ExternalFile

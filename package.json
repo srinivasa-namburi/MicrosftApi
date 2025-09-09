@@ -1,0 +1,36 @@
+{
+  "name": "aismr",
+  "version": "1.0.0",
+  "description": "This repo contains the Generative AI for Nuclear Licencing Copilot solution accellerator, intended to reduce the time and cost of creating licencing application documents, and is intended to be built upon and customized to meet users' needs. Any output should always be reviewed by a human.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "install-deps": "pwsh scripts/install-dependencies.ps1",
+    "install-deps-ci": "pwsh scripts/install-dependencies.ps1 -CI",
+    "start": "pwsh scripts/manage-solution.ps1 -Action start",
+    "start:watch": "pwsh scripts/manage-solution.ps1 -Action start -Watch",
+    "stop": "pwsh scripts/manage-solution.ps1 -Action stop", 
+    "restart": "pwsh scripts/manage-solution.ps1 -Action restart",
+    "status": "pwsh scripts/manage-solution.ps1 -Action status",
+    "test": "npx playwright test --config=playwright/playwright.config.js",
+    "test:headed": "npx playwright test --config=playwright/playwright.config.js --headed",
+    "test:debug": "npx playwright test --config=playwright/playwright.config.js --debug",
+    "test:msedge": "npx playwright test --config=playwright/playwright.config.js --project=msedge",
+    "test:chromium": "npx playwright test --config=playwright/playwright.config.js --project=chromium",
+    "browser": "pwsh -c \"& 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe' https://localhost:5001\"",
+    "show-report": "npx playwright show-report playwright/playwright-report"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://ipsenergy@dev.azure.com/ipsenergy/industry-permitting/_git/industry-permitting"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
+  }
+}

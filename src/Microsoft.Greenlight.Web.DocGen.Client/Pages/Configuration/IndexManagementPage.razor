@@ -15,7 +15,9 @@
 @inject SignalRConnectionService SignalRConnectionService
 
 <MudPaper Class="pa-4">
-    <MudText Typo="Typo.h5" Class="mb-2">Index Management</MudText>
+    <MudText Typo="Typo.h5">Index Management</MudText>
+    <MudDivider Class="mt-2 mb-3" />
+    
     <MudAlert Severity="Severity.Info" Class="mb-4">
         This page allows you to export and import index (vector) data from your Greenlight instance.<br />
     </MudAlert>
@@ -75,15 +77,15 @@
                         <MudFileUpload T="IReadOnlyList<IBrowserFile>"
                                        FilesChanged="HandleImportFileSelected"
                                        MaximumFileCount="1">
-                            <ButtonTemplate>
+                            <ActivatorContent>
                                 <MudButton HtmlTag="label"
                                            Variant="Variant.Filled"
                                            Color="Color.Primary"
                                            StartIcon="@Icons.Material.Filled.CloudUpload"
-                                           for="@context">
+                                          >
                                     Upload Index Zip file for @_importTable
                                 </MudButton>
-                            </ButtonTemplate>
+                            </ActivatorContent>
                         </MudFileUpload>
                         <MudTextField @bind-Value="_importUrl" Label="Blob URL" Variant="Variant.Outlined" Class="mb-2" Disabled="true" />
                         <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(_isImporting || string.IsNullOrWhiteSpace(_importTable) || string.IsNullOrWhiteSpace(_importUrl))" OnClick="StartImportAsync">
@@ -110,7 +112,7 @@
             }
             else
             {
-                <MudTable Items="_recentJobs" Hover="true" Dense="true">
+                <MudTable T="JobViewModel" Items="_recentJobs" Hover="true" Size="Size.Small">
                     <HeaderContent>
                         <MudTh>Type</MudTh>
                         <MudTh>Table</MudTh>
@@ -125,15 +127,15 @@
                         <MudTd DataLabel="Status">
                             @if (context.IsCompleted)
                             {
-                                <MudChip Color="Color.Success" Label="true">Completed</MudChip>
+                                <MudChip T="string" Color="Color.Success" Label="true">Completed</MudChip>
                             }
                             else if (context.IsFailed)
                             {
-                                <MudChip Color="Color.Error" Label="true">Failed</MudChip>
+                                <MudChip T="string" Color="Color.Error" Label="true">Failed</MudChip>
                             }
                             else
                             {
-                                <MudChip Color="Color.Primary" Label="true">In Progress</MudChip>
+                                <MudChip T="string" Color="Color.Primary" Label="true">In Progress</MudChip>
                             }
                         </MudTd>
                         <MudTd DataLabel="Actions">

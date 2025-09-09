@@ -3,7 +3,7 @@
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 
-<MudDialog MaxWidth="MaxWidth.Medium">
+<MudDialog Options="new DialogOptions { MaxWidth = MaxWidth.Medium }">
     <TitleContent>
         <MudText Typo="Typo.h6">@((IsEditMode ? "Edit Document Outline" : "Add Document Outline"))</MudText>
     </TitleContent>
@@ -51,16 +51,16 @@
                 </MudPaper>
             }
 
-            <MudTreeView Items="@CurrentDocumentOutline.OutlineItems.ToHashSet()" Hover="true" T="DocumentOutlineItemInfo">
+            <MudTreeView Items="@ConvertToTreeItemData(CurrentDocumentOutline.OutlineItems)" Hover="true" T="DocumentOutlineItemInfo">
                 <ItemTemplate Context="item">
-                    <MudTreeViewItem Items="@item.Children.ToHashSet()" Text="@item.SectionTitle" Expanded T="DocumentOutlineItemInfo">
+                    <MudTreeViewItem Items="@item.Children" Text="@item.Value.SectionTitle" Expanded T="DocumentOutlineItemInfo">
                         <BodyContent>
                             <!-- Delegating UI rendering of each item to the DocumentOutlineItemComponent -->
-                            <DocumentOutlineItemComponent Item="@item"
+                            <DocumentOutlineItemComponent Item="@item.Value"
                                                           IsPasteDisabled="@(CopiedDocumentOutlineItemInfo is null)"
-                                                          IsMoveUpDisabled="IsMoveUpDisabled(item)"
-                                                          IsMoveDownDisabled="IsMoveDownDisabled(item)"
-                                                          IsDeleteDisabled="IsLastItem(item)"
+                                                          IsMoveUpDisabled="IsMoveUpDisabled(item.Value)"
+                                                          IsMoveDownDisabled="IsMoveDownDisabled(item.Value)"
+                                                          IsDeleteDisabled="IsLastItem(item.Value)"
                                                           GetTooltipText="GetTooltipText"
                                                           OnItemActionRequested="HandleItemActionRequested" />
                         </BodyContent>
@@ -76,7 +76,7 @@
 </MudDialog>
 
 @code {
-    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = default!;
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = default!;
     [Parameter] public EventCallback<Guid> OnDocumentOutlineSaved { get; set; }
     [Parameter] public Guid DocumentOutlineId { get; set; }
     [Parameter] public bool IsEditMode { get; set; }
@@ -631,5 +631,16 @@
                "\n Level: " + item.Level.ToString() +
                "\n DocumentOutlineId: " + item.DocumentOutlineId.ToString() +
                "\n OrderIndex: " + item.OrderIndex;
+    }
+
+    private IReadOnlyCollection<TreeItemData<DocumentOutlineItemInfo>> ConvertToTreeItemData(IEnumerable<DocumentOutlineItemInfo> items)
+    {
+        return items.Select(item => new TreeItemData<DocumentOutlineItemInfo>
+        {
+            Value = item,
+            Children = ConvertToTreeItemData(item.Children).ToList(),
+            Text = item.SectionTitle,
+            Expanded = false
+        }).ToList();
     }
 }

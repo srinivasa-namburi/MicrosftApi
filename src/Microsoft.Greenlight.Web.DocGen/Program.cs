@@ -10,7 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Greenlight.ServiceDefaults;
 using Microsoft.Greenlight.Shared.Configuration;
-using Microsoft.Greenlight.Shared.Contracts.DTO;
+using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Management;
@@ -90,12 +90,14 @@ var apiUri = new Uri("https+http://api-main");
 builder.Services.AddHttpClient<IAuthorizationApiClient, AuthorizationApiClient>(httpClient =>
 {
     httpClient.BaseAddress = apiUri;
+}).AddStandardResilienceHandler(options =>
+{
+    // Don't retry 403s - let the AuthorizationController handle Orleans silo startup timing
+    options.Retry.ShouldHandle = args => 
+        ValueTask.FromResult(args.Outcome.Result?.StatusCode != System.Net.HttpStatusCode.Forbidden);
+    options.TotalRequestTimeout.Timeout = TimeSpan.FromMinutes(5);
 });
 builder.Services.AddHttpClient<IConfigurationApiClient, ConfigurationApiClient>(httpClient =>
-{
-    httpClient.BaseAddress = apiUri;
-});
-builder.Services.AddHttpClient<Microsoft.Greenlight.Web.DocGen.ServiceClients.IServerTokenPushClient, Microsoft.Greenlight.Web.DocGen.ServiceClients.ServerTokenPushClient>(httpClient =>
 {
     httpClient.BaseAddress = apiUri;
 });
@@ -131,48 +133,51 @@ builder.Services.AddAuthentication("MicrosoftOidc")
             OnTokenValidated = async context =>
             {
                 var authorizationClient = context.HttpContext.RequestServices.GetRequiredService<IAuthorizationApiClient>();
-                if (context.Principal?.Identity is ClaimsIdentity identity &&
-                    !string.IsNullOrWhiteSpace(context.SecurityToken?.RawData) &&
-                    !identity.HasClaim(c => c.Type == "access_token"))
+                if (context.Principal?.Identity is ClaimsIdentity identity)
                 {
-                    identity.AddClaim(new Claim("access_token", context.SecurityToken!.RawData));
+                    var accessToken = context.TokenEndpointResponse?.AccessToken;
+                    if (!string.IsNullOrWhiteSpace(accessToken) && !identity.HasClaim(c => c.Type == "access_token"))
+                    {
+                        identity.AddClaim(new Claim("access_token", accessToken));
+                    }
                 }
                 if (context.Principal is null || context.SecurityToken is null)
                 {
                     return;
                 }
                 var userInfo = UserInfo.FromClaimsPrincipal(context.Principal, context.SecurityToken);
-                var user = new UserInfoDTO(userInfo.UserId, userInfo.Name)
-                {
-                    Email = userInfo.Email
-                };
-                await authorizationClient.StoreOrUpdateUserDetailsAsync(user);
 
-                // Push the initial access token to backend token store for Orleans/MCP
-                try
+                // Build first-login sync request with token role claims
+                var roleNames = context.Principal.FindAll("roles").Select(c => c.Value).ToList();
+                var roleIds = context.Principal.FindAll("xms_roles")
+                    .Select(c => c.Value)
+                    .Select(v => Guid.TryParse(v, out var gid) ? (Guid?)gid : null)
+                    .Where(g => g.HasValue)
+                    .Select(g => g!.Value)
+                    .ToList();
+
+                var firstLoginSync = new FirstLoginSyncRequest
                 {
-                    var accessToken = context.SecurityToken.RawData;
-                    var sub = context.Principal.FindFirst("sub")?.Value;
-                    var expiresOnUtc = context.SecurityToken.ValidTo;
-                    if (!string.IsNullOrWhiteSpace(accessToken) && !string.IsNullOrWhiteSpace(sub))
-                    {
-                        var serverPush = context.HttpContext.RequestServices.GetRequiredService<Microsoft.Greenlight.Web.DocGen.ServiceClients.IServerTokenPushClient>();
-                        await serverPush.PushUserTokenAsync(new UserTokenDTO
-                        {
-                            ProviderSubjectId = sub,
-                            AccessToken = accessToken,
-                            ExpiresOnUtc = expiresOnUtc == default ? null : expiresOnUtc
-                        }, accessToken, context.HttpContext.RequestAborted);
-                    }
-                }
-                catch (Exception ex)
+                    ProviderSubjectId = userInfo.UserId,
+                    FullName = userInfo.Name,
+                    Email = userInfo.Email,
+                    TokenRoleNames = roleNames,
+                    TokenRoleIds = roleIds,
+                    TrustedCallerClientIds = string.IsNullOrWhiteSpace(azureAdSettings.ClientId)
+                        ? null : new List<string> { azureAdSettings.ClientId }
+                };
+                var bearer = context.TokenEndpointResponse?.AccessToken;
+                if (!string.IsNullOrWhiteSpace(bearer))
                 {
-                    // Don't block sign-in on token push issues
-                    context.HttpContext.RequestServices
-                        .GetRequiredService<ILoggerFactory>()
-                        .CreateLogger("Auth")
-                        .LogDebug(ex, "Failed to push user token during OnTokenValidated");
+                    await authorizationClient.FirstLoginSyncWithBearerAsync(firstLoginSync, bearer!, CancellationToken.None);
                 }
+                else
+                {
+                    // As a fallback (shouldn't happen with auth code flow), try authorized call
+                    await authorizationClient.FirstLoginSyncAsync(firstLoginSync);
+                }
+                
+                // Note: Token push now handled client-side in MainLayout for better security
             }
         };
     })

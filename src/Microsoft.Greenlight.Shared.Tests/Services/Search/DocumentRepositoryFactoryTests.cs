@@ -72,12 +72,14 @@ public class DocumentRepositoryFactoryTests
         var mockEmbeddingService = new Mock<IAiEmbeddingService>();
         var mockProvider = new Mock<ISemanticKernelVectorStoreProvider>();
         var mockTextExtractionService = new Mock<ITextExtractionService>();
+        var mockFileUrlResolver = new Mock<Microsoft.Greenlight.Shared.Services.FileStorage.IFileUrlResolverService>();
         var docLibInfoService = new Mock<IDocumentLibraryInfoService>();
 
         services.AddSingleton(mockEmbeddingService.Object);
         services.AddSingleton(mockProvider.Object);
         services.AddSingleton(mockTextExtractionService.Object);
         services.AddSingleton(docLibInfoService.Object);
+        services.AddSingleton<Microsoft.Greenlight.Shared.Services.FileStorage.IFileUrlResolverService>(mockFileUrlResolver.Object);
 
         // Register concrete ChunkingService (factory expects concrete type)
         services.AddSingleton<ChunkingService>();

@@ -19,7 +19,7 @@ public class SchedulerOrchestrationGrain : Grain, ISchedulerOrchestrationGrain, 
     // Define reminder names as constants to avoid typos
     private const string ContentReferenceIndexingReminder = "ContentReferenceIndexing";
     private const string PromptDefinitionsUpdateReminder = "PromptDefinitionsUpdate";
-    private const string BlobAutoImportReminder = "BlobAutoImport";
+    private const string ScheduledFileDiscoveryAndImportReminder = "ScheduledFileDiscoveryAndImport";
     private const string RepositoryIndexMaintenanceReminder = "RepositoryIndexMaintenance";
     private const string VectorStoreIdFixReminder = "VectorStoreIdFix"; // monthly heavy job
 
@@ -28,7 +28,7 @@ public class SchedulerOrchestrationGrain : Grain, ISchedulerOrchestrationGrain, 
     {
         ContentReferenceIndexingReminder,
         PromptDefinitionsUpdateReminder,
-        BlobAutoImportReminder,
+        ScheduledFileDiscoveryAndImportReminder,
         RepositoryIndexMaintenanceReminder,
         VectorStoreIdFixReminder
     };
@@ -127,6 +127,7 @@ public class SchedulerOrchestrationGrain : Grain, ISchedulerOrchestrationGrain, 
             await ExecuteContentReferenceIndexingJobAsync();
             await ExecutePromptDefinitionsUpdateJobAsync();
             await ExecuteRepositoryIndexMaintenanceJobAsync();
+            await ExecuteScheduledFileDiscoveryAndImportJobAsync();
 
             if (_serviceConfigOptions.GreenlightServices.Global.EnableVectorStoreIdFixJob)
             {
@@ -213,24 +214,24 @@ public class SchedulerOrchestrationGrain : Grain, ISchedulerOrchestrationGrain, 
         }
     }
 
-    private async Task ExecuteBlobAutoImportJobAsync()
+    private async Task ExecuteScheduledFileDiscoveryAndImportJobAsync()
     {
         try
         {
             // If the heavy fix is running, skip auto import run to reduce pressure
             if (_serviceConfigOptions.GreenlightServices.Global.EnableVectorStoreIdFixJob && _vectorStoreIdFixRunning)
             {
-                _logger.LogInformation("Skipping Blob Auto Import job while Vector Store ID Fix job is running");
+                _logger.LogInformation("Skipping File Discovery and Import job while Vector Store ID Fix job is running");
                 return;
             }
 
-            _logger.LogInformation("Executing Blob Auto Import job");
-            var grain = GrainFactory.GetGrain<IBlobAutoImportGrain>(Guid.NewGuid());
+            _logger.LogInformation("Executing File Discovery and Import job");
+            var grain = GrainFactory.GetGrain<IScheduledFileDiscoveryAndImportGrain>(Guid.NewGuid());
             await grain.ExecuteAsync();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error executing Blob Auto Import job");
+            _logger.LogError(ex, "Error executing File Discovery and Import job");
         }
     }
 
@@ -246,7 +247,7 @@ public class SchedulerOrchestrationGrain : Grain, ISchedulerOrchestrationGrain, 
 
         await RegisterOrUpdateReminderAsync(ContentReferenceIndexingReminder, TimeSpan.FromMinutes(referenceIndexingRefreshIntervalMinutes));
         await RegisterOrUpdateReminderAsync(PromptDefinitionsUpdateReminder, TimeSpan.FromHours(1));
-        await RegisterOrUpdateReminderAsync(BlobAutoImportReminder, TimeSpan.FromMinutes(1));
+        await RegisterOrUpdateReminderAsync(ScheduledFileDiscoveryAndImportReminder, TimeSpan.FromMinutes(15));
         await RegisterOrUpdateReminderAsync(RepositoryIndexMaintenanceReminder, TimeSpan.FromMinutes(2));
 
         if (_serviceConfigOptions.GreenlightServices.Global.EnableVectorStoreIdFixJob)
@@ -409,8 +410,8 @@ public class SchedulerOrchestrationGrain : Grain, ISchedulerOrchestrationGrain, 
                 case PromptDefinitionsUpdateReminder:
                     await ExecutePromptDefinitionsUpdateJobAsync();
                     break;
-                case BlobAutoImportReminder:
-                    await ExecuteBlobAutoImportJobAsync();
+                case ScheduledFileDiscoveryAndImportReminder:
+                    await ExecuteScheduledFileDiscoveryAndImportJobAsync();
                     break;
                 case RepositoryIndexMaintenanceReminder:
                     await ExecuteRepositoryIndexMaintenanceJobAsync();

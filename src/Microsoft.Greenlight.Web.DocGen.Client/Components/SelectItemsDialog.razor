@@ -4,11 +4,11 @@
     <DialogContent>
         <MudText>Select @SelectionLabel to associate:</MudText>
         
-        <MudList Dense="true" Clickable="true">
+        <MudList T="object" Dense="true" Clickable="true">
             @foreach (var item in Items)
             {
-                <MudListItem>
-                    <MudCheckBox @bind-Value="item.IsSelected" Color="Color.Primary">
+                <MudListItem T="object">
+                    <MudCheckBox T="bool" @bind-Value="item.IsSelected" Color="Color.Primary">
                         @item.Name
                     </MudCheckBox>
                 </MudListItem>
@@ -22,7 +22,7 @@
 </MudDialog>
 
 @code {
-    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
     [Parameter] public string Title { get; set; } = "Select Items";
     [Parameter] public string SelectionLabel { get; set; } = "Items";
     [Parameter] public List<PluginDocumentProcessAssociationManager.SelectableItem> Items { get; set; } = new();

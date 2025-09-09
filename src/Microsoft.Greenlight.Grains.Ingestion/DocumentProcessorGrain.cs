@@ -9,6 +9,7 @@ using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.Shared.Services.Search.Abstractions;
+using Microsoft.Greenlight.Shared.Services.FileStorage;
 using Orleans.Concurrency;
 
 namespace Microsoft.Greenlight.Grains.Ingestion;
@@ -21,6 +22,7 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
     private readonly IServiceProvider _serviceProvider;
     private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
     private readonly IDocumentIngestionService _documentIngestionService;
+    private readonly IFileUrlResolverService _fileUrlResolverService;
     private bool _isRunning; // In-memory, not persisted
 
     public DocumentProcessorGrain(
@@ -28,13 +30,15 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
         IDocumentProcessInfoService documentProcessInfoService,
         IServiceProvider serviceProvider,
         IDbContextFactory<DocGenerationDbContext> dbContextFactory,
-        IDocumentIngestionService documentIngestionService)
+        IDocumentIngestionService documentIngestionService,
+        IFileUrlResolverService fileUrlResolverService)
     {
         _logger = logger;
         _documentProcessInfoService = documentProcessInfoService;
         _serviceProvider = serviceProvider;
         _dbContextFactory = dbContextFactory;
         _documentIngestionService = documentIngestionService;
+        _fileUrlResolverService = fileUrlResolverService;
     }
 
     public async Task<DocumentProcessResult> ProcessDocumentAsync(Guid documentId)
@@ -53,7 +57,13 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
             // Acquiring it again here caused a deadlock. Concurrency is already controlled by the caller.
 
             await using var db = await _dbContextFactory.CreateDbContextAsync();
-            var entity = await db.IngestedDocuments.FindAsync(documentId);
+            var entity = await db.IngestedDocuments
+                .Include(d => d.IngestedDocumentFileAcknowledgments)
+                    .ThenInclude(idfa => idfa.FileAcknowledgmentRecord)
+                        .ThenInclude(far => far.FileStorageSource)
+                            .ThenInclude(fss => fss.FileStorageHost)
+                .FirstOrDefaultAsync(d => d.Id == documentId);
+                
             if (entity == null)
             {
                 _logger.LogError("IngestedDocument with Id {Id} not found in DB for processing.", documentId);
@@ -61,10 +71,12 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
             }
 
             string fileName = entity.FileName;
-            string documentUrl = entity.FinalBlobUrl ?? entity.OriginalDocumentUrl;
             string documentLibraryShortName = entity.DocumentLibraryOrProcessName ?? string.Empty;
             DocumentLibraryType documentLibraryType = entity.DocumentLibraryType;
             string? uploadedByUserOid = entity.UploadedByUserOid;
+
+            // Generate document reference for vector store (identifier instead of URL)
+            string documentReference = GenerateDocumentReference(entity);
 
             _logger.LogInformation("Starting document processing for {FileName} (Id: {DocumentId})", fileName, documentId);
 
@@ -101,17 +113,17 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
                 indexName = documentLibrary.IndexName;
             }
 
-            await using var fileStream = await GetDocumentStreamAsync(documentUrl);
+            await using var fileStream = await GetDocumentStreamAsync(documentId);
             if (fileStream == null)
             {
-                _logger.LogError("Failed to get document stream for {DocumentUrl}", documentUrl);
-                await UpdateIngestionFailureAsync(entity, $"Failed to get document stream for {documentUrl}");
-                return DocumentProcessResult.Fail($"Failed to get document stream for {documentUrl}");
+                _logger.LogError("Failed to get document stream for document {DocumentId}", documentId);
+                await UpdateIngestionFailureAsync(entity, $"Failed to get document stream for document {documentId}");
+                return DocumentProcessResult.Fail($"Failed to get document stream for document {documentId}");
             }
 
             _logger.LogInformation("Starting document ingestion for {FileName} with indexName={IndexName}", fileName, indexName);
 
-            // Use the document ingestion service with explicit error handling
+            // Use the document ingestion service with document reference instead of URL
             DocumentIngestionResult result;
             try
             {
@@ -119,7 +131,7 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
                     documentId,
                     fileStream,
                     fileName,
-                    documentUrl,
+                    documentReference, // Use document reference instead of URL
                     documentLibraryShortName,
                     indexName,
                     uploadedByUserOid);
@@ -270,26 +282,85 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
 
     /// <summary>
     /// Gets the document stream with fallback logic and proper error handling.
+    /// Supports both blob storage URLs and FileStorageSource-based files.
     /// </summary>
-    /// <param name="documentUrl">The document URL to retrieve.</param>
+    /// <param name="documentId">The document ID to retrieve stream for.</param>
     /// <returns>Document stream or null if failed.</returns>
-    private async Task<Stream?> GetDocumentStreamAsync(string documentUrl)
+    private async Task<Stream?> GetDocumentStreamAsync(Guid documentId)
     {
         try
         {
-            if (string.IsNullOrWhiteSpace(documentUrl))
+            using var scope = _serviceProvider.CreateScope();
+
+            // Load the document with its file acknowledgments
+            await using var db = await _dbContextFactory.CreateDbContextAsync();
+            var document = await db.IngestedDocuments
+                .Include(d => d.IngestedDocumentFileAcknowledgments)
+                    .ThenInclude(idfa => idfa.FileAcknowledgmentRecord)
+                        .ThenInclude(far => far.FileStorageSource)
+                            .ThenInclude(fss => fss.FileStorageHost)
+                .FirstOrDefaultAsync(d => d.Id == documentId);
+
+            if (document == null)
             {
-                _logger.LogWarning("Document URL is null or empty");
+                _logger.LogWarning("IngestedDocument {DocumentId} not found", documentId);
                 return null;
             }
 
-            using var scope = _serviceProvider.CreateScope();
-            var azureFileHelper = scope.ServiceProvider.GetRequiredService<AzureFileHelper>();
-            return await azureFileHelper.GetFileAsStreamFromFullBlobUrlAsync(documentUrl);
+            if (document.IngestedDocumentFileAcknowledgments.Any())
+            {
+                // This document is associated with a FileStorageSource - use the appropriate service
+                var acknowledgment = document.IngestedDocumentFileAcknowledgments.First();
+                var fileStorageSource = acknowledgment.FileAcknowledgmentRecord.FileStorageSource;
+                
+                if (fileStorageSource?.FileStorageHost != null)
+                {
+                    var fileStorageServiceFactory = scope.ServiceProvider.GetRequiredService<IFileStorageServiceFactory>();
+                    var fileStorageService = await fileStorageServiceFactory.GetServiceBySourceIdAsync(fileStorageSource.Id);
+                    
+                    if (fileStorageService != null)
+                    {
+                        _logger.LogDebug("Using FileStorageService {ProviderType} to retrieve document stream for document {DocumentId}",
+                            fileStorageService.ProviderType, documentId);
+                        
+                        var relativePath = acknowledgment.FileAcknowledgmentRecord.RelativeFilePath;
+                        try
+                        {
+                            // Primary path via provider using relative path
+                            return await fileStorageService.GetFileStreamAsync(relativePath);
+                        }
+                        catch (Exception ex)
+                        {
+                            // Fallback: if the stored relative path is stale (e.g., moved), try full URL
+                            var fallbackUrl = document.FinalBlobUrl ?? acknowledgment.FileAcknowledgmentRecord.FileStorageSourceInternalUrl;
+                            if (!string.IsNullOrWhiteSpace(fallbackUrl))
+                            {
+                                _logger.LogWarning(ex, "Primary storage read failed for {RelativePath}. Falling back to full URL for document {DocumentId}.", relativePath, documentId);
+                                var azureFileHelper = scope.ServiceProvider.GetRequiredService<AzureFileHelper>();
+                                return await azureFileHelper.GetFileAsStreamFromFullBlobUrlAsync(fallbackUrl);
+                            }
+
+                            _logger.LogWarning(ex, "Primary storage read failed and no fallback URL available for document {DocumentId}", documentId);
+                            return null;
+                        }
+                    }
+                }
+            }
+
+            // Fallback to legacy blob storage approach using the document's URL
+            var documentUrl = document.FinalBlobUrl ?? document.OriginalDocumentUrl;
+            if (!string.IsNullOrWhiteSpace(documentUrl))
+            {
+                var azureFileHelper = scope.ServiceProvider.GetRequiredService<AzureFileHelper>();
+                return await azureFileHelper.GetFileAsStreamFromFullBlobUrlAsync(documentUrl);
+            }
+
+            _logger.LogWarning("No valid URL found for document {DocumentId}", documentId);
+            return null;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting document stream for {DocumentUrl}", documentUrl ?? "null");
+            _logger.LogError(ex, "Error getting document stream for document {DocumentId}", documentId);
             return null;
         }
     }
@@ -331,5 +402,18 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
         var bytes = System.Text.Encoding.UTF8.GetBytes(input);
         var base64 = Convert.ToBase64String(bytes);
         return base64.Replace('+', '-').Replace('/', '_').TrimEnd('=');
+    }
+
+    /// <summary>
+    /// Generates a document reference identifier for vector store indexing.
+    /// This identifier will be used to dynamically resolve URLs at search time.
+    /// </summary>
+    /// <param name="entity">The IngestedDocument entity.</param>
+    /// <returns>Document reference identifier.</returns>
+    private static string GenerateDocumentReference(Microsoft.Greenlight.Shared.Models.IngestedDocument entity)
+    {
+        // Use the document ID as the primary reference
+        // This can be resolved back to the IngestedDocument for URL generation
+        return $"doc:{entity.Id}";
     }
 }

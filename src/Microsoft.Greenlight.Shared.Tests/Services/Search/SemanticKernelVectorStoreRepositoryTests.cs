@@ -8,6 +8,7 @@ using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.Shared.Services.Search;
 using Microsoft.Greenlight.Shared.Services.Search.Abstractions;
+using Microsoft.Greenlight.Shared.Services.FileStorage;
 using Moq;
 using System.Text;
 
@@ -24,6 +25,7 @@ public class SemanticKernelVectorStoreRepositoryTests
     private readonly Mock<ISemanticKernelVectorStoreProvider> _mockProvider;
     private readonly Mock<ITextExtractionService> _mockTextExtractionService;
     private readonly Mock<ITextChunkingService> _mockChunkingService;
+    private readonly Mock<IFileUrlResolverService> _mockFileUrlResolver;
     private readonly SemanticKernelVectorStoreRepository _repository;
     private readonly ServiceConfigurationOptions _serviceOptions;
 
@@ -35,6 +37,7 @@ public class SemanticKernelVectorStoreRepositoryTests
         _mockProvider = new Mock<ISemanticKernelVectorStoreProvider>();
         _mockTextExtractionService = new Mock<ITextExtractionService>();
         _mockChunkingService = new Mock<ITextChunkingService>();
+        _mockFileUrlResolver = new Mock<IFileUrlResolverService>();
 
         // Setup default configuration
         _serviceOptions = new ServiceConfigurationOptions
@@ -60,7 +63,8 @@ public class SemanticKernelVectorStoreRepositoryTests
             _mockEmbeddingService.Object,
             _mockProvider.Object,
             _mockTextExtractionService.Object,
-            _mockChunkingService.Object);
+            _mockChunkingService.Object,
+            _mockFileUrlResolver.Object);
     }
 
     [Fact]
@@ -143,6 +147,7 @@ public class SemanticKernelVectorStoreRepositoryTests
             _mockProvider.Object,
             _mockTextExtractionService.Object,
             _mockChunkingService.Object,
+            _mockFileUrlResolver.Object,
             documentLibraryType: DocumentLibraryType.PrimaryDocumentProcessLibrary);
 
         // Setup mocks
@@ -203,6 +208,7 @@ public class SemanticKernelVectorStoreRepositoryTests
             _mockProvider.Object,
             _mockTextExtractionService.Object,
             _mockChunkingService.Object,
+            _mockFileUrlResolver.Object,
             documentLibraryType: DocumentLibraryType.PrimaryDocumentProcessLibrary);
 
         // Setup mocks
@@ -392,6 +398,7 @@ public class SemanticKernelVectorStoreRepositoryTests
             _mockProvider.Object,
             _mockTextExtractionService.Object,
             _mockChunkingService.Object,
+            _mockFileUrlResolver.Object,
             documentLibraryType: DocumentLibraryType.PrimaryDocumentProcessLibrary);
 
         // FIXED: Now search uses context-aware embedding generation like storage
@@ -615,6 +622,7 @@ public class SemanticKernelVectorStoreRepositoryTests
             _mockProvider.Object,
             _mockTextExtractionService.Object,
             _mockChunkingService.Object,
+            _mockFileUrlResolver.Object,
             documentLibraryType: DocumentLibraryType.PrimaryDocumentProcessLibrary);
 
         // Setup storage mocks
@@ -746,6 +754,7 @@ public class SemanticKernelVectorStoreRepositoryTests
             _mockProvider.Object,
             _mockTextExtractionService.Object,
             _mockChunkingService.Object,
+            _mockFileUrlResolver.Object,
             documentLibraryType: DocumentLibraryType.PrimaryDocumentProcessLibrary);
 
         // Setup correct embedding method (document process with 1024 dimensions)
@@ -827,7 +836,7 @@ public class SemanticKernelVectorStoreRepositoryTests
         {
             DocumentId = documentId,
             FileName = $"test-file-{documentId}.pdf",
-            OriginalDocumentUrl = $"https://example.com/{documentId}.pdf",
+            DocumentReference = $"doc:{Guid.NewGuid()}", // Use DocumentReference instead of OriginalDocumentUrl
             ChunkText = $"This is test content for partition {partitionNumber} of document {documentId}.",
             Embedding = Enumerable.Range(0, 384).Select(x => (float)(x * 0.001)).ToArray(),
             PartitionNumber = partitionNumber,
@@ -866,6 +875,7 @@ public class SemanticKernelVectorStoreRepositoryTests
             _mockProvider.Object,
             _mockTextExtractionService.Object,
             _mockChunkingService.Object,
+            _mockFileUrlResolver.Object,
             documentLibraryType: DocumentLibraryType.PrimaryDocumentProcessLibrary);
 
         // Setup mocks
@@ -962,6 +972,7 @@ public class SemanticKernelVectorStoreRepositoryTests
             _mockProvider.Object,
             _mockTextExtractionService.Object,
             _mockChunkingService.Object,
+            _mockFileUrlResolver.Object,
             documentLibraryType: DocumentLibraryType.PrimaryDocumentProcessLibrary);
 
         // Setup mocks

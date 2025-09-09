@@ -1,0 +1,165 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+
+@using Microsoft.Greenlight.Shared.Contracts.DTO.FileStorage
+@using Microsoft.Greenlight.Web.DocGen.Client.Components.Authorization
+@using Microsoft.Greenlight.Web.DocGen.Client.Components.FileStorage
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@inject IFileStorageHostApiClient FileStorageHostApiClient
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+@namespace Microsoft.Greenlight.Web.DocGen.Client.Components.FileStorage
+
+<MudCard>
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.h6">File Storage Hosts</MudText>
+                <PermissionView Permission="@Microsoft.Greenlight.Shared.Contracts.Authorization.PermissionKeys.AlterSystemConfiguration">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ShowAddHostDialog" StartIcon="@Icons.Material.Filled.Add">
+                        Add Host
+                    </MudButton>
+                </PermissionView>
+            </MudStack>
+        </CardHeaderContent>
+    </MudCardHeader>
+    <MudCardContent>
+        @if (_isLoading)
+        {
+            <MudProgressLinear Indeterminate="true" />
+        }
+        else if (!_hosts.Any())
+        {
+            <MudAlert Severity="Severity.Warning" Class="mb-2">
+                No file storage hosts configured. At least one host is required for the system to function properly.
+            </MudAlert>
+        }
+        else
+        {
+            @foreach (var host in _hosts.OrderByDescending(h => h.IsDefault).ThenBy(h => h.Name))
+            {
+                <FileStorageHostCard Host="host" 
+                                   OnEdit="EditHost" 
+                                   OnDelete="DeleteHost" 
+                                   OnTestConnection="TestHostConnection"
+                                   ShowDeleteButton="@(_hosts.Count > 1)" />
+            }
+        }
+    </MudCardContent>
+</MudCard>
+
+@code {
+    private List<FileStorageHostInfo> _hosts = new();
+    private bool _isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadHostsAsync();
+    }
+
+    private async Task LoadHostsAsync()
+    {
+        _isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            _hosts = await FileStorageHostApiClient.GetAllFileStorageHostsAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading file storage hosts: {ex.Message}", Severity.Error);
+            _hosts = new List<FileStorageHostInfo>();
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ShowAddHostDialog()
+    {
+        var parameters = new DialogParameters
+        {
+            { "IsCreateMode", true }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<FileStorageHostEditDialog>("Add File Storage Host", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            await LoadHostsAsync();
+        }
+    }
+
+    private async Task EditHost(FileStorageHostInfo host)
+    {
+        var parameters = new DialogParameters
+        {
+            { "Host", host },
+            { "IsCreateMode", false }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<FileStorageHostEditDialog>("Edit File Storage Host", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            await LoadHostsAsync();
+        }
+    }
+
+    private async Task DeleteHost(FileStorageHostInfo host)
+    {
+        var parameters = new DialogParameters
+        {
+            { "ContentText", $"Are you sure you want to delete the file storage host '{host.Name}'? This will also affect any associated file storage sources. This action cannot be undone." },
+            { "ButtonText", "Delete" },
+            { "DialogColor", Color.Error }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = DialogService.Show<ConfirmationDialog>("Delete File Storage Host", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            try
+            {
+                await FileStorageHostApiClient.DeleteFileStorageHostAsync(host.Id);
+                Snackbar.Add("File storage host deleted successfully.", Severity.Success);
+                await LoadHostsAsync();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error deleting file storage host: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task TestHostConnection(FileStorageHostInfo host)
+    {
+        try
+        {
+            Snackbar.Add("Testing connection...", Severity.Info);
+            var isConnected = await FileStorageHostApiClient.TestFileStorageHostConnectionAsync(host.Id);
+            
+            if (isConnected)
+            {
+                Snackbar.Add($"Connection to '{host.Name}' successful!", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add($"Connection to '{host.Name}' failed.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error testing connection to '{host.Name}': {ex.Message}", Severity.Error);
+        }
+    }
+}

@@ -10,8 +10,9 @@ namespace Microsoft.Greenlight.Shared.Contracts.DTO.Definitions
     {
         /// <summary>
         /// Version string for forward compatibility.
+        /// v2 introduces FileStorageSources for FileStorageSource-based import/export.
         /// </summary>
-        public string PackageFormatVersion { get; set; } = "1.0";
+        public string PackageFormatVersion { get; set; } = "2.0";
 
         /// <summary>
         /// Original process ID from the source system. Not used as primary key on import.
@@ -46,10 +47,17 @@ namespace Microsoft.Greenlight.Shared.Contracts.DTO.Definitions
         public int? VectorStoreChunkOverlap { get; set; }
 
         /// <summary>
-        /// Optional storage settings. If omitted during import, server will generate defaults.
+        /// Legacy storage settings (v1). If omitted during import, server will generate defaults.
         /// </summary>
         public string? BlobStorageContainerName { get; set; }
         public string? BlobStorageAutoImportFolderName { get; set; }
+
+        /// <summary>
+        /// v2: FileStorageSource configuration to associate with this process upon import.
+        /// If provided, the system will bind these to the default FileStorageHost.
+        /// If omitted, import will fall back to legacy container fields or sanitize from ShortName.
+        /// </summary>
+        public List<FileStorageSourceConfigDto>? FileStorageSources { get; set; }
 
         /// <summary>
         /// Prompt implementations scoped to the document process.
@@ -66,5 +74,10 @@ namespace Microsoft.Greenlight.Shared.Contracts.DTO.Definitions
         /// Metadata fields associated with the process. Optional.
         /// </summary>
         public List<DocumentProcessMetaDataFieldPackageDto>? MetaDataFields { get; set; }
+
+        /// <summary>
+        /// Optional export/import warnings (e.g., when non-default-host storage sources were omitted on export).
+        /// </summary>
+        public List<string>? Warnings { get; set; }
     }
 }

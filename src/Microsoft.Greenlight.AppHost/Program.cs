@@ -23,7 +23,7 @@ IResourceBuilder<IResourceWithConnectionString>? signalr = null;
 IResourceBuilder<IResourceWithConnectionString> azureAiSearch;
 IResourceBuilder<IResourceWithConnectionString> blobStorage;
 IResourceBuilder<IResourceWithConnectionString> insights = null!;
-IResourceBuilder<IResourceWithConnectionString> eventHub;
+IResourceBuilder<IResourceWithConnectionString>? eventHub = null;
 IResourceBuilder<IResourceWithConnectionString> orleansClusteringTable;
 IResourceBuilder<IResourceWithConnectionString> orleansBlobStorage;
 IResourceBuilder<IResourceWithConnectionString> orleansCheckpointing;
@@ -34,7 +34,11 @@ var usePostgres = builder.Configuration.GetValue<bool>("ServiceConfiguration:Gre
 
 if (builder.ExecutionContext.IsRunMode) // For local development
 {
-    redisResource = builder.AddRedis("redis", 16379);
+    redisResource = builder.AddRedis("redis", 16379)
+        .WithArgs("--maxmemory", "512mb")
+        .WithArgs("--maxmemory-policy", "allkeys-lru")
+        .WithArgs("--save", "")  // Disable persistence for development
+        .WithArgs("--appendonly", "no");  // Disable AOF for development
 
     // Use Azure SQL Server for local development.
     // Especially useful for ARM/AMD based machines that can't run SQL Server in a container
@@ -56,11 +60,12 @@ if (builder.ExecutionContext.IsRunMode) // For local development
         .AddDatabase(sqlDatabaseName!);
     }
 
-    eventHub = builder.Configuration.GetConnectionString("greenlight-cg-streams") != null
-        ? builder.AddConnectionString("greenlight-cg-streams")
-        : builder.AddAzureEventHubs("eventhub")
-            .AddHub("greenlight-hub")
-            .AddConsumerGroup("greenlight-cg-streams");
+    // EventHub not needed for local development - only create if user has configured it
+    if (builder.Configuration.GetConnectionString("greenlight-cg-streams") != null)
+    {
+        eventHub = builder.AddConnectionString("greenlight-cg-streams");
+    }
+    // For local development, eventHub remains null and Orleans will use memory streams
 
     azureAiSearch = builder.Configuration.GetConnectionString("aiSearch") != null
         ? builder.AddConnectionString("aiSearch")
@@ -182,12 +187,17 @@ var apiMainBuilder = builder
     .WithReference(redisResource)
     .WithReference(docGenSql)
     .WithReference(azureAiSearch)
-    .WithReference(eventHub)
     .WithReference(orleans.AsClient())
     .WithReference(orleansCheckpointing)
     .WithReference(orleansBlobStorage)
     .WithReference(orleansClusteringTable)
     .WaitForCompletion(dbSetupManager);
+    
+// Add EventHub reference only if it exists (production or configured locally)
+if (eventHub != null)
+{
+    apiMainBuilder.WithReference(eventHub);
+}
 if (usePostgres && kmvectorDb != null)
 {
     apiMainBuilder.WithReference(kmvectorDb);
@@ -214,12 +224,17 @@ var mcpServerBuilder = builder
     .WithReference(redisResource)
     .WithReference(docGenSql)
     .WithReference(azureAiSearch)
-    .WithReference(eventHub)
     .WithReference(orleans.AsClient())
     .WithReference(orleansCheckpointing)
     .WithReference(orleansBlobStorage)
     .WithReference(orleansClusteringTable)
     .WaitForCompletion(dbSetupManager);
+
+// Add EventHub reference only if it exists (production or configured locally)
+if (eventHub != null)
+{
+    mcpServerBuilder.WithReference(eventHub);
+}
 
 if (usePostgres && kmvectorDb != null)
 {
@@ -247,13 +262,18 @@ var siloBuilder = builder.AddProject<Projects.Microsoft_Greenlight_Silo>("silo")
     .WithReference(docGenSql)
     .WithReference(redisResource)
     .WithReference(azureAiSearch)
-    .WithReference(eventHub)
     .WithReference(orleans)
     .WithReference(orleansCheckpointing)
     .WithReference(orleansBlobStorage)
     .WithReference(orleansClusteringTable)
     .WithReference(apiMain)
     .WaitForCompletion(dbSetupManager);
+
+// Add EventHub reference only if it exists (production or configured locally)
+if (eventHub != null)
+{
+    siloBuilder.WithReference(eventHub);
+}
 if (usePostgres && kmvectorDb != null)
 {
     siloBuilder.WithReference(kmvectorDb);
@@ -281,7 +301,6 @@ var docGenFrontendBuilder = builder
     .WithReference(blobStorage)
     .WithReference(docGenSql)
     .WithReference(redisResource)
-    .WithReference(eventHub)
     .WithReference(apiMain)
     .WithReference(orleans.AsClient())
     .WithReference(orleansCheckpointing)
@@ -289,6 +308,12 @@ var docGenFrontendBuilder = builder
     .WithReference(orleansClusteringTable)
     .WaitFor(apiMain)
     .WaitForCompletion(dbSetupManager);
+
+// Add EventHub reference only if it exists (production or configured locally)
+if (eventHub != null)
+{
+    docGenFrontendBuilder.WithReference(eventHub);
+}
 
 if (signalr != null)
 {

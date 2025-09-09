@@ -89,5 +89,12 @@ namespace Microsoft.Greenlight.Shared.Contracts.DTO.Document
         /// UTC date and time when the entity was last modified.
         /// </summary>
         public DateTime ModifiedUtc { get; set; }
+
+        /// <summary>
+        /// Resolved, proxied URL for the document, when available.
+        /// Intended for clients to use instead of OriginalDocumentUrl/FinalBlobUrl.
+        /// This should be populated by the mapping layer using IFileUrlResolverService.
+        /// </summary>
+        public string? ResolvedUrl { get; set; }
     }
 }

@@ -205,6 +205,11 @@ public class ServiceConfigurationOptions
             /// Enable content reference system.
             /// </summary>
             public bool EnableContentReferences { get; set; }
+
+            /// <summary>
+            /// Enable External Data View feature in the UI. Off by default.
+            /// </summary>
+            public bool EnableExternalDataView { get; set; }
         }
 
         /// <summary>
@@ -221,6 +226,12 @@ public class ServiceConfigurationOptions
             /// Enable a scheduled ingestion.
             /// </summary>
             public bool ScheduledIngestion { get; set; }
+
+            /// <summary>
+            /// Enable local file storage as an available option for new file storage sources.
+            /// When false, users cannot create new local file storage sources, but existing ones remain functional.
+            /// </summary>
+            public bool LocalFileStorageAvailable { get; set; } = false;
 
             /// <summary>
             /// OCR configuration for ingestion (languages, sources, caching).

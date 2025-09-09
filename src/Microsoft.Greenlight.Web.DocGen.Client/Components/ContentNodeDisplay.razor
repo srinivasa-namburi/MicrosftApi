@@ -203,7 +203,7 @@
     {
         <MudExpansionPanels>
             <MudExpansionPanel Class="@GetPanelClass(Node.Type)"
-                               @bind-IsExpanded="IsPanelExpanded">
+                               @bind-Expanded="IsPanelExpanded">
                 <TitleContent>
                     <MudGrid>
                         <MudItem xs="1">
@@ -317,7 +317,7 @@
                             </MudTooltip>
                     
                             <MudTooltip Text="Get AI assistance">
-                                <MudIconButton Icon="@Icons.Material.Filled.SmartToy"
+                                <MudIconButton Icon="@Icons.Material.Filled.Chat"
                                                Size="Size.Small"
                                                Color="Color.Secondary"
                                                OnClick="@(() => BodyTextComponent?.OpenAiAssistant())" />

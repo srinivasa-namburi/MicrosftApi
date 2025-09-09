@@ -8,18 +8,10 @@ using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
 using System.Text.RegularExpressions;
+using Microsoft.Greenlight.Shared.Enums;
 
 namespace Microsoft.Greenlight.Shared.Helpers
 {
-    /// <summary>
-    /// What to do after processing a streaming update.
-    /// </summary>
-    public enum StreamingProcessingAction
-    {
-        Continue,
-        Skip,
-        JsonErrorContinue
-    }
 
     /// <summary>
     /// Result of processing a streaming update.

@@ -255,6 +255,7 @@ namespace Microsoft.Greenlight.Shared.Services
                 .ThenInclude(v => v.Children)
                 .ThenInclude(w => w.Children)
                 .ThenInclude(x => x.Children)
+                .Include(dp => dp.FileStorageSources)
                 .FirstOrDefaultAsync(x => x.Id == processId);
 
             // No definition found to delete, so return false
@@ -274,6 +275,12 @@ namespace Microsoft.Greenlight.Shared.Services
 
                 // Remove the document outline
                 dbContext.DocumentOutlines.Remove(documentProcess.DocumentOutline);
+            }
+
+            // Remove FileStorageSource relationships (but not the FileStorageSources themselves)
+            if (documentProcess.FileStorageSources.Any())
+            {
+                dbContext.DocumentProcessFileStorageSources.RemoveRange(documentProcess.FileStorageSources);
             }
 
             // Remove the document process itself

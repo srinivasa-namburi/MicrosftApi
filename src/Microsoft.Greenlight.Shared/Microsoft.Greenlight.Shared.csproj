@@ -38,6 +38,7 @@
 		<PackageReference Include="Microsoft.Orleans.Persistence.AzureStorage" Version="9.1.2" />
 		<PackageReference Include="Microsoft.Orleans.Reminders" Version="9.1.2" />
 		<PackageReference Include="Microsoft.Orleans.Reminders.AzureStorage" Version="9.1.2" />
+		<PackageReference Include="Microsoft.Orleans.Persistence.Redis" Version="9.1.2" />
 		<PackageReference Include="Microsoft.Orleans.Reminders.Redis" Version="9.1.2" />
 		<PackageReference Include="Microsoft.Orleans.Serialization.NewtonsoftJson" Version="9.1.2" />
 		<PackageReference Include="Microsoft.Orleans.Serialization.Protobuf" Version="9.1.2" />
@@ -106,7 +107,7 @@
 		<!-- PDF OCR and rendering fallbacks -->
 		<PackageReference Include="Docnet.Core" Version="2.7.0-alpha.1" />
 		<PackageReference Include="SixLabors.ImageSharp" Version="3.1.11" />
-		<PackageReference Include="Tesseract" Version="5.0.0" />
+		<PackageReference Include="Tesseract" Version="5.2.0" />
 		<!--Disabled temporarily, using project reference to keep compat with existing solutions 
 		    until we have completed Nuget package signing setup -->
 		<!--<PackageReference Include="Microsoft.Greenlight.Extensions.Plugins" Version="0.1.523" />-->
@@ -116,6 +117,7 @@
 		<ProjectReference Include="..\Microsoft.Greenlight.Grains.Document.Contracts\Microsoft.Greenlight.Grains.Document.Contracts.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.Grains.Review.Contracts\Microsoft.Greenlight.Grains.Review.Contracts.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.Grains.Validation.Contracts\Microsoft.Greenlight.Grains.Validation.Contracts.csproj" />
+		<ProjectReference Include="..\Microsoft.Greenlight.Grains.Shared.Contracts\Microsoft.Greenlight.Grains.Shared.Contracts.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.Shared.Configuration\Microsoft.Greenlight.Shared.Configuration.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.Shared.Contracts\Microsoft.Greenlight.Shared.Contracts.csproj" />
 		<ProjectReference Include="..\Microsoft.Greenlight.Shared.Enums\Microsoft.Greenlight.Shared.Enums.csproj" />

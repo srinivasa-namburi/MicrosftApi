@@ -6,6 +6,8 @@ using Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Events;
 using Microsoft.Greenlight.Shared.Contracts.Messages.DocumentGeneration.Events;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Review.Events;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Validation.Events;
+using Microsoft.Greenlight.Shared.Contracts.Messages.Reindexing.Events;
+using Microsoft.Greenlight.Shared.Contracts.DTO.SystemStatus;
 
 namespace Microsoft.Greenlight.Shared.Hubs;
 
@@ -198,5 +200,73 @@ public class NotificationHub : Hub<INotificationHubClient>
         {
             // Do nothing - this is not critical.
         }
+    }
+
+    /// <summary>
+    /// Sends a notification that document reindexing has started to the system-status group.
+    /// </summary>
+    /// <param name="notification">The document reindex started notification.</param>
+    public async Task SendDocumentReindexStartedNotification(DocumentReindexStartedNotification notification)
+    {
+        await Clients.Group("system-status").ReceiveDocumentReindexStartedNotification(notification);
+    }
+
+    /// <summary>
+    /// Sends a notification about document reindexing progress to the system-status group.
+    /// </summary>
+    /// <param name="notification">The document reindex progress notification.</param>
+    public async Task SendDocumentReindexProgressNotification(DocumentReindexProgressNotification notification)
+    {
+        await Clients.Group("system-status").ReceiveDocumentReindexProgressNotification(notification);
+    }
+
+    /// <summary>
+    /// Sends a notification that document reindexing has completed to the system-status group.
+    /// </summary>
+    /// <param name="notification">The document reindex completed notification.</param>
+    public async Task SendDocumentReindexCompletedNotification(DocumentReindexCompletedNotification notification)
+    {
+        await Clients.Group("system-status").ReceiveDocumentReindexCompletedNotification(notification);
+    }
+
+    /// <summary>
+    /// Sends a notification that document reindexing has failed to the system-status group.
+    /// </summary>
+    /// <param name="notification">The document reindex failed notification.</param>
+    public async Task SendDocumentReindexFailedNotification(DocumentReindexFailedNotification notification)
+    {
+        await Clients.Group("system-status").ReceiveDocumentReindexFailedNotification(notification);
+    }
+
+    /// <summary>
+    /// Sends CR reindex notifications to the system-status group.
+    /// </summary>
+    public async Task SendContentReferenceReindexStartedNotification(ContentReferenceReindexStartedNotification notification)
+    {
+        await Clients.Group("system-status").ReceiveContentReferenceReindexStartedNotification(notification);
+    }
+
+    public async Task SendContentReferenceReindexProgressNotification(ContentReferenceReindexProgressNotification notification)
+    {
+        await Clients.Group("system-status").ReceiveContentReferenceReindexProgressNotification(notification);
+    }
+
+    public async Task SendContentReferenceReindexCompletedNotification(ContentReferenceReindexCompletedNotification notification)
+    {
+        await Clients.Group("system-status").ReceiveContentReferenceReindexCompletedNotification(notification);
+    }
+
+    public async Task SendContentReferenceReindexFailedNotification(ContentReferenceReindexFailedNotification notification)
+    {
+        await Clients.Group("system-status").ReceiveContentReferenceReindexFailedNotification(notification);
+    }
+
+    /// <summary>
+    /// Sends a system status update notification to the system-status group.
+    /// </summary>
+    /// <param name="statusSnapshot">The current system status snapshot.</param>
+    public async Task SendSystemStatusUpdateNotification(SystemStatusSnapshot statusSnapshot)
+    {
+        await Clients.Group("system-status").ReceiveSystemStatusUpdateNotification(statusSnapshot);
     }
 }

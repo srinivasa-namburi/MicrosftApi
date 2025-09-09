@@ -63,7 +63,9 @@
 </style>
 <PageTitle>Generate New Document</PageTitle>
 
-<MudText Typo="Typo.h4" GutterBottom="true">Generate New Document for @DocumentProcessName</MudText>
+<MudPaper Class="pa-4">
+    <MudText Typo="Typo.h5">Generate New Document for @DocumentProcessName</MudText>
+    <MudDivider Class="mt-2 mb-3" />
 
 @if (!_isLoading)
 {
@@ -71,46 +73,41 @@
     {
         <CascadingValue Value="metadataModel">
             <MudForm @ref="metadataForm" Model="@metadataModel" Validation="ValidateMetadataModel" Class="full-width-container">
-                <MudCard>
-                    <MudCardContent>
-                        <!-- Document Title/Name Field -->
-                        <MudTextField @bind-Value="documentGenerationRequest.DocumentTitle"
-                                      Label="Document Title"
-                                      Variant="Variant.Filled"
-                                      Margin="Margin.Normal"
-                                      Required="true" />
-                    </MudCardContent>
+                <!-- Document Title/Name Field -->
+                <MudTextField @bind-Value="documentGenerationRequest.DocumentTitle"
+                              Label="Document Title"
+                              Variant="Variant.Filled"
+                              Margin="Margin.Normal"
+                              Required="true"
+                              Class="mb-4" />
 
-                    @foreach (var field in _metadataFields.OrderBy(f => f.Order))
-                    {
-                        <MudCardContent>
-                            <MudText Typo="Typo.h6">@field.DisplayName</MudText>
-                                @if (!string.IsNullOrEmpty(field.DescriptionToolTip))
-                                {
-                                    @*   Due to a display bug we're disabling this for now *@
-                                    @*   <MudTooltip Text="@field.DescriptionToolTip"
-                                                Class="sentiment-reasoning-tooltip w-100"
-                                                Placement="Placement.Bottom"
-                                                ShowOnHover="false"
-                                                ShowOnFocus="true"
-                                                ShowOnClick="true"
-                                                Arrow="true"
-                                                Inline="true"> *@
-                                        @RenderFieldComponent(field)
-                                    @* </MudTooltip> *@
-                                }
-                                else
-                                {
-                                    @RenderFieldComponent(field)
-                                }
-                        </MudCardContent>
-                    }
-                    <MudCardActions>
-                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="HandleSubmit" Disabled="@_isSubmitting" Style="mt-4">
-                            @_submitButtonText
-                        </MudButton>
-                    </MudCardActions>
-                </MudCard>
+                @foreach (var field in _metadataFields.OrderBy(f => f.Order))
+                {
+                    <div class="mb-4">
+                        <MudText Typo="Typo.h6" Class="mb-2">@field.DisplayName</MudText>
+                        @if (!string.IsNullOrEmpty(field.DescriptionToolTip))
+                        {
+                            @*   Due to a display bug we're disabling this for now *@
+                            @*   <MudTooltip Text="@field.DescriptionToolTip"
+                                        Class="sentiment-reasoning-tooltip w-100"
+                                        Placement="Placement.Bottom"
+                                        ShowOnHover="false"
+                                        ShowOnFocus="true"
+                                        ShowOnClick="true"
+                                        Arrow="true"
+                                        Inline="true"> *@
+                                @RenderFieldComponent(field)
+                            @* </MudTooltip> *@
+                        }
+                        else
+                        {
+                            @RenderFieldComponent(field)
+                        }
+                    </div>
+                }
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="HandleSubmit" Disabled="@_isSubmitting" Class="mt-4">
+                    @_submitButtonText
+                </MudButton>
             </MudForm>
         </CascadingValue>
     }
@@ -138,6 +135,7 @@ else
 {
     <MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Medium" Class="mt-4" />
 }
+</MudPaper>
 
 @code {
     [Parameter]

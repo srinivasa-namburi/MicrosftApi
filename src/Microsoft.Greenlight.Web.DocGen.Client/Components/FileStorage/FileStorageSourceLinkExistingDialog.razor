@@ -1,0 +1,123 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+
+@using MudBlazor
+@using Microsoft.Greenlight.Shared.Contracts.DTO.FileStorage
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@inject IFileStorageSourceApiClient FileStorageSourceApiClient
+@inject ISnackbar Snackbar
+
+@namespace Microsoft.Greenlight.Web.DocGen.Client.Components.FileStorage
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form">
+            <MudStack Spacing="3">
+                <MudText Typo="Typo.subtitle1">Link an existing storage source</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Select a storage source to associate with this @(_isProcess ? "document process" : "document library").
+                </MudText>
+
+                <MudSelect T="Guid" @bind-Value="_selectedSourceId" Label="Existing Source" Required="true">
+                    @if (_availableSources.Count == 0)
+                    {
+                        <MudSelectItem Value="Guid.Empty" Disabled="true">No unassociated sources available</MudSelectItem>
+                    }
+                    else
+                    {
+                        @foreach (var s in _availableSources)
+                        {
+                            <MudSelectItem Value="@s.Id">@s.Name (@s.FileStorageHost?.Name)</MudSelectItem>
+                        }
+                    }
+                </MudSelect>
+
+                <MudAlert Severity="Severity.Info" Dense="true">
+                    This links the existing source. To change container/path or host, edit the source under system configuration.
+                </MudAlert>
+            </MudStack>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Link" Disabled="_isSaving || _selectedSourceId == Guid.Empty">
+            @if (_isSaving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Link
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public Guid? DocumentProcessId { get; set; }
+    [Parameter] public Guid? DocumentLibraryId { get; set; }
+
+    private MudForm _form = null!;
+    private bool _isSaving;
+    private bool _isProcess => DocumentProcessId.HasValue;
+    private Guid _selectedSourceId = Guid.Empty;
+    private List<FileStorageSourceInfo> _availableSources = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var all = await FileStorageSourceApiClient.GetAllFileStorageSourcesAsync();
+            var associatedIds = new HashSet<Guid>();
+
+            if (DocumentProcessId.HasValue)
+            {
+                var assoc = await FileStorageSourceApiClient.GetFileStorageSourceAssociationsByProcessIdAsync(DocumentProcessId.Value);
+                foreach (var a in assoc) associatedIds.Add(a.FileStorageSourceId);
+            }
+            else if (DocumentLibraryId.HasValue)
+            {
+                var assoc = await FileStorageSourceApiClient.GetFileStorageSourceAssociationsByLibraryIdAsync(DocumentLibraryId.Value);
+                foreach (var a in assoc) associatedIds.Add(a.FileStorageSourceId);
+            }
+
+            _availableSources = all.Where(s => !associatedIds.Contains(s.Id) && s.IsActive).OrderBy(s => s.Name).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading sources: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task Link()
+    {
+        await _form.Validate();
+        if (!_form.IsValid || _selectedSourceId == Guid.Empty)
+        {
+            return;
+        }
+
+        try
+        {
+            _isSaving = true;
+            if (DocumentProcessId.HasValue)
+            {
+                await FileStorageSourceApiClient.AssociateSourceWithProcessAsync(DocumentProcessId.Value, _selectedSourceId);
+            }
+            else if (DocumentLibraryId.HasValue)
+            {
+                await FileStorageSourceApiClient.AssociateSourceWithLibraryAsync(DocumentLibraryId.Value, _selectedSourceId);
+            }
+
+            Snackbar.Add("Source linked successfully.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error linking source: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

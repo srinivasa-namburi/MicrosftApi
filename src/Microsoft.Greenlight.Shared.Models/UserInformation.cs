@@ -34,14 +34,3 @@ public class UserInformation : EntityBase
     /// </summary>
     public ThemePreference ThemePreference { get; set; } = ThemePreference.System;
 }
-
-/// <summary>
-/// Represents the authentication provider.
-/// </summary>
-public enum AuthenticationProvider
-{
-    /// <summary>
-    /// Azure Active Directory.
-    /// </summary>
-    AzureAD
-}

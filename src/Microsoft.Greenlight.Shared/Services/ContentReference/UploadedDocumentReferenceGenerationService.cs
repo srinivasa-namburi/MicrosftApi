@@ -1,24 +1,27 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Models;
-using Microsoft.Greenlight.Shared.Services.Search;
+using Microsoft.Greenlight.Shared.Services.Search.Abstractions;
 using System.Text;
 
 namespace Microsoft.Greenlight.Shared.Services.ContentReference;
 
 /// <summary>
-/// Service for generating content references from uploaded document files
+/// Legacy: generates ExternalFile content references from <see cref="ExportedDocumentLink"/>.
+/// New uploads should prefer the FileStorageSource + ExternalLinkAsset path
+/// (see FileController.UploadTemporaryReferenceFile and IFileStorageService).
 /// </summary>
 public class UploadedDocumentReferenceGenerationService : IContentReferenceGenerationService<ExportedDocumentLink>
 {
     private readonly DocGenerationDbContext _dbContext;
     private readonly ILogger<UploadedDocumentReferenceGenerationService> _logger;
-    private readonly IKernelMemoryInstanceFactory _kernelMemoryFactory;
     private readonly IAiEmbeddingService _aiEmbeddingService;
     private readonly Helpers.AzureFileHelper _fileHelper;
+    private readonly ITextExtractionService _textExtractionService;
 
     /// <summary>
     /// Initializes a new instance of the uploaded document reference generation service.
@@ -26,15 +29,15 @@ public class UploadedDocumentReferenceGenerationService : IContentReferenceGener
     public UploadedDocumentReferenceGenerationService(
         DocGenerationDbContext dbContext,
         ILogger<UploadedDocumentReferenceGenerationService> logger,
-        IKernelMemoryInstanceFactory kernelMemoryFactory,
         IAiEmbeddingService aiEmbeddingService,
-        Helpers.AzureFileHelper fileHelper)
+        Helpers.AzureFileHelper fileHelper,
+        ITextExtractionService textExtractionService)
     {
         _dbContext = dbContext;
         _logger = logger;
-        _kernelMemoryFactory = kernelMemoryFactory;
         _aiEmbeddingService = aiEmbeddingService;
         _fileHelper = fileHelper;
+        _textExtractionService = textExtractionService;
     }
 
     /// <inheritdoc />
@@ -86,37 +89,12 @@ public class UploadedDocumentReferenceGenerationService : IContentReferenceGener
                 return null;
             }
 
-            // Use KernelMemory to extract text
-            var memory = _kernelMemoryFactory.GetKernelMemoryForAdhocUploads();
-
-            // We'll use a unique ID for this import based on the file ID
-            string documentId = $"temp-extraction-{uploadedFileId}";
-
-
-            // Import the document (just for text extraction, we'll remove it later)
+            // Extract text directly using the shared text extraction service (Semantic Kernel pipeline)
+            string fileContent = string.Empty;
             await using (fileStream)
             {
-                await memory.ImportDocumentAsync(
-                    documentId: documentId,
-                    content: fileStream,
-                    fileName: uploadedFile.FileName,
-                    steps: new List<string>() { "extract" }
-                    );
+                fileContent = await _textExtractionService.ExtractTextAsync(fileStream, uploadedFile.FileName);
             }
-
-            // Various ways to retrieve the document content
-            var streamableFileContent = await memory.ExportFileAsync(documentId, $"{uploadedFile.FileName}.extract.txt");
-            var fileStreamData = await streamableFileContent.GetStreamAsync();
-
-            // Read the filestream data into a string
-            string fileContent = "";
-            using (var reader = new StreamReader(fileStreamData))
-            {
-                fileContent = reader.ReadToEnd();
-            }
-
-            // Clean up the temporary document
-            await memory.DeleteDocumentAsync(documentId);
 
             // Build the text content from the search results
             if (fileContent.Length > 0)

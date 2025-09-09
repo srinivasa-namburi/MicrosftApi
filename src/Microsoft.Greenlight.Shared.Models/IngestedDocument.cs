@@ -1,4 +1,5 @@
 using Microsoft.Greenlight.Shared.Enums;
+using Microsoft.Greenlight.Shared.Models.FileStorage;
 
 namespace Microsoft.Greenlight.Shared.Models;
 
@@ -104,4 +105,10 @@ public class IngestedDocument : EntityBase
     /// Indicates whether this document has been successfully indexed in the vector store.
     /// </summary>
     public bool IsVectorStoreIndexed { get; set; } = false;
+
+    /// <summary>
+    /// Navigation property for file acknowledgment associations.
+    /// Links to FileAcknowledgmentRecord instances through the junction table.
+    /// </summary>
+    public virtual ICollection<IngestedDocumentFileAcknowledgment> IngestedDocumentFileAcknowledgments { get; set; } = [];
 }

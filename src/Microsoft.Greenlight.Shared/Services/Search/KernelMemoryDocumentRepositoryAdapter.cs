@@ -32,8 +32,8 @@ public class KernelMemoryDocumentRepositoryAdapter : IDocumentRepository
 	}
 
 	/// <inheritdoc />
-	public Task StoreContentAsync(string documentLibraryName, string indexName, Stream fileStream, string fileName, string? documentUrl, string? userId = null, Dictionary<string, string>? additionalTags = null)
-		=> _inner.StoreContentAsync(documentLibraryName, indexName, fileStream, fileName, documentUrl, userId, additionalTags);
+	public Task StoreContentAsync(string documentLibraryName, string indexName, Stream fileStream, string fileName, string? documentReference, string? userId = null, Dictionary<string, string>? additionalTags = null)
+		=> _inner.StoreContentAsync(documentLibraryName, indexName, fileStream, fileName, documentReference, userId, additionalTags);
 
 	/// <inheritdoc />
 	public Task DeleteContentAsync(string documentLibraryName, string indexName, string fileName)

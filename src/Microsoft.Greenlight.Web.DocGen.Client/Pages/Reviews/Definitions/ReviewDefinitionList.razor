@@ -1,0 +1,333 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+@page "/reviews"
+
+@using Microsoft.Greenlight.Web.DocGen.Client.Components.Authorization
+@using Microsoft.Greenlight.Shared.Contracts.Authorization
+@using Microsoft.Greenlight.Shared.Contracts.DTO
+@using Microsoft.Greenlight.Shared.Enums
+@inject IReviewApiClient ReviewApiClient
+@inject NavigationManager Navigation
+@inject IDialogService DialogService
+@inject IFileApiClient FileApiClient
+@inject IContentReferenceApiClient ContentReferenceApiClient
+@inject ISnackbar Snackbar
+
+<PageTitle>Review Definitions</PageTitle>
+
+<MudPaper Class="pa-4">
+    <MudText Typo="Typo.h5" data-testid="reviews-title">Review Definitions</MudText>
+    <MudDivider Class="mt-2 mb-3" />
+
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+        <div></div>
+        <PermissionView Permission="@PermissionKeys.DefineReviews" Mode="PermissionMode.DisableControls">
+            <MudButton OnClick="AddReview" Variant="Variant.Filled" Color="Color.Primary">Add Review Definition</MudButton>
+        </PermissionView>
+    </MudStack>
+
+    @if (_reviews is null)
+    {
+        <MudSkeleton />
+    }
+    else
+    {
+                    <MudDataGrid Items="@_reviews.OrderByDescending(x => x.Title)"
+                                 T="ReviewDefinitionInfo"
+                                 Hover="true"
+                                 Filterable="false"
+                                 SortMode="@SortMode.Single"
+                                 Groupable="false"
+                                 MultiSelection="true"
+                                 RowClick="@RowClicked"
+                                 SelectOnRowClick="false"
+                                 @bind-SelectedItems="_selectedReviews">
+                        <ToolBarContent>
+                            @if (_selectedReviews.Count > 0)
+                            {
+                                <PermissionView Permission="@PermissionKeys.DefineReviews" Mode="PermissionMode.DisableControls">
+                                    <MudButton OnClick="@DeletedSelectedReviews" Variant="Variant.Filled" Color="Color.Error" Class="float-right">Delete Selected</MudButton>
+                                </PermissionView>
+                            }
+                        </ToolBarContent>
+                        <Columns>
+                            <SelectColumn T="ReviewDefinitionInfo" ShowInFooter="false" ShowInHeader="true" />
+                            <PropertyColumn Property="x => x.Title" />
+                            <TemplateColumn CellClass="d-flex justify-end">
+                                <CellTemplate>
+                                    <MudStack Row="true" Spacing="3">
+                                        <PermissionView Permission="@PermissionKeys.ExecuteReviews" Mode="PermissionMode.DisableControls">
+                                            <MudTooltip Delay="400" Text="Execute Review">
+                                                <MudIconButton OnClick="@(async () => await ExecuteReview(context.Item))" Size="@Size.Small" Icon="@Icons.Material.Filled.Lightbulb"></MudIconButton>
+                                            </MudTooltip>
+                                        </PermissionView>
+                                        <PermissionView Permission="@PermissionKeys.DefineReviews" Mode="PermissionMode.DisableControls">
+                                            <MudTooltip Delay="400" Text="Edit Review Definition">
+                                                <MudIconButton OnClick="@(() => ViewReview(context.Item))" Size="@Size.Small" Icon="@Icons.Material.Filled.Edit"></MudIconButton>
+                                            </MudTooltip>
+                                        </PermissionView>
+                                        <PermissionView Permission="@PermissionKeys.DefineReviews" Mode="PermissionMode.DisableControls">
+                                            <MudTooltip Delay="400" Text="Delete (you will be asked to confirm)">
+                                                <MudIconButton OnClick="@(async () => await DeleteReview(context.Item))" Size="@Size.Small" Icon="@Icons.Material.Filled.Delete"></MudIconButton>
+                                            </MudTooltip>
+                                        </PermissionView>
+                                    </MudStack>
+                                </CellTemplate>
+                            </TemplateColumn>
+                        </Columns>
+                    </MudDataGrid>
+    }
+</MudPaper>
+
+<MudPaper Class="pa-4 mt-4">
+    <MudText Typo="Typo.h5" data-testid="recent-reviews-title">Recent Reviews</MudText>
+    <MudDivider Class="mt-2 mb-3" />
+                @if (_recentReviewInstances == null)
+                {
+                    <MudSkeleton />
+                    <MudSkeleton />
+                    <MudSkeleton />
+                }
+                else if (_recentReviewInstances.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Info">No reviews have been executed yet.</MudAlert>
+                }
+                else
+                {
+                    <MudList T="object" Dense="true" data-testid="recent-reviews">
+                        @foreach (var instance in _recentReviewInstances)
+                        {
+                            <MudListItem T="object" Class="cursor-pointer" OnClick="() => ViewReviewInstance(instance)" data-testid="@($"review-instance-{instance.Id}")">
+                                <MudGrid AlignItems="Center">
+                                    <MudItem xs="10">
+                                        <div class="d-flex align-center">
+                                            <MudIcon Icon="@GetStatusIcon(instance.Status)"
+                                                     Color="@GetStatusColor(instance.Status)"
+                                                     Class="mr-2" />
+                                            <div>
+                                                <MudText Typo="Typo.body1">
+                                                    @(_reviewDefinitionDict.ContainsKey(instance.ReviewDefinitionId)
+                                                        ? _reviewDefinitionDict[instance.ReviewDefinitionId].Title
+                                                        : "Unknown Review")
+                                                </MudText>
+                                                <MudText Typo="Typo.caption">Status: @instance.Status</MudText>
+                                            </div>
+                                        </div>
+                                    </MudItem>
+                                    <MudItem xs="2" Class="d-flex justify-end">
+                                        @if (instance.ExportedLinkId != Guid.Empty && _fileInfoDict.ContainsKey(instance.ExportedLinkId))
+                                        {
+                                            var toolTipText = _fileInfoDict[instance.ExportedLinkId]?.FileName ?? "Download Document";
+                                            <MudTooltip Text="@toolTipText">
+                                                <MudIconButton Icon="@Icons.Material.Filled.DownloadForOffline"
+                                                               Color="Color.Primary"
+                                                               Size="Size.Small"
+                                                               data-testid="@($"download-reference-{instance.Id}")"
+                                                               OnClick="@(() => DownloadReviewContentReference(instance))" />
+                                            </MudTooltip>
+                                        }
+                                    </MudItem>
+                                </MudGrid>
+                            </MudListItem>
+                            <MudDivider />
+                        }
+                    </MudList>
+                }
+</MudPaper>
+
+@code {
+    private List<ReviewDefinitionInfo>? _reviews;
+    private HashSet<ReviewDefinitionInfo> _selectedReviews = [];
+    private List<ReviewInstanceInfo>? _recentReviewInstances;
+    private Dictionary<Guid, ReviewDefinitionInfo> _reviewDefinitionDict = new();
+    private Dictionary<Guid, ExportedDocumentLinkInfo> _fileInfoDict = new();
+    private List<ContentReferenceItemInfo> _cachedReferences = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _reviews = await ReviewApiClient.GetAllReviews();
+
+        // Create a dictionary for quick lookup of review definitions
+        if (_reviews != null)
+        {
+            _reviewDefinitionDict = _reviews.ToDictionary(r => r.Id);
+        }
+
+        // Fetch recent review instances
+        await LoadRecentReviewInstances();
+
+        // Do not preload all references to avoid heavy scans without cache
+        _cachedReferences = new List<ContentReferenceItemInfo>();
+    }
+
+    private async Task LoadRecentReviewInstances()
+    {
+        try
+        {
+            // Get the 5 most recent review instances
+            _recentReviewInstances = await ReviewApiClient.GetRecentReviewInstances(5);
+
+            // Load file info for all exported document links
+            await LoadFileInfo();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading recent reviews: {ex.Message}", Severity.Error);
+            _recentReviewInstances = new List<ReviewInstanceInfo>();
+        }
+    }
+
+    private async Task LoadFileInfo()
+    {
+        if (_recentReviewInstances == null) return;
+
+        foreach (var instance in _recentReviewInstances)
+        {
+            if (instance.ExportedLinkId != Guid.Empty && !_fileInfoDict.ContainsKey(instance.ExportedLinkId))
+            {
+                try
+                {
+                    var fileInfo = await FileApiClient.GetFileInfoById(instance.ExportedLinkId);
+                    if (fileInfo != null)
+                    {
+                        _fileInfoDict[instance.ExportedLinkId] = fileInfo;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Error loading file info for {instance.ExportedLinkId}: {ex.Message}");
+                }
+            }
+        }
+    }
+
+    private async Task DownloadReviewContentReference(ReviewInstanceInfo instance)
+    {
+        try
+        {
+            // Fetch by source id to avoid full-list scans
+            var reference = await ContentReferenceApiClient.GetBySourceIdAsync(instance.Id, ContentReferenceType.ReviewItem);
+
+            if (reference == null)
+            {
+                Snackbar.Add($"No content reference found for review {instance.Id}", Severity.Warning);
+                return;
+            }
+
+            var url = await ContentReferenceApiClient.GetDownloadUrlForContentReferenceAsync(reference.Id);
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                Snackbar.Add("Could not resolve download URL", Severity.Error);
+                return;
+            }
+
+            Navigation.NavigateTo(url!, new NavigationOptions { ForceLoad = true });
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error downloading content reference: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private string GetStatusIcon(ReviewInstanceStatus status)
+    {
+        return status switch
+        {
+            ReviewInstanceStatus.Pending => Icons.Material.Filled.Pending,
+            ReviewInstanceStatus.InProgress => Icons.Material.Filled.HourglassTop,
+            ReviewInstanceStatus.Completed => Icons.Material.Filled.CheckCircle,
+            ReviewInstanceStatus.Failed => Icons.Material.Filled.Error,
+            _ => Icons.Material.Filled.Help
+        };
+    }
+
+    private Color GetStatusColor(ReviewInstanceStatus status)
+    {
+        return status switch
+        {
+            ReviewInstanceStatus.Pending => Color.Default,
+            ReviewInstanceStatus.InProgress => Color.Info,
+            ReviewInstanceStatus.Completed => Color.Success,
+            ReviewInstanceStatus.Failed => Color.Error,
+            _ => Color.Default
+        };
+    }
+
+    private void ViewReviewInstance(ReviewInstanceInfo instance)
+    {
+        Navigation.NavigateTo($"/review-instances/{instance.Id}");
+    }
+
+    private void ViewReview(ReviewDefinitionInfo review)
+    {
+        Navigation.NavigateTo($"/reviews/{review.Id}/edit");
+    }
+
+    private void AddReview()
+    {
+        Navigation.NavigateTo("/reviews/add");
+    }
+
+    private void RowClicked(DataGridRowClickEventArgs<ReviewDefinitionInfo> obj)
+    {
+        var review = obj.Item;
+        ViewReview(review);
+    }
+
+    private async Task DeleteReview(ReviewDefinitionInfo review)
+    {
+        var parameters = new DialogParameters
+        {
+            { "ContentText", $"Are you sure you want to delete the Review Definition '{review.Title}'?" },
+            { "ButtonText", "Delete" },
+            { "DialogColor", Color.Error }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<ConfirmationDialog>("Delete Review Definition", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            var deleteResult = await ReviewApiClient.DeleteReview(review.Id);
+            if (deleteResult is true)
+            {
+                _reviews!.Remove(review);
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private async Task DeletedSelectedReviews()
+    {
+        var parameters = new DialogParameters
+        {
+            { "ContentText", $"Are you sure you want to delete {_selectedReviews.Count} Review Definitions?" },
+            { "ButtonText", "Delete" },
+            { "DialogColor", Color.Error }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<ConfirmationDialog>("Delete (Multiple) Review Definitions", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            foreach (var review in _selectedReviews)
+            {
+                var deleteResult = await ReviewApiClient.DeleteReview(review.Id);
+                if (deleteResult is true)
+                {
+                    _reviews!.Remove(review);
+                }
+            }
+
+            _selectedReviews.Clear();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task ExecuteReview(ReviewDefinitionInfo contextItem)
+    {
+        Navigation.NavigateTo($"/review-instances/new/definition/{contextItem.Id}");
+    }
+}

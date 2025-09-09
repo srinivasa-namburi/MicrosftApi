@@ -148,6 +148,7 @@ namespace Microsoft.Greenlight.Shared.Services
             
             var library = await dbContext.DocumentLibraries
                 .Include(dl => dl.DocumentProcessAssociations)
+                .Include(dl => dl.FileStorageSources)
                 .FirstOrDefaultAsync(dl => dl.Id == id);
 
             if (library == null)
@@ -158,6 +159,12 @@ namespace Microsoft.Greenlight.Shared.Services
             if (library.DocumentProcessAssociations.Any())
             {
                 dbContext.DocumentLibraryDocumentProcessAssociations.RemoveRange(library.DocumentProcessAssociations);
+            }
+
+            // Remove FileStorageSource relationships (but not the FileStorageSources themselves)
+            if (library.FileStorageSources.Any())
+            {
+                dbContext.DocumentLibraryFileStorageSources.RemoveRange(library.FileStorageSources);
             }
 
             dbContext.DocumentLibraries.Remove(library);

@@ -10,13 +10,13 @@
 @inject ILogger<UserInfoComponent> Logger
 @implements IDisposable
 
-<MudMenu AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft">
+<MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
     <ActivatorContent>
         <MudTooltip Text="@_currentUser?.Name">
-            <MudButton Variant="Variant.Text" Color="Color.Inherit" Class="pa-2">
-                <MudIcon Icon="@Icons.Material.Filled.Person" Class="mr-2" />
-                <MudText>@_displayName</MudText>
-            </MudButton>
+            <div Style="cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 4px;">
+                <MudIcon Icon="@Icons.Material.Outlined.Person" Size="Size.Medium" Color="Color.Inherit" />
+                <MudText Typo="Typo.body2" Style="font-weight: 500;" Color="Color.Inherit">@_displayName</MudText>
+            </div>
         </MudTooltip>
     </ActivatorContent>
     <ChildContent>
@@ -27,23 +27,19 @@
             {
                 <MudGrid>
                     <MudItem xs="12">
-                        <MudText Typo="Typo.subtitle2">Name:</MudText>
-                        <MudText>@_currentUser.Name</MudText>
+                        <MudText Typo="Typo.body2" Style="font-weight: 600;">Name:</MudText>
+                        <MudText Typo="Typo.body2">@_currentUser.Name</MudText>
                     </MudItem>
                     <MudItem xs="12">
-                        <MudText Typo="Typo.subtitle2">Email:</MudText>
-                        <MudText>@_currentUser.Email</MudText>
-                    </MudItem>
-                    <MudItem xs="12">
-                        <MudText Typo="Typo.subtitle2">User ID:</MudText>
-                        <MudText Class="text-caption" Style="word-break: break-all;">@_currentUser.UserId</MudText>
+                        <MudText Typo="Typo.body2" Style="font-weight: 600;">Email:</MudText>
+                        <MudText Typo="Typo.body2">@_currentUser.Email</MudText>
                     </MudItem>
                 </MudGrid>
 
                 <MudDivider Class="my-3" />
 
                 <MudExpansionPanels MultiExpansion="false">
-                    <MudExpansionPanel IsInitiallyExpanded="false">
+                    <MudExpansionPanel Expanded="false">
                         <TitleContent>
                             <div style="display: flex; align-items: center;">
                                 <MudIcon Icon="@Icons.Material.Filled.Security" class="mr-3"></MudIcon>
@@ -63,7 +59,7 @@
                                     <div class="d-flex flex-wrap gap-2">
                                         @foreach (var permission in _userPermissions.OrderBy(p => p))
                                         {
-                                            <MudChip Size="Size.Small" Color="Color.Success" Class="ma-1">
+                                            <MudChip T="string" Size="Size.Small" Color="Color.Success" Class="ma-1">
                                                 @GetPermissionDisplayName(permission)
                                             </MudChip>
                                         }
@@ -87,6 +83,22 @@
                     </MudExpansionPanel>
                 </MudExpansionPanels>
 
+                @* Debug Information Section *@
+                <MudExpansionPanels MultiExpansion="false" Class="mt-3">
+                    <MudExpansionPanel Expanded="false">
+                        <TitleContent>
+                            <div style="display: flex; align-items: center;">
+                                <MudIcon Icon="@Icons.Material.Outlined.BugReport" class="mr-3"></MudIcon>
+                                <MudText Typo="Typo.caption">Debug Information</MudText>
+                            </div>
+                        </TitleContent>
+                        <ChildContent>
+                            <MudText Typo="Typo.body2" Style="font-weight: 600;">User ID:</MudText>
+                            <MudText Typo="Typo.caption" Style="word-break: break-all; font-family: monospace;">@_currentUser.UserId</MudText>
+                        </ChildContent>
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
+
                 <MudDivider Class="my-3" />
 
                 @* Logout Section *@
@@ -94,13 +106,10 @@
                     <form method="post" action="authentication/logout">
                         <AntiforgeryToken />
                         <input type="hidden" name="ReturnUrl" value="@_currentUrl" />
-                        <MudButton ButtonType="ButtonType.Submit" 
-                                   Variant="Variant.Filled" 
-                                   Color="Color.Error" 
-                                   StartIcon="@Icons.Material.Filled.ExitToApp"
-                                   Class="mt-2">
+                        <button type="submit" class="mud-button mud-ripple mud-button-filled mud-button-filled-error mt-2" style="color:white; display: flex; align-items: center; gap: 8px;">
+                            <MudIcon Icon="@Icons.Material.Filled.ExitToApp" />
                             Logout
-                        </MudButton>
+                        </button>
                     </form>
                 </div>
             }
@@ -224,4 +233,4 @@
     {
         NavigationManager.LocationChanged -= OnLocationChanged;
     }
-}}
+}

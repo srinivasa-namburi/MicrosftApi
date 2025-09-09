@@ -18,7 +18,7 @@
 </MudDialog>
 
 @code {
-    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = default!;
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = default!;
 
     [Parameter] public List<DocumentProcessInfo> AvailableProcesses { get; set; } = new();
     [Parameter] public Guid DocumentLibraryId { get; set; }

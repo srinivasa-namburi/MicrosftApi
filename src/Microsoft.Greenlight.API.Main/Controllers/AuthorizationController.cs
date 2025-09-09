@@ -9,6 +9,8 @@ using Microsoft.Greenlight.Shared.Contracts.DTO.Auth;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Models;
+using Microsoft.Greenlight.API.Main.Authorization;
+using Microsoft.Extensions.Configuration;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
@@ -21,6 +23,8 @@ public class AuthorizationController : BaseController
     private readonly DocGenerationDbContext _dbContext;
     private readonly IMapper _mapper;
     private readonly IClusterClient _clusterClient;
+    private readonly ICachedPermissionService _cachedPermissionService;
+    private readonly HashSet<string> _trustedCallerClientIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly ILogger<AuthorizationController> _logger;
 
     /// <summary>
@@ -34,13 +38,42 @@ public class AuthorizationController : BaseController
         DocGenerationDbContext dbContext,
         IMapper mapper,
         IClusterClient clusterClient,
-        ILogger<AuthorizationController> logger
+        ILogger<AuthorizationController> logger,
+        ICachedPermissionService cachedPermissionService,
+        IConfiguration configuration
     )
     {
         _dbContext = dbContext;
         _mapper = mapper;
         _clusterClient = clusterClient;
         _logger = logger;
+        _cachedPermissionService = cachedPermissionService;
+
+        // Load trusted caller client IDs (Entra app client IDs) from configuration if provided.
+        // Comma or space separated list under AzureAd:TrustedCallerClientIds
+        var raw = configuration["AzureAd:TrustedCallerClientIds"];
+        if (!string.IsNullOrWhiteSpace(raw))
+        {
+            foreach (var part in raw.Split(new[] { ',', ' ', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                _trustedCallerClientIds.Add(part);
+            }
+            if (_trustedCallerClientIds.Count > 0)
+            {
+                _logger.LogInformation("AuthorizationController configured with {Count} trusted caller client IDs", _trustedCallerClientIds.Count);
+            }
+        }
+
+        // Final fallback: if not configured, accept our own ClientId by default
+        if (_trustedCallerClientIds.Count == 0)
+        {
+            var selfClientId = configuration["AzureAd:ClientId"];
+            if (!string.IsNullOrWhiteSpace(selfClientId))
+            {
+                _trustedCallerClientIds.Add(selfClientId);
+                _logger.LogInformation("AuthorizationController defaulted TrustedCallerClientIds to its own ClientId");
+            }
+        }
     }
 
     /// <summary>
@@ -90,6 +123,82 @@ public class AuthorizationController : BaseController
     }
 
     /// <summary>
+    /// Upserts the user and synchronizes Entra roles to Greenlight assignments using provided token roles.
+    /// Applies fallback FullAccess when token contains DocumentGeneration and no explicit mapping/assignment exists.
+    /// </summary>
+    /// <param name="request">The request containing user identity and token roles.</param>
+    /// <returns>No content on success.</returns>
+    [HttpPost("first-login-sync")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [Consumes("application/json")]
+    [Authorize]
+    public async Task<IActionResult> FirstLoginSync([FromBody] FirstLoginSyncRequest? request)
+    {
+        if (request == null || string.IsNullOrWhiteSpace(request.ProviderSubjectId) || string.IsNullOrWhiteSpace(request.FullName))
+        {
+            return BadRequest("Missing required fields for first login sync");
+        }
+
+        // Optional hardening: if configured, restrict to trusted callers by azp/appid claim
+        if (_trustedCallerClientIds.Count > 0)
+        {
+            var clientId = HttpContext.User.FindFirst("azp")?.Value
+                           ?? HttpContext.User.FindFirst("appid")?.Value;
+            if (string.IsNullOrEmpty(clientId) || !_trustedCallerClientIds.Contains(clientId))
+            {
+                _logger.LogWarning("FirstLoginSync denied for untrusted caller clientId={ClientId}", clientId ?? "<null>");
+                return Forbid();
+            }
+        }
+
+        // Upsert user information
+        var userInformation = await _dbContext.UserInformations
+            .FirstOrDefaultAsync(x => x.ProviderSubjectId == request.ProviderSubjectId);
+
+        if (userInformation == null)
+        {
+            userInformation = new UserInformation
+            {
+                ProviderSubjectId = request.ProviderSubjectId,
+                FullName = request.FullName,
+                Email = request.Email,
+                CreatedUtc = DateTime.UtcNow,
+                ModifiedUtc = DateTime.UtcNow
+            };
+            _dbContext.UserInformations.Add(userInformation);
+        }
+        else
+        {
+            userInformation.FullName = request.FullName;
+            userInformation.Email = request.Email;
+            userInformation.ModifiedUtc = DateTime.UtcNow;
+            _dbContext.UserInformations.Update(userInformation);
+        }
+        await _dbContext.SaveChangesAsync();
+
+        // Sync roles based on provided token role names/ids
+        var tokenRoleNames = request.TokenRoleNames?.ToHashSet(StringComparer.OrdinalIgnoreCase) ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var tokenRoleIds = request.TokenRoleIds?.ToHashSet() ?? new HashSet<Guid>();
+
+        try
+        {
+            await _cachedPermissionService.SyncUserRolesAndGetPermissionsAsync(
+                request.ProviderSubjectId,
+                tokenRoleNames,
+                tokenRoleIds,
+                CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to sync roles during first login for {ProviderSubjectId}", request.ProviderSubjectId);
+        }
+
+        return NoContent();
+    }
+
+    /// <summary>
     /// Upserts the user's bearer access token used for downstream services (e.g., connected MCP servers).
     /// </summary>
     /// <param name="payload">The user token payload.</param>
@@ -119,8 +228,30 @@ public class AuthorizationController : BaseController
 
         _logger.LogInformation("SetUserToken received for sub {Sub}. Token length={TokenLength}.", callerSub, payload.AccessToken?.Length ?? 0);
 
-        var grain = _clusterClient.GetGrain<IUserTokenStoreGrain>(callerSub);
-        await grain.SetTokenAsync(payload);
+        // If this fails it usually means that the silo hasn't fully started yet.
+        // Add a one-time 15-second retry loop to handle this scenario, retrying every 3 seconds.
+
+        const int maxRetries = 5;
+        var delayBetweenRetries = TimeSpan.FromSeconds(3);
+        for (var attempt = 1; attempt <= maxRetries; attempt++)
+        {
+            try
+            {
+                var grain = _clusterClient.GetGrain<IUserTokenStoreGrain>(callerSub);
+                await grain.SetTokenAsync(payload);
+                return NoContent();
+            }
+            catch (Exception ex) when (attempt < maxRetries)
+            {
+                _logger.LogWarning("Attempt {Attempt} to set user token failed. Retrying in {Delay}...", attempt, delayBetweenRetries);
+                await Task.Delay(delayBetweenRetries);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "All attempts to set user token failed.");
+                throw; // Re-throw the exception after all retries have been exhausted
+            }
+        }
         return NoContent();
     }
 

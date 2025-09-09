@@ -1,0 +1,7 @@
+﻿<Project>
+  <PropertyGroup>
+    <!-- Do not escalate common NuGet warnings to errors even when TreatWarningsAsErrors is true in some projects -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1603;NU1803;NU1903</WarningsNotAsErrors>
+  </PropertyGroup>
+</Project>
+

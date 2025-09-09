@@ -14,6 +14,9 @@ using Npgsql;
 using Orleans.Concurrency;
 using Azure.Search.Documents.Indexes;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Greenlight.Grains.ApiSpecific.Contracts;
+using Microsoft.Greenlight.Grains.Ingestion.Contracts;
+using Microsoft.Greenlight.Shared.Contracts.Messages.Reindexing.Events;
 
 namespace Microsoft.Greenlight.Grains.Shared.Scheduling;
 
@@ -29,6 +32,9 @@ public class RepositoryIndexMaintenanceGrain : Grain, IRepositoryIndexMaintenanc
     private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory; // Added for cleanup task
     private const string DummyDocumentContainer = "admin";
     private const string DummyDocumentName = "DummyDocument.pdf";
+    
+    // Cache for tracking reindexing operations
+    private readonly Dictionary<string, string> _activeReindexingOperations = new();
 
     public RepositoryIndexMaintenanceGrain(
         IServiceProvider sp,
@@ -103,6 +109,17 @@ public class RepositoryIndexMaintenanceGrain : Grain, IRepositoryIndexMaintenanc
 
         // Cleanup orphaned ingested document records for removed processes/libraries
         await RemoveOrphanedIngestedDocumentsAsync(documentProcessInfoService, documentLibraryInfoService);
+
+        // Automatically validate schemas and trigger reindexing if needed
+        try
+        {
+            await ValidateAndReindexSchemasAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to validate schemas and trigger reindexing during maintenance");
+            // Don't fail the entire maintenance process due to schema validation issues
+        }
     }
 
     private async Task RemoveOrphanedIngestedDocumentsAsync(
@@ -283,7 +300,365 @@ public class RepositoryIndexMaintenanceGrain : Grain, IRepositoryIndexMaintenanc
                 "DummyDocument.pdf");
         }
 
-        dummyDocumentStream.Dispose();
+        await dummyDocumentStream.DisposeAsync();
+    }
+
+    /// <inheritdoc/>
+    public async Task ValidateAndReindexSchemasAsync()
+    {
+        var documentProcessInfoService = _sp.GetRequiredService<IDocumentProcessInfoService>();
+        var documentLibraryInfoService = _sp.GetRequiredService<IDocumentLibraryInfoService>();
+        
+        // Try to get the SignalR notifier grain, but don't fail if it's not available (e.g., during silo startup)
+        ISignalRNotifierGrain? signalRNotifier = null;
+        try
+        {
+            signalRNotifier = _sp.GetService<ISignalRNotifierGrain>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "SignalR notifier grain not available during schema validation - notifications will be skipped");
+        }
+
+        _logger.LogInformation("Starting schema validation and reindexing check for all vector stores");
+
+        // Get all document processes and libraries
+        var documentProcesses = await documentProcessInfoService.GetCombinedDocumentProcessInfoListAsync();
+        var documentLibraries = await documentLibraryInfoService.GetAllDocumentLibrariesAsync();
+        
+        var vectorStoreProvider = _sp.GetRequiredService<ISemanticKernelVectorStoreProvider>();
+        var embeddingService = _sp.GetRequiredService<IAiEmbeddingService>();
+
+        // Check document processes
+        foreach (var documentProcess in documentProcesses.Where(dp => dp.LogicType == DocumentProcessLogicType.KernelMemory))
+        {
+            // Get the correct embedding dimensions for this specific document process
+            var (_, expectedDimensions) = await embeddingService.ResolveEmbeddingConfigForDocumentProcessAsync(documentProcess.ShortName);
+            
+            foreach (var repository in documentProcess.Repositories)
+            {
+                await ValidateAndReindexIfNeeded(
+                    vectorStoreProvider, signalRNotifier,
+                    repository, documentProcess.ShortName, 
+                    DocumentLibraryType.PrimaryDocumentProcessLibrary,
+                    expectedDimensions);
+            }
+        }
+
+        // Check document libraries  
+        foreach (var documentLibrary in documentLibraries.Where(dl => dl.LogicType == DocumentProcessLogicType.KernelMemory))
+        {
+            // Get the correct embedding dimensions for this specific document library
+            var (_, expectedDimensions) = await embeddingService.ResolveEmbeddingConfigForDocumentLibraryAsync(documentLibrary.ShortName);
+            
+            await ValidateAndReindexIfNeeded(
+                vectorStoreProvider, signalRNotifier,
+                documentLibrary.IndexName, documentLibrary.ShortName,
+                DocumentLibraryType.AdditionalDocumentLibrary,
+                expectedDimensions);
+        }
+
+        _logger.LogInformation("Completed schema validation and reindexing check");
+    }
+
+    /// <inheritdoc/>
+    public async Task<IndexStatusSummary> GetIndexStatusSummaryAsync()
+    {
+        var documentProcessInfoService = _sp.GetRequiredService<IDocumentProcessInfoService>();
+        var documentLibraryInfoService = _sp.GetRequiredService<IDocumentLibraryInfoService>();
+        var vectorStoreProvider = _sp.GetRequiredService<ISemanticKernelVectorStoreProvider>();
+        var embeddingService = _sp.GetRequiredService<IAiEmbeddingService>();
+        
+        var indexes = new List<IndexStatus>();
+
+        // Check document processes
+        var documentProcesses = await documentProcessInfoService.GetCombinedDocumentProcessInfoListAsync();
+        foreach (var documentProcess in documentProcesses.Where(dp => dp.LogicType == DocumentProcessLogicType.KernelMemory))
+        {
+            // Get the correct embedding dimensions for this specific document process
+            var (_, expectedDimensions) = await embeddingService.ResolveEmbeddingConfigForDocumentProcessAsync(documentProcess.ShortName);
+            
+            foreach (var repository in documentProcess.Repositories)
+            {
+                var status = await GetIndexStatus(
+                    vectorStoreProvider, repository, documentProcess.ShortName, 
+                    DocumentLibraryType.PrimaryDocumentProcessLibrary, expectedDimensions);
+                indexes.Add(status);
+            }
+        }
+
+        // Check document libraries
+        var documentLibraries = await documentLibraryInfoService.GetAllDocumentLibrariesAsync();
+        foreach (var documentLibrary in documentLibraries.Where(dl => dl.LogicType == DocumentProcessLogicType.KernelMemory))
+        {
+            // Get the correct embedding dimensions for this specific document library
+            var (_, expectedDimensions) = await embeddingService.ResolveEmbeddingConfigForDocumentLibraryAsync(documentLibrary.ShortName);
+            
+            var status = await GetIndexStatus(
+                vectorStoreProvider, documentLibrary.IndexName, documentLibrary.ShortName,
+                DocumentLibraryType.AdditionalDocumentLibrary, expectedDimensions);
+            indexes.Add(status);
+        }
+
+        return new IndexStatusSummary { Indexes = indexes };
+    }
+
+    private async Task ValidateAndReindexIfNeeded(
+        ISemanticKernelVectorStoreProvider vectorStoreProvider,
+        ISignalRNotifierGrain? signalRNotifier,
+        string indexName,
+        string documentLibraryOrProcessName,
+        DocumentLibraryType libraryType,
+        int expectedEmbeddingDimensions)
+    {
+        try
+        {
+            var status = await GetIndexStatus(vectorStoreProvider, indexName, documentLibraryOrProcessName, libraryType, expectedEmbeddingDimensions);
+            
+            if (status.Status == IndexHealthStatus.SchemaIncompatible)
+            {
+                if (signalRNotifier != null)
+                {
+                    _logger.LogWarning("Index {IndexName} for {LibraryOrProcess} has incompatible schema. Triggering reindexing.", 
+                        indexName, documentLibraryOrProcessName);
+
+                    await TriggerReindexing(signalRNotifier, indexName, documentLibraryOrProcessName, libraryType, status.StatusMessage);
+                }
+                else
+                {
+                    _logger.LogWarning("Index {IndexName} for {LibraryOrProcess} has incompatible schema, but SignalR notifier is not available. Reindexing will be skipped during this maintenance cycle.", 
+                        indexName, documentLibraryOrProcessName);
+                }
+            }
+            else if (status.Status == IndexHealthStatus.Healthy)
+            {
+                _logger.LogDebug("Index {IndexName} for {LibraryOrProcess} is healthy", indexName, documentLibraryOrProcessName);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to validate schema for index {IndexName}", indexName);
+        }
+    }
+
+    private async Task<IndexStatus> GetIndexStatus(
+        ISemanticKernelVectorStoreProvider vectorStoreProvider,
+        string indexName,
+        string documentLibraryOrProcessName,
+        DocumentLibraryType libraryType,
+        int expectedEmbeddingDimensions)
+    {
+        var status = new IndexStatus
+        {
+            IndexName = indexName,
+            DocumentLibraryOrProcessName = documentLibraryOrProcessName,
+            Status = IndexHealthStatus.Unknown,
+            LastCheckedUtc = DateTime.UtcNow,
+            EmbeddingDimensions = expectedEmbeddingDimensions,
+            ReindexingRunId = _activeReindexingOperations.GetValueOrDefault(indexName)
+        };
+
+        try
+        {
+            // Check if reindexing is active
+            if (_activeReindexingOperations.ContainsKey(indexName))
+            {
+                status.Status = IndexHealthStatus.Reindexing;
+                status.StatusMessage = "Reindexing in progress";
+                return status;
+            }
+
+            // Check if collection exists
+            bool collectionExists = await vectorStoreProvider.CollectionExistsAsync(indexName);
+            if (!collectionExists)
+            {
+                status.Status = IndexHealthStatus.Missing;
+                status.StatusMessage = "Index does not exist";
+                return status;
+            }
+
+            // Try to validate schema by creating a test collection with expected schema
+            try
+            {
+                await vectorStoreProvider.EnsureCollectionAsync(indexName, expectedEmbeddingDimensions);
+                
+                // Test if we can query the collection to validate DocumentReference field exists
+                var hasDocumentReference = await TestDocumentReferenceField(vectorStoreProvider, indexName);
+                status.HasDocumentReferenceField = hasDocumentReference;
+                
+                if (!hasDocumentReference)
+                {
+                    status.Status = IndexHealthStatus.SchemaIncompatible;
+                    status.StatusMessage = "Missing DocumentReference field (legacy schema detected)";
+                    return status;
+                }
+
+                status.Status = IndexHealthStatus.Healthy;
+                status.StatusMessage = "Schema is compatible";
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("dimension mismatch") || ex.Message.Contains("Vector dimension mismatch"))
+            {
+                status.Status = IndexHealthStatus.SchemaIncompatible;
+                status.StatusMessage = $"Vector dimension mismatch: {ex.Message}";
+                
+                // Try to extract actual dimensions from error message
+                var match = System.Text.RegularExpressions.Regex.Match(ex.Message, @"expects a length of (\d+)");
+                if (match.Success && int.TryParse(match.Groups[1].Value, out int actualDims))
+                {
+                    status.StatusMessage += $" (expected: {expectedEmbeddingDimensions}, actual: {actualDims})";
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not validate schema for index {IndexName}, assuming healthy", indexName);
+                status.Status = IndexHealthStatus.Healthy;
+                status.StatusMessage = $"Validation failed but assuming healthy: {ex.Message}";
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get status for index {IndexName}", indexName);
+            status.Status = IndexHealthStatus.Unknown;
+            status.StatusMessage = $"Status check failed: {ex.Message}";
+        }
+
+        return status;
+    }
+
+    private async Task<bool> TestDocumentReferenceField(ISemanticKernelVectorStoreProvider vectorStoreProvider, string indexName)
+    {
+        try
+        {
+            // Simple approach: search for a minimal set of records and examine the TagsJson field
+            // New schema will have "DocumentReference" in TagsJson, old schema will have "OriginalDocumentUrl"
+            var testEmbedding = Enumerable.Repeat(0.1f, 1536).ToArray(); // Standard dimension test vector
+            
+            var results = await vectorStoreProvider.SearchAsync(indexName, testEmbedding, 5, 0.0); // Get up to 5 records
+            
+            // Examine the search results - VectorSearchMatch should contain the record data
+            foreach (var result in results)
+            {
+                // Check if the result contains information about DocumentReference
+                // The VectorSearchMatch should contain the record data that we can examine
+                var record = result.Record;
+                if (record != null)
+                {
+                    // Check if record has Tags that contain DocumentReference (new schema) vs OriginalDocumentUrl (old schema)
+                    var tags = record.Tags;
+                    if (tags != null && tags.ContainsKey("DocumentReference"))
+                    {
+                        _logger.LogDebug("Found DocumentReference in tags for index {IndexName}, new schema detected", indexName);
+                        return true;
+                    }
+                    if (tags != null && tags.ContainsKey("OriginalDocumentUrl"))
+                    {
+                        _logger.LogDebug("Found OriginalDocumentUrl in tags for index {IndexName}, legacy schema detected", indexName);
+                        return false;
+                    }
+                }
+            }
+            
+            // If we can't find any records or determine from tags, assume new schema for safety
+            _logger.LogDebug("Could not determine schema from records in index {IndexName}, assuming new schema", indexName);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            // Schema issues or other problems - check the error message for clues
+            var message = ex.Message.ToLowerInvariant();
+            if (message.Contains("originaldocumenturl") || 
+                message.Contains("legacy") ||
+                message.Contains("old schema"))
+            {
+                _logger.LogDebug(ex, "Error suggests legacy schema for index {IndexName}", indexName);
+                return false;
+            }
+            
+            if (message.Contains("documentreference") || 
+                message.Contains("unknown field") || 
+                message.Contains("schema") ||
+                message.Contains("property") ||
+                message.Contains("field"))
+            {
+                _logger.LogDebug(ex, "Error suggests schema issues for index {IndexName}, could be either schema", indexName);
+                // If schema issues, we're not sure - let's assume legacy and trigger reindex
+                return false;
+            }
+            
+            // Other errors might not be schema-related, so we assume new schema for safety
+            _logger.LogDebug(ex, "Unexpected error testing schema for index {IndexName}, assuming new schema", indexName);
+            return true;
+        }
+    }
+
+    private async Task TriggerReindexing(
+        ISignalRNotifierGrain? signalRNotifier,
+        string indexName,
+        string documentLibraryOrProcessName,
+        DocumentLibraryType libraryType,
+        string? reason)
+    {
+        try
+        {
+            var runId = Guid.NewGuid().ToString();
+            _activeReindexingOperations[indexName] = runId;
+
+            _logger.LogInformation("Starting reindexing for {IndexName} ({LibraryOrProcess}) due to: {Reason}", 
+                indexName, documentLibraryOrProcessName, reason);
+
+            // Send notification about reindexing start (if SignalR notifier is available)
+            if (signalRNotifier != null)
+            {
+                var startNotification = new DocumentReindexStartedNotification(
+                    runId, // OrchestrationId
+                    documentLibraryOrProcessName, // DocumentLibraryOrProcessName  
+                    reason ?? "Schema incompatibility detected" // Reason
+                );
+
+                await signalRNotifier.NotifyDocumentReindexStartedAsync(startNotification);
+            }
+            else
+            {
+                _logger.LogDebug("SignalR notifier not available - skipping reindex start notification for {IndexName}", indexName);
+            }
+
+            // Get the appropriate grain to trigger reindexing
+            var reindexGrain = GrainFactory.GetGrain<IDocumentReindexOrchestrationGrain>(runId);
+            
+            if (libraryType == DocumentLibraryType.PrimaryDocumentProcessLibrary)
+            {
+                await reindexGrain.StartDocumentProcessReindexingAsync(documentLibraryOrProcessName, reason ?? "Schema compatibility issue detected");
+            }
+            else if (libraryType == DocumentLibraryType.AdditionalDocumentLibrary)
+            {
+                await reindexGrain.StartDocumentLibraryReindexingAsync(documentLibraryOrProcessName, reason ?? "Schema compatibility issue detected");
+            }
+
+            _logger.LogInformation("Reindexing request submitted for {IndexName} with run ID {RunId}", indexName, runId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to trigger reindexing for index {IndexName}", indexName);
+            
+            // Remove from active operations if failed to start  
+            _activeReindexingOperations.Remove(indexName);
+            
+            // Send failure notification (if SignalR notifier is available)
+            if (signalRNotifier != null)
+            {
+                var failureNotification = new DocumentReindexFailedNotification(
+                    _activeReindexingOperations.GetValueOrDefault(indexName, "unknown"), // OrchestrationId
+                    documentLibraryOrProcessName, // DocumentLibraryOrProcessName
+                    ex.Message // ErrorMessage
+                );
+
+                await signalRNotifier.NotifyDocumentReindexFailedAsync(failureNotification);
+            }
+            else
+            {
+                _logger.LogDebug("SignalR notifier not available - skipping reindex failure notification for {IndexName}", indexName);
+            }
+        }
     }
 
     private async Task<Stream?> GetOrCreateDummyDocumentAsync()

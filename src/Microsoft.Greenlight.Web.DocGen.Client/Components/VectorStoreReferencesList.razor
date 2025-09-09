@@ -18,8 +18,8 @@
             {
                 var header = $"{vsItem.FileName} (Index: {vsItem.IndexName}, Score: {vsItem.Score:F3})";
                 <MudExpansionPanel Text="@header"
-                                   IsExpanded="@GetExpanded(vsItem.Id)"
-                                   IsExpandedChanged="@(val => SetExpanded(vsItem.Id, val))">
+                                   Expanded="@GetExpanded(vsItem.Id)"
+                                   ExpandedChanged="@((bool val) => SetExpanded(vsItem.Id, val))">
                     @if (!string.IsNullOrWhiteSpace(vsItem.SourceReferenceLink))
                     {
                         <MudText Typo="Typo.caption" Class="mb-1">
@@ -46,17 +46,17 @@
                                     <CardHeaderContent>
                                         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
                                             <MudIcon Icon="@Icons.Material.Filled.Article" Color="Color.Primary" />
-                                            <MudText Typo="Typo.caption" Color="Color.Secondary">Score: @chunk.Relevance.ToString("F3") • Part @chunk.PartitionNumber • Size @chunk.SizeInBytes bytes</MudText>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">Score: @chunk.Relevance.ToString("F3") ï¿½ Part @chunk.PartitionNumber ï¿½ Size @chunk.SizeInBytes bytes</MudText>
                                             @if (page.HasValue)
                                             {
-                                                <MudChip Href="@BuildChunkLink(vsItem.SourceReferenceLink, chunk, vsItem.Chunks)" Target="_blank" Size="Size.Small" Color="Color.Secondary" Variant="Variant.Outlined" Class="ml-2">Page @(page.Value)&nbsp;<MudIcon Icon="@Icons.Material.Filled.OpenInNew" /> </MudChip>
+                                                <MudChip T="string" Href="@BuildChunkLink(vsItem.SourceReferenceLink, chunk, vsItem.Chunks)" Target="_blank" Size="Size.Small" Color="Color.Secondary" Variant="Variant.Outlined" Class="ml-2">Page @(page.Value)&nbsp;<MudIcon Icon="@Icons.Material.Filled.OpenInNew" /> </MudChip>
                                             }
                                         </MudStack>
                                     </CardHeaderContent>
                                     <CardHeaderActions>
                                         @if (!string.IsNullOrWhiteSpace(vsItem.SourceReferenceLink))
                                         {
-                                            <MudLink Href="@BuildChunkLink(vsItem.SourceReferenceLink, chunk, vsItem.Chunks)" Target="_blank" Class="mr-1" Title="Open source">
+                                            <MudLink Href="@BuildChunkLink(vsItem.SourceReferenceLink, chunk, vsItem.Chunks)" Target="_blank" Class="mr-1" Aria-Label="Open source">
                                                 <MudIcon Icon="@Icons.Material.Filled.OpenInNew" />
                                             </MudLink>
                                         }

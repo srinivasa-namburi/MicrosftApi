@@ -12,6 +12,9 @@ using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.Shared.Services.Search.Abstractions;
+using Microsoft.Greenlight.Shared.Services.FileStorage;
+using Microsoft.Greenlight.Grains.Ingestion.Contracts.Helpers;
+using Microsoft.Greenlight.Shared.Models.FileStorage;
 using Orleans.Concurrency;
 
 namespace Microsoft.Greenlight.Grains.Ingestion;
@@ -34,6 +37,7 @@ public class DocumentReindexOrchestrationGrain : Grain, IDocumentReindexOrchestr
 
     private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
     private readonly IDocumentIngestionService _documentIngestionService;
+    private readonly IFileStorageServiceFactory _fileStorageServiceFactory;
 
     // Thread-safe counters for progress tracking
     private volatile int _processedCount = 0;
@@ -50,7 +54,8 @@ public class DocumentReindexOrchestrationGrain : Grain, IDocumentReindexOrchestr
         IDocumentProcessInfoService documentProcessInfoService,
         IDocumentLibraryInfoService documentLibraryInfoService,
         IDbContextFactory<DocGenerationDbContext> dbContextFactory,
-        IDocumentIngestionService documentIngestionService)
+        IDocumentIngestionService documentIngestionService,
+        IFileStorageServiceFactory fileStorageServiceFactory)
     {
         _state = state;
         _logger = logger;
@@ -59,6 +64,7 @@ public class DocumentReindexOrchestrationGrain : Grain, IDocumentReindexOrchestr
         _documentLibraryInfoService = documentLibraryInfoService;
         _dbContextFactory = dbContextFactory;
         _documentIngestionService = documentIngestionService;
+        _fileStorageServiceFactory = fileStorageServiceFactory;
     }
 
     public override async Task OnActivateAsync(CancellationToken cancellationToken)
@@ -219,7 +225,9 @@ public class DocumentReindexOrchestrationGrain : Grain, IDocumentReindexOrchestr
                     return;
                 }
 
-                targetContainer = documentLibrary.BlobStorageContainerName;
+                // For reindexing, we work with documents that already exist in the database
+                // The target container is determined from existing IngestedDocument records
+                targetContainer = "determined-from-existing-documents";
                 indexName = documentLibrary.IndexName;
             }
             else // PrimaryDocumentProcessLibrary
@@ -237,16 +245,98 @@ public class DocumentReindexOrchestrationGrain : Grain, IDocumentReindexOrchestr
                     return;
                 }
 
-                targetContainer = documentProcess.BlobStorageContainerName;
+                // For reindexing, we work with documents that already exist in the database
+                // The target container is determined from existing IngestedDocument records
+                targetContainer = "determined-from-existing-documents";
                 indexName = documentProcess.Repositories?.FirstOrDefault() ?? documentLibraryShortName;
             }
 
-            // Update target container
+            // Step 1: Find all ingested documents for this library/process that were previously indexed
+            await using var db = await _dbContextFactory.CreateDbContextAsync();
+            var documentsToReindex = await db.IngestedDocuments
+                .Include(d => d.IngestedDocumentFileAcknowledgments)
+                    .ThenInclude(idfa => idfa.FileAcknowledgmentRecord)
+                        .ThenInclude(far => far.FileStorageSource)
+                .Where(d => d.DocumentLibraryOrProcessName == documentLibraryShortName &&
+                           d.DocumentLibraryType == documentLibraryType &&
+                           d.IngestionState == IngestionState.Complete &&
+                           (d.IsVectorStoreIndexed == true || d.VectorStoreIndexedDate != null))
+                .ToListAsync();
+
+            // Determine actual target container from existing documents
+            targetContainer = documentsToReindex.FirstOrDefault()?.Container ?? "unknown-container";
+
+            // Group documents by FileStorageSource for progress tracking
+            var documentsBySource = new Dictionary<Guid, (FileStorageSource source, List<Microsoft.Greenlight.Shared.Models.IngestedDocument> documents)>();
+
+            foreach (var document in documentsToReindex)
+            {
+                // Get FileStorageSource from the document's acknowledgment records
+                var fileStorageSource = document.IngestedDocumentFileAcknowledgments
+                    .FirstOrDefault()?.FileAcknowledgmentRecord?.FileStorageSource;
+
+                if (fileStorageSource != null)
+                {
+                    // Only process sources intended for ingestion (check primary or categories)
+                    var isIngestion = fileStorageSource.StorageSourceDataType == Microsoft.Greenlight.Shared.Enums.FileStorageSourceDataType.Ingestion;
+                    if (!isIngestion)
+                    {
+                        isIngestion = await db.FileStorageSourceCategories
+                            .AsNoTracking()
+                            .AnyAsync(c => c.FileStorageSourceId == fileStorageSource.Id && c.DataType == Microsoft.Greenlight.Shared.Enums.FileStorageSourceDataType.Ingestion);
+                    }
+                    if (!isIngestion) { continue; }
+                    if (!documentsBySource.ContainsKey(fileStorageSource.Id))
+                    {
+                        documentsBySource[fileStorageSource.Id] = (fileStorageSource, new List<Microsoft.Greenlight.Shared.Models.IngestedDocument>());
+                    }
+                    documentsBySource[fileStorageSource.Id].documents.Add(document);
+                }
+                else
+                {
+                    // Handle documents without FileStorageSource (legacy documents)
+                    var unknownSourceId = Guid.Empty;
+                    if (!documentsBySource.ContainsKey(unknownSourceId))
+                    {
+                        var unknownSource = new Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageSource
+                        {
+                            Id = unknownSourceId,
+                            Name = "Unknown Source (Legacy)",
+                            ContainerOrPath = targetContainer,
+                            IsActive = true,
+                            IsDefault = false,
+                            FileStorageHostId = Guid.Empty
+                        };
+                        documentsBySource[unknownSourceId] = (unknownSource, new List<Microsoft.Greenlight.Shared.Models.IngestedDocument>());
+                    }
+                    documentsBySource[unknownSourceId].documents.Add(document);
+                }
+            }
+
+            // Update state with target container and initialize per-source progress
             await _stateLock.WaitAsync();
             try
             {
                 _state.State.TargetContainerName = targetContainer;
                 _state.State.LastUpdatedUtc = DateTime.UtcNow;
+                _state.State.SourceProgress.Clear();
+
+                // Initialize progress tracking for each FileStorageSource
+                foreach (var (sourceId, (source, documents)) in documentsBySource)
+                {
+                    _state.State.SourceProgress[sourceId] = new Microsoft.Greenlight.Grains.Ingestion.Contracts.State.FileStorageSourceProgress
+                    {
+                        SourceName = source.Name,
+                        ProviderType = source.FileStorageHost?.ProviderType.ToString() ?? "Unknown",
+                        ContainerOrPath = source.ContainerOrPath,
+                        TotalDocuments = documents.Count,
+                        ProcessedDocuments = 0,
+                        FailedDocuments = 0,
+                        Errors = new List<string>(),
+                        LastUpdatedUtc = DateTime.UtcNow
+                    };
+                }
+
                 await _state.WriteStateAsync();
             }
             finally
@@ -254,17 +344,8 @@ public class DocumentReindexOrchestrationGrain : Grain, IDocumentReindexOrchestr
                 _stateLock.Release();
             }
 
-            // Step 1: Clear the vector store index (use the actual index name)
+            // Step 2: Clear the vector store index (use the actual index name)
             await ClearVectorStoreAsync(documentLibraryShortName, indexName!);
-
-            // Step 2: Find all ingested documents for this library/process that were previously indexed
-            await using var db = await _dbContextFactory.CreateDbContextAsync();
-            var documentsToReindex = await db.IngestedDocuments
-                .Where(d => d.DocumentLibraryOrProcessName == documentLibraryShortName &&
-                           d.DocumentLibraryType == documentLibraryType &&
-                           d.IngestionState == IngestionState.Complete &&
-                           (d.IsVectorStoreIndexed == true || d.VectorStoreIndexedDate != null))
-                .ToListAsync();
 
             // Update total documents count
             await _stateLock.WaitAsync();
@@ -374,18 +455,97 @@ public class DocumentReindexOrchestrationGrain : Grain, IDocumentReindexOrchestr
         }
     }
 
+    public async Task OnReindexCompletedAsync(Guid documentId)
+    {
+        var newProcessedCount = Interlocked.Increment(ref _processedCount);
+        await UpdateDocumentProgressAsync(documentId, true, null);
+        await UpdateProgressAndCheckCompletionAsync(newProcessedCount, _failedCount, null);
+    }
+
+    public async Task OnReindexFailedAsync(Guid documentId, string errorMessage, bool acquired)
+    {
+        var newFailedCount = Interlocked.Increment(ref _failedCount);
+        await UpdateDocumentProgressAsync(documentId, false, errorMessage);
+        await UpdateProgressAndCheckCompletionAsync(_processedCount, newFailedCount, errorMessage);
+    }
+
+    // Legacy methods for backward compatibility
     public async Task OnReindexCompletedAsync()
     {
         var newProcessedCount = Interlocked.Increment(ref _processedCount);
-
         await UpdateProgressAndCheckCompletionAsync(newProcessedCount, _failedCount, null);
     }
 
     public async Task OnReindexFailedAsync(string errorMessage, bool acquired)
     {
         var newFailedCount = Interlocked.Increment(ref _failedCount);
-
         await UpdateProgressAndCheckCompletionAsync(_processedCount, newFailedCount, errorMessage);
+    }
+
+    private async Task UpdateDocumentProgressAsync(Guid documentId, bool success, string? errorMessage)
+    {
+        try
+        {
+            // Find the FileStorageSource for this document
+            var sourceId = await GetFileStorageSourceIdForDocumentAsync(documentId);
+            
+            if (sourceId.HasValue)
+            {
+                await _stateLock.WaitAsync();
+                try
+                {
+                    if (_state.State.SourceProgress.ContainsKey(sourceId.Value))
+                    {
+                        var sourceProgress = _state.State.SourceProgress[sourceId.Value];
+                        if (success)
+                        {
+                            sourceProgress.ProcessedDocuments++;
+                        }
+                        else
+                        {
+                            sourceProgress.FailedDocuments++;
+                            if (!string.IsNullOrEmpty(errorMessage))
+                            {
+                                sourceProgress.Errors.Add(errorMessage);
+                            }
+                        }
+                        sourceProgress.LastUpdatedUtc = DateTime.UtcNow;
+                        
+                        // Update overall state last updated time
+                        _state.State.LastUpdatedUtc = DateTime.UtcNow;
+                        await _state.WriteStateAsync();
+                    }
+                }
+                finally
+                {
+                    _stateLock.Release();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating per-source progress for document {DocumentId}", documentId);
+        }
+    }
+
+    private async Task<Guid?> GetFileStorageSourceIdForDocumentAsync(Guid documentId)
+    {
+        try
+        {
+            await using var db = await _dbContextFactory.CreateDbContextAsync();
+            var sourceId = await db.IngestedDocuments
+                .Where(d => d.Id == documentId)
+                .SelectMany(d => d.IngestedDocumentFileAcknowledgments)
+                .Select(idfa => idfa.FileAcknowledgmentRecord.FileStorageSourceId)
+                .FirstOrDefaultAsync();
+                
+            return sourceId == Guid.Empty ? null : sourceId;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting FileStorageSourceId for document {DocumentId}", documentId);
+            return null;
+        }
     }
 
     private async Task UpdateProgressAndCheckCompletionAsync(int processedCount, int failedCount, string? errorMessage)

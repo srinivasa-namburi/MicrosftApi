@@ -1,0 +1,329 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+
+@using Microsoft.Greenlight.Shared.Contracts.DTO.FileStorage
+@using Microsoft.Greenlight.Shared.Contracts.Requests.FileStorage
+@using Microsoft.Greenlight.Shared.Enums
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@using Microsoft.Greenlight.Shared.Configuration
+@inject IFileStorageSourceApiClient FileStorageSourceApiClient
+@inject IFileStorageHostApiClient FileStorageHostApiClient
+@inject IConfigurationApiClient ConfigurationApiClient
+@inject ISnackbar Snackbar
+
+@namespace Microsoft.Greenlight.Web.DocGen.Client.Components.FileStorage
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" Model="_request">
+            <MudStack Spacing="3">
+                <MudTextField @bind-Value="_request.Name" 
+                            Label="Name" 
+                            Required="true"
+                            Immediate="true"
+                            For="@(() => _request.Name)"
+                            HelperText="A unique name for this file storage source" />
+
+                <MudSelect T="Guid" 
+                         @bind-Value="_request.FileStorageHostId" 
+                         Label="File Storage Host"
+                         Required="true"
+                         For="@(() => _request.FileStorageHostId)"
+                         ToStringFunc="@(id => GetHostDisplayName(id))">
+                    @foreach (var host in _availableHosts.Where(h => h.IsActive).Where(h => IsHostAvailable(h)))
+                    {
+                        <MudSelectItem Value="@host.Id">
+                            @host.Name (@host.ProviderType.ToString())
+                            @if (host.IsDefault)
+                            {
+                                <span> - Default</span>
+                            }
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+
+                @if (_selectedHost != null)
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true">
+                        <strong>Host:</strong> @_selectedHost.Name (@_selectedHost.ProviderType.ToString())
+                        @if (!string.IsNullOrEmpty(_selectedHost.Description))
+                        {
+                            <br />@_selectedHost.Description
+                        }
+                    </MudAlert>
+
+                    @if (_selectedHost.ProviderType == FileStorageProviderType.BlobStorage)
+                    {
+                        <MudTextField @bind-Value="_request.ContainerOrPath" 
+                                    Label="Container Name" 
+                                    Required="true"
+                                    For="@(() => _request.ContainerOrPath)"
+                                    HelperText="Azure blob storage container name" />
+
+                        <MudSwitch T="bool" @bind-Value="_request.ShouldMoveFiles" 
+                                 Label="Move Files" 
+                                 Color="Color.Primary" />
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">When enabled, files are moved from auto-import to ingest folder. When disabled, files are only acknowledged.</MudText>
+                    }
+                    else if (_selectedHost.ProviderType == FileStorageProviderType.LocalFileSystem)
+                    {
+                        <MudTextField @bind-Value="_request.ContainerOrPath" 
+                                    Label="Container/Subfolder" 
+                                    Required="true"
+                                    For="@(() => _request.ContainerOrPath)"
+                                    HelperText="Subfolder name within the root directory" />
+                    }
+                    else
+                    {
+                        <MudTextField @bind-Value="_request.ContainerOrPath" 
+                                    Label="Container/Path" 
+                                    Required="true"
+                                    For="@(() => _request.ContainerOrPath)"
+                                    HelperText="Container name or path within the host" />
+                    }
+
+                    @if (_request.ShouldMoveFiles)
+                    {
+                        <MudTextField @bind-Value="_request.AutoImportFolderName" 
+                                    Label="Auto-Import Folder Name" 
+                                    For="@(() => _request.AutoImportFolderName)"
+                                    HelperText="Name of the folder where files are automatically imported from (only used when Move Files is enabled)" />
+                    }
+                    else
+                    {
+                        <MudAlert Severity="Severity.Info" Dense="true">
+                            Auto-import folder is not used when "Move Files" is disabled.
+                        </MudAlert>
+                    }
+                }
+
+                <MudStack Row="true" Spacing="2">
+                    <MudStack>
+                        <MudSwitch T="bool" @bind-Value="_request.IsActive" 
+                                 Label="Active" 
+                                 Color="Color.Primary" />
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Whether this storage source is currently active</MudText>
+                    </MudStack>
+                    
+                    <MudStack>
+                        <MudSwitch T="bool" @bind-Value="_request.IsDefault" 
+                                 Label="Default" 
+                                 Color="Color.Primary" />
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Whether this is the default storage source for the selected host</MudText>
+                    </MudStack>
+                </MudStack>
+
+                <MudTextField @bind-Value="_request.Description" 
+                            Label="Description (Optional)" 
+                            For="@(() => _request.Description)"
+                            Lines="2"
+                            HelperText="Optional description or notes about this storage source" />
+
+                <MudDivider Class="my-2" />
+                <MudText Typo="Typo.subtitle2">Roles</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Assign one or more roles/categories to this storage source.</MudText>
+                <MudStack Row="true" Spacing="2">
+                    <MudCheckBox T="bool" @bind-Checked="_roleIngestion" Label="Ingestion" />
+                    <MudCheckBox T="bool" @bind-Checked="_roleContentReference" Label="Content Reference" />
+                    <MudCheckBox T="bool" @bind-Checked="_roleMediaAssets" Label="Media Assets" />
+                </MudStack>
+            </MudStack>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save" Disabled="_isSaving">
+            @if (_isSaving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            @(IsCreateMode ? "Create" : "Update")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
+    
+    [Parameter] public FileStorageSourceInfo? Source { get; set; }
+    [Parameter] public bool IsCreateMode { get; set; } = true;
+    [Parameter] public Guid? DocumentProcessId { get; set; }
+    [Parameter] public Guid? DocumentLibraryId { get; set; }
+
+    private MudForm _form = null!;
+    private bool _isSaving = false;
+    private List<FileStorageHostInfo> _availableHosts = new();
+    private ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions? _documentIngestionOptions;
+    
+    private CreateFileStorageSourceRequest _request = new()
+    {
+        Name = string.Empty,
+        ContainerOrPath = string.Empty,
+        IsActive = true,
+        ShouldMoveFiles = false // Default to acknowledge-only for new sources
+    };
+
+    private FileStorageHostInfo? _selectedHost => _availableHosts.FirstOrDefault(h => h.Id == _request.FileStorageHostId);
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _documentIngestionOptions = await ConfigurationApiClient.GetDocumentIngestionOptionsAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading configuration: {ex.Message}", Severity.Warning);
+            _documentIngestionOptions = new ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions();
+        }
+        
+        await LoadAvailableHosts();
+        
+        if (IsCreateMode)
+        {
+            // Set default host if available and allowed
+            var defaultHost = _availableHosts.FirstOrDefault(h => h.IsDefault && h.IsActive && IsHostAvailable(h));
+            if (defaultHost != null)
+            {
+                _request.FileStorageHostId = defaultHost.Id;
+            }
+            
+            _request.AutoImportFolderName = "ingest-auto";
+            _roleIngestion = true; // default role
+        }
+        else if (Source != null)
+        {
+            _request = new CreateFileStorageSourceRequest
+            {
+                Name = Source.Name,
+                FileStorageHostId = Source.FileStorageHostId,
+                ContainerOrPath = Source.ContainerOrPath,
+                AutoImportFolderName = Source.AutoImportFolderName,
+                IsDefault = Source.IsDefault,
+                IsActive = Source.IsActive,
+                ShouldMoveFiles = Source.ShouldMoveFiles,
+                Description = Source.Description
+            };
+
+            var roles = (Source.StorageSourceDataTypes != null && Source.StorageSourceDataTypes.Count > 0)
+                ? Source.StorageSourceDataTypes
+                : new List<FileStorageSourceDataType> { Source.StorageSourceDataType };
+            _roleIngestion = roles.Contains(FileStorageSourceDataType.Ingestion);
+            _roleContentReference = roles.Contains(FileStorageSourceDataType.ContentReference);
+            _roleMediaAssets = roles.Contains(FileStorageSourceDataType.MediaAssets);
+        }
+    }
+
+    private async Task LoadAvailableHosts()
+    {
+        try
+        {
+            _availableHosts = await FileStorageHostApiClient.GetAllFileStorageHostsAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading file storage hosts: {ex.Message}", Severity.Error);
+            _availableHosts = new List<FileStorageHostInfo>();
+        }
+    }
+
+    private string GetHostDisplayName(Guid hostId)
+    {
+        var host = _availableHosts.FirstOrDefault(h => h.Id == hostId);
+        return host?.Name ?? "Unknown Host";
+    }
+
+    private bool IsHostAvailable(FileStorageHostInfo host)
+    {
+        // LocalFileSystem hosts are only available if the configuration allows it
+        if (host.ProviderType == FileStorageProviderType.LocalFileSystem)
+        {
+            return _documentIngestionOptions?.LocalFileStorageAvailable == true;
+        }
+        
+        // All other provider types are always available
+        return true;
+    }
+
+    private async Task Save()
+    {
+        await _form.Validate();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        _isSaving = true;
+        StateHasChanged();
+
+        try
+        {
+            FileStorageSourceInfo result;
+            
+            if (IsCreateMode)
+            {
+                _request.StorageSourceDataTypes = GetSelectedRoles();
+                result = await FileStorageSourceApiClient.CreateFileStorageSourceAsync(_request);
+                
+                // Associate with current document process or library if specified
+                if (DocumentProcessId.HasValue)
+                {
+                    await FileStorageSourceApiClient.AssociateSourceWithProcessAsync(DocumentProcessId.Value, result.Id);
+                }
+                else if (DocumentLibraryId.HasValue)
+                {
+                    await FileStorageSourceApiClient.AssociateSourceWithLibraryAsync(DocumentLibraryId.Value, result.Id);
+                }
+                
+                Snackbar.Add("File storage source created successfully.", Severity.Success);
+            }
+            else
+            {
+                var updateRequest = new UpdateFileStorageSourceRequest
+                {
+                    Id = Source!.Id,
+                    Name = _request.Name,
+                    FileStorageHostId = _request.FileStorageHostId,
+                    ContainerOrPath = _request.ContainerOrPath,
+                    AutoImportFolderName = _request.AutoImportFolderName,
+                    IsDefault = _request.IsDefault,
+                    IsActive = _request.IsActive,
+                    ShouldMoveFiles = _request.ShouldMoveFiles,
+                    Description = _request.Description,
+                    StorageSourceDataTypes = GetSelectedRoles()
+                };
+                
+                result = await FileStorageSourceApiClient.UpdateFileStorageSourceAsync(updateRequest);
+                Snackbar.Add("File storage source updated successfully.", Severity.Success);
+            }
+
+            MudDialog.Close(DialogResult.Ok(result));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving file storage source: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+
+    private bool _roleIngestion;
+    private bool _roleContentReference;
+    private bool _roleMediaAssets;
+
+    private List<FileStorageSourceDataType> GetSelectedRoles()
+    {
+        var list = new List<FileStorageSourceDataType>();
+        if (_roleIngestion) list.Add(FileStorageSourceDataType.Ingestion);
+        if (_roleContentReference) list.Add(FileStorageSourceDataType.ContentReference);
+        if (_roleMediaAssets) list.Add(FileStorageSourceDataType.MediaAssets);
+        return list;
+    }
+}

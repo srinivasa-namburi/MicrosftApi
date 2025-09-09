@@ -12,7 +12,7 @@
                 <MudText Typo="Typo.h6" Class="mb-4">AI Models</MudText>
 
                 <MudText Typo="Typo.subtitle2" Class="mb-1 mt-2">Chat Models</MudText>
-                <MudList Clickable Dense>
+                <MudList T="object" Clickable Dense>
                     @foreach (var model in _aiModels.Where(m => m.ModelType == AiModelType.Chat))
                     {
                         <MudListItem Icon="@Icons.Material.Filled.SmartToy"
@@ -22,7 +22,7 @@
                                 <MudText>@model.Name</MudText>
                                 @if (model.IsReasoningModel)
                                 {
-                                    <MudChip Size="Size.Small" Color="Color.Info">Reasoning</MudChip>
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Info">Reasoning</MudChip>
                                 }
                             </div>
                         </MudListItem>
@@ -32,7 +32,7 @@
                 <MudDivider Class="my-2" />
 
                 <MudText Typo="Typo.subtitle2" Class="mb-1">Embedding Models</MudText>
-                <MudList Clickable Dense>
+                <MudList T="object" Clickable Dense>
                     @foreach (var model in _aiModels.Where(m => m.ModelType == AiModelType.Embedding))
                     {
                         <MudListItem Icon="@Icons.Material.Filled.Hub"
@@ -40,7 +40,7 @@
                                      OnClick="() => SelectAiModel(model)">
                             <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
                                 <MudText>@model.Name</MudText>
-                                <MudChip Size="Size.Small" Color="Color.Secondary">Embedding</MudChip>
+                                <MudChip T="string" Size="Size.Small" Color="Color.Secondary">Embedding</MudChip>
                             </div>
                         </MudListItem>
                     }
@@ -63,7 +63,7 @@
                 <MudPaper Class="pa-4 mb-4">
                     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
                         <MudText Typo="Typo.h6">Edit AI Model</MudText>
-                        <MudChip Color="Color.Info" Size="Size.Small">@_selectedAiModel.ModelType.ToString()</MudChip>
+                        <MudChip T="string" Color="Color.Info" Size="Size.Small">@_selectedAiModel.ModelType.ToString()</MudChip>
                     </MudStack>
 
                     <MudGrid>
@@ -91,37 +91,37 @@
                                     <MudExpansionPanel Text="Default Token Settings for new Deployments">
                                         <MudGrid>
                                             <MudItem xs="12" sm="6">
-                                                <MudNumericField @bind-Value="_selectedAiModel.TokenSettings.MaxTokensForContentGeneration"
+                                                <MudNumericField T="int" @bind-Value="_selectedAiModel.TokenSettings.MaxTokensForContentGeneration"
                                                                  Label="Max Content Generation Tokens"
                                                                  Min="50"
                                                                  Max="200000" />
                                             </MudItem>
                                             <MudItem xs="12" sm="6">
-                                                <MudNumericField @bind-Value="_selectedAiModel.TokenSettings.MaxTokensForSummarization"
+                                                <MudNumericField T="int" @bind-Value="_selectedAiModel.TokenSettings.MaxTokensForSummarization"
                                                                  Label="Max Summarization Tokens"
                                                                  Min="50"
                                                                  Max="200000" />
                                             </MudItem>
                                             <MudItem xs="12" sm="6">
-                                                <MudNumericField @bind-Value="_selectedAiModel.TokenSettings.MaxTokensForChatReplies"
+                                                <MudNumericField T="int" @bind-Value="_selectedAiModel.TokenSettings.MaxTokensForChatReplies"
                                                                  Label="Max Chat Reply Tokens"
                                                                  Min="50"
                                                                  Max="200000" />
                                             </MudItem>
                                             <MudItem xs="12" sm="6">
-                                                <MudNumericField @bind-Value="_selectedAiModel.TokenSettings.MaxTokensForQuestionAnswering"
+                                                <MudNumericField T="int" @bind-Value="_selectedAiModel.TokenSettings.MaxTokensForQuestionAnswering"
                                                                  Label="Max Question Answering Tokens"
                                                                  Min="50"
                                                                  Max="200000" />
                                             </MudItem>
                                             <MudItem xs="12" sm="6">
-                                                <MudNumericField @bind-Value="_selectedAiModel.TokenSettings.MaxTokensForValidation"
+                                                <MudNumericField T="int" @bind-Value="_selectedAiModel.TokenSettings.MaxTokensForValidation"
                                                                  Label="Max Validation Tokens"
                                                                  Min="50"
                                                                  Max="200000" />
                                             </MudItem>
                                             <MudItem xs="12" sm="6">
-                                                <MudNumericField @bind-Value="_selectedAiModel.TokenSettings.MaxTokensGeneral"
+                                                <MudNumericField T="int" @bind-Value="_selectedAiModel.TokenSettings.MaxTokensGeneral"
                                                                  Label="Max General Usage Tokens"
                                                                  Min="50"
                                                                  Max="200000" />
@@ -159,7 +159,7 @@
                                                 </MudSelect>
                                             </MudItem>
                                             <MudItem xs="12" sm="6">
-                                                <MudNumericField @bind-Value="_selectedAiModel.EmbeddingSettings.MaxContentLength"
+                                                <MudNumericField T="int" @bind-Value="_selectedAiModel.EmbeddingSettings.MaxContentLength"
                                                                  Label="Max Content Length (in Tokens)"
                                                                  Min="256"
                                                                  Max="131072" />
@@ -190,7 +190,7 @@
                 <MudPaper Class="pa-4">
                     <MudText Typo="Typo.h6" Class="mb-4">AI Model Deployments</MudText>
 
-                    <MudTable Items="_deployments"
+                    <MudTable T="AiModelDeploymentInfo" Items="_deployments"
                               Dense="true"
                               Hover="true"
                               Class="mb-4">
@@ -233,7 +233,7 @@
     </MudGrid>
 
     <!-- AI Model Deployment Dialog -->
-    <MudDialog @bind-IsVisible="_deploymentDialogVisible" Options="new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true }">
+    <MudDialog @bind-Visible="_deploymentDialogVisible" Options="new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true }">
         <TitleContent>
             <MudText Typo="Typo.h6">
                 @(_isNewDeployment ? "Create New Deployment" : "Edit Deployment")
@@ -253,37 +253,37 @@
                         <MudExpansionPanel Text="Token Settings">
                             <MudGrid>
                                 <MudItem xs="12" sm="6">
-                                    <MudNumericField @bind-Value="_selectedDeployment.TokenSettings.MaxTokensForContentGeneration"
+                                    <MudNumericField T="int" @bind-Value="_selectedDeployment.TokenSettings.MaxTokensForContentGeneration"
                                                      Label="Max Content Generation Tokens"
                                                      Min="50"
                                                      Max="200000" />
                                 </MudItem>
                                 <MudItem xs="12" sm="6">
-                                    <MudNumericField @bind-Value="_selectedDeployment.TokenSettings.MaxTokensForSummarization"
+                                    <MudNumericField T="int" @bind-Value="_selectedDeployment.TokenSettings.MaxTokensForSummarization"
                                                      Label="Max Summarization Tokens"
                                                      Min="50"
                                                      Max="200000" />
                                 </MudItem>
                                 <MudItem xs="12" sm="6">
-                                    <MudNumericField @bind-Value="_selectedDeployment.TokenSettings.MaxTokensForChatReplies"
+                                    <MudNumericField T="int" @bind-Value="_selectedDeployment.TokenSettings.MaxTokensForChatReplies"
                                                      Label="Max Chat Reply Tokens"
                                                      Min="50"
                                                      Max="200000" />
                                 </MudItem>
                                 <MudItem xs="12" sm="6">
-                                    <MudNumericField @bind-Value="_selectedDeployment.TokenSettings.MaxTokensForQuestionAnswering"
+                                    <MudNumericField T="int" @bind-Value="_selectedDeployment.TokenSettings.MaxTokensForQuestionAnswering"
                                                      Label="Max Question Answering Tokens"
                                                      Min="50"
                                                      Max="200000" />
                                 </MudItem>
                                 <MudItem xs="12" sm="6">
-                                    <MudNumericField @bind-Value="_selectedDeployment.TokenSettings.MaxTokensForValidation"
+                                    <MudNumericField T="int" @bind-Value="_selectedDeployment.TokenSettings.MaxTokensForValidation"
                                                      Label="Max Validation Tokens"
                                                      Min="50"
                                                      Max="200000" />
                                 </MudItem>
                                 <MudItem xs="12" sm="6">
-                                    <MudNumericField @bind-Value="_selectedDeployment.TokenSettings.MaxTokensGeneral"
+                                    <MudNumericField T="int" @bind-Value="_selectedDeployment.TokenSettings.MaxTokensGeneral"
                                                      Label="Max General Usage Tokens"
                                                      Min="50"
                                                      Max="200000" />
@@ -371,7 +371,7 @@
                                     </MudSelect>
                                 </MudItem>
                                 <MudItem xs="12" sm="6">
-                                    <MudNumericField @bind-Value="_selectedDeployment.EmbeddingSettings.MaxContentLength"
+                                    <MudNumericField T="int" @bind-Value="_selectedDeployment.EmbeddingSettings.MaxContentLength"
                                                      Label="Max Content Length (in Tokens)"
                                                      Min="256"
                                                      Max="131072" />

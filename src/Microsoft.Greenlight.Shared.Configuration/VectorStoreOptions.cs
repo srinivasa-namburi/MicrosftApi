@@ -1,5 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 
+using Microsoft.Greenlight.Shared.Enums;
+
 namespace Microsoft.Greenlight.Shared.Configuration;
 
 /// <summary>
@@ -82,25 +84,46 @@ public class VectorStoreOptions
     /// When true, verify embedding vector dimension matches stored configuration; mismatches flagged.
     /// </summary>
     public bool EnableEmbeddingDimensionVerification { get; set; } = true;
+
+    /// <summary>
+    /// Per-ContentReferenceType embedding configuration.
+    /// </summary>
+    public ContentReferenceVectorOptions ContentReferences { get; set; } = new ContentReferenceVectorOptions();
 }
 
 /// <summary>
-/// Types of supported vector stores.
+/// Embedding configuration for Content Reference types.
 /// </summary>
-public enum VectorStoreType
+public class ContentReferenceVectorOptions
+{
+    public ContentReferenceTypeOptions GeneratedDocument { get; set; } = new ContentReferenceTypeOptions();
+    public ContentReferenceTypeOptions GeneratedSection { get; set; } = new ContentReferenceTypeOptions();
+    public ContentReferenceTypeOptions ExternalFile { get; set; } = new ContentReferenceTypeOptions();
+    public ContentReferenceTypeOptions ReviewItem { get; set; } = new ContentReferenceTypeOptions();
+    public ContentReferenceTypeOptions ExternalLinkAsset { get; set; } = new ContentReferenceTypeOptions();
+}
+
+/// <summary>
+/// Embedding options for a specific content reference type.
+/// </summary>
+public class ContentReferenceTypeOptions
 {
     /// <summary>
-    /// PostgreSQL with pgvector extension.
+    /// Optional specific embedding model deployment to use.
+    /// If null, falls back to global embedding deployment.
     /// </summary>
-    PostgreSQL,
+    public Guid? EmbeddingModelDeploymentId { get; set; }
 
     /// <summary>
-    /// Azure AI Search vector store.
+    /// Optional deployment name to use for embeddings (preferred over ID).
+    /// If set, this value is used to resolve the deployment; ID is only used as a fallback for backward compatibility.
     /// </summary>
-    AzureAISearch,
+    public string? EmbeddingModelDeploymentName { get; set; }
 
     /// <summary>
-    /// In-memory vector store (for testing).
+    /// Optional dimensions override for the embedding model.
+    /// If null, falls back to global VectorSize.
     /// </summary>
-    InMemory
+    public int? EmbeddingDimensionsOverride { get; set; }
 }
+

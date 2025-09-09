@@ -166,6 +166,35 @@ namespace Microsoft.Greenlight.Web.DocGen.Client.ServiceClients
             }
         }
 
+        public async Task<ContentReferenceItemInfo?> GetBySourceIdAsync(Guid sourceId, ContentReferenceType type)
+        {
+            try
+            {
+                var response = await SendGetRequestMessage($"/api/content-references/by-source/{type}/{sourceId}");
+                if (response == null || !response.IsSuccessStatusCode)
+                {
+                    Logger.LogWarning("GetBySourceIdAsync: API call failed with status {StatusCode}", response?.StatusCode);
+                    return null;
+                }
+                var rawContent = await response.Content.ReadAsStringAsync();
+                if (string.IsNullOrWhiteSpace(rawContent))
+                {
+                    return null;
+                }
+                var options = new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true,
+                    AllowTrailingCommas = true
+                };
+                return JsonSerializer.Deserialize<ContentReferenceItemInfo>(rawContent, options);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "GetBySourceIdAsync: error for source {SourceId} type {Type}", sourceId, type);
+                return null;
+            }
+        }
+
         public async Task RefreshReferenceCacheAsync()
         {
             var response = await SendPostRequestMessage("/api/content-references/refresh", null);
@@ -182,6 +211,57 @@ namespace Microsoft.Greenlight.Web.DocGen.Client.ServiceClients
             }
             response.EnsureSuccessStatusCode();
             return true;
+        }
+
+        public async Task<List<ContentReferenceItemInfo>> GetAssistantReferenceListAsync(int top = 200)
+        {
+            try
+            {
+                var response = await SendGetRequestMessage($"/api/content-references/assistant-list?top={top}");
+                if (response == null || !response.IsSuccessStatusCode)
+                {
+                    Logger.LogWarning("GetAssistantReferenceListAsync: API call failed with status {StatusCode}", response?.StatusCode);
+                    return new List<ContentReferenceItemInfo>();
+                }
+
+                var rawContent = await response.Content.ReadAsStringAsync();
+                if (string.IsNullOrWhiteSpace(rawContent))
+                {
+                    return new List<ContentReferenceItemInfo>();
+                }
+
+                var options = new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true,
+                    AllowTrailingCommas = true
+                };
+                return JsonSerializer.Deserialize<List<ContentReferenceItemInfo>>(rawContent, options) ?? new List<ContentReferenceItemInfo>();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "GetAssistantReferenceListAsync: unexpected error");
+                return new List<ContentReferenceItemInfo>();
+            }
+        }
+
+        public async Task<string?> GetDownloadUrlForContentReferenceAsync(Guid id)
+        {
+            try
+            {
+                var response = await SendGetRequestMessage($"/api/content-references/{id}/url");
+                if (response == null || !response.IsSuccessStatusCode)
+                {
+                    Logger.LogWarning("GetDownloadUrlForContentReferenceAsync: API returned {Status}", response?.StatusCode);
+                    return null;
+                }
+                var payload = await response.Content.ReadFromJsonAsync<Microsoft.Greenlight.Shared.Contracts.ContentReferenceUrlInfo>();
+                return payload?.Url;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "GetDownloadUrlForContentReferenceAsync: error resolving URL for {Id}", id);
+                return null;
+            }
         }
     }
 }

@@ -14,6 +14,7 @@
     <ProjectReference Include="..\Microsoft.Greenlight.Shared.Contracts\Microsoft.Greenlight.Shared.Contracts.csproj" />
     <ProjectReference Include="..\Microsoft.Greenlight.Shared.Enums\Microsoft.Greenlight.Shared.Enums.csproj" />
     <ProjectReference Include="..\Microsoft.Greenlight.Shared.Models\Microsoft.Greenlight.Shared.Models.csproj" />
+    <ProjectReference Include="..\Microsoft.Greenlight.Grains.Shared.Contracts\Microsoft.Greenlight.Grains.Shared.Contracts.csproj" />
   </ItemGroup>
 
 </Project>

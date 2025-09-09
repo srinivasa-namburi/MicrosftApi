@@ -10,9 +10,9 @@ namespace Microsoft.Greenlight.Shared.Contracts.DTO.Definitions
     public class DocumentLibraryDefinitionPackageDto
     {
         /// <summary>
-        /// Package format version.
+        /// Package format version. v2 introduces FileStorageSources.
         /// </summary>
-        public string PackageFormatVersion { get; set; } = "1.0";
+        public string PackageFormatVersion { get; set; } = "2.0";
 
         /// <summary>
         /// Original library ID from source system.
@@ -40,10 +40,16 @@ namespace Microsoft.Greenlight.Shared.Contracts.DTO.Definitions
         public string IndexName { get; set; } = string.Empty;
 
         /// <summary>
-        /// Container and auto-import settings.
+        /// Legacy container and auto-import settings (v1).
         /// </summary>
         public string BlobStorageContainerName { get; set; } = string.Empty;
         public string BlobStorageAutoImportFolderName { get; set; } = "ingest-auto";
+
+        /// <summary>
+        /// v2: FileStorageSource configuration(s) to associate with this library on import.
+        /// If omitted, import will fall back to legacy container fields or sanitized ShortName.
+        /// </summary>
+        public List<FileStorageSourceConfigDto>? FileStorageSources { get; set; }
 
         /// <summary>
         /// Logic type for the library.
@@ -55,5 +61,10 @@ namespace Microsoft.Greenlight.Shared.Contracts.DTO.Definitions
         /// </summary>
         public int? VectorStoreChunkSize { get; set; }
         public int? VectorStoreChunkOverlap { get; set; }
+
+        /// <summary>
+        /// Optional export/import warnings (e.g., when non-default-host storage sources were omitted on export).
+        /// </summary>
+        public List<string>? Warnings { get; set; }
     }
 }

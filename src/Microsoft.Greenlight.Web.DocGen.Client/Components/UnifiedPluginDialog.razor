@@ -12,11 +12,11 @@
         @if (!_isOverride)
         {
             <MudFileUpload T="IBrowserFile" OnFilesChanged="HandleFileUpload">
-                <ButtonTemplate>
-                    <MudButton HtmlTag="label" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CloudUpload" for="@context">
+                <ActivatorContent>
+                    <MudButton HtmlTag="label" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CloudUpload">
                         Upload MCP Plugin
                     </MudButton>
-                </ButtonTemplate>
+                </ActivatorContent>
             </MudFileUpload>
             <MudText Typo="Typo.body2" Class="mt-2">Expected format: PluginName_version.zip (e.g., Microsoft.Greenlight.Demos.MCPDemo_1.0.0.zip)</MudText>
         }
@@ -55,7 +55,7 @@
 </MudDialog>
 
 @code {
-    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
 
     private bool _isOverride = false;
     private bool _processing = false;

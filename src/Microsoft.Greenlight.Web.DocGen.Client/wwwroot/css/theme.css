@@ -1,0 +1,46 @@
+/**************************************/
+/* Theme & Component Theming          */
+/**************************************/
+
+/* Button & Nav theming (unchanged) */
+.btn-primary {
+    text-transform: uppercase;
+    --bs-btn-bg: var(--mud-palette-primary) !important;
+    --bs-btn-hover-bg: var(--mud-palette-primary-darken) !important;
+}
+
+.nav-pills {
+    --bs-nav-pills-link-active-bg: var(--mud-palette-primary) !important;
+}
+
+.nav {
+    --bs-nav-link-color: var(--mud-palette-primary) !important;
+    --bs-nav-link-hover-color: var(--mud-palette-primary-darken) !important;
+}
+
+/**************************************/
+/* Light-mode "border & shadow" tweaks*/
+/**************************************/
+.light-mode .mud-paper,
+.light-mode .mud-list,
+.light-mode .mud-card {
+    border: 1px solid #b0b0b0;
+}
+
+.light-mode .mud-paper {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/**************************************/
+/* Form Component Styling             */
+/**************************************/
+/* Slightly heavier font in forms */
+.mud-input,
+.mud-select,
+.mud-text-field,
+.mud-select-item,
+.mud-checkbox,
+.mud-slider,
+.mud-radio {
+    font-weight: 450;
+}

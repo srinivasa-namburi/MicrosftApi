@@ -20,7 +20,7 @@
                 <MudIconButton Icon="@Icons.Material.Filled.Refresh" 
                                OnClick="RefreshStatusAsync" 
                                Size="Size.Small"
-                               Title="Refresh Status" />
+                               Aria-Label="Refresh Status" />
             }
         </MudStack>
 
@@ -42,6 +42,7 @@
         @if (Status == ReindexOrchestrationState.Running)
         {
             <MudStack>
+                <MudText Typo="Typo.h6" Class="mb-2">Overall Progress</MudText>
                 <MudProgressLinear Color="Color.Primary" 
                                    Value="@ProgressPercentage" 
                                    Size="Size.Medium" 
@@ -56,6 +57,61 @@
                         @FailedDocuments documents failed
                     </MudText>
                 }
+
+                @if (SourceProgress.Any())
+                {
+                    <MudDivider Class="my-4" />
+                    <MudText Typo="Typo.h6" Class="mb-2">Progress by File Storage Source</MudText>
+                    
+                    <MudStack Spacing="2">
+                        @foreach (var source in SourceProgress)
+                        {
+                            <MudPaper Class="pa-3" Elevation="1">
+                                <MudStack Spacing="2">
+                                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                            <MudIcon Icon="@GetProviderIcon(source.ProviderType)" Size="Size.Small" />
+                                            <MudText Typo="Typo.subtitle1">
+                                                <strong>@source.SourceName</strong>
+                                            </MudText>
+                                            <MudChip T="string" Size="Size.Small" Variant="Variant.Text">
+                                                @source.ProviderType
+                                            </MudChip>
+                                        </MudStack>
+                                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                            @source.ProcessedDocuments/@source.TotalDocuments (@source.ProgressPercentage.ToString("F1")%)
+                                        </MudText>
+                                    </MudStack>
+                                    
+                                    @if (!string.IsNullOrEmpty(source.ContainerOrPath))
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Tertiary">
+                                            <strong>Location:</strong> @source.ContainerOrPath
+                                        </MudText>
+                                    }
+                                    
+                                    <MudProgressLinear Color="@GetSourceProgressColor(source)" 
+                                                       Value="@source.ProgressPercentage" 
+                                                       Size="Size.Small" />
+                                    
+                                    @if (source.FailedDocuments > 0)
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Warning">
+                                            <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Small" Class="mr-1" />
+                                            @source.FailedDocuments documents failed
+                                            @if (source.Errors.Any())
+                                            {
+                                                <MudText Typo="Typo.caption" Color="Color.Error">
+                                                    Last error: @source.Errors.LastOrDefault()
+                                                </MudText>
+                                            }
+                                        </MudText>
+                                    }
+                                </MudStack>
+                            </MudPaper>
+                        }
+                    </MudStack>
+                }
             </MudStack>
         }
         else if (Status == ReindexOrchestrationState.Completed)
@@ -68,6 +124,47 @@
                     <br/>@($"{FailedDocuments} documents failed processing.")
                 }
             </MudAlert>
+
+            @if (SourceProgress.Any())
+            {
+                <MudDivider Class="my-4" />
+                <MudText Typo="Typo.h6" Class="mb-2">Completion Summary by Source</MudText>
+                
+                <MudStack Spacing="2">
+                    @foreach (var source in SourceProgress)
+                    {
+                        <MudPaper Class="pa-3" Elevation="1">
+                            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                    <MudIcon Icon="@GetProviderIcon(source.ProviderType)" Size="Size.Small" />
+                                    <MudText Typo="Typo.subtitle1">
+                                        <strong>@source.SourceName</strong>
+                                    </MudText>
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Text">
+                                        @source.ProviderType
+                                    </MudChip>
+                                </MudStack>
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                    @if (source.FailedDocuments > 0)
+                                    {
+                                        <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Size="Size.Small" />
+                                        <MudText Typo="Typo.body2" Color="Color.Warning">
+                                            @source.FailedDocuments failed
+                                        </MudText>
+                                    }
+                                    else
+                                    {
+                                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" />
+                                    }
+                                    <MudText Typo="Typo.body2">
+                                        @source.ProcessedDocuments/@source.TotalDocuments
+                                    </MudText>
+                                </MudStack>
+                            </MudStack>
+                        </MudPaper>
+                    }
+                </MudStack>
+            }
         }
         else if (Status == ReindexOrchestrationState.Failed)
         {
@@ -118,6 +215,7 @@
     private int FailedDocuments { get; set; }
     private string LastError { get; set; } = string.Empty;
     private string ConnectionStatus { get; set; } = "Disconnected";
+    private List<FileStorageSourceReindexProgress> SourceProgress { get; set; } = new();
     
     private double ProgressPercentage => TotalDocuments > 0 ? (double)(ProcessedDocuments + FailedDocuments) / TotalDocuments * 100 : 0;
 
@@ -195,6 +293,7 @@
                 ProcessedDocuments = status.ProcessedDocuments;
                 FailedDocuments = status.FailedDocuments;
                 LastError = status.Errors.LastOrDefault() ?? string.Empty;
+                SourceProgress = status.SourceProgress ?? new List<FileStorageSourceReindexProgress>();
                 
                 await InvokeAsync(StateHasChanged);
                 await OnStatusChanged.InvokeAsync(Status);
@@ -315,6 +414,23 @@
         ReindexOrchestrationState.Failed => Color.Error,
         _ => Color.Default
     };
+
+    private string GetProviderIcon(FileStorageProviderType providerType) => providerType switch
+    {
+        FileStorageProviderType.BlobStorage => Icons.Material.Filled.Cloud,
+        FileStorageProviderType.LocalFileSystem => Icons.Material.Filled.Folder,
+        FileStorageProviderType.SharePoint => Icons.Material.Filled.Share,
+        _ => Icons.Material.Filled.Storage
+    };
+
+    private Color GetSourceProgressColor(FileStorageSourceReindexProgress source)
+    {
+        if (source.FailedDocuments > 0)
+            return Color.Warning;
+        if (source.IsCompleted)
+            return Color.Success;
+        return Color.Primary;
+    }
 
     public async ValueTask DisposeAsync()
     {

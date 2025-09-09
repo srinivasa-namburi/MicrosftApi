@@ -5,6 +5,8 @@ using Microsoft.Greenlight.Shared.Contracts.Messages.DocumentGeneration.Events;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Reindexing.Events;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Review.Events;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Validation.Events;
+using Microsoft.Greenlight.Shared.Contracts.DTO.SystemStatus;
+using Microsoft.Greenlight.Grains.Shared.Contracts;
 
 namespace Microsoft.Greenlight.Shared.Hubs;
 
@@ -152,4 +154,31 @@ public interface INotificationHubClient
     /// <param name="notification">The document reindex failed notification.</param>
     /// <returns>A task that represents the asynchronous operation.</returns>
     Task ReceiveDocumentReindexFailedNotification(DocumentReindexFailedNotification notification);
+
+    /// <summary>
+    /// Receives notifications that content reference reindexing has started.
+    /// </summary>
+    Task ReceiveContentReferenceReindexStartedNotification(ContentReferenceReindexStartedNotification notification);
+
+    /// <summary>
+    /// Receives notifications about content reference reindexing progress.
+    /// </summary>
+    Task ReceiveContentReferenceReindexProgressNotification(ContentReferenceReindexProgressNotification notification);
+
+    /// <summary>
+    /// Receives notifications that content reference reindexing has completed.
+    /// </summary>
+    Task ReceiveContentReferenceReindexCompletedNotification(ContentReferenceReindexCompletedNotification notification);
+
+    /// <summary>
+    /// Receives notifications that content reference reindexing has failed.
+    /// </summary>
+    Task ReceiveContentReferenceReindexFailedNotification(ContentReferenceReindexFailedNotification notification);
+
+    /// <summary>
+    /// Receives a system status update notification.
+    /// </summary>
+    /// <param name="statusSnapshot">The current system status snapshot.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
+    Task ReceiveSystemStatusUpdateNotification(SystemStatusSnapshot statusSnapshot);
 }

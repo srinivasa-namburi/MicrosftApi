@@ -345,48 +345,6 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.ToTable("Configurations");
                 });
 
-            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.ContentEmbedding", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("ChunkText")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid>("ContentReferenceItemId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<byte[]>("EmbeddingVector")
-                        .IsRequired()
-                        .HasColumnType("varbinary(max)");
-
-                    b.Property<DateTime>("GeneratedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("ModifiedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<byte[]>("RowVersion")
-                        .IsConcurrencyToken()
-                        .IsRequired()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("rowversion");
-
-                    b.Property<int>("SequenceNumber")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ContentReferenceItemId");
-
-                    b.ToTable("ContentEmbeddings", (string)null);
-                });
-
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.ContentNode", b =>
                 {
                     b.Property<Guid>("Id")
@@ -569,6 +527,57 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.HasIndex("Id", "ReferenceType");
 
                     b.ToTable("ContentReferenceItems", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.ContentReferenceVectorDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ChunkCount")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("ContentReferenceItemId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("IndexedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsIndexed")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("ReferenceType")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("VectorStoreDocumentId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("VectorStoreIndexName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ContentReferenceItemId", "VectorStoreIndexName")
+                        .IsUnique();
+
+                    b.ToTable("ContentReferenceVectorDocuments", (string)null);
                 });
 
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.ConversationSummary", b =>
@@ -1177,6 +1186,461 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.ToTable("ExportedDocumentLinks", (string)null);
                 });
 
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FileStorage.ContentReferenceFileAcknowledgment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ContentReferenceItemId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("FileAcknowledgmentRecordId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FileAcknowledgmentRecordId");
+
+                    b.HasIndex("ContentReferenceItemId", "FileAcknowledgmentRecordId")
+                        .IsUnique();
+
+                    b.ToTable("ContentReferenceFileAcknowledgments", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FileStorage.ContentReferenceTypeFileStorageSource", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("AcceptsUploads")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<int>("ContentReferenceType")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("FileStorageSourceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Priority")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FileStorageSourceId");
+
+                    b.HasIndex("ContentReferenceType", "FileStorageSourceId")
+                        .IsUnique();
+
+                    b.ToTable("ContentReferenceTypeFileStorageSources", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FileStorage.DocumentLibraryFileStorageSource", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("AcceptsUploads")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("DocumentLibraryId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FileStorageSourceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FileStorageSourceId");
+
+                    b.HasIndex("DocumentLibraryId", "FileStorageSourceId")
+                        .IsUnique();
+
+                    b.ToTable("DocumentLibraryFileStorageSources", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FileStorage.DocumentProcessFileStorageSource", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("AcceptsUploads")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("DocumentProcessId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("DynamicDocumentProcessDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FileStorageSourceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DynamicDocumentProcessDefinitionId");
+
+                    b.HasIndex("FileStorageSourceId");
+
+                    b.HasIndex("DocumentProcessId", "FileStorageSourceId")
+                        .IsUnique();
+
+                    b.ToTable("DocumentProcessFileStorageSources", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FileStorage.ExternalLinkAsset", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
+
+                    b.Property<string>("FileHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<long>("FileSize")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("FileStorageSourceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("MimeType")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FileHash")
+                        .HasDatabaseName("IX_ExternalLinkAssets_FileHash");
+
+                    b.HasIndex("FileStorageSourceId")
+                        .HasDatabaseName("IX_ExternalLinkAssets_FileStorageSourceId");
+
+                    b.HasIndex("Url")
+                        .HasDatabaseName("IX_ExternalLinkAssets_Url");
+
+                    b.ToTable("ExternalLinkAssets", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FileStorage.FileAcknowledgmentRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("AcknowledgedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FileHash")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("FileStorageSourceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("FileStorageSourceInternalUrl")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RelativeFilePath")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FileStorageSourceId", "RelativeFilePath")
+                        .IsUnique();
+
+                    b.ToTable("FileAcknowledgmentRecords", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageHost", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AuthenticationKey")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ConnectionString")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int>("ProviderType")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.HasIndex("ProviderType", "ConnectionString");
+
+                    b.ToTable("FileStorageHosts", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageSource", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AutoImportFolderName")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ContainerOrPath")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("FileStorageHostId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<bool>("ShouldMoveFiles")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<int>("StorageSourceDataType")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.HasIndex("FileStorageHostId", "ContainerOrPath")
+                        .IsUnique();
+
+                    b.ToTable("FileStorageSources", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageSourceCategory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("DataType")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("FileStorageSourceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FileStorageSourceId", "DataType")
+                        .IsUnique();
+
+                    b.ToTable("FileStorageSourceCategories", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FileStorage.IngestedDocumentFileAcknowledgment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("FileAcknowledgmentRecordId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("IngestedDocumentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FileAcknowledgmentRecordId");
+
+                    b.HasIndex("IngestedDocumentId", "FileAcknowledgmentRecordId")
+                        .IsUnique();
+
+                    b.ToTable("IngestedDocumentFileAcknowledgments", (string)null);
+                });
+
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.GeneratedDocument", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1304,9 +1768,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
 
                     b.HasIndex("DocumentLibraryType", "DocumentLibraryOrProcessName");
 
-                    b.HasIndex("Container", "FolderPath", "FileName", "FileHash", "IngestionState")
+                    b.HasIndex("DocumentLibraryType", "DocumentLibraryOrProcessName", "Container", "FolderPath", "FileName", "FileHash")
                         .IsUnique()
-                        .HasFilter("[FileHash] IS NOT NULL");
+                        .HasFilter("[DocumentLibraryOrProcessName] IS NOT NULL AND [FileHash] IS NOT NULL");
 
                     b.ToTable("IngestedDocuments", (string)null);
                 });
@@ -2216,16 +2680,6 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Navigation("AiModel");
                 });
 
-            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.ContentEmbedding", b =>
-                {
-                    b.HasOne("Microsoft.Greenlight.Shared.Models.ContentReferenceItem", "ContentReferenceItem")
-                        .WithMany("Embeddings")
-                        .HasForeignKey("ContentReferenceItemId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.Navigation("ContentReferenceItem");
-                });
-
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.ContentNode", b =>
                 {
                     b.HasOne("Microsoft.Greenlight.Shared.Models.GeneratedDocument", "AssociatedGeneratedDocument")
@@ -2399,6 +2853,140 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .OnDelete(DeleteBehavior.Cascade);
 
                     b.Navigation("GeneratedDocument");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FileStorage.ContentReferenceFileAcknowledgment", b =>
+                {
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.ContentReferenceItem", "ContentReferenceItem")
+                        .WithMany()
+                        .HasForeignKey("ContentReferenceItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.FileStorage.FileAcknowledgmentRecord", "FileAcknowledgmentRecord")
+                        .WithMany()
+                        .HasForeignKey("FileAcknowledgmentRecordId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ContentReferenceItem");
+
+                    b.Navigation("FileAcknowledgmentRecord");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FileStorage.ContentReferenceTypeFileStorageSource", b =>
+                {
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageSource", "FileStorageSource")
+                        .WithMany()
+                        .HasForeignKey("FileStorageSourceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("FileStorageSource");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FileStorage.DocumentLibraryFileStorageSource", b =>
+                {
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.DocumentLibrary.DocumentLibrary", "DocumentLibrary")
+                        .WithMany("FileStorageSources")
+                        .HasForeignKey("DocumentLibraryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageSource", "FileStorageSource")
+                        .WithMany("DocumentLibrarySources")
+                        .HasForeignKey("FileStorageSourceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("DocumentLibrary");
+
+                    b.Navigation("FileStorageSource");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FileStorage.DocumentProcessFileStorageSource", b =>
+                {
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.DocumentProcess.DynamicDocumentProcessDefinition", "DocumentProcess")
+                        .WithMany()
+                        .HasForeignKey("DocumentProcessId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.DocumentProcess.DynamicDocumentProcessDefinition", null)
+                        .WithMany("FileStorageSources")
+                        .HasForeignKey("DynamicDocumentProcessDefinitionId");
+
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageSource", "FileStorageSource")
+                        .WithMany("DocumentProcessSources")
+                        .HasForeignKey("FileStorageSourceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("DocumentProcess");
+
+                    b.Navigation("FileStorageSource");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FileStorage.ExternalLinkAsset", b =>
+                {
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageSource", "FileStorageSource")
+                        .WithMany()
+                        .HasForeignKey("FileStorageSourceId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("FileStorageSource");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FileStorage.FileAcknowledgmentRecord", b =>
+                {
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageSource", "FileStorageSource")
+                        .WithMany()
+                        .HasForeignKey("FileStorageSourceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("FileStorageSource");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageSource", b =>
+                {
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageHost", "FileStorageHost")
+                        .WithMany("Sources")
+                        .HasForeignKey("FileStorageHostId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("FileStorageHost");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageSourceCategory", b =>
+                {
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageSource", "FileStorageSource")
+                        .WithMany("Categories")
+                        .HasForeignKey("FileStorageSourceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("FileStorageSource");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FileStorage.IngestedDocumentFileAcknowledgment", b =>
+                {
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.FileStorage.FileAcknowledgmentRecord", "FileAcknowledgmentRecord")
+                        .WithMany("IngestedDocumentLinks")
+                        .HasForeignKey("FileAcknowledgmentRecordId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.IngestedDocument", "IngestedDocument")
+                        .WithMany("IngestedDocumentFileAcknowledgments")
+                        .HasForeignKey("IngestedDocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("FileAcknowledgmentRecord");
+
+                    b.Navigation("IngestedDocument");
                 });
 
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Plugins.McpPluginDocumentProcess", b =>
@@ -2635,11 +3223,6 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.ContentReferenceItem", b =>
-                {
-                    b.Navigation("Embeddings");
-                });
-
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.ConversationSummary", b =>
                 {
                     b.Navigation("SummarizedChatMessages");
@@ -2648,6 +3231,8 @@ namespace Microsoft.Greenlight.Shared.Migrations
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.DocumentLibrary.DocumentLibrary", b =>
                 {
                     b.Navigation("DocumentProcessAssociations");
+
+                    b.Navigation("FileStorageSources");
                 });
 
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.DocumentProcess.DocumentOutline", b =>
@@ -2666,6 +3251,8 @@ namespace Microsoft.Greenlight.Shared.Migrations
 
                     b.Navigation("DocumentOutline");
 
+                    b.Navigation("FileStorageSources");
+
                     b.Navigation("McpServerAssociations");
 
                     b.Navigation("MetaDataFields");
@@ -2680,6 +3267,25 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Navigation("Variables");
                 });
 
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FileStorage.FileAcknowledgmentRecord", b =>
+                {
+                    b.Navigation("IngestedDocumentLinks");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageHost", b =>
+                {
+                    b.Navigation("Sources");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageSource", b =>
+                {
+                    b.Navigation("Categories");
+
+                    b.Navigation("DocumentLibrarySources");
+
+                    b.Navigation("DocumentProcessSources");
+                });
+
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.GeneratedDocument", b =>
                 {
                     b.Navigation("ContentNodes");
@@ -2689,6 +3295,11 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Navigation("Metadata");
 
                     b.Navigation("ValidationPipelineExecutions");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.IngestedDocument", b =>
+                {
+                    b.Navigation("IngestedDocumentFileAcknowledgments");
                 });
 
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Plugins.McpPlugin", b =>

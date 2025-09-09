@@ -8,31 +8,31 @@
 @code {
     public static MudTheme MyTheme => new()
         {
-            Palette = new PaletteLight()
+            PaletteLight = new PaletteLight()
             {
-                Primary = "#316DD5",
-                Secondary = "#056676",
+                Primary = "#5B7FA6",
+                Secondary = "#6B7B80",
                 Tertiary = "#737373",
                 Background = "#FAFAFA",
                 Surface = "#F3F3F3",
                 DrawerBackground = "#F3F3F3",
                 DrawerText = "#333333",
-                AppbarBackground = "#316DD5",
+                AppbarBackground = "#5B7FA6",
                 AppbarText = "#FFFFFF",
                 TextPrimary = "#333333",
                 TextSecondary = "#555555",
                 ActionDefault = "#333333",
                 ActionDisabled = "rgba(0,0,0,0.26)",
                 ActionDisabledBackground = "rgba(0,0,0,0.12)",
-                Error = "#D13438",
-                Success = "#107C10",
-                Warning = "#BF8700",
-                Info = "#0078D4"
+                Error = "#B85450",
+                Success = "#6B8E23",
+                Warning = "#B8860B",
+                Info = "#5B7FA6"
             },
             PaletteDark = new PaletteDark()
             {
-                Primary = "#316DD5",
-                Secondary = "#078089",
+                Primary = "#7A9BC4",
+                Secondary = "#8A9B9F",
                 Tertiary = "#737373",
                 Background = "#2C2C2C",
                 Surface = "#373737",
@@ -45,10 +45,10 @@
                 ActionDefault = "#E2E2E2",
                 ActionDisabled = "rgba(255,255,255,0.26)",
                 ActionDisabledBackground = "rgba(255,255,255,0.12)",
-                Error = "#D13438",
-                Success = "#107C10",
-                Warning = "#BF8700",
-                Info = "#0078D4"
+                Error = "#C97875",
+                Success = "#8FAA5A",
+                Warning = "#D4A832",
+                Info = "#7A9BC4"
             },
             LayoutProperties = new LayoutProperties()
             {
@@ -56,79 +56,74 @@
             },
             Typography = new Typography()
             {
-                Default = new Default
-                {
-                    FontFamily = new[] { "Segoe UI", "Helvetica", "Arial", "sans-serif" },
-                    FontSize = "0.95rem"
-                },
-                H1 = new H1
+                H1 = new H1Typography
                 {
                     FontSize = "2.5rem",
-                    FontWeight = 700,
+                    FontWeight = "700",
                     LetterSpacing = "-0.02em"
                 },
-                H2 = new H2
+                H2 = new H2Typography
                 {
                     FontSize = "2rem",
-                    FontWeight = 600
+                    FontWeight = "600"
                 },
-                H3 = new H3
+                H3 = new H3Typography
                 {
                     FontSize = "1.75rem",
-                    FontWeight = 600
+                    FontWeight = "600"
                 },
-                H4 = new H4
+                H4 = new H4Typography
                 {
                     FontSize = "1.5rem",
-                    FontWeight = 600
+                    FontWeight = "600"
                 },
-                H5 = new H5
+                H5 = new H5Typography
                 {
                     FontSize = "1.25rem",
-                    FontWeight = 600
+                    FontWeight = "600"
                 },
-                H6 = new H6
+                H6 = new H6Typography
                 {
                     FontSize = "1.125rem",
-                    FontWeight = 600
+                    FontWeight = "600"
                 },
-                Subtitle1 = new Subtitle1
+                Subtitle1 = new Subtitle1Typography
                 {
                     FontSize = "1rem",
-                    FontWeight = 500
+                    FontWeight = "500"
                 },
-                Subtitle2 = new Subtitle2
+                Subtitle2 = new Subtitle2Typography
                 {
                     FontSize = "0.875rem",
-                    FontWeight = 500
+                    FontWeight = "500"
                 },
-                Body1 = new Body1
+                Body1 = new Body1Typography
                 {
                     FontSize = "1rem",
-                    FontWeight = 400
+                    FontWeight = "400"
                 },
-                Body2 = new Body2
+                Body2 = new Body2Typography
                 {
                     FontSize = "0.875rem",
-                    FontWeight = 400
+                    FontWeight = "400"
                 },
-                Button = new Button
+                Button = new ButtonTypography
                 {
                     FontSize = "0.875rem",
-                    FontWeight = 600,
+                    FontWeight = "600",
                     TextTransform = "none"
                 },
-                Overline = new Overline
+                Overline = new OverlineTypography
                 {
                     FontSize = "0.75rem",
-                    FontWeight = 500,
+                    FontWeight = "500",
                     LetterSpacing = "0.1em",
                     TextTransform = "uppercase"
                 },
-                Caption = new Caption
+                Caption = new CaptionTypography
                 {
                     FontSize = "0.75rem",
-                    FontWeight = 400
+                    FontWeight = "400"
                 }
             }
         };
@@ -160,7 +155,18 @@
 
     private async Task<bool> GetDarkMode()
     {
-        return await _mudThemeProvider.GetSystemPreference();
+        try
+        {
+            if (_mudThemeProvider != null)
+            {
+                return await _mudThemeProvider.GetSystemDarkModeAsync();
+            }
+        }
+        catch (Exception)
+        {
+            // Fallback to default if system preference cannot be determined
+        }
+        return false; // Default to light mode
     }
 
     void DrawerToggle()
@@ -194,9 +200,20 @@
     {
         if (firstRender && !_isInitialized)
         {
-            IsDarkMode = await GetDarkMode();
-            _isInitialized = true;
-            StateHasChanged();
+            try
+            {
+                IsDarkMode = await GetDarkMode();
+            }
+            catch (Exception)
+            {
+                // If system preference detection fails, keep default
+                IsDarkMode = false;
+            }
+            finally
+            {
+                _isInitialized = true;
+                StateHasChanged();
+            }
         }
     }
 

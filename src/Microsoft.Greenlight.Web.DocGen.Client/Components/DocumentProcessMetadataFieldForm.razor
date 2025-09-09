@@ -107,8 +107,8 @@
                             Placement="Placement.Bottom"
                             Arrow="true"
                             Inline="false">
-                    <MudSwitch Label="Is Required"
-                               @bind-Checked="_localFieldInfo.IsRequired" />
+                    <MudSwitch T="bool" Label="Is Required"
+                               @bind-Value="_localFieldInfo.IsRequired" />
                 </MudTooltip>
             </MudItem>
 
@@ -155,11 +155,11 @@
                         <div>
                             <MudText Typo="Typo.subtitle1">Possible Values</MudText>
                             <MudChipSet AllClosable="true"
-                                        OnClose="RemovePossibleValue"
+                                        OnClose="@(EventCallback.Factory.Create<MudChip<string>>(this, RemovePossibleValue))"
                                         Class="mb-2">
                                 @foreach (var value in _localFieldInfo.PossibleValues)
                                 {
-                                    <MudChip Text="@value" Deletable="true" />
+                                    <MudChip T="string" Text="@value" OnClose="@(() => { /* handle delete */ })" />
                                 }
                             </MudChipSet>
                             <MudTextField Label="Add New Value"
@@ -320,7 +320,7 @@
         }
     }
 
-    private void RemovePossibleValue(MudChip chip)
+    private void RemovePossibleValue(MudChip<string> chip)
     {
         if (chip?.Text is not null)
         {

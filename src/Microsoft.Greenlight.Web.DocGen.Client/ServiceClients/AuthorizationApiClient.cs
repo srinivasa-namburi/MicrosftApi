@@ -22,6 +22,21 @@ public class AuthorizationApiClient : WebAssemblyBaseServiceClient<Authorization
         return await response?.Content.ReadFromJsonAsync<UserInfoDTO>()!;
     }
 
+    public async Task FirstLoginSyncAsync(FirstLoginSyncRequest request, CancellationToken cancellationToken = default)
+    {
+        var response = await SendPostRequestMessage("/api/authorization/first-login-sync", request, authorize: true);
+        response?.EnsureSuccessStatusCode();
+    }
+
+    public async Task FirstLoginSyncWithBearerAsync(FirstLoginSyncRequest request, string bearerToken, CancellationToken cancellationToken = default)
+    {
+        using var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/authorization/first-login-sync");
+        requestMessage.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", bearerToken);
+        requestMessage.Content = JsonContent.Create(request);
+        var response = await HttpClient.SendAsync(requestMessage, cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
+
     public async Task<UserInfoDTO?> GetUserInfoAsync(string providerSubjectId)
     {
         var response = await SendGetRequestMessage($"/api/authorization/{providerSubjectId}");
@@ -64,5 +79,16 @@ public class AuthorizationApiClient : WebAssemblyBaseServiceClient<Authorization
     {
         var response = await SendPostRequestMessage("/api/authorization/user-token", tokenDto, authorize: true);
         response?.EnsureSuccessStatusCode();
+    }
+
+    public async Task SetUserTokenWithBearerAsync(UserTokenDTO tokenDto, string bearerToken, CancellationToken cancellationToken = default)
+    {
+        using var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/authorization/user-token");
+        requestMessage.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", bearerToken);
+        requestMessage.Content = JsonContent.Create(tokenDto);
+        
+        Logger.LogInformation("Sending POST request to /api/authorization/user-token with bearer token");
+        var response = await HttpClient.SendAsync(requestMessage, cancellationToken);
+        response.EnsureSuccessStatusCode();
     }
 }

@@ -1,4 +1,5 @@
-﻿using AutoMapper;
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+using AutoMapper;
 using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Grains.Chat.Contracts;
 using Microsoft.Greenlight.Grains.Chat.Contracts.Models;
@@ -92,6 +93,42 @@ public class ConversationGrain : Grain, IConversationGrain
         }
 
         await SafeWriteStateAsync();
+    }
+
+    /// <summary>
+    /// Sets or changes the document process for this conversation and optionally updates the system prompt
+    /// to the default Chat system prompt for the new process.
+    /// </summary>
+    /// <param name="documentProcessName">Document process short name to set for this conversation.</param>
+    /// <param name="updateSystemPrompt">If true, updates SystemPrompt to the default ChatSystemPrompt for the process.</param>
+    public async Task<bool> SetDocumentProcessAsync(string documentProcessName, bool updateSystemPrompt = true)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(documentProcessName))
+            {
+                return false;
+            }
+
+            _state.State.DocumentProcessName = documentProcessName;
+
+            if (updateSystemPrompt)
+            {
+                var systemPromptText = await _promptInfoService.GetPromptTextByShortCodeAndProcessNameAsync(
+                    PromptNames.ChatSystemPrompt, documentProcessName);
+                _state.State.SystemPrompt = systemPromptText;
+            }
+
+            _state.State.ModifiedUtc = DateTime.UtcNow;
+            await SafeWriteStateAsync();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error setting document process {DocumentProcessName} for conversation {ConversationId}",
+                documentProcessName, _state.State.Id);
+            return false;
+        }
     }
 
     /// <summary>

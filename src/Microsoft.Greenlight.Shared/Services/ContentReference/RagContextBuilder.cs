@@ -1,6 +1,12 @@
-﻿using Microsoft.Extensions.Logging;
+// Copyright (c) Microsoft Corporation. All rights reserved.
+
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Models;
+using Microsoft.Greenlight.Shared.Services.Search;
+using Microsoft.Greenlight.Shared.Services.Search.Abstractions;
 using System.Text;
 
 namespace Microsoft.Greenlight.Shared.Services.ContentReference
@@ -12,15 +18,21 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
     {
         private readonly IContentReferenceService _contentReferenceService;
         private readonly IAiEmbeddingService _aiEmbeddingService;
+        private readonly ISemanticKernelVectorStoreProvider _vectorStoreProvider;
+        private readonly IOptionsMonitor<ServiceConfigurationOptions> _options;
         private readonly ILogger<RagContextBuilder> _logger;
 
         public RagContextBuilder(
             IContentReferenceService contentReferenceService,
             IAiEmbeddingService aiEmbeddingService,
+            ISemanticKernelVectorStoreProvider vectorStoreProvider,
+            IOptionsMonitor<ServiceConfigurationOptions> options,
             ILogger<RagContextBuilder> logger)
         {
             _contentReferenceService = contentReferenceService;
             _aiEmbeddingService = aiEmbeddingService;
+            _vectorStoreProvider = vectorStoreProvider;
+            _options = options;
             _logger = logger;
         }
 
@@ -59,53 +71,121 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                         if (topN > 1) topN--;
                     }
 
-                    // Only process references with valid IDs for embedding generation
-                    var referencesForEmbedding = allReferences
+                    // Only process references with valid IDs for vector search
+                    var referencesForSearch = allReferences
                         .Where(r => r.Id != Guid.Empty && r.Id != default)
                         .ToList();
 
-                    if (referencesForEmbedding.Any())
+                    if (referencesForSearch.Any())
                     {
                         try
                         {
-                            // Get all embeddings for references (will use cached if available)
-                            var allEmbeddings = await _contentReferenceService.GetOrCreateEmbeddingsForContentAsync(
-                                referencesForEmbedding, maxChunkTokens);
+                            var vsOpts = _options.CurrentValue.GreenlightServices.VectorStore;
+                            var minRelevance = vsOpts.MinRelevanceScore <= 0 ? 0.7 : vsOpts.MinRelevanceScore;
+                            var maxSearchResults = vsOpts.MaxSearchResults > 0 ? vsOpts.MaxSearchResults : topN;
 
-                            if (allEmbeddings.Any())
+                            var globalMatches = new List<(string IndexName, SkVectorChunkRecord Record, double Score)>();
+
+                            // Group by content reference type to use per-type index + embedding config
+                            foreach (var grp in referencesForSearch.GroupBy(r => r.ReferenceType))
                             {
-                                // Generate query embedding
-                                var queryEmbedding = await _aiEmbeddingService.GenerateEmbeddingsAsync(userQuery);
+                                var type = grp.Key;
+                                var indexName = GetIndexName(type);
 
-                                // Calculate similarity scores
-                                var scores = new List<(string Chunk, float Score)>();
-                                foreach (var entry in allEmbeddings)
+                                // Resolve embedding config for the type
+                                var (deployment, dims) = await _aiEmbeddingService.ResolveEmbeddingConfigForContentReferenceTypeAsync(type);
+                                var queryEmbedding = await _aiEmbeddingService.GenerateEmbeddingsAsync(userQuery, deployment, dims);
+
+                                foreach (var reference in grp)
                                 {
-                                    var chunk = entry.Key.Chunk;
-                                    var embedding = entry.Value;
-                                    var score = _aiEmbeddingService.CalculateCosineSimilarity(queryEmbedding, embedding);
-                                    scores.Add((chunk, score));
-                                }
+                                    try
+                                    {
+                                        // Filter to chunks for this reference only
+                                        var filters = new Dictionary<string, string>
+                                        {
+                                            ["contentReferenceId"] = reference.Id.ToString()
+                                        };
 
-                                // Get top chunks by similarity score
-                                var topChunks = scores
+                                        var results = await _vectorStoreProvider.SearchAsync(
+                                            indexName,
+                                            queryEmbedding,
+                                            top: Math.Min(maxSearchResults, Math.Max(1, topN)),
+                                            minRelevance: minRelevance,
+                                            parametersExactMatch: filters);
+
+                                        if (results is { Count: > 0 })
+                                        {
+                                            foreach (var match in results)
+                                            {
+                                                if (!string.IsNullOrWhiteSpace(match.Record.ChunkText))
+                                                {
+                                                    globalMatches.Add((indexName, match.Record, match.Score));
+                                                }
+                                            }
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        _logger.LogDebug(ex, "Vector search failed for reference {RefId} on index {Index}; continuing", reference.Id, indexName);
+                                    }
+                                }
+                            }
+
+                            if (globalMatches.Count > 0)
+                            {
+                                var ordered = globalMatches
                                     .OrderByDescending(x => x.Score)
-                                    .Take(topN)
-                                    .Select(x => x.Chunk)
                                     .ToList();
 
-                                // Add top chunks to context
-                                foreach (var chunk in topChunks)
+                                var baseHits = ordered.Take(topN).ToList();
+
+                                // Deduplicate by (index, docId, partition) across base + neighbors
+                                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                                foreach (var hit in baseHits)
                                 {
-                                    contextStringBuilder.AppendLine(chunk);
-                                    contextStringBuilder.AppendLine();
+                                    var baseKey = $"{hit.IndexName}|{hit.Record.DocumentId}|{hit.Record.PartitionNumber}";
+                                    if (seen.Add(baseKey))
+                                    {
+                                        contextStringBuilder.AppendLine(hit.Record.ChunkText);
+                                        contextStringBuilder.AppendLine();
+                                    }
+
+                                    // Neighbor expansion: 1 preceding, 1 following
+                                    try
+                                    {
+                                        var neighbors = await _vectorStoreProvider.GetNeighborChunksAsync(
+                                            hit.IndexName,
+                                            hit.Record.DocumentId,
+                                            hit.Record.PartitionNumber,
+                                            precedingPartitions: 1,
+                                            followingPartitions: 1);
+
+                                        foreach (var n in neighbors.OrderBy(n => n.PartitionNumber))
+                                        {
+                                            var nKey = $"{hit.IndexName}|{n.DocumentId}|{n.PartitionNumber}";
+                                            if (seen.Add(nKey) && !string.IsNullOrWhiteSpace(n.ChunkText))
+                                            {
+                                                contextStringBuilder.AppendLine(n.ChunkText);
+                                                contextStringBuilder.AppendLine();
+                                            }
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        _logger.LogDebug(ex, "Neighbor expansion failed for {Doc}/{Part} in {Index}", hit.Record.DocumentId, hit.Record.PartitionNumber, hit.IndexName);
+                                    }
                                 }
+                            }
+                            else
+                            {
+                                AddFallbackChunks(contextStringBuilder, referencesForSearch);
                             }
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogError(ex, "Error generating embeddings for context references, using fallback approach");
-                            AddFallbackChunks(contextStringBuilder, referencesForEmbedding);
+                            _logger.LogError(ex, "Error performing SK search for context references, using fallback approach");
+                            AddFallbackChunks(contextStringBuilder, referencesForSearch);
                         }
                     }
                 }
@@ -136,8 +216,18 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
             return contextStringBuilder.ToString();
         }
 
+        private static string GetIndexName(ContentReferenceType type) => type switch
+        {
+            ContentReferenceType.GeneratedDocument => SystemIndexes.GeneratedDocumentContentReferenceIndex,
+            ContentReferenceType.GeneratedSection => SystemIndexes.GeneratedSectionContentReferenceIndex,
+            ContentReferenceType.ExternalFile => SystemIndexes.ExternalFileContentReferenceIndex,
+            ContentReferenceType.ReviewItem => SystemIndexes.ReviewItemContentReferenceIndex,
+            ContentReferenceType.ExternalLinkAsset => SystemIndexes.ExternalLinkAssetContentReferenceIndex,
+            _ => SystemIndexes.GeneratedDocumentContentReferenceIndex
+        };
+
         /// <summary>
-        /// Adds fallback chunks when no embeddings are available
+        /// Adds fallback chunks when no vector search results are available
         /// </summary>
         private void AddFallbackChunks(StringBuilder contextStringBuilder, List<ContentReferenceItem> references)
         {

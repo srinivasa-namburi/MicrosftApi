@@ -14,7 +14,7 @@
         <MudItem xs="12">
             <MudText Typo="Typo.h6">@Title</MudText>
             
-            <MudTable Items="AssociatedItems" Hover="true" Striped="true" Dense="true">
+            <MudTable T="AssociationViewModel" Items="AssociatedItems" Hover="true" Striped="true" Dense="true">
                 <HeaderContent>
                     <MudTh>@SelectionColumnLabel</MudTh>
                     <MudTh>Version</MudTh>
@@ -208,7 +208,7 @@
             parameters, options);
         dialog.Result.ContinueWith(async result =>
         {
-            if (!result.Result.Cancelled && result.Result.Data is List<SelectableItem> selectedItems)
+            if (!result.Result.Canceled && result.Result.Data is List<SelectableItem> selectedItems)
             {
                 await AssociateSelectedItems(selectedItems.Where(i => i.IsSelected).ToList());
             }
@@ -268,7 +268,7 @@
         var dialog = DialogService.Show<ConfirmationDialog>("Confirm Disassociation", parameters, options);
         dialog.Result.ContinueWith(async result =>
         {
-            if (!result.Result.Cancelled)
+            if (!result.Result.Canceled)
             {
                 await DisassociateItem(association);
                 await InvokeAsync(StateHasChanged);

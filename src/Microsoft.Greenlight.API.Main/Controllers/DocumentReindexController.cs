@@ -7,6 +7,7 @@ using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.API.Main.Authorization;
 using Microsoft.Greenlight.Shared.Contracts.Authorization;
+using Microsoft.Greenlight.Grains.Ingestion.Contracts.Helpers;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
@@ -74,7 +75,9 @@ public class DocumentReindexController : BaseController
             }
 
             // Use a deterministic orchestration ID for idempotency/attach behavior
-            var orchestrationId = $"library-{documentLibraryShortName}";
+            var orchestrationId = IngestionOrchestrationIdHelper.GenerateReindexOrchestrationId(
+                documentLibraryShortName, 
+                DocumentLibraryType.AdditionalDocumentLibrary);
             var reindexGrain = _clusterClient.GetGrain<IDocumentReindexOrchestrationGrain>(orchestrationId);
 
             // If already running in this activation, just return the same ID so the UI can attach
@@ -136,7 +139,9 @@ public class DocumentReindexController : BaseController
             }
 
             // Use a deterministic orchestration ID for idempotency/attach behavior
-            var orchestrationId = $"process-{documentProcessShortName}";
+            var orchestrationId = IngestionOrchestrationIdHelper.GenerateReindexOrchestrationId(
+                documentProcessShortName, 
+                DocumentLibraryType.PrimaryDocumentProcessLibrary);
             var reindexGrain = _clusterClient.GetGrain<IDocumentReindexOrchestrationGrain>(orchestrationId);
 
             // If already running in this activation, just return the same ID so the UI can attach
@@ -205,7 +210,21 @@ public class DocumentReindexController : BaseController
                 Errors = grainState.Errors,
                 LastUpdatedUtc = grainState.LastUpdatedUtc,
                 StartedUtc = grainState.StartedUtc,
-                CompletedUtc = grainState.CompletedUtc
+                CompletedUtc = grainState.CompletedUtc,
+                SourceProgress = grainState.SourceProgress.Select(kvp => new FileStorageSourceReindexProgress
+                {
+                    FileStorageSourceId = kvp.Key,
+                    SourceName = kvp.Value.SourceName,
+                    ProviderType = Enum.TryParse<FileStorageProviderType>(kvp.Value.ProviderType, out var providerType) 
+                        ? providerType 
+                        : FileStorageProviderType.BlobStorage, // Default fallback
+                    ContainerOrPath = kvp.Value.ContainerOrPath,
+                    TotalDocuments = kvp.Value.TotalDocuments,
+                    ProcessedDocuments = kvp.Value.ProcessedDocuments,
+                    FailedDocuments = kvp.Value.FailedDocuments,
+                    Errors = kvp.Value.Errors.ToList(),
+                    LastUpdatedUtc = kvp.Value.LastUpdatedUtc
+                }).ToList()
             };
 
             return Ok(stateInfo);

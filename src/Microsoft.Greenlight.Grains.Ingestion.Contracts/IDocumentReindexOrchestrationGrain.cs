@@ -58,11 +58,27 @@ public interface IDocumentReindexOrchestrationGrain : IGrainWithStringKey
     /// <summary>
     /// Called when a document reindexing operation completes successfully.
     /// </summary>
+    /// <param name="documentId">The ID of the document that was reindexed.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    Task OnReindexCompletedAsync(Guid documentId);
+
+    /// <summary>
+    /// Called when a document reindexing operation fails.
+    /// </summary>
+    /// <param name="documentId">The ID of the document that failed to reindex.</param>
+    /// <param name="reason">The reason for the failure.</param>
+    /// <param name="acquired">Whether a semaphore was acquired for this operation.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    Task OnReindexFailedAsync(Guid documentId, string reason, bool acquired);
+
+    /// <summary>
+    /// Legacy method: Called when a document reindexing operation completes successfully (without document ID).
+    /// </summary>
     /// <returns>A task representing the asynchronous operation.</returns>
     Task OnReindexCompletedAsync();
 
     /// <summary>
-    /// Called when a document reindexing operation fails.
+    /// Legacy method: Called when a document reindexing operation fails (without document ID).
     /// </summary>
     /// <param name="reason">The reason for the failure.</param>
     /// <param name="acquired">Whether a semaphore was acquired for this operation.</param>

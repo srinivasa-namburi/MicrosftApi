@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Greenlight.ServiceDefaults;
 using Microsoft.Greenlight.Shared.Configuration;
+using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Contracts.Chat;
 using Microsoft.Greenlight.Shared.DocumentProcess.Shared;
 using Microsoft.Greenlight.Shared.Extensions;
@@ -216,55 +217,78 @@ builder.UseOrleans(siloBuilder =>
         serializerBuilder.AddAssembly(currentAssembly);
     });
 
-    // Add EventHub-based streaming for high throughput
-    siloBuilder.AddEventHubStreams("StreamProvider", (ISiloEventHubStreamConfigurator streamsConfigurator) =>
+    // Use Redis streams for local development, EventHub for production
+    if (AdminHelper.IsRunningInProduction())
     {
-        streamsConfigurator.ConfigureEventHub(eventHubBuilder => eventHubBuilder.Configure(options =>
+        // Add EventHub-based streaming for high throughput in production
+        siloBuilder.AddEventHubStreams("StreamProvider", (ISiloEventHubStreamConfigurator streamsConfigurator) =>
         {
-            var eventHubNamespace = eventHubConnectionString!.Split("Endpoint=")[1].Split(":443/")[0];
-            var eventHubName = eventHubConnectionString!.Split("EntityPath=")[1].Split(";")[0];
-            var consumerGroup = eventHubConnectionString!.Split("ConsumerGroup=")[1].Split(";")[0];
-            options.ConfigureEventHubConnection(
-                eventHubNamespace,
-                eventHubName,
-                consumerGroup, credentialHelper.GetAzureCredential());
-
-        }));
-
-        streamsConfigurator.UseAzureTableCheckpointer(checkpointBuilder =>
-
-            checkpointBuilder.Configure(options =>
+            streamsConfigurator.ConfigureEventHub(eventHubBuilder => eventHubBuilder.Configure(options =>
             {
-                var tuple = Microsoft.Greenlight.Shared.Helpers.AzureStorageHelper.ParseTableEndpointAndCredential(checkPointTableStorageConnectionString!);
-                var tableEndpoint = tuple.endpoint;
-                var sharedKey = tuple.sharedKeyCredential;
-                if (sharedKey != null)
-                {
-                    options.TableServiceClient = new TableServiceClient(tableEndpoint, sharedKey);
-                }
-                else
-                {
-                    options.TableServiceClient = new TableServiceClient(new Uri(checkPointTableStorageConnectionString!), credentialHelper.GetAzureCredential());
-                }
-                options.PersistInterval = TimeSpan.FromSeconds(10);
+                var eventHubNamespace = eventHubConnectionString!.Split("Endpoint=")[1].Split(":443/")[0];
+                var eventHubName = eventHubConnectionString!.Split("EntityPath=")[1].Split(";")[0];
+                var consumerGroup = eventHubConnectionString!.Split("ConsumerGroup=")[1].Split(";")[0];
+                options.ConfigureEventHubConnection(
+                    eventHubNamespace,
+                    eventHubName,
+                    consumerGroup, credentialHelper.GetAzureCredential());
+
             }));
 
-    });
+            streamsConfigurator.UseAzureTableCheckpointer(checkpointBuilder =>
 
-    siloBuilder.AddAzureBlobGrainStorage("PubSubStore", options =>
+                checkpointBuilder.Configure(options =>
+                {
+                    var tuple = Microsoft.Greenlight.Shared.Helpers.AzureStorageHelper.ParseTableEndpointAndCredential(checkPointTableStorageConnectionString!);
+                    var tableEndpoint = tuple.endpoint;
+                    var sharedKey = tuple.sharedKeyCredential;
+                    if (sharedKey != null)
+                    {
+                        options.TableServiceClient = new TableServiceClient(tableEndpoint, sharedKey);
+                    }
+                    else
+                    {
+                        options.TableServiceClient = new TableServiceClient(new Uri(checkPointTableStorageConnectionString!), credentialHelper.GetAzureCredential());
+                    }
+                    options.PersistInterval = TimeSpan.FromSeconds(10);
+                }));
+
+        });
+    }
+    else
     {
-        var tuple = AzureStorageHelper.ParseBlobEndpointAndCredential(orleansBlobStoreConnectionString!);
-        var blobEndpoint = tuple.endpoint;
-        var sharedKey = tuple.sharedKeyCredential;
-        if (sharedKey != null)
+        // Use memory streams with Redis PubSub store for local development
+        // This enables stream sharing between hosts while using Orleans built-in infrastructure
+        siloBuilder.AddMemoryStreams("StreamProvider");
+    }
+
+    // Configure PubSubStore - use Redis for local dev to enable stream sharing
+    if (AdminHelper.IsRunningInProduction())
+    {
+        siloBuilder.AddAzureBlobGrainStorage("PubSubStore", options =>
         {
-            options.BlobServiceClient = new BlobServiceClient(blobEndpoint, sharedKey);
-        }
-        else
+            var tuple = AzureStorageHelper.ParseBlobEndpointAndCredential(orleansBlobStoreConnectionString!);
+            var blobEndpoint = tuple.endpoint;
+            var sharedKey = tuple.sharedKeyCredential;
+            if (sharedKey != null)
+            {
+                options.BlobServiceClient = new BlobServiceClient(blobEndpoint, sharedKey);
+            }
+            else
+            {
+                options.BlobServiceClient = new BlobServiceClient(new Uri(orleansBlobStoreConnectionString!), credentialHelper.GetAzureCredential());
+            }
+        });
+    }
+    else
+    {
+        // Use Redis storage for PubSub in local development to enable stream sharing
+        var redisConnectionString = builder.Configuration.GetConnectionString("redis");
+        siloBuilder.AddRedisGrainStorage("PubSubStore", options =>
         {
-            options.BlobServiceClient = new BlobServiceClient(new Uri(orleansBlobStoreConnectionString!), credentialHelper.GetAzureCredential());
-        }
-    });
+            options.ConfigurationOptions = StackExchange.Redis.ConfigurationOptions.Parse(redisConnectionString!);
+        });
+    }
 
     siloBuilder.AddAzureBlobGrainStorageAsDefault(options =>
     {

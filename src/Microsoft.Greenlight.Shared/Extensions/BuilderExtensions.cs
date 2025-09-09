@@ -38,6 +38,7 @@ using Microsoft.Greenlight.Shared.Services.Validation;
 using Microsoft.Greenlight.Shared.Services.Search.Abstractions;
 using Microsoft.Greenlight.Shared.Services.Search.Extensions;
 using Microsoft.Greenlight.Shared.Services.Search.Providers;
+using Microsoft.Greenlight.Shared.Services.FileStorage;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion; // legacy SK chat service still used in some factories
 using Microsoft.SemanticKernel.Connectors.AzureOpenAI; // legacy SK connectors
@@ -52,6 +53,7 @@ using Microsoft.Extensions.Azure;
 using Azure.Core.Extensions;
 using Npgsql;
 using Orleans.Configuration;
+using Orleans.Persistence;
 using Orleans.Serialization;
 using StackExchange.Redis;
 using StackExchange.Redis.Configuration;
@@ -225,14 +227,14 @@ public static class BuilderExtensions
                     });
             });
 
-        // NOTE: Microsoft.Extensions.AI OpenAI convenience adapters not available in current package version.
-        // Keep legacy SK chat service registration inside SemanticKernelFactory until upgraded.
-
-
         builder.Services.AddTransient<DynamicDocumentProcessServiceFactory>();
 
         builder.Services.AddTransient<AzureFileHelper>();
         builder.Services.AddSingleton<SearchClientFactory>();
+
+        // File storage services
+        builder.Services.AddTransient<IFileStorageServiceFactory, FileStorageServiceFactory>();
+        builder.Services.AddTransient<IFileUrlResolverService, FileUrlResolverService>();
 
         builder.Services.AddTransient<IDocumentProcessInfoService, DocumentProcessInfoService>();
         builder.Services.AddTransient<IPromptInfoService, PromptInfoService>();
@@ -308,9 +310,6 @@ public static class BuilderExtensions
         builder.Services
             .AddTransient<IContentReferenceGenerationServiceFactory, ContentReferenceGenerationServiceFactory>();
 
-        // Register primary content reference service
-        builder.Services.AddTransient<IContentReferenceService, ContentReferenceService>();
-
         // Register content type specific generation services
         builder.Services
             .AddTransient<IContentReferenceGenerationService<GeneratedDocument>,
@@ -321,9 +320,15 @@ public static class BuilderExtensions
         builder.Services
             .AddTransient<IContentReferenceGenerationService<ReviewInstance>,
                 ReviewContentReferenceGenerationService>();
+        builder.Services
+            .AddTransient<IContentReferenceGenerationService<Microsoft.Greenlight.Shared.Models.FileStorage.ExternalLinkAsset>,
+                ExternalLinkAssetReferenceGenerationService>();
 
         // Context Builder that uses embeddings generation to build rag contexts from content references for user queries
         builder.Services.AddTransient<IRagContextBuilder, RagContextBuilder>();
+
+        // Content Reference Vector Store repository
+        builder.Services.AddTransient<IContentReferenceVectorRepository, ContentReferenceSemanticKernelVectorStoreRepository>();
 
         // Add the shared Dynamic Outline Service
         builder.Services.AddKeyedTransient<IDocumentOutlineService, DynamicDocumentOutlineService>(
@@ -445,55 +450,78 @@ public static class BuilderExtensions
                 serializerBuilder.AddAssembly(currentAssembly);
             });
 
-            // Add EventHub-based streaming for high throughput
-            siloBuilder.AddEventHubStreams("StreamProvider", (ISiloEventHubStreamConfigurator streamsConfigurator) =>
+            // Use in-memory streams for local development to avoid EventHub dependencies
+            if (AdminHelper.IsRunningInProduction())
             {
-                streamsConfigurator.ConfigureEventHub(eventHubBuilder => eventHubBuilder.Configure(options =>
+                // Add EventHub-based streaming for high throughput in production
+                siloBuilder.AddEventHubStreams("StreamProvider", (ISiloEventHubStreamConfigurator streamsConfigurator) =>
                 {
-                    var eventHubNamespace = eventHubConnectionString!.Split("Endpoint=")[1].Split(":443/")[0];
-                    var eventHubName = eventHubConnectionString!.Split("EntityPath=")[1].Split(";")[0];
-                    var consumerGroup = eventHubConnectionString!.Split("ConsumerGroup=")[1].Split(";")[0];
-                    options.ConfigureEventHubConnection(
-                        eventHubNamespace,
-                        eventHubName,
-                        consumerGroup, credentialHelper.GetAzureCredential());
-
-                }));
-
-                streamsConfigurator.UseAzureTableCheckpointer(checkpointBuilder =>
-
-                    checkpointBuilder.Configure(options =>
+                    streamsConfigurator.ConfigureEventHub(eventHubBuilder => eventHubBuilder.Configure(options =>
                     {
-                        var tuple = AzureStorageHelper.ParseTableEndpointAndCredential(checkPointTableStorageConnectionString!);
-                        var tableEndpoint = tuple.endpoint;
-                        var sharedKey = tuple.sharedKeyCredential;
-                        if (sharedKey != null)
-                        {
-                            options.TableServiceClient = new TableServiceClient(tableEndpoint, sharedKey);
-                        }
-                        else
-                        {
-                            options.TableServiceClient = new TableServiceClient(new Uri(checkPointTableStorageConnectionString!), credentialHelper.GetAzureCredential());
-                        }
-                        options.PersistInterval = TimeSpan.FromSeconds(10);
+                        var eventHubNamespace = eventHubConnectionString!.Split("Endpoint=")[1].Split(":443/")[0];
+                        var eventHubName = eventHubConnectionString!.Split("EntityPath=")[1].Split(";")[0];
+                        var consumerGroup = eventHubConnectionString!.Split("ConsumerGroup=")[1].Split(";")[0];
+                        options.ConfigureEventHubConnection(
+                            eventHubNamespace,
+                            eventHubName,
+                            consumerGroup, credentialHelper.GetAzureCredential());
+
                     }));
 
-            });
+                    streamsConfigurator.UseAzureTableCheckpointer(checkpointBuilder =>
 
-            siloBuilder.AddAzureBlobGrainStorage("PubSubStore", options =>
+                        checkpointBuilder.Configure(options =>
+                        {
+                            var tuple = AzureStorageHelper.ParseTableEndpointAndCredential(checkPointTableStorageConnectionString!);
+                            var tableEndpoint = tuple.endpoint;
+                            var sharedKey = tuple.sharedKeyCredential;
+                            if (sharedKey != null)
+                            {
+                                options.TableServiceClient = new TableServiceClient(tableEndpoint, sharedKey);
+                            }
+                            else
+                            {
+                                options.TableServiceClient = new TableServiceClient(new Uri(checkPointTableStorageConnectionString!), credentialHelper.GetAzureCredential());
+                            }
+                            options.PersistInterval = TimeSpan.FromSeconds(10);
+                        }));
+
+                });
+            }
+            else
             {
-                var tuple = AzureStorageHelper.ParseBlobEndpointAndCredential(orleansBlobStoreConnectionString!);
-                var blobEndpoint = tuple.endpoint;
-                var sharedKey = tuple.sharedKeyCredential;
-                if (sharedKey != null)
+                // Use memory streams with Redis PubSub store for local development
+                // This enables stream sharing between hosts while using Orleans built-in infrastructure
+                siloBuilder.AddMemoryStreams("StreamProvider");
+            }
+
+            // Configure PubSubStore - use Redis for local dev to enable stream sharing
+            if (AdminHelper.IsRunningInProduction())
+            {
+                siloBuilder.AddAzureBlobGrainStorage("PubSubStore", options =>
                 {
-                    options.BlobServiceClient = new BlobServiceClient(blobEndpoint, sharedKey);
-                }
-                else
+                    var tuple = AzureStorageHelper.ParseBlobEndpointAndCredential(orleansBlobStoreConnectionString!);
+                    var blobEndpoint = tuple.endpoint;
+                    var sharedKey = tuple.sharedKeyCredential;
+                    if (sharedKey != null)
+                    {
+                        options.BlobServiceClient = new BlobServiceClient(blobEndpoint, sharedKey);
+                    }
+                    else
+                    {
+                        options.BlobServiceClient = new BlobServiceClient(new Uri(orleansBlobStoreConnectionString!), credentialHelper.GetAzureCredential());
+                    }
+                });
+            }
+            else
+            {
+                // Use Redis storage for PubSub in local development to enable stream sharing
+                var redisConnectionString = builder.Configuration.GetConnectionString("redis");
+                siloBuilder.AddRedisGrainStorage("PubSubStore", options =>
                 {
-                    options.BlobServiceClient = new BlobServiceClient(new Uri(orleansBlobStoreConnectionString!), credentialHelper.GetAzureCredential());
-                }
-            });
+                    options.ConfigurationOptions = StackExchange.Redis.ConfigurationOptions.Parse(redisConnectionString!);
+                });
+            }
 
             siloBuilder.AddAzureBlobGrainStorageAsDefault(options =>
             {
@@ -659,12 +687,14 @@ public static class BuilderExtensions
                 }
             }
 
-            if (!string.IsNullOrWhiteSpace(eventHubConnectionString) &&
+            // Use Redis streams for local development, EventHub for production
+            if (AdminHelper.IsRunningInProduction() &&
+                !string.IsNullOrWhiteSpace(eventHubConnectionString) &&
                 eventHubConnectionString.Contains("Endpoint=") &&
                 eventHubConnectionString.Contains("EntityPath=") &&
                 eventHubConnectionString.Contains("ConsumerGroup="))
             {
-                // Configure Event Hubs streaming when a valid connection string is available (Aspire / cloud envs)
+                // Configure Event Hubs streaming for production environments
                 siloBuilder.AddEventHubStreams("StreamProvider", (IClusterClientEventHubStreamConfigurator configurator) =>
                 {
                     configurator.ConfigureEventHub(eventHubBuilder => eventHubBuilder.Configure(options =>
@@ -683,8 +713,8 @@ public static class BuilderExtensions
             }
             else
             {
-                // Fallback for local runs without Event Hubs: use in-memory streams so stream consumers can still resolve a provider
-                // Note: This is suitable for basic smoke tests; real stream traffic requires Event Hubs in dev/prod.
+                // Use memory streams with Redis PubSub store for local development
+                // This enables stream sharing between hosts while using Orleans built-in infrastructure
                 siloBuilder.AddMemoryStreams("StreamProvider");
             }
 

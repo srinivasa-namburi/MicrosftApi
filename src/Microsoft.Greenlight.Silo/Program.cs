@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Greenlight.Grains.Shared.Scheduling;
 using Microsoft.Greenlight.ServiceDefaults;
 using Microsoft.Greenlight.Shared.Configuration;
+using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.DocumentProcess.Shared;
 using Microsoft.Greenlight.Shared.DocumentProcess.Shared.Generation;
 using Microsoft.Greenlight.Shared.Extensions;

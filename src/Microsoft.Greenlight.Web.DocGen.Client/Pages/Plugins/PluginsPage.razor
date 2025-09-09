@@ -8,27 +8,24 @@
 @inject IDialogService DialogService
 @inject NavigationManager NavigationManager
 
-<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
-    <MudText Typo="Typo.h4">MCP Plugins</MudText>
+<MudPaper Class="pa-6">
+    <MudText Typo="Typo.h5">MCP Plugins</MudText>
+    <MudDivider Class="mt-2 mb-5" />
     
-    <MudPaper Class="pa-4 my-4">
-        <MudGrid>
-            <MudItem xs="6" sm="4" md="3">
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ShowUploadPluginDialog" 
-                         StartIcon="@Icons.Material.Filled.CloudUpload" FullWidth="true">
-                    Upload MCP Plugin
-                </MudButton>
-            </MudItem>
-            <MudItem xs="6" sm="4" md="3">
-                <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="ShowCreatePluginDialog" 
-                         StartIcon="@Icons.Material.Filled.Add" FullWidth="true">
-                    Create Plugin
-                </MudButton>
-            </MudItem>
-        </MudGrid>
-    </MudPaper>
-    
-    <MudText Class="mb-3">Manage MCP Plugins</MudText>
+    <MudGrid Class="mb-4">
+        <MudItem xs="6" sm="4" md="3">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ShowUploadPluginDialog" 
+                     StartIcon="@Icons.Material.Filled.CloudUpload" FullWidth="true">
+                Upload MCP Plugin
+            </MudButton>
+        </MudItem>
+        <MudItem xs="6" sm="4" md="3">
+            <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="ShowCreatePluginDialog" 
+                     StartIcon="@Icons.Material.Filled.Add" FullWidth="true">
+                Create Plugin
+            </MudButton>
+        </MudItem>
+    </MudGrid>
     
     @if (_isLoading)
     {
@@ -36,7 +33,7 @@
     }
     else
     {
-        <MudTable Items="_plugins" Hover="true" Striped="true" Dense="true" 
+        <MudTable T="McpPluginInfo" Items="_plugins" Hover="true" Striped="true" Dense="true" 
                  Filter="new Func<McpPluginInfo, bool>(FilterPlugin)" 
                  @bind-RowsPerPage="_rowsPerPage">
             <ToolBarContent>
@@ -59,10 +56,10 @@
                 <MudTd DataLabel="Description">@(context.Description ?? "No description")</MudTd>
                 <MudTd DataLabel="Latest Version">@(context.LatestVersion?.ToString() ?? "N/A")</MudTd>
                 <MudTd DataLabel="Source Type">
-                    <MudChip Size="Size.Small" Color="@GetSourceTypeColor(context.SourceType)">@context.SourceType</MudChip>
+                    <MudChip T="string" Size="Size.Small" Color="@GetSourceTypeColor(context.SourceType)">@context.SourceType</MudChip>
                 </MudTd>
                 <MudTd DataLabel="Versions">
-                    <MudChip Size="Size.Small">@context.Versions.Count</MudChip>
+                    <MudChip T="string" Size="Size.Small">@context.Versions.Count</MudChip>
                 </MudTd>
                 <MudTd>
                     <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" 
@@ -81,7 +78,7 @@
             </NoRecordsContent>
         </MudTable>
     }
-</MudContainer>
+</MudPaper>
 
 @code {
     private List<McpPluginInfo> _plugins = new();
@@ -140,7 +137,7 @@
         
         dialog.Result.ContinueWith(async result =>
         {
-            if (!result.Result.Cancelled)
+            if (!result.Result.Canceled)
             {
                 await LoadPlugins();
                 StateHasChanged();
@@ -155,7 +152,7 @@
         
         dialog.Result.ContinueWith(async result =>
         {
-            if (!result.Result.Cancelled)
+            if (!result.Result.Canceled)
             {
                 await LoadPlugins();
                 StateHasChanged();
@@ -176,7 +173,7 @@
         
         dialog.Result.ContinueWith(async result =>
         {
-            if (!result.Result.Cancelled)
+            if (!result.Result.Canceled)
             {
                 await LoadPlugins();
                 StateHasChanged();
@@ -198,7 +195,7 @@
 
         dialog.Result.ContinueWith(async result =>
         {
-            if (!result.Result.Cancelled)
+            if (!result.Result.Canceled)
             {
                 await DeletePlugin(plugin);
             }

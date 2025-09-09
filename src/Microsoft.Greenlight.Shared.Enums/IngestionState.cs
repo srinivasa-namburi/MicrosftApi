@@ -26,6 +26,13 @@ public enum IngestionState
     FileCopied = 200,
 
     /// <summary>
+    /// The file was already acknowledged at the source and discovered for a new consumer (DL/DP).
+    /// Use this to flow through the copy stage without performing any physical copy, while still
+    /// honoring the ingestion concurrency and queueing semantics.
+    /// </summary>
+    DiscoveredForConsumer = 250,
+
+    /// <summary>
     /// The file is being processed (e.g., indexed, classified).
     /// </summary>
     Processing = 300,

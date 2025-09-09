@@ -2,10 +2,12 @@
 @using Microsoft.AspNetCore.SignalR.Client
 @using Microsoft.Greenlight.Shared.Contracts.Messages.Reindexing.Events
 @using Microsoft.Greenlight.Shared.Contracts.DTO.Configuration
-@using Microsoft.Greenlight.Shared.Contracts.DTO
-@using Microsoft.Greenlight.Shared.Enums
 @inject IConfigurationApiClient ConfigurationApiClient
+@using Microsoft.Greenlight.Shared.Contracts.Requests.FileStorage
+@using Microsoft.Greenlight.Shared.Enums
 @inject IDocumentLibraryApiClient DocumentLibraryApiClient
+@inject IFileStorageHostApiClient FileStorageHostApiClient
+@inject IFileStorageSourceApiClient FileStorageSourceApiClient
 @inject IDocumentProcessApiClient DocumentProcessApiClient
 @inject IFileApiClient FileApiClient
 @inject ISnackbar Snackbar
@@ -16,33 +18,28 @@
 @inject SignalRSubscriptionFactory SignalRSubscriptionFactory
 @implements IAsyncDisposable
 
-<MudPaper Class="pa-4">
-    <MudGrid>
-        <MudItem xs="12">
-            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-                <MudText Typo="Typo.h6">@FormTitle</MudText>
-                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
-                    <MudText Typo="Typo.body2" Class="text-right">
-                        <strong>Logic Type:</strong> @DocumentLibraryInfo.LogicType.ToString()
-                    </MudText>
-                    @if (IsEditMode && DocumentLibraryInfo.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
-                    {
-                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" OnClick="OpenVectorSearchDialog">
-                            <MudIcon Icon="@Icons.Material.Filled.Search" Class="mr-1" />
-                            Search Vector Store
-                        </MudButton>
-                    }
-                    @if (IsEditMode)
-                    {
-                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="OpenExportDialog">
-                            <MudIcon Icon="@Icons.Material.Filled.Download" Class="mr-1" />
-                            Export Definition
-                        </MudButton>
-                    }
-                </MudStack>
-            </MudStack>
-        </MudItem>
-    </MudGrid>
+<MudPaper Class="pa-6">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.h5">@FormTitle</MudText>
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.body2" Class="text-right">
+                <strong>Logic Type:</strong> @DocumentLibraryInfo.LogicType.ToString()
+            </MudText>
+            @if (IsEditMode && DocumentLibraryInfo.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="OpenVectorSearchDialog" StartIcon="@Icons.Material.Filled.Search">
+                    Search Vector Store
+                </MudButton>
+            }
+            @if (IsEditMode)
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="OpenExportDialog" StartIcon="@Icons.Material.Filled.Download">
+                    Export Definition
+                </MudButton>
+            }
+        </MudStack>
+    </MudStack>
+    <MudDivider Class="mt-2 mb-5" />
 
     @if (IsEditMode && ShouldShowLibraryBanner)
     {
@@ -52,31 +49,55 @@
                 <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
                     <MudText Typo="Typo.subtitle2">Reindexing Status:</MudText>
 
-                    <MudChip Color="@GetStatusColor(_libraryReindexStatus!.Status)" Variant="Variant.Filled">
+                    <MudChip T="string" Color="@GetStatusColor(_libraryReindexStatus!.Status)" Variant="Variant.Filled">
                         Library: @_libraryReindexStatus!.Status.ToString() (@_libraryReindexStatus!.ProcessedDocuments/@_libraryReindexStatus!.TotalDocuments)
                     </MudChip>
-                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="OpenLibraryReindexProgress">View details</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info" OnClick="OpenLibraryReindexProgress">View details</MudButton>
 
                     <MudSpacer />
-                    <MudIconButton Icon="@Icons.Material.Filled.Refresh" Title="Refresh reindex status" OnClick="RefreshReindexStatusesAsync" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Refresh" Aria-Label="Refresh reindex status" OnClick="RefreshReindexStatusesAsync" />
                 </MudStack>
             </MudItem>
         </MudGrid>
     }
-    
+
     <MudForm @ref="form" Model="DocumentLibraryInfo">
         <MudTextField Label="Short Name" @bind-Value="DocumentLibraryInfo.ShortName" For="@(() => DocumentLibraryInfo.ShortName)" Required="true" OnBlur="ValidateAndFormatShortName" />
-        <MudTextField Label="Description of Contents" @bind-Value="DocumentLibraryInfo.DescriptionOfContents" For="@(() => DocumentLibraryInfo.DescriptionOfContents)" Required="true" Lines="3" TextArea="true" />
-        <MudTextField Label="Description of When to Use" @bind-Value="DocumentLibraryInfo.DescriptionOfWhenToUse" For="@(() => DocumentLibraryInfo.DescriptionOfWhenToUse)" Required="true" Lines="3" TextArea="true" />
+        <MudTextField Label="Description of Contents" @bind-Value="DocumentLibraryInfo.DescriptionOfContents" For="@(() => DocumentLibraryInfo.DescriptionOfContents)" Required="true" Lines="3" />
+        <MudTextField Label="Description of When to Use" @bind-Value="DocumentLibraryInfo.DescriptionOfWhenToUse" For="@(() => DocumentLibraryInfo.DescriptionOfWhenToUse)" Required="true" Lines="3" />
 
         <MudExpansionPanels Class="mt-2">
             <MudExpansionPanel Text="Storage & Index" Expanded="true">
                 <MudTextField Label="Index Name" @bind-Value="DocumentLibraryInfo.IndexName" For="@(() => DocumentLibraryInfo.IndexName)" Required="true" Disabled="IsEditMode" />
-                <MudTextField Label="Blob Storage Container Name" @bind-Value="DocumentLibraryInfo.BlobStorageContainerName" For="@(() => DocumentLibraryInfo.BlobStorageContainerName)" Required="true" Disabled="IsEditMode" />
-                <MudTextField Label="Blob Storage Auto Import Folder Name" @bind-Value="DocumentLibraryInfo.BlobStorageAutoImportFolderName" For="@(() => DocumentLibraryInfo.BlobStorageAutoImportFolderName)" />
+
+                <!-- File Storage Sources -->
+                <div class="mt-4">
+                    <PermissionView Permission="@Microsoft.Greenlight.Shared.Contracts.Authorization.PermissionKeys.AlterDocumentProcessesAndLibraries">
+                        <ChildContent>
+                            <FileStorageSourceListComponent DocumentLibraryId="@DocumentLibraryInfo.Id"
+                                                            LegacyContainerName="@DocumentLibraryInfo.BlobStorageContainerName"
+                                                            LegacyAutoImportFolder="@DocumentLibraryInfo.BlobStorageAutoImportFolderName"
+                                                            ShowBackwardCompatibility="true" />
+                        </ChildContent>
+                        <NotAuthorized>
+                            <MudAlert Severity="Severity.Info">
+                                You need the "Alter Document Processes and Libraries" permission to manage file storage sources.
+                            </MudAlert>
+                        </NotAuthorized>
+                    </PermissionView>
+                </div>
+
+                <!-- Legacy fields - shown as read-only for reference -->
+                @if (IsEditMode && !string.IsNullOrEmpty(DocumentLibraryInfo.BlobStorageContainerName))
+                {
+                    <MudDivider Class="mt-5 mb-4" />
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">Legacy Configuration (Read-Only)</MudText>
+                    <MudTextField Value="DocumentLibraryInfo.BlobStorageContainerName" Label="Legacy Blob Storage Container Name" Disabled="true" />
+                    <MudTextField Value="DocumentLibraryInfo.BlobStorageAutoImportFolderName" Label="Legacy Blob Storage Auto Import Folder Name" Disabled="true" />
+                }
             </MudExpansionPanel>
 
-            <MudExpansionPanel Text="Advanced (Vector Store & Embeddings)" Expanded="true">
+            <MudExpansionPanel Text="Vector Store Configuration" Expanded="true">
                 @if (DocumentLibraryInfo.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
                 {
                     <MudSelect T="TextChunkingMode?" @bind-Value="DocumentLibraryInfo.VectorStoreChunkingMode" Label="Chunking Mode">
@@ -85,18 +106,18 @@
                             <MudSelectItem Value="@(mode as TextChunkingMode?)">@mode.ToString()</MudSelectItem>
                         }
                     </MudSelect>
-                    
-                    <MudNumericField T="int?" @bind-Value="DocumentLibraryInfo.VectorStoreChunkSize" 
-                                   Label="Chunk Size (tokens)" 
-                                   HelperText="Number of tokens per chunk. Leave empty to use global default."
-                                   Min="100" Max="8000" />
-                    
-                    <MudNumericField T="int?" @bind-Value="DocumentLibraryInfo.VectorStoreChunkOverlap" 
-                                   Label="Chunk Overlap (tokens)" 
-                                   HelperText="Number of overlapping tokens between chunks. Leave empty to use global default."
-                                   Min="0" Max="2000" />
-                                   
-                    <MudDivider Class="my-2" />
+
+                    <MudNumericField T="int?" @bind-Value="DocumentLibraryInfo.VectorStoreChunkSize"
+                                     Label="Chunk Size (tokens)"
+                                     HelperText="Number of tokens per chunk. Leave empty to use global default."
+                                     Min="100" Max="8000" />
+
+                    <MudNumericField T="int?" @bind-Value="DocumentLibraryInfo.VectorStoreChunkOverlap"
+                                     Label="Chunk Overlap (tokens)"
+                                     HelperText="Number of overlapping tokens between chunks. Leave empty to use global default."
+                                     Min="0" Max="2000" />
+
+                    <MudDivider Class="mt-2 mb-3" />
 
                     <MudSelect T="AiModelDeploymentInfo" Label="Embedding Model Deployment" @bind-Value="SelectedEmbeddingDeployment" ToStringFunc="@(d => d.DeploymentName)">
                         @foreach (var deployment in _aiModelDeployments.Where(d => d.AiModel?.ModelType == AiModelType.Embedding))
@@ -115,8 +136,8 @@
                     </MudSelect>
 
                     <MudAlert Severity="Severity.Info" Class="mt-2">
-                        <strong>Note:</strong> Changing chunk size or overlap will only apply to newly ingested documents. 
-                        Existing documents in the index will retain their original chunking. 
+                        <strong>Note:</strong> Changing chunk size or overlap will only apply to newly ingested documents.
+                        Existing documents in the index will retain their original chunking.
                         You can reindex existing documents to apply new chunk settings.
                     </MudAlert>
                 }
@@ -129,24 +150,71 @@
             </MudExpansionPanel>
         </MudExpansionPanels>
 
-        @if (IsEditMode && DocumentLibraryInfo.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
+
+        <!-- File Upload and Reindex Section -->
+        @if (IsEditMode)
         {
-            <MudStack Class="mt-4" Spacing="2">
-                <MudButton Variant="Variant.Filled" Color="Color.Warning" StartIcon="@Icons.Material.Filled.Refresh" OnClick="ShowReindexDialog">
-                    Reindex Documents
-                </MudButton>
-                <MudText Typo="Typo.caption" Color="Color.Secondary">
-                    This will recreate vector embeddings for all previously ingested documents in this library (using the currently set chunk size)
-                </MudText>
-            </MudStack>
+            <MudDivider Class="mt-5 mb-4" />
+
+            <MudGrid Spacing="2" Class="mt-4 mb-2">
+                <MudItem>
+                    <MudFileUpload T="IReadOnlyList<IBrowserFile>"
+                                   FilesChanged="HandleFileSelected"
+                                   MaximumFileCount="16384">
+                        <ActivatorContent>
+                            <MudButton HtmlTag="label"
+                                       Variant="Variant.Outlined"
+                                       Color="Color.Secondary"
+                                       StartIcon="@Icons.Material.Filled.CloudUpload"
+                                       Disabled="_isUploadingFiles">
+                                @if (_isUploadingFiles)
+                                {
+                                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-2" />
+                                    @:Uploading...
+                                }
+                                else
+                                {
+                                    @:Upload Documents
+                                }
+                            </MudButton>
+                        </ActivatorContent>
+                    </MudFileUpload>
+                </MudItem>
+                @if (DocumentLibraryInfo.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
+                {
+                    <MudItem>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Refresh" OnClick="ShowReindexDialog" Disabled="_libraryReindexStatus?.Status == ReindexOrchestrationState.Running">
+                            @if (_libraryReindexStatus?.Status == ReindexOrchestrationState.Running)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-2" />
+                                @:Reindexing...
+                            }
+                            else
+                            {
+                                @:Reindex Documents
+                            }
+                        </MudButton>
+                    </MudItem>
+                }
+            </MudGrid>
         }
 
-        <MudDivider Class="my-2" />
+        <MudDivider Class="mt-5 mb-4" />
 
         <MudStack Row="false" Spacing="2">
             <MudStack Row="true" Spacing="2">
-                <MudButton OnClick="(()=>HandleValidSubmit())" Variant="Variant.Filled" Color="Color.Primary" Style="min-width:150px">Save</MudButton>
-                <MudButton OnClick="@Cancel" Variant="Variant.Outlined" Color="Color.Default" Style="min-width:150px">Cancel</MudButton>
+                <MudButton OnClick="(() => HandleValidSubmit())" Variant="Variant.Filled" Color="Color.Primary" Style="min-width:150px" Disabled="_isSaving">
+                    @if (_isSaving)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-2" />
+                        @:Saving...
+                    }
+                    else
+                    {
+                        @:Save
+                    }
+                </MudButton>
+                <MudButton OnClick="@Cancel" Variant="Variant.Outlined" Color="Color.Secondary" Style="min-width:150px">Cancel</MudButton>
                 @if (IsEditMode)
                 {
                     <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="ConfirmDeleteLibrary" Style="min-width:150px">
@@ -160,32 +228,13 @@
 
 @if (IsEditMode)
 {
-    <MudDivider Class="my-4" />
-
-    <!-- File Upload Section -->
-    <MudPaper Class="pa-4">
-        <MudFileUpload T="IReadOnlyList<IBrowserFile>"
-                       FilesChanged="HandleFileSelected"
-                       MaximumFileCount="16384">
-            <ButtonTemplate>
-                <MudButton HtmlTag="label"
-                           Variant="Variant.Filled"
-                           Color="Color.Primary"
-                           StartIcon="@Icons.Material.Filled.CloudUpload"
-                           for="@context">
-                    Upload Files to Document Library
-                </MudButton>
-            </ButtonTemplate>
-        </MudFileUpload>
-    </MudPaper>
-
-    <MudDivider Class="my-4" />
+    <MudDivider Class="mt-5 mb-4" />
 
     <!-- Associated Document Processes Section -->
-    <MudPaper Class="pa-4">
+    <MudPaper Class="pa-6">
         <MudText Typo="Typo.h6">Associated Document Processes</MudText>
 
-        <MudTable Items="AssociatedDocumentProcesses" Hover="true">
+        <MudTable T="DocumentProcessInfo" Items="AssociatedDocumentProcesses" Hover="true">
             <HeaderContent>
                 <MudTh>Process Name</MudTh>
                 <MudTh>Actions</MudTh>
@@ -198,7 +247,7 @@
             </RowTemplate>
         </MudTable>
 
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ShowAssociateProcessDialog">Associate Document Process</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="ShowAssociateProcessDialog">Associate Document Process</MudButton>
     </MudPaper>
 }
 
@@ -232,6 +281,10 @@
     );
 
     private List<AiModelDeploymentInfo> _aiModelDeployments = new();
+    
+    // Progress tracking state
+    private bool _isSaving = false;
+    private bool _isUploadingFiles = false;
 
     private AiModelDeploymentInfo? SelectedEmbeddingDeployment
     {
@@ -491,21 +544,26 @@
 
     private async Task HandleValidSubmit()
     {
-        await form.Validate();
-
-        if (!form.IsValid)
+        _isSaving = true;
+        StateHasChanged();
+        
+        try
         {
-            return;
-        }
+            await form.Validate();
 
-        if (IsEditMode && DocumentLibraryInfo.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
-        {
-            var ok = await ConfirmReindexIfEmbeddingChangedAsync();
-            if (!ok)
+            if (!form.IsValid)
             {
                 return;
             }
-        }
+
+            if (IsEditMode && DocumentLibraryInfo.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
+            {
+                var ok = await ConfirmReindexIfEmbeddingChangedAsync();
+                if (!ok)
+                {
+                    return;
+                }
+            }
 
         // Ensure embedding settings are only applied for SemanticKernelVectorStore
         if (DocumentLibraryInfo.LogicType != DocumentProcessLogicType.SemanticKernelVectorStore)
@@ -520,6 +578,15 @@
             var createdLibrary = await DocumentLibraryApiClient.CreateDocumentLibraryAsync(DocumentLibraryInfo);
             Snackbar.Add("Document Library saved", Severity.Success);
             DocumentLibraryInfo = createdLibrary;
+            // Ensure a default FileStorageSource exists on the default host and is associated
+            try
+            {
+                await EnsureDefaultFileStorageSourceForLibraryAsync(DocumentLibraryInfo.Id, DocumentLibraryInfo.BlobStorageContainerName, DocumentLibraryInfo.BlobStorageAutoImportFolderName ?? "ingest-auto");
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Created library, but failed to provision default storage source: {ex.Message}", Severity.Warning);
+            }
             await OnSaved.InvokeAsync(createdLibrary);
             NavigationManager.NavigateTo($"/document-library/{DocumentLibraryInfo.Id}");
         }
@@ -547,6 +614,48 @@
             await LoadAvailableDocumentProcesses();
             await RefreshReindexStatusesAsync();
         }
+        }
+        finally
+        {
+            _isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task EnsureDefaultFileStorageSourceForLibraryAsync(Guid libraryId, string containerOrPath, string autoImportFolder)
+    {
+        var hosts = await FileStorageHostApiClient.GetAllFileStorageHostsAsync();
+        var defaultHost = hosts.FirstOrDefault(h => h.IsDefault && h.IsActive);
+        if (defaultHost == null) { throw new InvalidOperationException("No default FileStorageHost configured."); }
+
+        // Try to find existing source on default host
+        var allSources = await FileStorageSourceApiClient.GetAllFileStorageSourcesAsync();
+        var existing = allSources.FirstOrDefault(s => s.FileStorageHostId == defaultHost.Id && string.Equals(s.ContainerOrPath, containerOrPath, StringComparison.OrdinalIgnoreCase));
+        if (existing == null)
+        {
+            var createReq = new CreateFileStorageSourceRequest
+            {
+                Name = $"Default - {DocumentLibraryInfo.ShortName}",
+                FileStorageHostId = defaultHost.Id,
+                ContainerOrPath = containerOrPath,
+                AutoImportFolderName = string.IsNullOrWhiteSpace(autoImportFolder) ? "ingest-auto" : autoImportFolder,
+                IsDefault = false,
+                IsActive = true,
+                ShouldMoveFiles = true,
+                Description = $"Auto-created for library {DocumentLibraryInfo.ShortName}",
+                StorageSourceDataTypes = new List<FileStorageSourceDataType> { FileStorageSourceDataType.Ingestion }
+            };
+            existing = await FileStorageSourceApiClient.CreateFileStorageSourceAsync(createReq);
+        }
+
+        // Associate and make it the upload source
+        await FileStorageSourceApiClient.AssociateSourceWithLibraryAsync(libraryId, existing.Id);
+        await FileStorageSourceApiClient.UpdateLibrarySourceAssociationAsync(libraryId, existing.Id, new UpdateLibrarySourceAssociationRequest
+        {
+            AcceptsUploads = true,
+            IsActive = true,
+            Priority = 1
+        });
     }
 
     private void Cancel()
@@ -623,21 +732,30 @@
             Snackbar.Add("No files selected for upload.", Severity.Warning);
             return;
         }
-        foreach (var file in files)
-        {
-            var fileName = $"{DocumentLibraryInfo.BlobStorageAutoImportFolderName}/{file.Name}";
-            // URL encode the file name
-            fileName = WebUtility.UrlEncode(fileName);
 
-            try
+        _isUploadingFiles = true;
+        StateHasChanged();
+        
+        try
+        {
+            foreach (var file in files)
             {
-                var result = await FileApiClient.UploadFileDirectAsync(DocumentLibraryInfo.BlobStorageContainerName, fileName, file);
-                Snackbar.Add($"File '{file.Name}' uploaded successfully.", Severity.Success);
+                try
+                {
+                    // Use the FileApiClient method for document library uploads
+                    var result = await FileApiClient.UploadFileToDocumentLibraryAsync(DocumentLibraryInfo.ShortName, file.Name, file);
+                    Snackbar.Add($"File '{file.Name}' uploaded successfully.", Severity.Success);
+                }
+                catch (Exception ex)
+                {
+                    Snackbar.Add($"Error uploading file '{file.Name}': {ex.Message}", Severity.Error);
+                }
             }
-            catch (Exception ex)
-            {
-                Snackbar.Add($"Error uploading file '{file.Name}': {ex.Message}", Severity.Error);
-            }
+        }
+        finally
+        {
+            _isUploadingFiles = false;
+            StateHasChanged();
         }
     }
 

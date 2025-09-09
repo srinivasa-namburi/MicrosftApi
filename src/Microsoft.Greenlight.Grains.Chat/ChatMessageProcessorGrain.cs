@@ -28,6 +28,7 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
     private readonly ILogger<ChatMessageProcessorGrain> _logger;
     private readonly IDocumentProcessInfoService _documentProcessInfoService;
     private readonly IContentReferenceService _contentReferenceService;
+    private readonly IContentReferenceVectorRepository _contentReferenceVectorRepository;
     private readonly IRagContextBuilder _ragContextBuilder;
     private readonly IKernelFactory _kernelFactory;
 
@@ -38,6 +39,7 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
         IDocumentProcessInfoService documentProcessInfoService,
         IKernelFactory kernelFactory,
         IContentReferenceService contentReferenceService,
+        IContentReferenceVectorRepository contentReferenceVectorRepository,
         IRagContextBuilder ragContextBuilder)
     {
         _mapper = mapper;
@@ -46,6 +48,7 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
         _documentProcessInfoService = documentProcessInfoService;
         _kernelFactory = kernelFactory;
         _contentReferenceService = contentReferenceService;
+        _contentReferenceVectorRepository = contentReferenceVectorRepository;
         _ragContextBuilder = ragContextBuilder;
     }
 
@@ -157,9 +160,17 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
             return [];
         }
 
+        _logger.LogInformation("Extracting references from message {MessageId}. Message content: {MessagePreview}", 
+            messageDto.Id, 
+            messageDto.Message.Length > 200 ? messageDto.Message.Substring(0, 200) + "..." : messageDto.Message);
+
         // Extract reference patterns from message
-        var matches = Regex.Matches(messageDto.Message, @"#\(Reference:(\w+):([0-9a-fA-F-]+)\)");
+        // Support both "#(Reference:Type:Id)" and "#Reference:Type:Id" formats
+        var matches = Regex.Matches(messageDto.Message, @"#\(?Reference:(\w+):([0-9a-fA-F-]+)\)?");
         var processedReferences = new Dictionary<string, ContentReferenceItem>(); // Track by reference key
+
+        _logger.LogInformation("Found {MatchCount} reference pattern matches in message {MessageId}", 
+            matches.Count, messageDto.Id);
 
         if (matches.Count <= 0)
         {
@@ -172,14 +183,21 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
 
         foreach (Match match in matches)
         {
+            _logger.LogInformation("Processing reference match: {MatchValue}, Type: {TypeValue}, Id: {IdValue}", 
+                match.Value, match.Groups[1].Value, match.Groups[2].Value);
+
             if (Enum.TryParse(match.Groups[1].Value, out ContentReferenceType referenceType))
             {
                 var referenceId = Guid.Parse(match.Groups[2].Value);
                 string matchKey = match.Value;
 
+                _logger.LogInformation("Successfully parsed reference: Type={ReferenceType}, Id={ReferenceId}", 
+                    referenceType, referenceId);
+
                 // Check for duplicate in this message first (exact same reference)
                 if (processedReferences.ContainsKey(matchKey))
                 {
+                    _logger.LogInformation("Duplicate reference found, reusing: {MatchKey}", matchKey);
                     contentReferences.Add(processedReferences[matchKey]);
                     continue;
                 }
@@ -187,20 +205,35 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
                 // Process each reference in parallel but with careful error handling
                 processingTasks.Add(ProcessSingleReferenceAsync(messageDto.Id, referenceId, referenceType, matchKey));
             }
+            else
+            {
+                _logger.LogWarning("Failed to parse ContentReferenceType from value: {TypeValue}", match.Groups[1].Value);
+            }
         }
 
         // Wait for all tasks to complete
         var results = await Task.WhenAll(processingTasks);
+
+        _logger.LogInformation("Completed processing {TaskCount} reference tasks", results.Length);
 
         // Process results
         foreach (var result in results)
         {
             if (result.Reference != null)
             {
+                _logger.LogInformation("Adding reference to results: {ReferenceId} - {DisplayName}", 
+                    result.Reference.Id, result.Reference.DisplayName);
                 processedReferences[result.MatchKey] = result.Reference;
                 contentReferences.Add(result.Reference);
             }
+            else
+            {
+                _logger.LogWarning("Reference task returned null for key: {MatchKey}", result.MatchKey);
+            }
         }
+
+        _logger.LogInformation("Extracted {ReferenceCount} references from message {MessageId}", 
+            contentReferences.Count, messageDto.Id);
 
         await SendStatusNotificationAsync(messageDto.Id, "All references processed", false, true);
         return contentReferences;
@@ -214,10 +247,10 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
     {
         try
         {
-            // For external files, notify user that analysis might take some time
-            if (referenceType == ContentReferenceType.ExternalFile)
+            // For file-based references (ExternalFile or ExternalLinkAsset), notify user that analysis might take some time
+            if (referenceType == ContentReferenceType.ExternalFile || referenceType == ContentReferenceType.ExternalLinkAsset)
             {
-                var referenceItem = await _contentReferenceService.GetCachedReferenceByIdAsync(referenceId, ContentReferenceType.ExternalFile);
+                var referenceItem = await _contentReferenceService.GetReferenceByIdAsync(referenceId, referenceType);
                 if (referenceItem != null)
                 {
                     await SendStatusNotificationAsync(messageId, $"Processing file reference {referenceItem.DisplayName}", true);
@@ -282,6 +315,19 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
 
             // Get references for context
             var referenceItems = await _contentReferenceService.GetContentReferenceItemsFromIdsAsync(referenceItemIds);
+
+            // Opportunistically index selected references into SK vector store (non-blocking best-effort)
+            if (referenceItems.Any())
+            {
+                _ = Task.Run(async () =>
+                {
+                    foreach (var r in referenceItems)
+                    {
+                        try { await _contentReferenceVectorRepository.IndexAsync(r); }
+                        catch (Exception ex) { _logger.LogDebug(ex, "Indexing content reference {Id} failed (best-effort)", r.Id); }
+                    }
+                });
+            }
 
             // If ContentText is provided, we're in content editing mode
             if (!string.IsNullOrEmpty(userMessageDto.ContentText))
@@ -356,26 +402,83 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
             // Build context with selected references
             var contextString = await BuildContextWithSelectedReferencesAsync(userMessageDto.Message, referenceItems, 5);
 
-            // Get document process info
+            // Resolve document process name & info robustly
             DocumentProcessInfo? documentProcessInfo = null;
-            try
-            {
-                documentProcessInfo = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentProcessName);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to get document process with name {DocumentProcessName}, falling back to Default", documentProcessName);
-                documentProcessInfo = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync("Default");
 
-                if (documentProcessInfo == null)
+            // If no process was provided, try fetching it from the conversation state
+            if (string.IsNullOrWhiteSpace(documentProcessName))
+            {
+                try
                 {
-                    // Try to get any document process as a last resort
-                    var documentProcesses = await _documentProcessInfoService.GetCombinedDocumentProcessInfoListAsync();
-                    if (documentProcesses.Any())
+                    var convGrain = GrainFactory.GetGrain<IConversationGrain>(userMessageDto.ConversationId);
+                    var convState = await convGrain.GetStateAsync();
+                    if (!string.IsNullOrWhiteSpace(convState?.DocumentProcessName))
                     {
-                        documentProcessInfo = documentProcesses.First();
-                        documentProcessName = documentProcessInfo.ShortName;
+                        documentProcessName = convState!.DocumentProcessName!;
                     }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Unable to resolve document process from conversation state for {ConversationId}", userMessageDto.ConversationId);
+                }
+            }
+
+            // Attempt resolution by short name (preferred)
+            if (!string.IsNullOrWhiteSpace(documentProcessName))
+            {
+                try
+                {
+                    documentProcessInfo = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentProcessName);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error resolving document process by short name {DocumentProcessName}", documentProcessName);
+                }
+
+                // If not found and looks like a GUID, try by id
+                if (documentProcessInfo == null && Guid.TryParse(documentProcessName, out var processId))
+                {
+                    try
+                    {
+                        documentProcessInfo = await _documentProcessInfoService.GetDocumentProcessInfoByIdAsync(processId);
+                        if (documentProcessInfo != null)
+                        {
+                            documentProcessName = documentProcessInfo.ShortName; // normalize to short name
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Error resolving document process by id {DocumentProcessId}", processId);
+                    }
+                }
+            }
+
+            // Fallback to Default if still unresolved
+            if (documentProcessInfo == null)
+            {
+                try
+                {
+                    var defaultInfo = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync("Default");
+                    if (defaultInfo != null)
+                    {
+                        documentProcessInfo = defaultInfo;
+                        documentProcessName = defaultInfo.ShortName;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error resolving Default document process");
+                }
+            }
+
+            // Absolute last resort: pick any available process
+            if (documentProcessInfo == null)
+            {
+                var documentProcesses = await _documentProcessInfoService.GetCombinedDocumentProcessInfoListAsync();
+                if (documentProcesses.Any())
+                {
+                    documentProcessInfo = documentProcesses.First();
+                    documentProcessName = documentProcessInfo.ShortName;
                 }
             }
 

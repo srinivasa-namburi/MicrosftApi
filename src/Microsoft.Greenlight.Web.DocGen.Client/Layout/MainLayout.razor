@@ -1,3 +1,4 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
 @inherits LayoutComponentBase
 @implements IDisposable
 @using Microsoft.AspNetCore.SignalR.Client
@@ -7,6 +8,8 @@
 @inject SignalRConnectionService SignalRConnectionService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IPermissionService PermissionService
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Auth
+@using Microsoft.Greenlight.Web.DocGen.Client.ServiceClients
 
 <MyMudThemeProvider @bind-IsDarkMode="@IsDarkMode" />
 <MyMudProviders />
@@ -22,42 +25,49 @@
 }
 else
 {
-    <MudLayout Class="@(IsDarkMode ? "dark-mode" : "light-mode")">
-        <MudAppBar Elevation="3">
-            <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
-            <MudSpacer />
-            <UserInfoComponent />
-            <MudSwitch @bind-Value="IsDarkMode" Color="Color.Primary" Class="ma-1" T="bool" ThumbIcon="@Icons.Material.Filled.WbSunny" />
+    <MudLayout Class="@(IsDarkMode ? "dark-mode" : "light-mode")" data-testid="main-layout">
+        <MudAppBar Elevation="3" Style="height: 48px; min-height: 48px;">
+            <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="width: 100%; height: 100%; padding: 0 8px;">
+                <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" Size="Size.Medium" OnClick="@((e) => ToggleDrawer())" />
+                <AppBarUserArea @bind-IsDarkMode="IsDarkMode" />
+            </MudStack>
         </MudAppBar>
-        <MudDrawer @bind-Open="_drawerOpen" Elevation="3">
-            <MudDrawerHeader>
-                <MudText Typo="Typo.h6">@_siteName</MudText>
+        <MudDrawer @bind-Open="_drawerOpen"
+                   Elevation="3"
+                   Variant="DrawerVariant.Persistent"
+                   ClipMode="DrawerClipMode.Always"
+                   Width="270px">
+            <MudDrawerHeader Class="d-flex align-center pa-3" Style="height: 48px; min-height: 48px;">
+                <MudStack Row AlignItems="AlignItems.Center" Spacing="2" Style="flex-grow: 1;">
+                    <MudIcon Icon="@Icons.Material.Filled.Science" Color="Color.Primary" Size="Size.Small" />
+                    <MudText Typo="Typo.subtitle1" Class="flex-grow-1">@_siteName</MudText>
+                </MudStack>
             </MudDrawerHeader>
             <NavMenu />
         </MudDrawer>
         <CascadingValue TValue="HubConnection" Value="@HubConnection">
             <CascadingValue Name="IsDarkMode" Value="IsDarkMode">
                 <MudMainContent>
-                    <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="my-6 pt-6">
+                    <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="pa-4">
                         @Body
                     </MudContainer>
                 </MudMainContent>
             </CascadingValue>
         </CascadingValue>
+        <FloatingAiAssistant />
     </MudLayout>
 }
 
 @code {
-    bool _drawerOpen = true;
     private bool _isInitializing = true;
+    private bool _drawerOpen = true;
 
     private string _siteName = "Generative AI for Industry Permitting";
 
     public bool IsDarkMode { get; set; } = true;
     public HubConnection? HubConnection { get; set; }
-    
 
-    void DrawerToggle()
+    void ToggleDrawer()
     {
         _drawerOpen = !_drawerOpen;
     }
@@ -65,7 +75,7 @@ else
     protected override async Task OnInitializedAsync()
     {
         Logger.LogInformation("MainLayout initialization starting");
-        
+
         try
         {
             // Step 1: Load site name from configuration
@@ -113,17 +123,17 @@ else
         {
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
             var user = authState.User;
-            
+
             if (user.Identity?.IsAuthenticated == true)
             {
-                Logger.LogInformation("User authenticated, preloading permissions and pushing token");
-                
+                Logger.LogInformation("User authenticated, preloading permissions");
+
                 // Preload permissions early to populate the cache
                 // This prevents multiple API calls when NavMenu components check permissions
-                var preloadTask = PreloadPermissionsAsync();
-                var tokenTask = PushUserTokenOnceAsync(user);
+                await PreloadPermissionsAsync();
                 
-                await Task.WhenAll(preloadTask, tokenTask);
+                // Push user access token to backend for Orleans/MCP usage
+                await PushUserTokenAsync();
             }
             else
             {
@@ -150,6 +160,51 @@ else
         }
     }
 
+    private async Task PushUserTokenAsync()
+    {
+        try
+        {
+            Logger.LogInformation("Pushing user access token to backend for Orleans/MCP usage");
+
+            // Get the access token from the client-side authentication state
+            var accessToken = await ((AuthorizationApiClient)AuthorizationApiClient).GetAccessTokenAsync();
+            
+            // Get user information from authentication state
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            var providerSubjectId = user.FindFirst("sub")?.Value;
+
+            if (string.IsNullOrWhiteSpace(providerSubjectId))
+            {
+                Logger.LogWarning("Cannot push user token - missing subject ID");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(accessToken))
+            {
+                Logger.LogWarning("Cannot push user token - missing access token");
+                return;
+            }
+
+            // Create the token DTO
+            var tokenDto = new UserTokenDTO
+            {
+                ProviderSubjectId = providerSubjectId,
+                AccessToken = accessToken,
+                ExpiresOnUtc = null // We don't have expiry information from the client-side token
+            };
+
+            // Use the client-side API client with proper authorization
+            await AuthorizationApiClient.SetUserTokenAsync(tokenDto);
+
+            Logger.LogInformation("Successfully pushed user access token for subject {Subject}", providerSubjectId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to push user token to backend - will retry on next authentication state change");
+        }
+    }
+
     private async Task StartHubConnectionsAsync()
     {
         try
@@ -169,29 +224,6 @@ else
         }
     }
 
-    private async Task PushUserTokenOnceAsync(System.Security.Claims.ClaimsPrincipal user)
-    {
-        var providerSubjectId = user.FindFirst(claim => claim.Type == "sub")?.Value;
-        if (string.IsNullOrWhiteSpace(providerSubjectId)) return;
-        
-        try
-        {
-            // Use server endpoint exposed via the host to fetch our current access token
-            var accessToken = await ConfigurationApiClient!.GetAccessTokenAsync();
-            // accessToken is expected to be non-null; GetAccessTokenAsync throws on unauthorized
-            Logger.LogInformation("Pushing user token for sub {Sub}. Token length={Len}.", providerSubjectId, accessToken.Length);
-            await AuthorizationApiClient.SetUserTokenAsync(new Microsoft.Greenlight.Shared.Contracts.DTO.Auth.UserTokenDTO
-            {
-                ProviderSubjectId = providerSubjectId,
-                AccessToken = accessToken,
-                ExpiresOnUtc = null
-            });
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "Failed to push user token");
-        }
-    }
 
     private async void OnAuthenticationStateChanged(Task<AuthenticationState> task)
     {
@@ -201,18 +233,20 @@ else
             if (state.User.Identity?.IsAuthenticated == true)
             {
                 Logger.LogInformation("Auth state changed: user signed in; refreshing data");
-                
+
                 // Preload permissions for the newly authenticated user
                 await PreloadPermissionsAsync();
-                
-                // (Re)start hub connections and token push when user signs in
+
+                // Push user access token to backend for Orleans/MCP usage
+                await PushUserTokenAsync();
+
+                // (Re)start hub connections when user signs in
                 try { await StartHubConnectionsAsync(); } catch (InvalidOperationException) { /* ignore */ }
-                await PushUserTokenOnceAsync(state.User);
             }
             else
             {
                 Logger.LogInformation("Auth state changed: user signed out; invalidating cache");
-                
+
                 // Invalidate permission cache when user signs out
                 await PermissionService.InvalidatePermissionCacheAsync();
             }

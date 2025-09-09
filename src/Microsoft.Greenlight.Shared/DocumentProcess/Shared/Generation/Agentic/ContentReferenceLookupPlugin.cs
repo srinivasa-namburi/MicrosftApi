@@ -1,5 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Services.ContentReference;
+using Microsoft.Greenlight.Shared.Services.Search.Abstractions;
+using Microsoft.Greenlight.Shared.Services.Search;
 using Microsoft.SemanticKernel;
 using System.ComponentModel;
 
@@ -12,14 +15,23 @@ namespace Microsoft.Greenlight.Shared.DocumentProcess.Shared.Generation.Agentic;
 public class ContentReferenceLookupPlugin
 {
     private readonly IContentReferenceService _contentReferenceService;
+    private readonly IRagContextBuilder _ragContextBuilder;
+    private readonly ISemanticKernelVectorStoreProvider _vectorStoreProvider;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ContentReferenceLookupPlugin"/> class.
     /// </summary>
     /// <param name="contentReferenceService">The content reference service.</param>
-    public ContentReferenceLookupPlugin(IContentReferenceService contentReferenceService)
+    /// <param name="ragContextBuilder">The RAG context builder service.</param>
+    /// <param name="vectorStoreProvider">The Semantic Kernel vector store provider.</param>
+    public ContentReferenceLookupPlugin(
+        IContentReferenceService contentReferenceService,
+        IRagContextBuilder ragContextBuilder,
+        ISemanticKernelVectorStoreProvider vectorStoreProvider)
     {
         _contentReferenceService = contentReferenceService;
+        _ragContextBuilder = ragContextBuilder;
+        _vectorStoreProvider = vectorStoreProvider;
     }
 
     /// <summary>
@@ -63,22 +75,39 @@ public class ContentReferenceLookupPlugin
         [Description("The unique identifier of the content reference item.")] Guid referenceId,
         [Description("The maximum number of tokens per chunk (default: 1200). Should match the chunking used for embeddings.")] int maxTokens = 1200)
     {
+        // Resolve item to determine index and document id for vector store
         var items = await _contentReferenceService.GetContentReferenceItemsFromIdsAsync([referenceId]);
         var item = items.FirstOrDefault();
-        if (item == null || string.IsNullOrEmpty(item.RagText)) return new List<string>();
+        if (item == null)
+        {
+            return new List<string>();
+        }
 
-        // Get the chunks from the embeddings table to ensure alignment
-        var embeddingsDict = await _contentReferenceService.GetOrCreateEmbeddingsForContentAsync([item], maxTokens);
-        var chunks = embeddingsDict
-            .Where(e => e.Key.ReferenceId == referenceId)
-            .Select(e => e.Key.Chunk)
-            .ToList();
+        try
+        {
+            var indexName = GetIndexName(item.ReferenceType);
+            var documentId = BuildDocumentId(item.Id);
+            var chunks = await _vectorStoreProvider.GetAllDocumentChunksAsync(indexName, documentId);
+            if (chunks != null && chunks.Count > 0)
+            {
+                return chunks
+                    .OrderBy(c => c.PartitionNumber)
+                    .Select(c => c.ChunkText)
+                    .Where(t => !string.IsNullOrWhiteSpace(t))
+                    .ToList();
+            }
+        }
+        catch
+        {
+            // Fall back below if vector store is unavailable
+        }
 
-        // Fallback to chunking if no embeddings exist yet
-        if (chunks.Count == 0)
-            return _contentReferenceService.ChunkContent(item.RagText, maxTokens);
-
-        return chunks;
+        // Fallback: if vector store retrieval fails or is empty, use RAG text and local chunking
+        if (!string.IsNullOrEmpty(item.RagText))
+        {
+            return ChunkContent(item.RagText, maxTokens);
+        }
+        return new List<string>();
     }
 
     /// <summary>
@@ -101,14 +130,52 @@ public class ContentReferenceLookupPlugin
         var item = items.FirstOrDefault();
         if (item == null || string.IsNullOrEmpty(item.RagText)) return new List<string>();
 
-        // Use cached or precomputed embeddings
-        var embeddingsDict = await _contentReferenceService.GetOrCreateEmbeddingsForContentAsync([item], maxTokens);
-        var chunkEmbeddings = embeddingsDict
-            .Where(e => e.Key.ReferenceId == referenceId)
-            .ToDictionary(e => e.Key.Chunk, e => e.Value);
-
-        var queryEmbedding = await _contentReferenceService.GenerateEmbeddingsForQueryAsync(query); 
-        var scores = _contentReferenceService.CalculateSimilarityScores(queryEmbedding, chunkEmbeddings);
-        return _contentReferenceService.SelectTopChunks(scores, topN);
+        // Use SK vector store via RagContextBuilder to build a context from top matches for this single reference
+        var refs = new List<Microsoft.Greenlight.Shared.Models.ContentReferenceItem> { item };
+        var context = await _ragContextBuilder.BuildContextWithSelectedReferencesAsync(query, refs, topN, maxTokens);
+        // Extract chunks heuristically: skip header lines and split by blank lines
+        var lines = context.Split('\n');
+        var body = string.Join("\n", lines.SkipWhile(l => l.StartsWith("[")));
+        var parts = body.Split(new[] { "\n\n" }, StringSplitOptions.RemoveEmptyEntries)
+                        .Select(p => p.Trim())
+                        .Where(p => !string.IsNullOrWhiteSpace(p))
+                        .Take(topN)
+                        .ToList();
+        return parts;
     }
+
+    private static List<string> ChunkContent(string content, int maxTokens)
+    {
+        if (string.IsNullOrEmpty(content)) return new List<string>();
+        var chunks = new List<string>();
+        var words = content.Split(' ');
+        var sb = new System.Text.StringBuilder();
+        var tokens = 0;
+        foreach (var w in words)
+        {
+            var wt = (int)Math.Ceiling(w.Length * 0.25);
+            if (tokens + wt > maxTokens && sb.Length > 0)
+            {
+                chunks.Add(sb.ToString().Trim());
+                sb.Clear();
+                tokens = 0;
+            }
+            sb.Append(w).Append(' ');
+            tokens += wt;
+        }
+        if (sb.Length > 0) chunks.Add(sb.ToString().Trim());
+        return chunks;
+    }
+
+    private static string GetIndexName(ContentReferenceType type) => type switch
+    {
+        ContentReferenceType.GeneratedDocument => SystemIndexes.GeneratedDocumentContentReferenceIndex,
+        ContentReferenceType.GeneratedSection => SystemIndexes.GeneratedSectionContentReferenceIndex,
+        ContentReferenceType.ExternalFile => SystemIndexes.ExternalFileContentReferenceIndex,
+        ContentReferenceType.ReviewItem => SystemIndexes.ReviewItemContentReferenceIndex,
+        ContentReferenceType.ExternalLinkAsset => SystemIndexes.ExternalLinkAssetContentReferenceIndex,
+        _ => SystemIndexes.GeneratedDocumentContentReferenceIndex
+    };
+
+    private static string BuildDocumentId(Guid id) => $"cr-{id}";
 }

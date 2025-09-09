@@ -13,11 +13,11 @@
         <MudTextField @bind-Value="_domainGroup.Description" Label="Description" Class="mb-4" />
         <MudGrid>
             <MudItem xs="12">
-                <MudCheckBox @bind-Value="_domainGroup.ExposeCoPilotAgentEndpoint" Label="Expose CoPilot Agent Endpoint" />
+                <MudCheckBox T="bool" @bind-Value="_domainGroup.ExposeCoPilotAgentEndpoint" Label="Expose CoPilot Agent Endpoint" />
             </MudItem>
             
             <MudItem xs="12">
-                <MudCheckBox @bind-Value="_domainGroup.AuthenticateCoPilotAgentEndpoint" Label="Authenticate CoPilot Agent Endpoint" />
+                <MudCheckBox T="bool" @bind-Value="_domainGroup.AuthenticateCoPilotAgentEndpoint" Label="Authenticate CoPilot Agent Endpoint" />
             </MudItem>
             
             <MudItem xs="12">
@@ -36,7 +36,7 @@
         {
             <MudDivider Class="my-4" />
             <MudText Typo="Typo.h5" GutterBottom="true">Associated Document Processes</MudText>
-            <MudTable Items="_domainGroup.DocumentProcesses" Hover="true" Striped="true" Class="mb-4">
+            <MudTable T="DocumentProcessInfo" Items="_domainGroup.DocumentProcesses" Hover="true" Striped="true" Class="mb-4">
                 <HeaderContent>
                     <MudTh>Name</MudTh>
                     <MudTh>Description</MudTh>

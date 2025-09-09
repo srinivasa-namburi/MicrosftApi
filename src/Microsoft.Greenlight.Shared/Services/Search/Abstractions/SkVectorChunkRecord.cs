@@ -12,8 +12,8 @@ public sealed class SkVectorChunkRecord
     public required string DocumentId { get; init; }
     /// <summary>Original file name.</summary>
     public required string FileName { get; init; }
-    /// <summary>Optional original source URL.</summary>
-    public string? OriginalDocumentUrl { get; init; }
+    /// <summary>Document reference for dynamic URL resolution (replaces OriginalDocumentUrl).</summary>
+    public string? DocumentReference { get; init; }
     /// <summary>Chunk raw text content.</summary>
     public required string ChunkText { get; init; }
     /// <summary>Embedding vector for the chunk.</summary>
@@ -25,3 +25,4 @@ public sealed class SkVectorChunkRecord
     /// <summary>Arbitrary metadata tags (multi-value) preserved for filtering and citation.</summary>
     public required Dictionary<string, List<string?>> Tags { get; init; }
 }
+

@@ -1,0 +1,69 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+
+@* Unified AppBar User Area Component - includes System Status, User Info, and Theme Toggle *@
+<div class="@GetUserAreaBackgroundClass()" style="height: 32px; display: flex; align-items: center; padding: 0 12px; border-radius: 16px;">
+    <MudStack Row AlignItems="AlignItems.Center" Spacing="2" Style="height: 100%;">
+        @* System Status Component with integrated status text *@
+        <SystemStatusComponent @ref="StatusComponent" ShowStatusText="true" />
+        
+        @* User Info Component *@
+        <UserInfoComponent />
+        
+        @* Theme Toggle - smaller for thin AppBar *@
+        <MudSwitch T="bool" Value="EffectiveDarkMode" ValueChanged="OnThemeChanged" Color="Color.Primary" Size="Size.Small" ThumbIcon="@Icons.Material.Outlined.WbSunny" />
+    </MudStack>
+</div>
+
+@code {
+    /// <summary>
+    /// For use within normal component hierarchy - when used as cascading parameter consumer
+    /// </summary>
+    [CascadingParameter(Name = "IsDarkMode")] public bool CascadingIsDarkMode { get; set; }
+    
+    /// <summary>
+    /// For direct parameter binding - when this component controls dark mode for parent
+    /// </summary>
+    [Parameter] public bool? IsDarkMode { get; set; }
+    
+    [Parameter] public EventCallback<bool> IsDarkModeChanged { get; set; }
+    
+    /// <summary>
+    /// The effective dark mode value - prioritizes explicit parameter over cascading
+    /// </summary>
+    private bool EffectiveDarkMode => IsDarkMode ?? CascadingIsDarkMode;
+    
+    private SystemStatusComponent? StatusComponent;
+    
+    private string GetUserAreaBackgroundClass()
+    {
+        return EffectiveDarkMode ? "appbar-user-area-dark" : "appbar-user-area-light";
+    }
+    
+    private async Task OnThemeChanged(bool newValue)
+    {
+        // If we have an explicit IsDarkMode parameter (bound from parent), update it
+        if (IsDarkMode.HasValue && IsDarkModeChanged.HasDelegate)
+        {
+            await IsDarkModeChanged.InvokeAsync(newValue);
+        }
+        // Otherwise, if we're in cascading mode, we can't directly change the cascading parameter
+        // The parent would need to handle this somehow - but typically this component
+        // would be used with explicit parameter binding when controlling theme
+    }
+}
+
+<style>
+    .appbar-user-area-light {
+        background-color: var(--mud-palette-surface) !important;
+        border: 1px solid var(--mud-palette-primary-lighten) !important;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+        color: var(--mud-palette-text-primary) !important;
+    }
+
+    .appbar-user-area-dark {
+        background-color: var(--mud-palette-surface) !important;
+        border: 1px solid var(--mud-palette-primary-darken) !important;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3) !important;
+        color: var(--mud-palette-text-primary) !important;
+    }
+</style>

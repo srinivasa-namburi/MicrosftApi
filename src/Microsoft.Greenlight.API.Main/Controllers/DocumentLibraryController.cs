@@ -219,17 +219,26 @@ namespace Microsoft.Greenlight.API.Main.Controllers
             // First: attempt to deactivate any active ingestion/reindex orchestrations tied to this library
             try
             {
-                if (!string.IsNullOrWhiteSpace(library.BlobStorageContainerName) &&
-                    !string.IsNullOrWhiteSpace(library.BlobStorageAutoImportFolderName))
+                // Deactivate ingestion orchestrations for all FileStorageSources linked to this library
+                await using var db = await _dbContextFactory.CreateDbContextAsync();
+                var fileStorageSources = await db.DocumentLibraryFileStorageSources
+                    .Include(dlfs => dlfs.FileStorageSource)
+                    .Where(dlfs => dlfs.DocumentLibraryId == id)
+                    .ToListAsync();
+
+                foreach (var source in fileStorageSources)
                 {
-                    var ingestionOrchestrationId = IngestionOrchestrationIdHelper.GenerateOrchestrationId(
-                        library.BlobStorageContainerName,
-                        library.BlobStorageAutoImportFolderName);
+                    // Use FileStorageSource-centric orchestration ID for ingestion
+                    var ingestionOrchestrationId = IngestionOrchestrationIdHelper.GenerateOrchestrationIdForFileStorageSource(
+                        source.FileStorageSourceId);
+                    
                     var ingestionGrain = _clusterClient.GetGrain<IDocumentIngestionOrchestrationGrain>(ingestionOrchestrationId);
                     await ingestionGrain.DeactivateAsync();
                 }
 
-                var reindexOrchestrationId = $"library-{library.ShortName}";
+                // Deactivate reindex orchestration (remains DL-centric)
+                var reindexOrchestrationId = IngestionOrchestrationIdHelper.GenerateReindexOrchestrationId(
+                    library.ShortName, DocumentLibraryType.AdditionalDocumentLibrary);
                 var reindexGrain = _clusterClient.GetGrain<IDocumentReindexOrchestrationGrain>(reindexOrchestrationId);
                 await reindexGrain.DeactivateAsync();
             }

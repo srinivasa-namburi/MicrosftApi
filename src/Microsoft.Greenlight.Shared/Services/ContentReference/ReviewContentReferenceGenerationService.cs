@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
@@ -6,8 +8,8 @@ using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Models;
 using Microsoft.Greenlight.Shared.Models.Review;
-using Microsoft.Greenlight.Shared.Services.Search;
-using System.Text;
+using Microsoft.Greenlight.Shared.Services.Search.Abstractions;
+using Microsoft.Greenlight.Shared.Services.FileStorage;
 
 namespace Microsoft.Greenlight.Shared.Services.ContentReference
 {
@@ -17,25 +19,28 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
     public class ReviewContentReferenceGenerationService : IContentReferenceGenerationService<ReviewInstance>
     {
         private readonly DocGenerationDbContext _dbContext;
-        private readonly IKernelMemoryTextExtractionService _textExtractionService;
+        private readonly ITextExtractionService _textExtractionService;
         private readonly IAiEmbeddingService _aiEmbeddingService;
         private readonly ILogger<ReviewContentReferenceGenerationService> _logger;
         private readonly AzureFileHelper _fileHelper;
+        private readonly IFileStorageServiceFactory _fileStorageServiceFactory;
 
         /// <summary>
         /// Creates a new instance of ReviewContentReferenceGenerationService
         /// </summary>
         public ReviewContentReferenceGenerationService(
             DocGenerationDbContext dbContext,
-            IKernelMemoryTextExtractionService textExtractionService,
+            ITextExtractionService textExtractionService,
             IAiEmbeddingService aiEmbeddingService,
             AzureFileHelper fileHelper,
+            IFileStorageServiceFactory fileStorageServiceFactory,
             ILogger<ReviewContentReferenceGenerationService> logger)
         {
             _dbContext = dbContext;
             _textExtractionService = textExtractionService;
             _aiEmbeddingService = aiEmbeddingService;
             _fileHelper = fileHelper;
+            _fileStorageServiceFactory = fileStorageServiceFactory;
             _logger = logger;
         }
 
@@ -82,24 +87,68 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
         {
             try
             {
-                // Get the review instance with its exported document
+                // Get the review instance with its exported document (legacy) or asset (new)
                 var reviewInstance = await _dbContext.ReviewInstances
                     .Include(r => r.ExportedDocumentLink)
                     .FirstOrDefaultAsync(r => r.Id == reviewId);
 
-                if (reviewInstance == null || reviewInstance.ExportedDocumentLink == null)
+                if (reviewInstance == null)
                 {
-                    _logger.LogWarning("Review {ReviewId} or its exported document not found", reviewId);
+                    _logger.LogWarning("Review {ReviewId} not found", reviewId);
                     return null;
                 }
 
-                // Get the document content using AzureFileHelper and text extraction service
+                // Get the document content via FileStorageSource-based service when possible
                 try
                 {
-                    // Get the file stream from AzureFileHelper
-                    var fileStream = await _fileHelper.GetFileAsStreamFromFullBlobUrlAsync(
-                        reviewInstance.ExportedDocumentLink.AbsoluteUrl);
-                        
+                    Stream? fileStream = null;
+                    string logicalFileName = "review-document";
+                    if (reviewInstance.ExportedDocumentLink != null)
+                    {
+                        // Legacy path: EDL
+                        fileStream = await _fileHelper.GetFileAsStreamFromFullBlobUrlAsync(reviewInstance.ExportedDocumentLink.AbsoluteUrl);
+                        logicalFileName = reviewInstance.ExportedDocumentLink.FileName;
+                    }
+                    else
+                    {
+                        // New path: ExternalLinkAsset stored into ExportedLinkId field for compatibility
+                        var asset = await _dbContext.ExternalLinkAssets.FirstOrDefaultAsync(a => a.Id == reviewInstance.ExportedLinkId);
+                        if (asset != null && asset.FileStorageSourceId.HasValue)
+                        {
+                            // Use storage service for this source
+                            var source = await _dbContext.FileStorageSources.Include(s => s.FileStorageHost)
+                                .FirstOrDefaultAsync(s => s.Id == asset.FileStorageSourceId.Value);
+                            if (source != null)
+                            {
+                                var sourceInfo = new Contracts.DTO.FileStorage.FileStorageSourceInfo
+                                {
+                                    Id = source.Id,
+                                    Name = source.Name,
+                                    ContainerOrPath = source.ContainerOrPath,
+                                    AutoImportFolderName = source.AutoImportFolderName,
+                                    IsDefault = source.IsDefault,
+                                    IsActive = source.IsActive,
+                                    ShouldMoveFiles = source.ShouldMoveFiles,
+                                    Description = source.Description,
+                                    StorageSourceDataType = source.StorageSourceDataType,
+                                    FileStorageHost = new Contracts.DTO.FileStorage.FileStorageHostInfo
+                                    {
+                                        Id = source.FileStorageHost.Id,
+                                        Name = source.FileStorageHost.Name,
+                                        ProviderType = source.FileStorageHost.ProviderType,
+                                        ConnectionString = source.FileStorageHost.ConnectionString,
+                                        IsDefault = source.FileStorageHost.IsDefault,
+                                        IsActive = source.FileStorageHost.IsActive,
+                                        Description = source.FileStorageHost.Description
+                                    }
+                                };
+                                var storageService = _fileStorageServiceFactory.CreateService(sourceInfo);
+                                fileStream = await storageService.GetFileStreamAsync(asset.FileName);
+                                logicalFileName = Path.GetFileName(asset.FileName);
+                            }
+                        }
+                    }
+
                     if (fileStream == null)
                     {
                         _logger.LogError("Failed to get file stream for review {ReviewId}", reviewId);
@@ -107,9 +156,7 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                     }
 
                     // Extract text from the document using the shared extraction service
-                    var documentText = await _textExtractionService.ExtractTextFromDocumentAsync(
-                        fileStream,
-                        reviewInstance.ExportedDocumentLink.FileName);
+                    var documentText = await _textExtractionService.ExtractTextAsync(fileStream, logicalFileName);
 
                     if (string.IsNullOrEmpty(documentText))
                     {
@@ -120,7 +167,7 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
 
                     // Format the RAG text with document name and content
                     var sb = new StringBuilder();
-                    sb.AppendLine($"--- REVIEW DOCUMENT: {reviewInstance.ExportedDocumentLink.FileName} ---");
+                    sb.AppendLine($"--- REVIEW DOCUMENT: {logicalFileName} ---");
                     sb.AppendLine();
                     sb.AppendLine(documentText);
 

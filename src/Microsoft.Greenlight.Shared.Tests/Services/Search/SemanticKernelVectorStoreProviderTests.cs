@@ -261,7 +261,7 @@ public class SemanticKernelVectorStoreProviderTests
         {
             DocumentId = documentId,
             FileName = $"test-file-{documentId}.pdf",
-            OriginalDocumentUrl = $"https://example.com/{documentId}.pdf",
+            DocumentReference = $"doc:{Guid.NewGuid()}", // Use DocumentReference instead of OriginalDocumentUrl
             ChunkText = $"This is test content for partition {partitionNumber} of document {documentId}.",
             Embedding = Enumerable.Range(0, 384).Select(x => (float)(x * 0.001)).ToArray(),
             PartitionNumber = partitionNumber,

@@ -23,6 +23,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers;
 public sealed class DefinitionsController : BaseController
 {
     private readonly DocGenerationDbContext _db;
+    private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
     private readonly IDocumentProcessInfoService _documentProcessInfoService;
     private readonly IDocumentLibraryInfoService _documentLibraryInfoService;
     private readonly ILogger<DefinitionsController> _logger;
@@ -55,6 +56,7 @@ public sealed class DefinitionsController : BaseController
     /// </summary>
     public DefinitionsController(
         DocGenerationDbContext db,
+        IDbContextFactory<DocGenerationDbContext> dbContextFactory,
         IDocumentProcessInfoService documentProcessInfoService,
         IDocumentLibraryInfoService documentLibraryInfoService,
         ILogger<DefinitionsController> logger,
@@ -62,6 +64,7 @@ public sealed class DefinitionsController : BaseController
         AzureFileHelper azureFileHelper)
     {
         _db = db;
+        _dbContextFactory = dbContextFactory;
         _documentProcessInfoService = documentProcessInfoService;
         _documentLibraryInfoService = documentLibraryInfoService;
         _logger = logger;
@@ -110,6 +113,52 @@ public sealed class DefinitionsController : BaseController
             MetaDataFields = metaDtos.Count == 0 ? null : metaDtos
         };
 
+        // v2: include file storage source associations in the package for forward compatibility
+        try
+        {
+            var associations = await _db.DocumentProcessFileStorageSources
+                .AsNoTracking()
+                .Where(a => a.DocumentProcessId == process.Id)
+                .Include(a => a.FileStorageSource)
+                    .ThenInclude(s => s.FileStorageHost)
+                .ToListAsync();
+
+            if (associations.Count > 0)
+            {
+                // Filter to default-host sources only
+                var defaultHost = await _db.FileStorageHosts.AsNoTracking().FirstOrDefaultAsync(h => h.IsDefault && h.IsActive);
+                var defaultHostId = defaultHost?.Id ?? Guid.Empty;
+
+                var defaultOnly = associations
+                    .Where(a => a.FileStorageSource.FileStorageHostId == defaultHostId)
+                    .OrderBy(a => a.Priority)
+                    .ToList();
+
+                if (defaultOnly.Count != associations.Count)
+                {
+                    pkg.Warnings ??= new List<string>();
+                    pkg.Warnings.Add("Some FileStorageSource associations are not on the default host and were omitted from export.");
+                }
+
+                if (defaultOnly.Count > 0)
+                {
+                    pkg.FileStorageSources = defaultOnly
+                        .Select(a => new FileStorageSourceConfigDto
+                        {
+                            ContainerOrPath = a.FileStorageSource.ContainerOrPath,
+                            AutoImportFolderName = a.FileStorageSource.AutoImportFolderName,
+                            AcceptsUploads = a.AcceptsUploads,
+                            Priority = a.Priority
+                        })
+                        .ToList();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to include FileStorageSources in exported process package for {ShortName}", process.ShortName);
+        }
+
         return Ok(pkg);
     }
 
@@ -127,6 +176,7 @@ public sealed class DefinitionsController : BaseController
                                 .ThenInclude(d => d.Children)
                                     .ThenInclude(e => e.Children)
             .Include(p => p.MetaDataFields)
+            .Include(p => p.FileStorageSources)
             .AsNoTracking()
             .FirstOrDefaultAsync(p => p.Id == id);
     }
@@ -272,6 +322,9 @@ public sealed class DefinitionsController : BaseController
 
         // Create the document process
         var created = await CreateMinimalProcessAsync(package, effectiveContainer, effectiveAutoFolder);
+
+        // v1->v2 compatibility: create FileStorageSource(s) and association(s) for the process
+        await BindFileStorageSourcesForProcessAsync(created.Id, package, effectiveContainer, effectiveAutoFolder);
 
         // Import outline if provided
         if (package.Outline != null)
@@ -657,6 +710,50 @@ public sealed class DefinitionsController : BaseController
         }
 
         var pkg = BuildLibraryPackageDto(libInfo);
+
+        // v2: include file storage source associations
+        try
+        {
+            await using var db = await _dbContextFactory.CreateDbContextAsync();
+            var associations = await db.DocumentLibraryFileStorageSources
+                .AsNoTracking()
+                .Where(a => a.DocumentLibraryId == libInfo.Id)
+                .Include(a => a.FileStorageSource)
+                    .ThenInclude(s => s.FileStorageHost)
+                .ToListAsync();
+            if (associations.Count > 0)
+            {
+                var defaultHost = await db.FileStorageHosts.AsNoTracking().FirstOrDefaultAsync(h => h.IsDefault && h.IsActive);
+                var defaultHostId = defaultHost?.Id ?? Guid.Empty;
+                var defaultOnly = associations
+                    .Where(a => a.FileStorageSource.FileStorageHostId == defaultHostId)
+                    .OrderBy(a => a.Priority)
+                    .ToList();
+
+                if (defaultOnly.Count != associations.Count)
+                {
+                    pkg.Warnings ??= new List<string>();
+                    pkg.Warnings.Add("Some FileStorageSource associations are not on the default host and were omitted from export.");
+                }
+
+                if (defaultOnly.Count > 0)
+                {
+                    pkg.FileStorageSources = defaultOnly
+                        .Select(a => new FileStorageSourceConfigDto
+                        {
+                            ContainerOrPath = a.FileStorageSource.ContainerOrPath,
+                            AutoImportFolderName = a.FileStorageSource.AutoImportFolderName,
+                            AcceptsUploads = a.AcceptsUploads,
+                            Priority = a.Priority
+                        })
+                        .ToList();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to include FileStorageSources in exported library package for {ShortName}", libInfo.ShortName);
+        }
         return Ok(pkg);
     }
 
@@ -685,6 +782,9 @@ public sealed class DefinitionsController : BaseController
 
         // Create the library
         var created = await CreateLibraryAsync(package);
+
+        // v1->v2 compatibility: create FileStorageSource(s) and association(s) for the library
+        await BindFileStorageSourcesForLibraryAsync(created.Id, package);
         return Ok(created.Id);
     }
 
@@ -706,6 +806,197 @@ public sealed class DefinitionsController : BaseController
             VectorStoreChunkSize = (libInfo as dynamic)?.VectorStoreChunkSize,
             VectorStoreChunkOverlap = (libInfo as dynamic)?.VectorStoreChunkOverlap
         };
+    }
+
+    /// <summary>
+    /// Creates or reuses FileStorageSource(s) for a process import and binds associations.
+    /// Works for both v1 (legacy fields) and v2 (FileStorageSources) packages.
+    /// </summary>
+    private async Task BindFileStorageSourcesForProcessAsync(Guid processId, DocumentProcessDefinitionPackageDto package, string effectiveContainer, string effectiveAutoFolder)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync();
+
+        var defaultHost = await db.FileStorageHosts.FirstOrDefaultAsync(h => h.IsDefault && h.IsActive);
+        if (defaultHost == null)
+        {
+            _logger.LogWarning("Default FileStorageHost not found; skipping FileStorageSource binding for process {ProcessShortName}", package.ShortName);
+            return;
+        }
+
+        // Prefer v2 sources; fallback to single legacy-based source
+        var sourceConfigs = (package.PackageFormatVersion?.StartsWith("2") == true && package.FileStorageSources != null && package.FileStorageSources.Count > 0)
+            ? package.FileStorageSources
+            : new List<FileStorageSourceConfigDto>
+            {
+                new FileStorageSourceConfigDto
+                {
+                    ContainerOrPath = effectiveContainer,
+                    AutoImportFolderName = effectiveAutoFolder,
+                    AcceptsUploads = true,
+                    Priority = 1
+                }
+            };
+
+        // Ensure only one AcceptsUploads=true
+        bool uploadsAssigned = false;
+        for (int i = 0; i < sourceConfigs.Count; i++)
+        {
+            var cfg = sourceConfigs[i];
+            if (cfg.AcceptsUploads && !uploadsAssigned)
+            {
+                uploadsAssigned = true;
+            }
+            else
+            {
+                cfg.AcceptsUploads = false;
+            }
+        }
+        if (!uploadsAssigned && sourceConfigs.Count > 0)
+        {
+            sourceConfigs[0].AcceptsUploads = true;
+        }
+
+        foreach (var cfg in sourceConfigs)
+        {
+            var existingSource = await db.FileStorageSources
+                .FirstOrDefaultAsync(s => s.FileStorageHostId == defaultHost.Id && s.ContainerOrPath == cfg.ContainerOrPath);
+
+            if (existingSource == null)
+            {
+                existingSource = new Shared.Models.FileStorage.FileStorageSource
+                {
+                    Id = Guid.NewGuid(),
+                    Name = $"Imported Storage - {package.ShortName}",
+                    FileStorageHostId = defaultHost.Id,
+                    ContainerOrPath = cfg.ContainerOrPath,
+                    AutoImportFolderName = string.IsNullOrWhiteSpace(cfg.AutoImportFolderName) ? "ingest-auto" : cfg.AutoImportFolderName,
+                    IsDefault = false,
+                    IsActive = true,
+                    ShouldMoveFiles = true,
+                    Description = $"Created during import for document process: {package.ShortName}"
+                };
+                db.FileStorageSources.Add(existingSource);
+                await db.SaveChangesAsync();
+            }
+
+            var existsAssociation = await db.DocumentProcessFileStorageSources
+                .AnyAsync(a => a.DocumentProcessId == processId && a.FileStorageSourceId == existingSource.Id);
+            if (!existsAssociation)
+            {
+                var assoc = new Shared.Models.FileStorage.DocumentProcessFileStorageSource
+                {
+                    Id = Guid.NewGuid(),
+                    DocumentProcessId = processId,
+                    FileStorageSourceId = existingSource.Id,
+                    Priority = cfg.Priority <= 0 ? 1 : cfg.Priority,
+                    IsActive = true,
+                    AcceptsUploads = cfg.AcceptsUploads
+                };
+                db.DocumentProcessFileStorageSources.Add(assoc);
+            }
+        }
+
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Creates or reuses FileStorageSource(s) for a library import and binds associations.
+    /// Works for both v1 (legacy fields) and v2 (FileStorageSources) packages.
+    /// </summary>
+    private async Task BindFileStorageSourcesForLibraryAsync(Guid libraryId, DocumentLibraryDefinitionPackageDto package)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync();
+
+        var defaultHost = await db.FileStorageHosts.FirstOrDefaultAsync(h => h.IsDefault && h.IsActive);
+        if (defaultHost == null)
+        {
+            _logger.LogWarning("Default FileStorageHost not found; skipping FileStorageSource binding for library {LibraryShortName}", package.ShortName);
+            return;
+        }
+
+        List<FileStorageSourceConfigDto> sourceConfigs;
+        if (package.PackageFormatVersion?.StartsWith("2") == true && package.FileStorageSources != null && package.FileStorageSources.Count > 0)
+        {
+            sourceConfigs = package.FileStorageSources;
+        }
+        else
+        {
+            var container = string.IsNullOrWhiteSpace(package.BlobStorageContainerName)
+                ? SanitizeContainerName(package.ShortName!)
+                : package.BlobStorageContainerName;
+            var autoFolder = string.IsNullOrWhiteSpace(package.BlobStorageAutoImportFolderName) ? "ingest-auto" : package.BlobStorageAutoImportFolderName;
+            sourceConfigs = new List<FileStorageSourceConfigDto>
+            {
+                new FileStorageSourceConfigDto
+                {
+                    ContainerOrPath = container,
+                    AutoImportFolderName = autoFolder,
+                    AcceptsUploads = true,
+                    Priority = 1
+                }
+            };
+        }
+
+        // Ensure only one AcceptsUploads=true
+        bool uploadsAssigned = false;
+        for (int i = 0; i < sourceConfigs.Count; i++)
+        {
+            var cfg = sourceConfigs[i];
+            if (cfg.AcceptsUploads && !uploadsAssigned)
+            {
+                uploadsAssigned = true;
+            }
+            else
+            {
+                cfg.AcceptsUploads = false;
+            }
+        }
+        if (!uploadsAssigned && sourceConfigs.Count > 0)
+        {
+            sourceConfigs[0].AcceptsUploads = true;
+        }
+
+        foreach (var cfg in sourceConfigs)
+        {
+            var existingSource = await db.FileStorageSources
+                .FirstOrDefaultAsync(s => s.FileStorageHostId == defaultHost.Id && s.ContainerOrPath == cfg.ContainerOrPath);
+
+            if (existingSource == null)
+            {
+                existingSource = new Shared.Models.FileStorage.FileStorageSource
+                {
+                    Id = Guid.NewGuid(),
+                    Name = $"Imported Storage - {package.ShortName}",
+                    FileStorageHostId = defaultHost.Id,
+                    ContainerOrPath = cfg.ContainerOrPath,
+                    AutoImportFolderName = string.IsNullOrWhiteSpace(cfg.AutoImportFolderName) ? "ingest-auto" : cfg.AutoImportFolderName,
+                    IsDefault = false,
+                    IsActive = true,
+                    ShouldMoveFiles = true,
+                    Description = $"Created during import for document library: {package.ShortName}"
+                };
+                db.FileStorageSources.Add(existingSource);
+                await db.SaveChangesAsync();
+            }
+
+            var existsAssociation = await db.DocumentLibraryFileStorageSources
+                .AnyAsync(a => a.DocumentLibraryId == libraryId && a.FileStorageSourceId == existingSource.Id);
+            if (!existsAssociation)
+            {
+                var assoc = new Shared.Models.FileStorage.DocumentLibraryFileStorageSource
+                {
+                    Id = Guid.NewGuid(),
+                    DocumentLibraryId = libraryId,
+                    FileStorageSourceId = existingSource.Id,
+                    Priority = cfg.Priority <= 0 ? 1 : cfg.Priority,
+                    IsActive = true,
+                    AcceptsUploads = cfg.AcceptsUploads
+                };
+                db.DocumentLibraryFileStorageSources.Add(assoc);
+            }
+        }
+
+        await db.SaveChangesAsync();
     }
 
     private async Task<DocumentLibraryInfo> CreateLibraryAsync(DocumentLibraryDefinitionPackageDto package)
@@ -784,14 +1075,14 @@ public sealed class DefinitionsController : BaseController
     [HttpGet("index/compatibility/{indexName}")]
     [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task<ActionResult<IndexCompatibilityInfoDto>> GetIndexCompatibility(string indexName)
+    public async Task<ActionResult<IndexCompatibilityInfo>> GetIndexCompatibility(string indexName)
     {
-        var info = new IndexCompatibilityInfoDto { IndexName = indexName };
+        var internalInfo = new IndexCompatibilityInfoDto { IndexName = indexName };
         try
         {
             // First check if the collection exists using the reliable CollectionExistsAsync method
             var exists = await _vectorStoreProvider.CollectionExistsAsync(indexName);
-            info.Exists = exists;
+            internalInfo.Exists = exists;
 
             if (exists)
             {
@@ -800,33 +1091,44 @@ public sealed class DefinitionsController : BaseController
                 try
                 {
                     var partitions = await _vectorStoreProvider.GetDocumentPartitionNumbersAsync(indexName, "__compat_probe__");
-                    info.IsSkLayout = true; // If this call succeeds, the schema is compatible with SK unified records
+                    internalInfo.IsSkLayout = true; // If this call succeeds, the schema is compatible with SK unified records
                 }
                 catch (Exception ex)
                 {
                     // Collection exists but schema is incompatible with SK unified records
-                    info.IsSkLayout = false;
-                    info.Error = $"Collection exists but schema is not compatible: {ex.Message}";
+                    internalInfo.IsSkLayout = false;
+                    internalInfo.Error = $"Collection exists but schema is not compatible: {ex.Message}";
                 }
             }
             else
             {
                 // Collection doesn't exist
-                info.IsSkLayout = false;
+                internalInfo.IsSkLayout = false;
             }
 
             // Dimensions cannot be reliably inferred without data; leave null to indicate unknown
-            info.MatchedEmbeddingDimensions = null;
+            internalInfo.MatchedEmbeddingDimensions = null;
         }
         catch (Exception ex)
         {
             // Unexpected error during existence check
-            info.Exists = false;
-            info.IsSkLayout = false;
-            info.Error = ex.Message;
+            internalInfo.Exists = false;
+            internalInfo.IsSkLayout = false;
+            internalInfo.Error = ex.Message;
         }
 
-        return Ok(info);
+        // Convert internal DTO to shared contract
+        var result = new IndexCompatibilityInfo
+        {
+            IndexName = internalInfo.IndexName,
+            Exists = internalInfo.Exists,
+            IsSkLayout = internalInfo.IsSkLayout,
+            MatchedEmbeddingDimensions = internalInfo.MatchedEmbeddingDimensions,
+            Warnings = internalInfo.Warnings,
+            Error = internalInfo.Error
+        };
+
+        return Ok(result);
     }
 
     // ---------- Shared Utility Methods ----------

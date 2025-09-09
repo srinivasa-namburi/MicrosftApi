@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
+using Microsoft.Greenlight.Shared.Contracts.DTO.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.Messages;
 using Microsoft.Greenlight.Shared.Contracts.Streams;
 using Microsoft.Greenlight.Shared.Data.Sql;
@@ -53,7 +54,9 @@ public class ConfigurationController : BaseController
         "ServiceConfiguration:GreenlightServices:VectorStore:*",
         // Allow OCR options to be managed from UI
         "ServiceConfiguration:GreenlightServices:DocumentIngestion:Ocr:*",
-        "ServiceConfiguration:OpenAI:*"
+        "ServiceConfiguration:OpenAI:*",
+        // Allow secret overrides for specific keys
+        "ServiceConfiguration:AzureMaps:Key"
     ];
 
     /// <summary>
@@ -189,6 +192,21 @@ public class ConfigurationController : BaseController
         // This ensures that the post-configuration logic that sets StoreType based on UsePostgresMemory is applied
         var vectorStoreOptions = _serviceConfigurationOptionsMonitor.CurrentValue.GreenlightServices.VectorStore;
         return Ok(vectorStoreOptions);
+    }
+
+    /// <summary>
+    /// Gets the document ingestion options configuration.
+    /// </summary>
+    [HttpGet("document-ingestion-options")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [Produces("application/json")]
+    public ActionResult<ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions> GetDocumentIngestionOptions()
+    {
+        var ingestionOptions = _configuration
+            .GetSection("ServiceConfiguration:GreenlightServices:DocumentIngestion")
+            .Get<ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions>()
+            ?? new ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions();
+        return Ok(ingestionOptions);
     }
 
     /// <summary>
@@ -475,6 +493,240 @@ public class ConfigurationController : BaseController
         {
             _logger.LogError(ex, "Error retrieving configuration.");
             return StatusCode(500, "Internal server error - Error retrieving configuration.");
+        }
+    }
+
+    /// <summary>
+    /// Gets information about a secret configuration override without exposing the actual secret value.
+    /// </summary>
+    /// <param name="configurationKey">The configuration key to check (e.g., "ServiceConfiguration:AzureMaps:Key").</param>
+    /// <returns>Information about the secret override status.</returns>
+    [HttpGet("secret-override")]
+    [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [Produces("application/json")]
+    public async Task<ActionResult<SecretOverrideInfo>> GetSecretOverrideInfo([FromQuery] string configurationKey)
+    {
+        if (string.IsNullOrEmpty(configurationKey))
+        {
+            return BadRequest("Configuration key is required.");
+        }
+
+        if (!IsAcceptedKey(configurationKey))
+        {
+            return BadRequest($"Configuration key '{configurationKey}' is not allowed for secret override.");
+        }
+
+        try
+        {
+            var config = await _dbContext.Configurations.FirstOrDefaultAsync(c => c.Id == DbConfiguration.DefaultId);
+            var configValues = new Dictionary<string, string>();
+
+            if (config != null)
+            {
+                configValues = JsonSerializer.Deserialize<Dictionary<string, string>>(config.ConfigurationValues) 
+                             ?? new Dictionary<string, string>();
+            }
+
+            var isOverridden = configValues.ContainsKey(configurationKey);
+            var currentValue = _configuration[configurationKey];
+            var hasValue = !string.IsNullOrEmpty(currentValue);
+
+            var result = new SecretOverrideInfo
+            {
+                ConfigurationKey = configurationKey,
+                IsOverridden = isOverridden,
+                HasValue = hasValue,
+                Description = isOverridden ? $"Overridden via configuration API" : "Using default configuration value",
+                LastUpdated = isOverridden ? config?.LastUpdated : null
+            };
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving secret override info for key {ConfigurationKey}", configurationKey);
+            return StatusCode(500, "Internal server error - Error retrieving secret override information.");
+        }
+    }
+
+    /// <summary>
+    /// Sets or updates a secret configuration value override.
+    /// The current value is never returned for security purposes.
+    /// </summary>
+    /// <param name="request">The secret override request.</param>
+    /// <returns>Information about the updated secret override.</returns>
+    [HttpPost("secret-override")]
+    [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    [Produces("application/json")]
+    public async Task<ActionResult<SecretOverrideInfo>> SetSecretOverride([FromBody] SecretOverrideRequest request)
+    {
+        if (request == null || string.IsNullOrEmpty(request.ConfigurationKey) || string.IsNullOrEmpty(request.SecretValue))
+        {
+            return BadRequest("Configuration key and secret value are required.");
+        }
+
+        if (!IsAcceptedKey(request.ConfigurationKey))
+        {
+            return BadRequest($"Configuration key '{request.ConfigurationKey}' is not allowed for secret override.");
+        }
+
+        try
+        {
+            var config = await _dbContext.Configurations.FirstOrDefaultAsync(c => c.Id == DbConfiguration.DefaultId);
+            
+            if (config == null)
+            {
+                config = new DbConfiguration 
+                { 
+                    ConfigurationValues = "{}", 
+                    LastUpdated = DateTime.UtcNow, 
+                    LastUpdatedBy = "System" 
+                };
+                _dbContext.Configurations.Add(config);
+            }
+
+            var configValues = JsonSerializer.Deserialize<Dictionary<string, string>>(config.ConfigurationValues) 
+                             ?? new Dictionary<string, string>();
+
+            configValues[request.ConfigurationKey] = request.SecretValue;
+
+            config.ConfigurationValues = JsonSerializer.Serialize(configValues);
+            config.LastUpdated = DateTime.UtcNow;
+            config.LastUpdatedBy = "System";
+
+            await _dbContext.SaveChangesAsync();
+
+            // Update the runtime configuration
+            var updateItems = new Dictionary<string, string> { { request.ConfigurationKey, request.SecretValue } };
+            _configProvider.UpdateOptions(updateItems);
+
+            // Notify other services about the configuration change
+            var configurationUpdatedMessage = new ConfigurationUpdated(Guid.NewGuid());
+            var streamProvider = _clusterClient.GetStreamProvider("StreamProvider");
+            var stream = streamProvider.GetStream<ConfigurationUpdated>(
+                SystemStreamNameSpaces.ConfigurationUpdatedNamespace,
+                Guid.Empty);
+            await stream.OnNextAsync(configurationUpdatedMessage);
+
+            _logger.LogInformation("Secret configuration override set for key {ConfigurationKey}", request.ConfigurationKey);
+
+            var result = new SecretOverrideInfo
+            {
+                ConfigurationKey = request.ConfigurationKey,
+                IsOverridden = true,
+                HasValue = true,
+                Description = request.Description ?? "Secret override set via configuration API",
+                LastUpdated = config.LastUpdated
+            };
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error setting secret override for key {ConfigurationKey}", request.ConfigurationKey);
+            return StatusCode(500, "Internal server error - Error setting secret override.");
+        }
+    }
+
+    /// <summary>
+    /// Removes a secret configuration override, reverting to the default configuration value.
+    /// </summary>
+    /// <param name="configurationKey">The configuration key to remove the override for.</param>
+    /// <returns>Information about the updated secret override status.</returns>
+    [HttpDelete("secret-override")]
+    [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    [Produces("application/json")]
+    public async Task<ActionResult<SecretOverrideInfo>> RemoveSecretOverride([FromQuery] string configurationKey)
+    {
+        if (string.IsNullOrEmpty(configurationKey))
+        {
+            return BadRequest("Configuration key is required.");
+        }
+
+        if (!IsAcceptedKey(configurationKey))
+        {
+            return BadRequest($"Configuration key '{configurationKey}' is not allowed for secret override.");
+        }
+
+        try
+        {
+            var config = await _dbContext.Configurations.FirstOrDefaultAsync(c => c.Id == DbConfiguration.DefaultId);
+            
+            if (config == null)
+            {
+                // No configuration exists, so no override to remove
+                var defaultResult = new SecretOverrideInfo
+                {
+                    ConfigurationKey = configurationKey,
+                    IsOverridden = false,
+                    HasValue = !string.IsNullOrEmpty(_configuration[configurationKey]),
+                    Description = "Using default configuration value",
+                    LastUpdated = null
+                };
+                return Ok(defaultResult);
+            }
+
+            var configValues = JsonSerializer.Deserialize<Dictionary<string, string>>(config.ConfigurationValues) 
+                             ?? new Dictionary<string, string>();
+
+            if (!configValues.ContainsKey(configurationKey))
+            {
+                // No override exists for this key
+                var noOverrideResult = new SecretOverrideInfo
+                {
+                    ConfigurationKey = configurationKey,
+                    IsOverridden = false,
+                    HasValue = !string.IsNullOrEmpty(_configuration[configurationKey]),
+                    Description = "Using default configuration value",
+                    LastUpdated = null
+                };
+                return Ok(noOverrideResult);
+            }
+
+            configValues.Remove(configurationKey);
+
+            config.ConfigurationValues = JsonSerializer.Serialize(configValues);
+            config.LastUpdated = DateTime.UtcNow;
+            config.LastUpdatedBy = "System";
+
+            await _dbContext.SaveChangesAsync();
+
+            // Remove from runtime configuration
+            _configProvider.RemoveOptions(new[] { configurationKey });
+
+            // Notify other services about the configuration change
+            var configurationUpdatedMessage = new ConfigurationUpdated(Guid.NewGuid());
+            var streamProvider = _clusterClient.GetStreamProvider("StreamProvider");
+            var stream = streamProvider.GetStream<ConfigurationUpdated>(
+                SystemStreamNameSpaces.ConfigurationUpdatedNamespace,
+                Guid.Empty);
+            await stream.OnNextAsync(configurationUpdatedMessage);
+
+            _logger.LogInformation("Secret configuration override removed for key {ConfigurationKey}", configurationKey);
+
+            var result = new SecretOverrideInfo
+            {
+                ConfigurationKey = configurationKey,
+                IsOverridden = false,
+                HasValue = !string.IsNullOrEmpty(_configuration[configurationKey]),
+                Description = "Using default configuration value",
+                LastUpdated = null
+            };
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error removing secret override for key {ConfigurationKey}", configurationKey);
+            return StatusCode(500, "Internal server error - Error removing secret override.");
         }
     }
 

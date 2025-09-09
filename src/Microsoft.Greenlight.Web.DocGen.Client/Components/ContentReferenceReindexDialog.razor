@@ -1,0 +1,54 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+@using Microsoft.Greenlight.Shared.Enums
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@inject IContentReferenceReindexApiClient ContentReferenceReindexApiClient
+
+<MudPaper Class="pa-4">
+  <MudText Typo="Typo.h5">Content Reference Reindex</MudText>
+  <MudDivider Class="mt-2 mb-3" />
+
+  <MudTabs Rounded="true" ApplyEffectsToContainer="true">
+    @foreach (var t in _types)
+    {
+      <MudTabPanel Text="@t.ToString()">
+        <MudStack Spacing="2">
+          <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+            <PermissionView Permission="@Microsoft.Greenlight.Shared.Contracts.Authorization.PermissionKeys.AlterDocumentProcessesAndLibraries" Mode="PermissionMode.DisableControls">
+              <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Refresh" Disabled="_starting" OnClick="@(() => StartAsync(t))">Start Reindex</MudButton>
+            </PermissionView>
+          </MudStack>
+          <Microsoft.Greenlight.Web.DocGen.Client.Components.ContentReferenceReindexProgressDisplay Type="@t" />
+        </MudStack>
+      </MudTabPanel>
+    }
+  </MudTabs>
+</MudPaper>
+
+@code {
+  private bool _starting;
+  private readonly ContentReferenceType[] _types = new[]
+  {
+    ContentReferenceType.GeneratedDocument,
+    ContentReferenceType.GeneratedSection,
+    ContentReferenceType.ReviewItem,
+    ContentReferenceType.ExternalFile,
+    ContentReferenceType.ExternalLinkAsset
+  };
+
+  private async Task StartAsync(ContentReferenceType type)
+  {
+    try
+    {
+      _starting = true;
+      await ContentReferenceReindexApiClient.StartAsync(type, "Manual reindex via dialog");
+    }
+    catch (Exception ex)
+    {
+      // Swallow errors here; parent page shows errors for explicit actions as well
+    }
+    finally
+    {
+      _starting = false;
+    }
+  }
+}

@@ -17,8 +17,8 @@
     <DialogContent>
         @if (IsAddFormVisible)
         {
-            <MudList Clickable="false" DisableGutters="true" Class="mb-4">
-                <MudListItem>
+            <MudList T="object" Clickable="false" Gutters="false" Class="mb-4">
+                <MudListItem T="object">
                     <MudText Typo="Typo.subtitle1">Add New Field</MudText>
                     <!-- New field is always in edit mode -->
                     <DocumentProcessMetadataFieldForm FieldInfo="newField"
@@ -37,14 +37,14 @@
                               ItemDropped="OnItemDropped"
                               ItemsSelector="ItemsSelector">
                 <ChildContent>
-                    <MudList Clickable="false" DisableGutters="true">
+                    <MudList T="object" Clickable="false" Gutters="false">
                         <MudDropZone T="DocumentProcessMetadataFieldInfo"
                                      Identifier="metadata-fields"
                                      AllowReorder="true" />
                     </MudList>
                 </ChildContent>
                 <ItemRenderer>
-                    <MudListItem @key="context.Id">
+                    <MudListItem T="object" @key="context.Id">
                         <!-- Two-way binding for IsEditMode, keyed by context.Id -->
                         <DocumentProcessMetadataFieldForm FieldInfo="context"
                                                           @bind-IsEditMode="editingStates[context.Id]"
@@ -64,7 +64,7 @@
 
 @code {
     [CascadingParameter]
-    MudDialogInstance MudDialog { get; set; } = default!;
+    IMudDialogInstance MudDialog { get; set; } = default!;
 
     [Parameter]
     public Guid DocumentProcessId { get; set; }

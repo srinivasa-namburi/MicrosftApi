@@ -1,0 +1,90 @@
+@page "/ai-assistant/{DocumentProcessName}/{ConversationIdString}"
+@page "/ai-assistant/{DocumentProcessName}"
+
+@inject NavigationManager Navigation
+@inject IDocumentProcessApiClient DocumentProcessApiClient
+
+<PageTitle>AI Assistant - @DocumentProcessName</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge">
+    @if (_dpError)
+    {
+        <MudAlert Severity="Severity.Error">
+            <MudText>
+                @if (string.IsNullOrEmpty(DocumentProcessName))
+                {
+                    <span>Document Process not found</span>
+                }
+                else
+                {
+                    <span>Unable to find Document Process "@DocumentProcessName"</span>
+                }
+            </MudText>
+        </MudAlert>
+    }
+    else
+    {
+        <MudPaper Class="pa-0 my-4 standalone-ai-assistant-container">
+            <AiAssistantComponent ConversationId="@ConversationId"
+                              DocumentProcessName="@DocumentProcessName"
+                              InternalConversationIdCreate="false"
+                              FillContainer="true" />
+        </MudPaper>
+    }
+</MudContainer>
+
+<style>
+    .standalone-ai-assistant-container {
+        height: calc(90vh - 100px);
+        overflow: hidden;
+    }
+</style>
+
+
+@code {
+    [Parameter] public string? ConversationIdString { get; set; }
+    [Parameter] public string? DocumentProcessName { get; set; }
+    [Parameter] public Guid? ConversationId { get; set; }
+
+    private bool _dpError = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrEmpty(ConversationIdString))
+        {
+            ConversationId = Guid.Parse(ConversationIdString);
+        }
+        else
+        {
+            if (string.IsNullOrEmpty(DocumentProcessName))
+            {
+                _dpError = true;
+            }
+            else
+            {
+
+                var documentProcess = await DocumentProcessApiClient.GetDocumentProcessInfoByShortNameAsync(DocumentProcessName);
+                if (documentProcess == null)
+                {
+                    _dpError = true;
+                }
+                else
+                {
+                    ConversationId = Guid.NewGuid();
+                    Navigation.NavigateTo($"/ai-assistant/{documentProcess.ShortName}/{ConversationId.ToString()}");
+                    _dpError = false;
+                    await InvokeAsync(StateHasChanged);
+
+                }
+            }
+            
+        }
+
+        if (ConversationId.HasValue)
+        {
+            ConversationIdString = ConversationId.ToString();
+        }
+    }
+}
+
+

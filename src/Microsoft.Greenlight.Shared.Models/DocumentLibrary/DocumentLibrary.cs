@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 using System.Text.Json.Serialization;
 using Microsoft.Greenlight.Shared.Models.Configuration;
+using Microsoft.Greenlight.Shared.Models.FileStorage;
 
 namespace Microsoft.Greenlight.Shared.Models.DocumentLibrary;
 
@@ -31,11 +32,13 @@ public class DocumentLibrary : EntityBase
 
     /// <summary>
     /// Name of the blob storage container where documents are stored.
+    /// Legacy property - use FileStorageSources for new implementations.
     /// </summary>
     public required string BlobStorageContainerName { get; set; }
 
     /// <summary>
     /// Name of the auto import folder in the blob storage.
+    /// Legacy property - use FileStorageSources for new implementations.
     /// </summary>
     public required string BlobStorageAutoImportFolderName { get; set; } = "ingest-auto";
 
@@ -49,6 +52,12 @@ public class DocumentLibrary : EntityBase
     /// List of document process associations.
     /// </summary>
     public List<DocumentLibraryDocumentProcessAssociation> DocumentProcessAssociations { get; set; } = [];
+
+    /// <summary>
+    /// File storage sources associated with this document library.
+    /// </summary>
+    [JsonIgnore]
+    public List<DocumentLibraryFileStorageSource> FileStorageSources { get; set; } = [];
 
     /// <summary>
     /// Unique identifier of the embedding model deployment used for this document library.

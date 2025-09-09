@@ -3,14 +3,14 @@
 @inject IDocumentValidationApiClient DocumentValidationApiClient
 @inject ISnackbar Snackbar
 
-<MudExpansionPanel @bind-IsExpanded="@_isExpanded" Class="mt-2">
+<MudExpansionPanel @bind-Expanded="@_isExpanded" Class="mt-2">
     <TitleContent>
         <div class="d-flex align-center">
             <MudIcon Icon="@Icons.Material.Filled.Assessment" Class="mr-2" />
             <MudText>Validation Pipeline</MudText>
             @if (HasUnappliedValidations)
             {
-                <MudChip Color="Color.Warning" Size="Size.Small" Class="ml-2">Pending Changes</MudChip>
+                <MudChip T="string" Color="Color.Warning" Size="Size.Small" Class="ml-2">Pending Changes</MudChip>
             }
         </div>
     </TitleContent>
@@ -23,10 +23,10 @@
             }
             else if (ValidationStatus != null)
             {
-                <MudList Dense="true">
+                <MudList T="object" Dense="true">
                     @foreach (var step in ValidationStatus.Steps.OrderBy(s => s.Order))
                     {
-                        <MudListItem>
+                        <MudListItem T="object">
                             <div class="d-flex align-center">
                                 <MudIcon Icon="@GetStepIcon(step.Status)" Color="@GetStepColor(step.Status)" Size="Size.Small" Class="mr-2" />
                                 <MudText Typo="Typo.body2">Step @(step.Order): @step.ExecutionType</MudText>
@@ -59,10 +59,10 @@
             else if (PotentialValidationSteps != null && PotentialValidationSteps.Any())
             {
                 <MudText Typo="Typo.subtitle2" Class="mb-2">Configured validation steps</MudText>
-                <MudList Dense="true">
+                <MudList T="object" Dense="true">
                     @foreach (var step in PotentialValidationSteps.OrderBy(s => s.Order))
                     {
-                        <MudListItem>
+                        <MudListItem T="object">
                             <div class="d-flex align-center">
                                 <MudIcon Icon="@Icons.Material.Outlined.Assignment" Size="Size.Small" Class="mr-2" />
                                 <MudText Typo="Typo.body2">Step @(step.Order): @step.PipelineExecutionType.ToString()</MudText>

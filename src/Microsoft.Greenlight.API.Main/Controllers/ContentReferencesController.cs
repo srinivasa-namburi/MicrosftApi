@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Greenlight.Grains.Chat.Contracts;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Data.Sql;
@@ -18,6 +19,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         private readonly IContentReferenceService _contentReferenceService;
         private readonly IClusterClient _clusterClient;
         private readonly ILogger<ContentReferencesController> _logger;
+        private readonly Microsoft.Greenlight.Shared.Services.FileStorage.IFileUrlResolverService _fileUrlResolver;
         private readonly DocGenerationDbContext _dbContext;
 
         /// <summary>
@@ -31,12 +33,14 @@ namespace Microsoft.Greenlight.API.Main.Controllers
             IContentReferenceService contentReferenceService,
             ILogger<ContentReferencesController> logger, 
             DocGenerationDbContext dbContext, 
-            IClusterClient clusterClient)
+            IClusterClient clusterClient,
+            Microsoft.Greenlight.Shared.Services.FileStorage.IFileUrlResolverService fileUrlResolver)
         {
             _contentReferenceService = contentReferenceService;
             _logger = logger;
             _dbContext = dbContext;
             _clusterClient = clusterClient;
+            _fileUrlResolver = fileUrlResolver;
         }
 
         /// <summary>
@@ -56,13 +60,43 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         {
             try
             {
-                var references = await _contentReferenceService.GetAllCachedReferencesAsync();
+                var references = await _contentReferenceService.GetAllReferences();
                 return Ok(references);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting all references");
                 return StatusCode(StatusCodes.Status500InternalServerError, "Error retrieving references");
+            }
+        }
+
+        /// <summary>
+        /// Gets a content reference by its source Id and type.
+        /// </summary>
+        /// <param name="type">The type of the content reference.</param>
+        /// <param name="sourceId">The Id of the source entity the reference points to.</param>
+        /// <returns>The content reference item if found.</returns>
+        [HttpGet("by-source/{type}/{sourceId}")]
+        [RequiresAnyPermission(PermissionKeys.Chat, PermissionKeys.GenerateDocument)]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        [Produces("application/json")]
+        public async Task<ActionResult<ContentReferenceItemInfo>> GetBySourceId(ContentReferenceType type, Guid sourceId)
+        {
+            try
+            {
+                var reference = await _contentReferenceService.GetBySourceIdAsync(sourceId, type);
+                if (reference == null)
+                {
+                    return NotFound();
+                }
+                return Ok(reference);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting reference by source Id");
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error retrieving reference");
             }
         }
 
@@ -84,7 +118,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         {
             try
             {
-                var references = await _contentReferenceService.SearchCachedReferencesAsync(term);
+                var references = await _contentReferenceService.SearchReferencesAsync(term);
                 return Ok(references);
             }
             catch (Exception ex)
@@ -115,7 +149,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         {
             try
             {
-                var reference = await _contentReferenceService.GetCachedReferenceByIdAsync(id, type);
+                var reference = await _contentReferenceService.GetReferenceByIdAsync(id, type);
                 if (reference == null)
                     return NotFound();
 
@@ -125,6 +159,34 @@ namespace Microsoft.Greenlight.API.Main.Controllers
             {
                 _logger.LogError(ex, "Error getting reference by ID");
                 return StatusCode(StatusCodes.Status500InternalServerError, "Error retrieving reference");
+            }
+        }
+
+        /// <summary>
+        /// Resolves a proxied download URL for a content reference item.
+        /// </summary>
+        /// <param name="id">The ID of the content reference.</param>
+        [HttpGet("{id}/url")]
+        [RequiresAnyPermission(PermissionKeys.Chat, PermissionKeys.GenerateDocument)]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [Produces("application/json")]
+        public async Task<ActionResult<Microsoft.Greenlight.Shared.Contracts.ContentReferenceUrlInfo>> GetContentReferenceUrl(Guid id)
+        {
+            try
+            {
+                var url = await _fileUrlResolver.ResolveUrlForContentReferenceAsync(id);
+                if (string.IsNullOrWhiteSpace(url))
+                {
+                    _logger.LogWarning("Content reference URL resolution returned empty for {Id}", id);
+                    return NotFound();
+                }
+                return Ok(new Microsoft.Greenlight.Shared.Contracts.ContentReferenceUrlInfo { Url = url! });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error resolving URL for content reference {Id}", id);
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error resolving content reference URL");
             }
         }
 
@@ -146,6 +208,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
             try
             {
                 await _contentReferenceService.RefreshReferencesCacheAsync();
+                await _contentReferenceService.InvalidateAssistantReferenceListCacheAsync();
                 return Ok("Reference cache refreshed successfully");
             }
             catch (Exception ex)
@@ -153,6 +216,21 @@ namespace Microsoft.Greenlight.API.Main.Controllers
                 _logger.LogError(ex, "Error refreshing reference cache");
                 return StatusCode(StatusCodes.Status500InternalServerError, "Error refreshing reference cache");
             }
+        }
+
+        /// <summary>
+        /// Returns a lightweight list of references for the AI Assistant selector (recent first).
+        /// Excludes ExternalFile by default; use query parameters to adjust if needed.
+        /// </summary>
+        /// <param name="top">Maximum number of items to return (default 200).</param>
+        [HttpGet("assistant-list")]
+        [RequiresAnyPermission(PermissionKeys.Chat, PermissionKeys.GenerateDocument)]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [Produces("application/json")]
+        public async Task<ActionResult<List<ContentReferenceItemInfo>>> GetAssistantReferenceList([FromQuery] int top = 200)
+        {
+            var list = await _contentReferenceService.GetAssistantReferenceListAsync(top);
+            return Ok(list);
         }
 
         /// <summary>

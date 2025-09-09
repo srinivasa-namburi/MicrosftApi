@@ -1,0 +1,1253 @@
+@inject IChatApiClient ChatApiClient
+@inject IAuthorizationApiClient AuthorizationApiClient
+@inject IContentReferenceApiClient ContentReferenceApiClient
+@inject IFileApiClient FileApiClient
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JSRuntime
+@inject ISnackbar Snackbar
+@inject SignalRConnectionService SignalRConnectionService
+@inject SignalRSubscriptionFactory SignalRSubscriptionFactory
+
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.Greenlight.Shared.Contracts.Chat
+@using Microsoft.Greenlight.Shared.Contracts.Chat.Commands
+@using Microsoft.Greenlight.Shared.Enums
+@using Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Commands
+@using Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Events
+@using Microsoft.Greenlight.Web.Shared.Auth
+@using System.Timers
+
+@implements IAsyncDisposable
+
+@if (ConversationId.HasValue)
+{
+    var containerClass = EffectiveIsDarkMode ? "chat-container dark-mode" : "chat-container";
+    if (FillContainer)
+    {
+        containerClass += " fill-container";
+    }
+
+    <MudPaper Class="@containerClass" Elevation="0">
+        @if (!IsContextEditMode && !IsEmbedded)
+        {
+            <div class="chat-header">
+                <MudIcon Icon="@Icons.Material.Filled.Chat" Class="mr-2" />
+                <h2 class="chat-header-title">
+                    @(string.IsNullOrEmpty(DocumentProcessName) ? "Conversation" : $"Conversation with {DocumentProcessName}")
+                </h2>
+                @if (ChatMessages.Any())
+                {
+                    <MudTooltip Text="Scroll to bottom">
+                        <MudIconButton Icon="@Icons.Material.Filled.ArrowDownward"
+                                       Color="Color.Inherit"
+                                       OnClick="ScrollMessagesToBottom"
+                                       Size="Size.Small" />
+                    </MudTooltip>
+                }
+            </div>
+        }
+
+        @* Conversation References *@
+        @if (ConversationReferences.Any() && !IsContextEditMode && !IsEmbedded)
+        {
+            <div class="conversation-references mb-2">
+                <MudPaper Class="pa-2" Elevation="0">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                        <MudText Typo="Typo.caption" Class="text-secondary">Conversation References:</MudText>
+                        <div class="d-flex flex-wrap gap-1">
+                            @foreach (var reference in ConversationReferences)
+                            {
+                                @if ((reference.ReferenceType == ContentReferenceType.ExternalFile || 
+                                     reference.ReferenceType == ContentReferenceType.ExternalLinkAsset) && 
+                                    reference.ContentReferenceSourceId.HasValue)
+                                {
+                                    <MudChip T="string" Size="Size.Small"
+                                             Icon="@GetReferenceIcon(reference.ReferenceType)"
+                                             Variant="Variant.Outlined"
+                                             Color="Color.Default"
+                                             Class="reference-chip-clickable compact-chip"
+                                             data-testid="@($"conv-ref-{reference.Id}")"
+                                             OnClick="async () => await OpenReference(reference)"
+                                             OnClose="() => RemoveReference(reference.Id)">
+                                        @reference.DisplayName
+                                    </MudChip>
+                                }
+                                else
+                                {
+                                    <MudChip T="string" Size="Size.Small"
+                                             Icon="@GetReferenceIcon(reference.ReferenceType)"
+                                             Variant="Variant.Outlined"
+                                             Color="Color.Default"
+                                             Class="compact-chip"
+                                             OnClose="() => RemoveReference(reference.Id)">
+                                        @reference.DisplayName
+                                    </MudChip>
+                                }
+                            }
+                        </div>
+                    </MudStack>
+                </MudPaper>
+            </div>
+        }
+
+        <div @ref="_messagesContainer" class="messages-container">
+            @if (!ChatMessages.Any())
+            {
+                <div class="empty-state">
+                    <MudIcon Icon="@Icons.Material.Outlined.ChatBubbleOutline" Size="Size.Large" Class="mb-4" />
+                    <MudText Typo="Typo.body1">
+                        @if (IsContextEditMode)
+                        {
+                            <text>Ask for suggestions to improve this content.</text>
+                        }
+                        else
+                        {
+                            <text>No messages yet. Start the conversation!</text>
+                        }
+                    </MudText>
+                </div>
+            }
+            else
+            {
+                <div>
+                    @foreach (var chatMessage in ChatMessages.OrderBy(x => x.CreatedUtc))
+                    {
+                        <AiChatMessage ChatMessage="@chatMessage"
+                                       CurrentUser="CurrentUser"
+                                       ConversationReferences="AllAvailableReferences"
+                                       OnContentSuggestionSelected="HandleContentSuggestionSelected"
+                                       IsContextEditMode="IsContextEditMode"
+                                       IsDarkMode="EffectiveIsDarkMode" />
+                    }
+                </div>
+            }
+        </div>
+
+        @* Status bar overlay *@
+        @if (_showGlobalStatus && !string.IsNullOrEmpty(_globalStatusMessage))
+        {
+            <div class="status-bar-overlay">
+                <MudPaper Class="pa-2" Elevation="4">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        @if (!_globalStatusComplete)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                        }
+                        else
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success" />
+                        }
+                        <MudText Typo="Typo.body2">@_globalStatusMessage</MudText>
+                    </MudStack>
+                </MudPaper>
+            </div>
+        }
+
+        <div class="input-container">
+            @if (CurrentUser == null)
+            {
+                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="56px" Animation="Animation.Pulse" />
+            }
+            else
+            {
+                <AiAssistantInputComponent AllReferences="AllAvailableReferences"
+                                           OnMessageSubmit="HandleMessageSubmit"
+                                           @ref="_inputComponent"
+                                           DisableFileUpload="@IsContextEditMode" />
+            }
+        </div>
+    </MudPaper>
+}
+else
+{
+    <MudAlert Severity="Severity.Info" Variant="Variant.Filled" Class="my-4">
+        <MudText>No conversation loaded</MudText>
+    </MudAlert>
+}
+
+
+<style>
+    /* Base styles for both modes */
+    .chat-container {
+        display: flex;
+        flex-direction: column;
+        background-color: var(--mud-palette-background);
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    .dark-mode {
+        background-color: var(--mud-palette-background-dark);
+    }
+
+    /* Fill container mode - adapts to parent */
+    .fill-container {
+        height: 100%;
+        width: 100%;
+    }
+
+    /* Default mode - fixed size */
+    .chat-container:not(.fill-container) {
+        height: calc(90vh - 120px);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+    }
+
+    .messages-container {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1rem;
+        scroll-behavior: smooth;
+        background-color: var(--mud-palette-background-gray);
+        display: flex;
+        flex-direction: column;
+        min-height: 0;  /* Important for proper flex sizing */
+    }
+
+    .dark-mode .messages-container {
+        background-color: var(--mud-palette-background-gray-darken);
+    }
+
+    .messages-list {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .input-container {
+        padding: 0.75rem;
+        border-top: 1px solid var(--mud-palette-lines-default);
+        background-color: var(--mud-palette-surface);
+        flex-shrink: 0;  /* Prevent input area from shrinking */
+    }
+
+    .dark-mode .input-container {
+        background-color: var(--mud-palette-surface-dark);
+        border-color: var(--mud-palette-lines-dark);
+    }
+
+    /* Status bar overlay - positioned above input */
+    .status-bar-overlay {
+        position: absolute;
+        bottom: 70px; /* Positioned just above the input container */
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000;
+        max-width: 400px;
+        animation: slideUp 0.3s ease-out;
+    }
+
+    @@keyframes slideUp {
+        from {
+            opacity: 0;
+            transform: translateX(-50%) translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+    }
+
+    /* Clickable reference chips */
+    .reference-chip-clickable {
+        cursor: pointer !important;
+        transition: all 0.2s ease;
+    }
+
+    .reference-chip-clickable:hover {
+        transform: scale(1.05);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    /* Compact chips for conversation references bar */
+    .compact-chip {
+        height: 24px !important;
+        font-size: 0.75rem !important;
+    }
+    
+    .compact-chip .mud-chip-content {
+        padding: 0 8px !important;
+    }
+
+    /* Other inherited styles can be maintained from app.css */
+</style>
+
+@code {
+    // For use within normal component hierarchy
+    [CascadingParameter(Name = "IsDarkMode")]
+    public bool CascadingIsDarkMode { get; set; }
+
+    [CascadingParameter] public AuthenticationState? AuthenticationState { get; set; }
+    [CascadingParameter] public HubConnection? HubConnection { get; set; }
+
+    [Parameter] public Guid? ConversationId { get; set; }
+    [Parameter] public string? DocumentProcessName { get; set; }
+    [Parameter] public Guid? ExternalReferenceId { get; set; }
+    [Parameter] public bool InternalConversationIdCreate { get; set; } = false;
+
+    // Direct parameter for dark mode
+    [Parameter] public bool IsDarkMode { get; set; }
+
+    // Parameters for content editing mode
+    [Parameter] public bool IsContextEditMode { get; set; } = false;
+    [Parameter] public string? EditContextContent { get; set; }
+    [Parameter] public Guid? EditContextNodeId { get; set; }
+    [Parameter] public string? EditContextDisplayName { get; set; }
+    [Parameter] public EventCallback<string> OnContentSuggestionReceived { get; set; }
+
+    /// <summary>
+    /// Hide the initial content display in the AI Assistant component
+    /// </summary>
+    [Parameter] public bool HideInitialContentDisplay { get; set; } = false;
+
+    /// <summary>
+    /// Start with a compact UI that shows only essential elements
+    /// </summary>
+    [Parameter] public bool StartWithCompactUI { get; set; } = false;
+
+    /// <summary>
+    /// When true, the component will adapt to fill its container instead of using fixed heights
+    /// </summary>
+    [Parameter] public bool FillContainer { get; set; } = false;
+
+    /// <summary>
+    /// When true, hides the header and adjusts styling for embedded mode
+    /// </summary>
+    [Parameter] public bool IsEmbedded { get; set; } = false;
+
+    /// <summary>
+    /// Callback when a new message is received from the assistant
+    /// </summary>
+    [Parameter] public EventCallback OnNewMessage { get; set; }
+
+    // Use either direct or cascading parameter
+    private bool EffectiveIsDarkMode => IsDarkMode || CascadingIsDarkMode;
+
+    private ElementReference _messagesContainer;
+    private AiAssistantInputComponent? _inputComponent;
+
+    private List<ChatMessageDTO> ChatMessages { get; set; } = new List<ChatMessageDTO>();
+    private List<ContentReferenceItemInfo> ConversationReferences { get; set; } = [];
+    private List<ContentReferenceItemInfo> AllAvailableReferences { get; set; } = [];
+    private UserInfoDTO? CurrentUser { get; set; }
+    private bool _isLoading = true;
+    private bool _initialContextMessageSent = false;
+
+    private string _originalEditContextContent;
+    private ContentChunkTracker _contentChunkTracker;
+    private bool _isProcessingContentChunks = false;
+
+    private SignalRSubscriptionManager? _subMgr;
+
+    // Global status bar properties
+    private string? _globalStatusMessage = null;
+    private bool _showGlobalStatus = false;
+    private bool _globalStatusComplete = false;
+    private Timer? _globalStatusTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!ConversationId.HasValue && InternalConversationIdCreate)
+        {
+            ConversationId = Guid.NewGuid();
+        }
+
+        if (ConversationId.HasValue && !string.IsNullOrEmpty(DocumentProcessName))
+        {
+            try
+            {
+                _isLoading = true;
+                var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+                var userInfo = UserInfo.FromClaimsPrincipal(authState.User);
+
+                // Ensure user exists. If not, create it, then proceed.
+                CurrentUser = await AuthorizationApiClient.GetUserInfoAsync(userInfo.UserId);
+                if (CurrentUser == null)
+                {
+                    try
+                    {
+                        var newUser = new Microsoft.Greenlight.Shared.Contracts.DTO.UserInfoDTO(userInfo.UserId, userInfo.Name)
+                        {
+                            Email = userInfo.Email
+                        };
+                        CurrentUser = await AuthorizationApiClient.StoreOrUpdateUserDetailsAsync(newUser) ?? newUser;
+                    }
+                    catch
+                    {
+                        // Best-effort: still allow UI to function with locally constructed user
+                        CurrentUser = new Microsoft.Greenlight.Shared.Contracts.DTO.UserInfoDTO(userInfo.UserId, userInfo.Name)
+                        {
+                            Email = userInfo.Email
+                        };
+                    }
+                }
+
+                // Defensive: ensure the conversation is associated with the selected document process
+                try
+                {
+                    await ChatApiClient.SetConversationDocumentProcessAsync(
+                        ConversationId.Value,
+                        new SetConversationDocumentProcessRequest
+                        {
+                            DocumentProcessName = DocumentProcessName!,
+                            UpdateSystemPrompt = true
+                        });
+                }
+                catch
+                {
+                    // Best-effort; not fatal if it fails here. The backend has further fallbacks.
+                }
+
+                // This also creates the conversation if it doesn't exist
+                ChatMessages = await ChatApiClient.GetChatMessagesAsync(ConversationId.Value, DocumentProcessName);
+
+                try
+                {
+                    AllAvailableReferences = await ContentReferenceApiClient.GetAssistantReferenceListAsync(200);
+                }
+                catch (Exception ex)
+                {
+                    // Log the error but don't fail the component initialization
+                    Console.Error.WriteLine($"Error loading references in AiAssistantComponent: {ex.Message}");
+                    Console.Error.WriteLine($"Exception type: {ex.GetType().Name}");
+                    if (ex.InnerException != null)
+                    {
+                        Console.Error.WriteLine($"Inner exception: {ex.InnerException.Message}");
+                    }
+                    AllAvailableReferences = new List<ContentReferenceItemInfo>();
+                }
+
+                await StartHubConnections();
+
+                // If we're in content edit mode and have content to edit, send a system message with the content
+                if (IsContextEditMode && !string.IsNullOrEmpty(EditContextContent))
+                {
+                    _originalEditContextContent = EditContextContent;
+                    _contentChunkTracker = new ContentChunkTracker(EditContextContent);
+
+                    if (!_initialContextMessageSent)
+                    {
+                        await SendInitialContextMessage();
+                        _initialContextMessageSent = true;
+                    }
+                }
+            }
+            finally
+            {
+                _isLoading = false;
+            }
+        }
+    }
+
+    private async Task SendInitialContextMessage()
+    {
+        // Create a system message with the content being edited
+        var contextMessage = new ChatMessageDTO
+        {
+            Id = Guid.NewGuid(),
+            ConversationId = ConversationId!.Value,
+            Source = ChatMessageSource.System,
+            Message = $"I'm going to help you improve the content from \"{EditContextDisplayName}\". The content is included as a reference.",
+            ContentText = EditContextContent,
+            CreatedUtc = DateTime.UtcNow
+        };
+
+        // Send to API but don't wait for response (it won't generate one)
+        await ChatApiClient.SendChatMessageAsync(contextMessage);
+
+        // Add a visible guidance message for the user - but only if we're not hiding initial display
+        if (!HideInitialContentDisplay)
+        {
+            var guideMessage = new ChatMessageDTO
+            {
+                Id = Guid.NewGuid(),
+                ConversationId = ConversationId!.Value,
+                Source = ChatMessageSource.System,
+                Message = "I can help improve this content. You can ask me to:\n\n" +
+                          "� Make it more concise or detailed\n" +
+                          "� Improve clarity or technical accuracy\n" +
+                          "� Fix grammar and formatting\n" +
+                          "� Change the tone or style\n\n" +
+                          "When I provide suggestions, they will always include the complete content with the changes applied.",
+                CreatedUtc = DateTime.UtcNow.AddSeconds(1)
+            };
+
+            // Only add guide message to UI, don't send to backend
+            ChatMessages.Add(guideMessage);
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && ChatMessages.Count > 0)
+        {
+            await ScrollMessagesToBottom();
+        }
+    }
+
+    private async Task StartHubConnections()
+    {
+        if (HubConnection == null)
+        {
+            // Use shared connection if cascading is not provided
+            HubConnection = await SignalRConnectionService.GetOrCreateAsync();
+        }
+
+        // Use subscription manager to dedupe and manage reconnect group join
+        _subMgr ??= new SignalRSubscriptionManager(HubConnection);
+
+        _subMgr.RegisterHandlerOnce<ChatMessageResponseReceived>(
+            "ReceiveChatMessageResponseReceivedNotification",
+            HubReceiveChatMessageResponseReceivedNotificationHandler);
+
+        _subMgr.RegisterHandlerOnce<ProcessChatMessage>(
+            "ReceiveProcessChatMessageReceivedNotification",
+            HubReceiveProcessChatMessageReceivedNotificationHandler);
+
+        _subMgr.RegisterHandlerOnce<ConversationReferencesUpdatedNotification>(
+            "ReceiveConversationReferencesUpdatedNotification",
+            HubReceiveConversationReferencesUpdatedNotificationHandler);
+
+        _subMgr.RegisterHandlerOnce<ContentChunkUpdate>(
+            "ReceiveContentChunkUpdateNotification",
+            HubReceiveContentChunkUpdateNotificationHandler);
+
+        _subMgr.RegisterHandlerOnce<ChatMessageStatusNotification>(
+            "ReceiveChatMessageStatusNotification",
+            HubReceiveGlobalStatusNotificationHandler);
+
+        await _subMgr.EnsureConnectedAsync();
+
+        await _subMgr.JoinGroupAsync(ConversationId!.Value.ToString());
+    }
+
+    private async Task StopHubConnections()
+    {
+        if (_subMgr == null) return;
+
+        await _subMgr.LeaveGroupAsync(ConversationId!.Value.ToString());
+
+        await _subMgr.DisposeAsync();
+    }
+
+    private async Task HubReceiveContentChunkUpdateNotificationHandler(ContentChunkUpdate update)
+    {
+        if (update.ConversationId != ConversationId || !IsContextEditMode)
+            return;
+
+        _isProcessingContentChunks = !update.IsComplete;
+
+        if (update.Chunks?.Any() == true)
+        {
+            try
+            {
+                // Apply chunks to the tracker
+                var beforeContent = _contentChunkTracker.GetCurrentContent();
+                var updatedContent = _contentChunkTracker.ApplyChunks(update.Chunks);
+
+                // Detect if any changes were actually applied by comparing content
+                bool changesApplied = beforeContent != updatedContent;
+
+                // Update UI with the new content
+                if (changesApplied)
+                {
+                    await OnContentSuggestionReceived.InvokeAsync(updatedContent);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error processing content chunks: {ex}");
+
+                // Add error message to the chat only if we don't have a specific error message already
+                var existingError = ChatMessages.LastOrDefault(m => m.Source == ChatMessageSource.System &&
+                                                     m.Message.Contains("Error applying content changes"));
+                if (existingError == null)
+                {
+                    var errorMessage = new ChatMessageDTO
+                    {
+                        Id = Guid.NewGuid(),
+                        ConversationId = ConversationId!.Value,
+                        Source = ChatMessageSource.System,
+                        Message = "Error applying content changes. Please try again.",
+                        CreatedUtc = DateTime.UtcNow
+                    };
+
+                    ChatMessages.Add(errorMessage);
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+        }
+
+        // We don't need to add status messages for updates anymore since the assistant message handles this
+        if (update.IsComplete)
+        {
+            _isProcessingContentChunks = false;
+        }
+    }
+
+    private async Task HubReceiveConversationReferencesUpdatedNotificationHandler(ConversationReferencesUpdatedNotification obj)
+    {
+        if (obj.ConversationId != ConversationId)
+            return;
+
+        ConversationReferences = obj.ReferenceItems;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HubReceiveProcessChatMessageReceivedNotificationHandler(ProcessChatMessage obj)
+    {
+        if (ChatMessages.Any(x => x.Id == obj.ChatMessageDto.Id))
+        {
+            return;
+        }
+
+        await ProcessOtherUserMessage(obj.ChatMessageDto);
+    }
+
+    private string GetReferenceIcon(ContentReferenceType referenceType)
+    {
+        return referenceType switch
+        {
+            ContentReferenceType.GeneratedDocument => Icons.Material.Filled.Description,
+            ContentReferenceType.GeneratedSection => Icons.Material.Filled.Subject,
+            ContentReferenceType.ExternalFile => Icons.Material.Filled.AttachFile,
+            ContentReferenceType.ReviewItem => Icons.Material.Filled.RateReview,
+            ContentReferenceType.ExternalLinkAsset => Icons.Material.Filled.Link,
+            _ => Icons.Material.Filled.Link,
+        };
+    }
+
+    private async Task OpenReference(ContentReferenceItemInfo reference)
+    {
+        // Centralized resolution by ContentReference ID (works for ExternalFile/ExternalLinkAsset)
+        var downloadUrl = await ContentReferenceApiClient.GetDownloadUrlForContentReferenceAsync(reference.Id);
+        if (!string.IsNullOrWhiteSpace(downloadUrl))
+        {
+            // Open in new tab for viewing
+            await JSRuntime.InvokeVoidAsync("window.open", downloadUrl, "_blank");
+        }
+    }
+
+    private async Task RemoveReference(Guid referenceId)
+    {
+        if (ConversationId == null)
+            return;
+        try
+        {
+            bool removed = await ContentReferenceApiClient.RemoveReferenceAsync(referenceId, ConversationId.Value);
+            if (!removed)
+            {
+                Snackbar.Add("Reference or conversation not found.", Severity.Error);
+                return;
+            }
+            // Remove from local list so UI updates immediately.
+            var referenceToRemove = ConversationReferences.FirstOrDefault(r => r.Id == referenceId);
+            if (referenceToRemove != null)
+            {
+                ConversationReferences.Remove(referenceToRemove);
+            }
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error removing reference from conversation", Severity.Error);
+        }
+    }
+
+    private async Task HubReceiveChatMessageResponseReceivedNotificationHandler(ChatMessageResponseReceived obj)
+    {
+        if (obj.ChatMessageDto.ConversationId != ConversationId)
+            return;
+
+        var existingMessage = ChatMessages.FirstOrDefault(x => x.Id == obj.ChatMessageDto.Id);
+        if (existingMessage != null)
+        {
+            existingMessage.State = obj.ChatMessageDto.State;
+            existingMessage.Message = obj.ChatMessageDto.Message;
+
+            // Only set ContentText for non-content-editing mode, since content-editing
+            // mode handles updates through chunks
+            if (!IsContextEditMode)
+            {
+                existingMessage.ContentText = obj.ChatMessageDto.ContentText;
+            }
+        }
+        else
+        {
+            var replyToMessage = ChatMessages.FirstOrDefault(x => x.Id == obj.ChatMessageDto.ReplyToId);
+            if (replyToMessage != null)
+            {
+                var index = ChatMessages.IndexOf(replyToMessage);
+                if (index == ChatMessages.Count - 1)
+                {
+                    ChatMessages.Add(obj.ChatMessageDto);
+                }
+                else
+                {
+                    ChatMessages.Insert(index + 1, obj.ChatMessageDto);
+                }
+            }
+            else
+            {
+                ChatMessages.Add(obj.ChatMessageDto);
+            }
+        }
+
+        // For content editing mode, don't call OnContentSuggestionReceived since
+        // we're handling that through chunks
+        if (IsContextEditMode && !string.IsNullOrEmpty(obj.ChatMessageDto.ContentText) && !_isProcessingContentChunks)
+        {
+            // Only update if we're not currently processing chunks (avoid conflict)
+            await OnContentSuggestionReceived.InvokeAsync(obj.ChatMessageDto.ContentText);
+        }
+
+        // Invoke notification callback if this is from the assistant
+        if (obj.ChatMessageDto.Source == ChatMessageSource.Assistant && OnNewMessage.HasDelegate)
+        {
+            await OnNewMessage.InvokeAsync();
+        }
+
+        await InvokeAsync(StateHasChanged);
+        await ScrollMessagesToBottom();
+
+        // Defensive sync: if assistant marks completion, refresh from server in case any updates were missed
+        if (obj.ChatMessageDto.State == ChatMessageCreationState.Complete)
+        {
+            try
+            {
+                var refreshed = await ChatApiClient.GetChatMessagesAsync(ConversationId!.Value, DocumentProcessName!);
+                if (refreshed != null && refreshed.Count >= ChatMessages.Count)
+                {
+                    ChatMessages = refreshed;
+                    await InvokeAsync(StateHasChanged);
+                    await ScrollMessagesToBottom();
+                }
+            }
+            catch
+            {
+                // Non-fatal; keep optimistic UI if refresh fails
+            }
+        }
+    }
+
+    private async Task HandleMessageSubmit(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        var chatMessage = new ChatMessageDTO
+        {
+            ConversationId = ConversationId!.Value,
+            Id = Guid.NewGuid(),
+            Message = message,
+            CreatedUtc = DateTime.UtcNow,
+            Source = ChatMessageSource.User,
+            UserId = CurrentUser!.ProviderSubjectId,
+            UserFullName = CurrentUser!.FullName
+        };
+
+        // If in content edit mode, include the content being edited as a reference
+        // but don't display it in the message itself
+        if (IsContextEditMode && !string.IsNullOrEmpty(EditContextContent))
+        {
+            chatMessage.ContentText = EditContextContent;
+
+            // Modify the message to indicate that content is included as a reference
+            if (!message.Contains("content included as reference"))
+            {
+                chatMessage.Message = message + "\n\n(Content included as reference)";
+            }
+        }
+
+        await ProcessMessage(chatMessage);
+    }
+
+    private void HandleContentSuggestionSelected(string suggestion)
+    {
+        if (!string.IsNullOrEmpty(suggestion) && IsContextEditMode)
+        {
+            OnContentSuggestionReceived.InvokeAsync(suggestion);
+        }
+    }
+
+    public async Task UpdateContextContent(string newContent)
+    {
+        // Update the content context
+        EditContextContent = newContent;
+
+        // Also update the original content reference for chunk positioning
+        _originalEditContextContent = newContent;
+        _contentChunkTracker = new ContentChunkTracker(newContent);
+
+        // Create a system message with the updated content being edited - send to backend only
+        var contextUpdateMessage = new ChatMessageDTO
+        {
+            Id = Guid.NewGuid(),
+            ConversationId = ConversationId!.Value,
+            Source = ChatMessageSource.System,
+            Message = $"The content has been updated. Here's the current content from \"{EditContextDisplayName}\":",
+            ContentText = newContent,
+            CreatedUtc = DateTime.UtcNow
+        };
+
+        // Send to API to update backend context, but don't display in UI
+        // No longer adding a local UI message about content updates
+        // This keeps the conversation cleaner and lets the assistant's message updates remain visible
+        await ChatApiClient.SendChatMessageAsync(contextUpdateMessage);
+    }
+
+    private async Task ProcessOtherUserMessage(ChatMessageDTO chatMessageDto)
+    {
+        var index = ChatMessages.FindLastIndex(x => x.CreatedUtc < chatMessageDto.CreatedUtc);
+        if (index == -1)
+        {
+            ChatMessages.Insert(0, chatMessageDto);
+        }
+        else
+        {
+            if (index == ChatMessages.Count - 1)
+            {
+                ChatMessages.Add(chatMessageDto);
+            }
+            else
+            {
+                ChatMessages.Insert(index + 1, chatMessageDto);
+            }
+        }
+
+        await InvokeAsync(StateHasChanged);
+        await ScrollMessagesToBottom();
+    }
+
+    private async Task ProcessMessage(ChatMessageDTO chatMessageDto)
+    {
+        if (chatMessageDto.Source == ChatMessageSource.User)
+        {
+            ChatMessages.Add(chatMessageDto);
+            await _inputComponent?.Clear()!;
+            await InvokeAsync(StateHasChanged);
+            await ScrollMessagesToBottom();
+
+            // Join the message-specific SignalR group to receive status notifications
+            try
+            {
+                // Ensure hub connection/subscription manager are ready
+                if (_subMgr == null)
+                {
+                    if (HubConnection == null)
+                    {
+                        HubConnection = await SignalRConnectionService.TryGetOrCreateAsync();
+                    }
+
+                    if (HubConnection != null)
+                    {
+                        _subMgr = new SignalRSubscriptionManager(HubConnection);
+                        await _subMgr.TryEnsureConnectedAsync();
+                    }
+                }
+
+                if (_subMgr != null)
+                {
+                    await _subMgr.TryJoinGroupAsync(chatMessageDto.Id.ToString());
+                }
+            }
+            catch
+            {
+                // Best-effort: if joining the per-message group fails, continue without crashing the UI
+            }
+
+            await ChatApiClient.SendChatMessageAsync(chatMessageDto);
+            await _inputComponent?.Focus()!;
+        }
+    }
+
+    private async Task ScrollMessagesToBottom()
+    {
+        try
+        {
+            await Task.Delay(50); // Small delay to ensure DOM update
+            await JSRuntime.InvokeVoidAsync("scrollToBottom", _messagesContainer);
+        }
+        catch (Exception ex)
+        {
+            // Log error but don't throw - non-critical functionality
+            await Console.Error.WriteLineAsync($"Error scrolling messages: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Starts a new conversation by clearing the current state and reinitializing
+    /// </summary>
+    public void StartNewConversation()
+    {
+        ConversationId = Guid.NewGuid();
+        ChatMessages.Clear();
+        ConversationReferences.Clear();
+        _inputComponent?.Clear();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HubReceiveGlobalStatusNotificationHandler(ChatMessageStatusNotification notification)
+    {
+        // Show global status for general processing messages
+        if (!notification.Persistent && !string.IsNullOrWhiteSpace(notification.StatusMessage))
+        {
+            _globalStatusMessage = notification.StatusMessage;
+            _showGlobalStatus = true;
+            _globalStatusComplete = notification.ProcessingComplete;
+
+            // Auto-hide after a delay
+            _globalStatusTimer?.Dispose();
+            _globalStatusTimer = new Timer(notification.ProcessingComplete ? 2000 : 5000); // 2s for complete, 5s for in-progress
+            _globalStatusTimer.Elapsed += (s, e) =>
+            {
+                _showGlobalStatus = false;
+                InvokeAsync(StateHasChanged);
+                _globalStatusTimer?.Dispose();
+            };
+            _globalStatusTimer.AutoReset = false;
+            _globalStatusTimer.Start();
+
+            await InvokeAsync(StateHasChanged);
+        }
+
+        // If processing for this message completed, leave the message-specific SignalR group
+        if (notification.ProcessingComplete)
+        {
+            try
+            {
+                if (_subMgr != null)
+                {
+                    await _subMgr.TryLeaveGroupAsync(notification.ChatMessageId.ToString());
+                }
+            }
+            catch
+            {
+                // Ignore cleanup failures
+            }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _globalStatusTimer?.Dispose();
+        
+        if (_subMgr != null)
+        {
+            await StopHubConnections();
+        }
+    }
+
+    private class ContentChunkTracker
+    {
+        private string _originalContent;
+        private string _currentContent;
+        private readonly object _lock = new object();
+        private readonly ILogger _logger;
+
+        public ContentChunkTracker(string initialContent = null, ILogger logger = null)
+        {
+            _originalContent = initialContent ?? string.Empty;
+            _currentContent = initialContent ?? string.Empty;
+            _logger = logger;
+        }
+
+        public string ApplyChunks(List<ContentChunk> chunks)
+        {
+            if (chunks == null || !chunks.Any())
+                return _currentContent;
+
+            lock (_lock)
+            {
+                try
+                {
+                    // Create a working copy to build up changes
+                    string workingContent = _currentContent;
+
+                    // Always process chunks in order from first position to last
+                    // This prevents later changes from invalidating earlier ones
+                    var orderedChunks = chunks.OrderBy(c => c.StartPosition).ToList();
+
+                    foreach (var chunk in orderedChunks)
+                    {
+                        switch (chunk.ChunkType)
+                        {
+                            case ContentChunkType.Replace:
+                                workingContent = ApplyReplaceChunk(workingContent, chunk);
+                                break;
+
+                            case ContentChunkType.Insert:
+                                workingContent = ApplyInsertChunk(workingContent, chunk);
+                                break;
+
+                            case ContentChunkType.Delete:
+                                workingContent = ApplyDeleteChunk(workingContent, chunk);
+                                break;
+                        }
+                    }
+
+                    // Update current content with all changes applied
+                    _currentContent = workingContent;
+                    return _currentContent;
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "Error applying content chunks");
+                    return _currentContent; // Return unchanged content on error
+                }
+            }
+        }
+
+        private string ApplyReplaceChunk(string content, ContentChunk chunk)
+        {
+            if (string.IsNullOrEmpty(chunk.OriginalText))
+                return content;
+
+            // First try to find the exact text
+            int index = content.IndexOf(chunk.OriginalText);
+
+            // If not found directly, try using context
+            if (index < 0 && !string.IsNullOrEmpty(chunk.Context))
+            {
+                // Try to parse context parts
+                string beforeContext = string.Empty;
+                string afterContext = string.Empty;
+
+                if (chunk.Context.Contains("..."))
+                {
+                    var parts = chunk.Context.Split(new[] { "..." }, StringSplitOptions.None);
+                    if (parts.Length >= 1) beforeContext = parts[0].Trim();
+                    if (parts.Length >= 2) afterContext = parts[1].Trim();
+
+                    // Look for a section that matches [before][original][after]
+                    if (!string.IsNullOrEmpty(beforeContext) && !string.IsNullOrEmpty(afterContext))
+                    {
+                        // Find where this context appears in the content
+                        int contextStart = content.IndexOf(beforeContext);
+                        if (contextStart >= 0)
+                        {
+                            int searchStart = contextStart + beforeContext.Length;
+                            int potentialEnd = content.IndexOf(afterContext, searchStart);
+
+                            if (potentialEnd > searchStart)
+                            {
+                                // Extract what's in between and verify it matches or is similar
+                                string textBetween = content.Substring(
+                                    searchStart, potentialEnd - searchStart);
+
+                                if (TextSimilarity(textBetween, chunk.OriginalText) > 0.7)
+                                {
+                                    // Replace this specific occurrence
+                                    return content.Substring(0, searchStart) +
+                                           chunk.NewText +
+                                           content.Substring(potentialEnd);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // If we found the text directly, replace it
+            if (index >= 0)
+            {
+                return content.Substring(0, index) +
+                       chunk.NewText +
+                       content.Substring(index + chunk.OriginalText.Length);
+            }
+
+            // If we couldn't find it, return unchanged
+            return content;
+        }
+
+        private string ApplyInsertChunk(string content, ContentChunk chunk)
+        {
+            // For inserts, we need to identify the exact insertion point
+            if (!string.IsNullOrEmpty(chunk.Context) && chunk.Context.Contains("..."))
+            {
+                var parts = chunk.Context.Split(new[] { "..." }, StringSplitOptions.None);
+                string beforeContext = parts.Length >= 1 ? parts[0].Trim() : string.Empty;
+                string afterContext = parts.Length >= 2 ? parts[1].Trim() : string.Empty;
+
+                // Try to insert between before and after context
+                if (!string.IsNullOrEmpty(beforeContext) && !string.IsNullOrEmpty(afterContext))
+                {
+                    int beforePos = content.IndexOf(beforeContext);
+                    if (beforePos >= 0)
+                    {
+                        int afterPos = content.IndexOf(afterContext, beforePos + beforeContext.Length);
+                        if (afterPos > beforePos)
+                        {
+                            // Insert between the context markers
+                            return content.Substring(0, beforePos + beforeContext.Length) +
+                                   chunk.NewText +
+                                   content.Substring(beforePos + beforeContext.Length);
+                        }
+                    }
+                }
+                // If we have only before context
+                else if (!string.IsNullOrEmpty(beforeContext))
+                {
+                    int beforePos = content.IndexOf(beforeContext);
+                    if (beforePos >= 0)
+                    {
+                        return content.Substring(0, beforePos + beforeContext.Length) +
+                               chunk.NewText +
+                               content.Substring(beforePos + beforeContext.Length);
+                    }
+                }
+                // If we have only after context
+                else if (!string.IsNullOrEmpty(afterContext))
+                {
+                    int afterPos = content.IndexOf(afterContext);
+                    if (afterPos >= 0)
+                    {
+                        return content.Substring(0, afterPos) +
+                               chunk.NewText +
+                               content.Substring(afterPos);
+                    }
+                }
+            }
+
+            // Fall back to position-based insert using surrounding context from original
+            if (chunk.StartPosition >= 0 && chunk.StartPosition < _originalContent.Length)
+            {
+                // Get context from original content around the insertion point
+                int contextLength = 25;
+                int startContext = Math.Max(0, chunk.StartPosition - contextLength);
+                int endContext = Math.Min(_originalContent.Length, chunk.StartPosition + contextLength);
+
+                string beforeText = startContext < chunk.StartPosition
+                    ? _originalContent.Substring(startContext, chunk.StartPosition - startContext)
+                    : string.Empty;
+
+                string afterText = chunk.StartPosition < endContext
+                    ? _originalContent.Substring(chunk.StartPosition, endContext - chunk.StartPosition)
+                    : string.Empty;
+
+                // Try to locate this context in the current content
+                if (!string.IsNullOrEmpty(beforeText) && !string.IsNullOrEmpty(afterText))
+                {
+                    int beforePos = content.IndexOf(beforeText);
+                    if (beforePos >= 0 && beforePos + beforeText.Length < content.Length)
+                    {
+                        int afterPos = content.IndexOf(afterText, beforePos + beforeText.Length);
+                        if (afterPos == beforePos + beforeText.Length)
+                        {
+                            return content.Substring(0, beforePos + beforeText.Length) +
+                                   chunk.NewText +
+                                   content.Substring(beforePos + beforeText.Length);
+                        }
+                    }
+                }
+                else if (!string.IsNullOrEmpty(beforeText))
+                {
+                    int beforePos = content.IndexOf(beforeText);
+                    if (beforePos >= 0)
+                    {
+                        return content.Substring(0, beforePos + beforeText.Length) +
+                               chunk.NewText +
+                               content.Substring(beforePos + beforeText.Length);
+                    }
+                }
+                else if (!string.IsNullOrEmpty(afterText))
+                {
+                    int afterPos = content.IndexOf(afterText);
+                    if (afterPos >= 0)
+                    {
+                        return content.Substring(0, afterPos) +
+                               chunk.NewText +
+                               content.Substring(afterPos);
+                    }
+                }
+            }
+
+            // Could not reliably insert, return unchanged
+            return content;
+        }
+
+        private string ApplyDeleteChunk(string content, ContentChunk chunk)
+        {
+            if (string.IsNullOrEmpty(chunk.OriginalText))
+                return content;
+
+            // Try to find the exact text to delete
+            int index = content.IndexOf(chunk.OriginalText);
+
+            // If not found directly, try using context
+            if (index < 0 && !string.IsNullOrEmpty(chunk.Context))
+            {
+                // Parse context
+                string beforeContext = string.Empty;
+                string afterContext = string.Empty;
+
+                if (chunk.Context.Contains("..."))
+                {
+                    var parts = chunk.Context.Split(new[] { "..." }, StringSplitOptions.None);
+                    if (parts.Length >= 1) beforeContext = parts[0].Trim();
+                    if (parts.Length >= 2) afterContext = parts[1].Trim();
+
+                    // Look for a section that matches [before][original][after]
+                    if (!string.IsNullOrEmpty(beforeContext) && !string.IsNullOrEmpty(afterContext))
+                    {
+                        int contextStart = content.IndexOf(beforeContext);
+                        if (contextStart >= 0)
+                        {
+                            int searchStart = contextStart + beforeContext.Length;
+                            int potentialEnd = content.IndexOf(afterContext, searchStart);
+
+                            if (potentialEnd > searchStart)
+                            {
+                                string textBetween = content.Substring(
+                                    searchStart, potentialEnd - searchStart);
+
+                                if (TextSimilarity(textBetween, chunk.OriginalText) > 0.7)
+                                {
+                                    // Delete this specific occurrence
+                                    return content.Substring(0, searchStart) + content.Substring(potentialEnd);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // If found directly, delete it
+            if (index >= 0)
+            {
+                return content.Substring(0, index) + content.Substring(index + chunk.OriginalText.Length);
+            }
+
+            // If not found, return unchanged
+            return content;
+        }
+
+        // Simple text similarity function to help with fuzzy matching
+        private double TextSimilarity(string s1, string s2)
+        {
+            if (string.IsNullOrEmpty(s1) || string.IsNullOrEmpty(s2))
+                return 0;
+
+            // Simple Jaccard similarity on character 2-grams
+            var set1 = new HashSet<string>();
+            var set2 = new HashSet<string>();
+
+            for (int i = 0; i < s1.Length - 1; i++)
+                set1.Add(s1.Substring(i, 2));
+
+            for (int i = 0; i < s2.Length - 1; i++)
+                set2.Add(s2.Substring(i, 2));
+
+            int intersectionCount = set1.Intersect(set2).Count();
+            int unionCount = set1.Union(set2).Count();
+
+            return unionCount == 0 ? 0 : (double)intersectionCount / unionCount;
+        }
+
+        public string GetCurrentContent() => _currentContent;
+    }
+}

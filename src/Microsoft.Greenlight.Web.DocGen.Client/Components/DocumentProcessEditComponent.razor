@@ -1,282 +1,357 @@
-@using System.Net
 @using Microsoft.AspNetCore.SignalR.Client
 @using Microsoft.Greenlight.Shared.Contracts.DTO.Configuration
+@using Microsoft.Greenlight.Shared.Contracts.Requests.FileStorage
 @using Microsoft.Greenlight.Shared.Enums
-@using Microsoft.Greenlight.Shared.Contracts.DTO
-@using Microsoft.Greenlight.Web.Shared.ServiceClients
 @inject IDocumentProcessApiClient DocumentProcessApiClient
+@inject IFileStorageHostApiClient FileStorageHostApiClient
+@inject IFileStorageSourceApiClient FileStorageSourceApiClient
 @inject IDocumentLibraryApiClient DocumentLibraryApiClient
 @inject IConfigurationApiClient ConfigurationApiClient
 @inject IFileApiClient FileApiClient
 @inject IPluginApiClient PluginApiClient
 @inject IDocumentReindexApiClient DocumentReindexApiClient
-@inject ISnackbar Snackbar
+@inject ISnackbar SnackBar
 @inject IDialogService DialogService
 @inject SignalRConnectionService SignalRConnectionService
 @inject SignalRSubscriptionFactory SignalRSubscriptionFactory
 @using Microsoft.Greenlight.Shared.Contracts.Messages.Reindexing.Events
 @implements IAsyncDisposable
 
-<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
-    @if (_isLoading)
-    {
-        <!-- Loading indicator displayed during initialization -->
-        <MudPaper Class="pa-6 d-flex flex-column align-center justify-center" Style="min-height: 300px;">
-            <MudProgressCircular Size="Size.Large" Indeterminate="true" Color="Color.Primary" Class="mb-4" />
-            <MudText Typo="Typo.h5" Align="Align.Center">Loading Document Process details...</MudText>
-        </MudPaper>
-    }
-    else
-    {
-        <MudPaper Class="pa-4">
-            <MudGrid>
+@if (_isLoading)
+{
+    <!-- Loading indicator displayed during initialization -->
+    <MudPaper Class="pa-6 d-flex flex-column align-center justify-center" Style="min-height: 300px;">
+        <MudProgressCircular Size="Size.Large" Indeterminate="true" Color="Color.Primary" Class="mb-4" />
+        <MudText Typo="Typo.h5" Align="Align.Center">Loading Document Process details...</MudText>
+    </MudPaper>
+}
+else
+{
+    <MudPaper Class="pa-6">
+        <MudText Typo="Typo.h5">@(_isEditMode ? "Edit Document Process" : "Create Document Process")</MudText>
+        <MudDivider Class="mt-2 mb-5" />
+        <MudGrid>
+            <MudItem xs="12">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.h6">Basic Information</MudText>
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                        <MudText Typo="Typo.body2" Class="text-right">
+                            <strong>Logic Type:</strong> @_process.LogicType.ToString()
+                        </MudText>
+                        @if (_isEditMode && _process.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
+                        {
+                            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="OpenVectorSearchDialog" StartIcon="@Icons.Material.Filled.Search">
+                                Search Vector Store
+                            </MudButton>
+                        }
+                        @if (_isEditMode)
+                        {
+                            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="OpenExportDialog" StartIcon="@Icons.Material.Filled.Download">
+                                Export Definition
+                            </MudButton>
+                        }
+                    </MudStack>
+                </MudStack>
+            </MudItem>
+        </MudGrid>
+
+        <!-- Inline Reindex Status -->
+        @if (_isEditMode && ShouldShowProcessBanner)
+        {
+            <MudGrid Class="mb-2">
                 <MudItem xs="12">
-                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-                        <MudText Typo="Typo.h6">Basic Information</MudText>
-                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
-                            <MudText Typo="Typo.body2" Class="text-right">
-                                <strong>Logic Type:</strong> @_process.LogicType.ToString()
-                            </MudText>
-                            @if (_isEditMode && _process.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
-                            {
-                                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" OnClick="OpenVectorSearchDialog">
-                                    <MudIcon Icon="@Icons.Material.Filled.Search" Class="mr-1" />
-                                    Search Vector Store
-                                </MudButton>
-                            }
-                            @if (_isEditMode)
-                            {
-                                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="OpenExportDialog">
-                                    <MudIcon Icon="@Icons.Material.Filled.Download" Class="mr-1" />
-                                    Export Definition
-                                </MudButton>
-                            }
-                        </MudStack>
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                        <MudText Typo="Typo.subtitle2">Reindexing Status:</MudText>
+
+                        <MudChip T="string" Color="@GetStatusColor(_processReindexStatus!.Status)" Variant="Variant.Filled">
+                            Process: @_processReindexStatus!.Status.ToString() (@_processReindexStatus!.ProcessedDocuments/@_processReindexStatus!.TotalDocuments)
+                        </MudChip>
+                        <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info" OnClick="OpenProcessReindexProgress">View details</MudButton>
+                        <MudSpacer />
+                        <MudTooltip Text="Refresh reindex status">
+                            <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="RefreshReindexStatusesAsync" />
+                        </MudTooltip>
                     </MudStack>
                 </MudItem>
             </MudGrid>
+        }
 
-            <!-- Inline Reindex Status -->
-            @if (_isEditMode && ShouldShowProcessBanner)
-            {
-                <MudGrid Class="mb-2">
+        <MudGrid Spacing="6">
+            <MudItem xs="12" md="6">
+                <MudGrid Spacing="3">
                     <MudItem xs="12">
-                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
-                            <MudText Typo="Typo.subtitle2">Reindexing Status:</MudText>
+                        <MudTextField @bind-Value="_process.ShortName" Label="Short Name" Disabled="_isEditMode" OnBlur="ValidateAndFormatShortName" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_process.Description" Label="Description" Lines="3" />
+                    </MudItem>
 
-                            <MudChip Color="@GetStatusColor(_processReindexStatus!.Status)" Variant="Variant.Filled">
-                                Process: @_processReindexStatus!.Status.ToString() (@_processReindexStatus!.ProcessedDocuments/@_processReindexStatus!.TotalDocuments)
-                            </MudChip>
-                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="OpenProcessReindexProgress">View details</MudButton>
-                            <MudSpacer />
-                            <MudIconButton Icon="@Icons.Material.Filled.Refresh" Title="Refresh reindex status" OnClick="RefreshReindexStatusesAsync" />
-                        </MudStack>
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.subtitle2" Class="mb-2">AI Model Configuration</MudText>
+                    </MudItem>
+
+                    <MudItem xs="12">
+                        <MudSelect T="AiModelDeploymentInfo" @bind-Value="SelectedDeployment" Label="AI Model Deployment"
+                                   ToStringFunc="@(d => d.DeploymentName)">
+                            @foreach (var deployment in _aiModelDeployments)
+                            {
+                                <MudSelectItem Value="@deployment">
+                                    @deployment.DeploymentName
+                                </MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+
+                    <MudItem xs="12">
+                        <MudSelect T="AiModelDeploymentInfo" @bind-Value="SelectedValidationDeployment" Label="AI Model Deployment for Validation"
+                                   ToStringFunc="@(d => d.DeploymentName)">
+                            @foreach (var deployment in _aiModelDeployments)
+                            {
+                                <MudSelectItem Value="@deployment">
+                                    @deployment.DeploymentName
+                                </MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+
+                    <MudItem xs="12">
+                        <MudSelect T="DocumentProcessCompletionServiceType" @bind-Value="_completionServiceType" Label="AI Completion Service">
+                            <MudSelectItem Value="DocumentProcessCompletionServiceType.GenericAiCompletionService">Generic AI Completion Service</MudSelectItem>
+                            <MudSelectItem Value="DocumentProcessCompletionServiceType.AgentAiCompletionService">Agent AI Completion Service</MudSelectItem>
+                        </MudSelect>
                     </MudItem>
                 </MudGrid>
-            }
-            
-            <MudGrid>
-                <MudItem xs="12" md="6">
-                    <MudTextField @bind-Value="_process.ShortName" Label="Short Name" Disabled="_isEditMode" OnBlur="ValidateAndFormatShortName" />
-                    <MudTextField @bind-Value="_process.Description" Label="Description" />
 
-                    <!-- AI Model Deployment selectors for Regular and Validation deployments -->
-                    <MudSelect T="AiModelDeploymentInfo" @bind-Value="SelectedDeployment" Label="AI Model Deployment"
-                               ToStringFunc="@(d => d.DeploymentName)">
-                        @foreach (var deployment in _aiModelDeployments)
+                <MudExpansionPanels Class="mt-2">
+                    <MudExpansionPanel Text="Storage & Index" Expanded="true">
+                        <MudTextField @bind-Value="_indexName" Label="Repository Index Name" Disabled="_isEditMode" OnInternalInputChanged="UpdateRepositories" />
+
+                        <!-- File Storage Sources -->
+                        <div class="mt-4">
+                            <PermissionView Permission="@Microsoft.Greenlight.Shared.Contracts.Authorization.PermissionKeys.AlterDocumentProcessesAndLibraries">
+                                <ChildContent>
+                                    <FileStorageSourceListComponent DocumentProcessId="@ProcessId"
+                                                                    LegacyContainerName="@_process.BlobStorageContainerName"
+                                                                    LegacyAutoImportFolder="@_process.BlobStorageAutoImportFolderName"
+                                                                    ShowBackwardCompatibility="true" />
+                                </ChildContent>
+                                <NotAuthorized>
+                                    <MudAlert Severity="Severity.Info">
+                                        You need the "Alter Document Processes and Libraries" permission to manage file storage sources.
+                                    </MudAlert>
+                                </NotAuthorized>
+                            </PermissionView>
+                        </div>
+
+                        <!-- Legacy fields - shown as read-only for reference -->
+                        @if (_isEditMode && !string.IsNullOrEmpty(_process.BlobStorageContainerName))
                         {
-                            <MudSelectItem Value="@deployment">
-                                @deployment.DeploymentName
-                            </MudSelectItem>
+                            <MudDivider Class="mt-5 mb-4" />
+                            <MudText Typo="Typo.subtitle2" Class="mb-2">Legacy Configuration (Read-Only)</MudText>
+                            <MudTextField Value="_process.BlobStorageContainerName" Label="Legacy Blob Storage Container Name" Disabled="true" />
+                            <MudTextField Value="_process.BlobStorageAutoImportFolderName" Label="Legacy Auto Import Folder Name" Disabled="true" />
                         }
-                    </MudSelect>
+                    </MudExpansionPanel>
 
-                    <MudSelect T="AiModelDeploymentInfo" @bind-Value="SelectedValidationDeployment" Label="AI Model Deployment for Validation"
-                               ToStringFunc="@(d => d.DeploymentName)">
-                        @foreach (var deployment in _aiModelDeployments)
+                    <MudExpansionPanel Text="Vector Store Configuration" Expanded="true">
+                        @if (_process.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
                         {
-                            <MudSelectItem Value="@deployment">
-                                @deployment.DeploymentName
-                            </MudSelectItem>
+                            <MudSelect T="TextChunkingMode?" @bind-Value="_process.VectorStoreChunkingMode" Label="Chunking Mode">
+                                @foreach (var mode in Enum.GetValues<TextChunkingMode>())
+                                {
+                                    <MudSelectItem Value="@(mode as TextChunkingMode?)">@mode.ToString()</MudSelectItem>
+                                }
+                            </MudSelect>
+
+                            <MudNumericField T="int?" @bind-Value="_process.VectorStoreChunkSize" Label="Chunk Size (tokens)" Min="100" Max="8000" HelperText="Number of tokens per chunk. Leave empty to use global default." />
+                            <MudNumericField T="int?" @bind-Value="_process.VectorStoreChunkOverlap" Label="Chunk Overlap (tokens)" Min="0" Max="2000" HelperText="Number of overlapping tokens between chunks. Leave empty to use global default." />
+
+                            <MudDivider Class="mt-2 mb-3" />
+
+                            <MudSelect T="AiModelDeploymentInfo" Label="Embedding Model Deployment" @bind-Value="SelectedEmbeddingDeployment" ToStringFunc="@(d => d.DeploymentName)">
+                                @foreach (var deployment in _aiModelDeployments.Where(d => d.AiModel?.ModelType == AiModelType.Embedding))
+                                {
+                                    <MudSelectItem Value="@deployment">@deployment.DeploymentName</MudSelectItem>
+                                }
+                            </MudSelect>
+
+                            <MudSelect T="int?" @bind-Value="_process.EmbeddingDimensionsOverride" Label="Embedding Size Override (dimensions)">
+                                <MudSelectItem T="int?" Value="@(default(int?))">Use deployment default</MudSelectItem>
+                                <MudSelectItem T="int?" Value="256">256</MudSelectItem>
+                                <MudSelectItem T="int?" Value="512">512</MudSelectItem>
+                                <MudSelectItem T="int?" Value="1024">1024</MudSelectItem>
+                                <MudSelectItem T="int?" Value="1536">1536</MudSelectItem>
+                                <MudSelectItem T="int?" Value="3072">3072</MudSelectItem>
+                            </MudSelect>
+
+                            <MudAlert Severity="Severity.Info" Class="mt-2">
+                                <strong>Note:</strong> Changing chunk size or overlap will only apply to newly ingested documents. You can reindex existing documents to apply new settings.
+                            </MudAlert>
                         }
-                    </MudSelect>
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
 
-                    <!-- Ai Completion Service selection -->
-                    <MudSelect T="DocumentProcessCompletionServiceType" @bind-Value="_completionServiceType" Label="AI Completion Service">
-                        <MudSelectItem Value="DocumentProcessCompletionServiceType.GenericAiCompletionService">Generic AI Completion Service</MudSelectItem>
-                        <MudSelectItem Value="DocumentProcessCompletionServiceType.AgentAiCompletionService">Agent AI Completion Service</MudSelectItem>
-                    </MudSelect>
+                <!-- File Upload Section -->
+                @if (ProcessId != null && _isEditMode)
+                {
+                    <MudDivider Class="mt-5 mb-4" />
 
-                    <MudExpansionPanels Class="mt-2">
-                        <MudExpansionPanel Text="Storage & Index" Expanded="true">
-                            <MudTextField @bind-Value="_process.BlobStorageContainerName" Label="Blob Storage Container Name" Disabled="_isEditMode" />
-                            <MudTextField @bind-Value="_process.BlobStorageAutoImportFolderName" Label="Auto Import Folder Name" />
-                            <MudTextField @bind-Value="_indexName" Label="Repository Index Name" Disabled="_isEditMode" OnInternalInputChanged="UpdateRepositories" />
-                        </MudExpansionPanel>
-
-                        <MudExpansionPanel Text="Advanced (Vector Store & Embeddings)" Expanded="true">
-                            @if (_process.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
-                            {
-                                <MudSelect T="TextChunkingMode?" @bind-Value="_process.VectorStoreChunkingMode" Label="Chunking Mode">
-                                    @foreach (var mode in Enum.GetValues<TextChunkingMode>())
+                    <MudGrid Spacing="2" Class="mt-4 mb-2">
+                        <MudItem>
+                            <MudFileUpload T="IReadOnlyList<IBrowserFile>"
+                                           FilesChanged="HandleFileSelected"
+                                           MaximumFileCount="16384">
+                                <ActivatorContent>
+                                    <MudButton HtmlTag="label"
+                                               Variant="Variant.Outlined"
+                                               Color="Color.Secondary"
+                                               StartIcon="@Icons.Material.Filled.CloudUpload"
+                                               Disabled="_isUploadingFiles">
+                                        @if (_isUploadingFiles)
+                                        {
+                                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-2" />
+                                            @:Uploading...
+                                        }
+                                        else
+                                        {
+                                            @:Upload Documents
+                                        }
+                                    </MudButton>
+                                </ActivatorContent>
+                            </MudFileUpload>
+                        </MudItem>
+                        @if (_process.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
+                        {
+                            <MudItem>
+                                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Refresh" OnClick="ShowReindexDialog" Disabled="_processReindexStatus?.Status == ReindexOrchestrationState.Running">
+                                    @if (_processReindexStatus?.Status == ReindexOrchestrationState.Running)
                                     {
-                                        <MudSelectItem Value="@(mode as TextChunkingMode?)">@mode.ToString()</MudSelectItem>
+                                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-2" />
+                                        @:Reindexing...
                                     }
-                                </MudSelect>
-
-                                <MudNumericField T="int?" @bind-Value="_process.VectorStoreChunkSize" Label="Chunk Size (tokens)" Min="100" Max="8000" HelperText="Number of tokens per chunk. Leave empty to use global default." />
-                                <MudNumericField T="int?" @bind-Value="_process.VectorStoreChunkOverlap" Label="Chunk Overlap (tokens)" Min="0" Max="2000" HelperText="Number of overlapping tokens between chunks. Leave empty to use global default." />
-
-                                <MudDivider Class="my-2" />
-
-                                <MudSelect T="AiModelDeploymentInfo" Label="Embedding Model Deployment" @bind-Value="SelectedEmbeddingDeployment" ToStringFunc="@(d => d.DeploymentName)">
-                                    @foreach (var deployment in _aiModelDeployments.Where(d => d.AiModel?.ModelType == AiModelType.Embedding))
+                                    else
                                     {
-                                        <MudSelectItem Value="@deployment">@deployment.DeploymentName</MudSelectItem>
+                                        @:Reindex Documents
                                     }
-                                </MudSelect>
-
-                                <MudSelect T="int?" @bind-Value="_process.EmbeddingDimensionsOverride" Label="Embedding Size Override (dimensions)">
-                                    <MudSelectItem T="int?" Value="@(default(int?))">Use deployment default</MudSelectItem>
-                                    <MudSelectItem T="int?" Value="256">256</MudSelectItem>
-                                    <MudSelectItem T="int?" Value="512">512</MudSelectItem>
-                                    <MudSelectItem T="int?" Value="1024">1024</MudSelectItem>
-                                    <MudSelectItem T="int?" Value="1536">1536</MudSelectItem>
-                                    <MudSelectItem T="int?" Value="3072">3072</MudSelectItem>
-                                </MudSelect>
-
-                                <MudAlert Severity="Severity.Info" Class="mt-2">
-                                    <strong>Note:</strong> Changing chunk size or overlap will only apply to newly ingested documents. You can reindex existing documents to apply new settings.
-                                </MudAlert>
-                            }
-                        </MudExpansionPanel>
-                    </MudExpansionPanels>
-
-                    <!-- File Upload Section -->
-                    @if (ProcessId != null && _isEditMode)
-                    {
-                        <MudDivider Class="my-4" />
-
-
-                        <MudFileUpload T="IReadOnlyList<IBrowserFile>"
-                                       FilesChanged="HandleFileSelected"
-                                       MaximumFileCount="16384">
-                            <ButtonTemplate>
-                                <MudButton HtmlTag="label"
-                                           Variant="Variant.Filled"
-                                           Color="Color.Primary"
-                                           StartIcon="@Icons.Material.Filled.CloudUpload"
-                                           for="@context">
-                                    Upload RAG Documents to Repository
                                 </MudButton>
-                            </ButtonTemplate>
-                        </MudFileUpload>
-                    }
-
-                    @if (ProcessId != null && _isEditMode && _process.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
-                    {
-                        <MudStack Class="mt-4" Spacing="2">
-                            <MudButton Variant="Variant.Filled" Color="Color.Warning" StartIcon="@Icons.Material.Filled.Refresh" OnClick="ShowReindexDialog">
-                                Reindex Documents
-                            </MudButton>
-                            <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                This will recreate vector embeddings for all previously ingested documents in this process.
-                            </MudText>
-                        </MudStack>
-                    }
-
-                    @if (ProcessId != null && _isEditMode)
-                    {
-                        <MudSpacer />
-
-                        <MudGrid Spacing="2" Class="mt-2 mb-2">
-                            <MudItem>
-                                <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="OpenDocumentOutlineEditor">Document Outline Editor</MudButton>
                             </MudItem>
-                            <MudItem>
-                                <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="OpenMetadataFieldEditor">Metadata Fields Editor</MudButton>
-                            </MudItem>
-                        </MudGrid>
+                        }
+                    </MudGrid>
+                }
 
-                    }
+                @if (ProcessId != null && _isEditMode)
+                {
                     <MudSpacer />
 
                     <MudGrid Spacing="2" Class="mt-2 mb-2">
                         <MudItem>
-                            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveProcess" Style="min-width:150px">Save</MudButton>
+                            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Edit" OnClick="OpenDocumentOutlineEditor">Document Outline Editor</MudButton>
                         </MudItem>
                         <MudItem>
-                            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="Cancel" Style="min-width:150px">Cancel</MudButton>
+                            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Settings" OnClick="OpenMetadataFieldEditor">Metadata Fields Editor</MudButton>
                         </MudItem>
-                        @if (ProcessId != null)
-                        {
-                            <MudItem>
-                                <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="ConfirmDeleteProcess" Style="min-width:150px">Delete Process</MudButton>
-                            </MudItem>
-                        }
                     </MudGrid>
 
-                </MudItem>
+                }
+                <MudSpacer />
 
-                <MudItem xs="12" md="6">
-                    <!-- Document Retrieval Settings section -->
-                    <MudText Typo="Typo.h6">Document Retrieval Settings</MudText>
+                <MudGrid Spacing="2" Class="mt-2 mb-2">
+                    <MudItem>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveProcess" Style="min-width:150px" Disabled="_isSaving">
+                            @if (_isSaving)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-2" />
+                                @:Saving...
+                            }
+                            else
+                            {
+                                @:Save
+                            }
+                        </MudButton>
+                    </MudItem>
+                    <MudItem>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="Cancel" Style="min-width:150px">Cancel</MudButton>
+                    </MudItem>
+                    @if (ProcessId != null)
+                    {
+                        <MudItem>
+                            <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="ConfirmDeleteProcess" Style="min-width:150px">Delete Process</MudButton>
+                        </MudItem>
+                    }
+                </MudGrid>
 
-                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                        <MudSlider T="int" @bind-Value="_process.PrecedingSearchPartitionInclusionCount" Min="0" Max="10" TickMarks="true" ValueLabel="true" Immediate="true">
-                            # of Preceding Partitions to retrieve
-                        </MudSlider>
-                        <MudNumericField @bind-Value="_process.PrecedingSearchPartitionInclusionCount" Min="0" Max="10" Immediate="true" Style="width:80px;" />
-                    </MudStack>
+            </MudItem>
 
-                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                        <MudSlider T="int" @bind-Value="_process.FollowingSearchPartitionInclusionCount" Min="0" Max="10" TickMarks="true" ValueLabel="true" Immediate="true">
-                            # of Following Partitions to retrieve
-                        </MudSlider>
-                        <MudNumericField @bind-Value="_process.FollowingSearchPartitionInclusionCount" Min="0" Max="10" Immediate="true" Style="width:80px;" />
-                    </MudStack>
+            <MudItem xs="12" md="6">
+                <MudGrid Spacing="3">
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.subtitle2" Class="mb-2">Document Retrieval Settings</MudText>
+                    </MudItem>
 
-                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                        <MudSlider T="int" @bind-Value="_process.NumberOfCitationsToGetFromRepository" Min="0" Max="100" TickMarks="false" ValueLabel="true" Immediate="true">
-                            # Number of Citations to retrieve
-                        </MudSlider>
-                        <MudNumericField @bind-Value="_process.NumberOfCitationsToGetFromRepository" Min="0" Max="100" Immediate="true" Style="width:80px;" />
-                    </MudStack>
+                    <MudItem xs="12">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudSlider T="int" @bind-Value="_process.PrecedingSearchPartitionInclusionCount" Min="0" Max="10" TickMarks="true" ValueLabel="true" Immediate="true">
+                                # of Preceding Partitions to retrieve
+                            </MudSlider>
+                            <MudNumericField @bind-Value="_process.PrecedingSearchPartitionInclusionCount" Min="0" Max="10" Immediate="true" Style="width:80px;" />
+                        </MudStack>
+                    </MudItem>
 
-                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                        <MudSlider T="double" @bind-Value="_minimumRelevancePercentage" Min="0" Max="100" Step="10" TickMarks="true" TickMarkLabels="@_minimumRelevanceStepLabels" ValueLabel="true" Immediate="true">
-                            Minimum Relevance (%)
-                        </MudSlider>
-                        <MudNumericField @bind-Value="_minimumRelevancePercentage" Min="0" Max="100" Step="10" Immediate="true" Style="width:80px;" />
-                    </MudStack>
+                    <MudItem xs="12">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudSlider T="int" @bind-Value="_process.FollowingSearchPartitionInclusionCount" Min="0" Max="10" TickMarks="true" ValueLabel="true" Immediate="true">
+                                # of Following Partitions to retrieve
+                            </MudSlider>
+                            <MudNumericField @bind-Value="_process.FollowingSearchPartitionInclusionCount" Min="0" Max="10" Immediate="true" Style="width:80px;" />
+                        </MudStack>
+                    </MudItem>
 
-                    <!-- Validation Pipeline Settings section -->
+                    <MudItem xs="12">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudSlider T="int" @bind-Value="_process.NumberOfCitationsToGetFromRepository" Min="0" Max="100" TickMarks="false" ValueLabel="true" Immediate="true">
+                                # Number of Citations to retrieve
+                            </MudSlider>
+                            <MudNumericField @bind-Value="_process.NumberOfCitationsToGetFromRepository" Min="0" Max="100" Immediate="true" Style="width:80px;" />
+                        </MudStack>
+                    </MudItem>
+
+                    <MudItem xs="12" Class="mb-4">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudSlider T="double" @bind-Value="_minimumRelevancePercentage" Min="0" Max="100" Step="10" TickMarks="true" TickMarkLabels="@_minimumRelevanceStepLabels" ValueLabel="true" Immediate="true">
+                                Minimum Relevance (%)
+                            </MudSlider>
+                            <MudNumericField @bind-Value="_minimumRelevancePercentage" Min="0" Max="100" Step="10" Immediate="true" Style="width:80px;" />
+                        </MudStack>
+                    </MudItem>
+
                     @if (_isEditMode)
                     {
-                        <MudStack AlignItems="AlignItems.Start" Spacing="2">
+                        <MudItem xs="12">
+                            <MudDivider Class="my-3" />
+                            <MudText Typo="Typo.subtitle2" Class="mb-2">Validation Pipeline Settings</MudText>
                             <ValidationStepsEditorComponent Steps="@_validationSteps"
                                                             StepsChanged="@HandleValidationStepsChanged"
                                                             RunValidationAutomatically="@_runValidationAutomatically"
                                                             RunValidationAutomaticallyChanged="@HandleRunValidationAutomaticallyChanged" />
-                        </MudStack>
+                        </MudItem>
                     }
+                </MudGrid>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
 
-                </MudItem>
-            </MudGrid>
-        </MudPaper>
-    }
-    
+
     <!-- Place this after the main form MudPaper -->
     @if (_isEditMode)
     {
-        <MudDivider Class="my-4" />
+        <MudDivider Class="mt-5 mb-4" />
 
-        <MudPaper Class="pa-4">
+        <MudPaper Class="pa-6">
             <MudTabs Elevation="4" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
                 <MudTabPanel Text="Document Libraries">
                     <MudText Typo="Typo.h6">Associated Document Libraries</MudText>
 
-                    <MudTable Items="@_associatedLibraries" Hover="true">
+                    <MudTable T="DocumentLibraryInfo" Items="@_associatedLibraries" Hover="true">
                         <HeaderContent>
                             <MudTh>Library Name</MudTh>
                             <MudTh>Description</MudTh>
@@ -291,15 +366,15 @@
                         </RowTemplate>
                     </MudTable>
 
-                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ShowAssociateLibraryDialog" Class="mt-4">Associate Document Library</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="ShowAssociateLibraryDialog" Class="mt-4">Associate Document Library</MudButton>
                 </MudTabPanel>
 
                 <MudTabPanel Text="Plugins">
                     <PluginDocumentProcessAssociationManager DocumentProcessId="@ProcessId"
-                                                          PluginCentric="false"
-                                                          Title="Associated Plugins"
-                                                          SelectionColumnLabel="Plugin"
-                                                          OnAssociationChanged="HandleAssociationChanged" />
+                                                             PluginCentric="false"
+                                                             Title="Associated Plugins"
+                                                             SelectionColumnLabel="Plugin"
+                                                             OnAssociationChanged="HandleAssociationChanged" />
                 </MudTabPanel>
 
                 <MudTabPanel Text="Prompts">
@@ -315,9 +390,8 @@
             </MudTabs>
         </MudPaper>
     }
+}
 
-
-</MudContainer>
 
 @code {
     [Parameter] public Guid? ProcessId { get; set; }
@@ -347,9 +421,11 @@
 
     private bool _isEditMode;
     private bool _showPrompts;
-    
+
     // Add loading state
     private bool _isLoading = true;
+    private bool _isSaving = false;
+    private bool _isUploadingFiles = false;
 
     private readonly string[] _minimumRelevanceStepLabels = Enumerable.Range(0, 11).Select(i => $"{i * 10}%").ToArray();
 
@@ -435,7 +511,7 @@
                     _availablePlugins = new List<McpPluginInfo>();
                     _associatedPlugins = new List<PluginAssociationViewModel>();
                     Console.WriteLine($"Error loading plugins: {ex.Message}");
-                    Snackbar.Add($"Error loading plugins: {ex.Message}", Severity.Warning);
+                    SnackBar.Add($"Error loading plugins: {ex.Message}", Severity.Warning);
                 }
 
                 try
@@ -449,7 +525,7 @@
                 catch (Exception ex)
                 {
                     Console.WriteLine($"Error loading document libraries: {ex.Message}");
-                    Snackbar.Add($"Error loading document libraries: {ex.Message}", Severity.Warning);
+                    SnackBar.Add($"Error loading document libraries: {ex.Message}", Severity.Warning);
                 }
 
                 try
@@ -460,7 +536,7 @@
                 catch (Exception ex)
                 {
                     Console.WriteLine($"Error loading prompts: {ex.Message}");
-                    Snackbar.Add($"Error loading prompts: {ex.Message}", Severity.Warning);
+                    SnackBar.Add($"Error loading prompts: {ex.Message}", Severity.Warning);
                 }
 
                 try
@@ -471,7 +547,7 @@
                 catch (Exception ex)
                 {
                     Console.WriteLine($"Error loading validation pipeline: {ex.Message}");
-                    Snackbar.Add($"Error loading validation pipeline: {ex.Message}", Severity.Warning);
+                    SnackBar.Add($"Error loading validation pipeline: {ex.Message}", Severity.Warning);
                 }
 
                 // Refresh reindexing statuses
@@ -501,7 +577,7 @@
         catch (Exception ex)
         {
             Console.WriteLine($"Error initializing document process edit component: {ex.Message}");
-            Snackbar.Add($"Error loading document process: {ex.Message}", Severity.Error);
+            SnackBar.Add($"Error loading document process: {ex.Message}", Severity.Error);
         }
         finally
         {
@@ -691,24 +767,33 @@
     {
         if (files == null || files.Count == 0)
         {
-            Snackbar.Add("No files selected for upload.", Severity.Warning);
+            SnackBar.Add("No files selected for upload.", Severity.Warning);
             return;
         }
-        foreach (var file in files)
-        {
-            var fileName = $"{_process.BlobStorageAutoImportFolderName}/{file.Name}";
-            // URL encode the file name
-            fileName = WebUtility.UrlEncode(fileName);
 
-            try
+        _isUploadingFiles = true;
+        StateHasChanged();
+
+        try
+        {
+            foreach (var file in files)
             {
-                var result = await FileApiClient.UploadFileDirectAsync(_process.BlobStorageContainerName, fileName, file);
-                Snackbar.Add($"File '{file.Name}' uploaded successfully.", Severity.Success);
+                try
+                {
+                    // Use the FileApiClient method for document process uploads
+                    var result = await FileApiClient.UploadFileToDocumentProcessAsync(_process.ShortName, file.Name, file);
+                    SnackBar.Add($"File '{file.Name}' uploaded successfully.", Severity.Success);
+                }
+                catch (Exception ex)
+                {
+                    SnackBar.Add($"Error uploading file '{file.Name}': {ex.Message}", Severity.Error);
+                }
             }
-            catch (Exception ex)
-            {
-                Snackbar.Add($"Error uploading file '{file.Name}': {ex.Message}", Severity.Error);
-            }
+        }
+        finally
+        {
+            _isUploadingFiles = false;
+            StateHasChanged();
         }
     }
 
@@ -764,13 +849,13 @@
         {
             // Get associated plugins from the API
             var associatedPluginInfos = await PluginApiClient.GetMcpPluginsByDocumentProcessIdAsync(_process.Id);
-            
+
             // Map to PluginAssociation objects
             _associatedPlugins = (associatedPluginInfos ?? new List<McpPluginInfo>()).Select(p =>
             {
                 var docProcess = p.DocumentProcesses?.FirstOrDefault(dp => dp.DocumentProcessId == _process.Id);
                 var version = docProcess?.Version;
-                var versionString = version != null ? $"{version.Major}.{version.Minor}.{version.Patch}" : 
+                var versionString = version != null ? $"{version.Major}.{version.Minor}.{version.Patch}" :
                     p.LatestVersion != null ? $"{p.LatestVersion.Major}.{p.LatestVersion.Minor}.{p.LatestVersion.Patch}" : "1.0.0";
 
                 return new PluginAssociationViewModel
@@ -786,100 +871,157 @@
             // Log the error, but don't crash
             Console.WriteLine($"Error loading associated plugins: {ex.Message}");
             _associatedPlugins = new List<PluginAssociationViewModel>();
-            Snackbar.Add($"Error loading plugins: {ex.Message}", Severity.Warning);
+            SnackBar.Add($"Error loading plugins: {ex.Message}", Severity.Warning);
         }
     }
 
     private async Task SaveProcess()
     {
-        ValidateAndFormatShortName();
-        UpdateRepositories();
+        _isSaving = true;
+        StateHasChanged();
 
-        // Write selected completion service back to the process model
-        _process.CompletionServiceType = _completionServiceType;
-
-        if (!await ConfirmReindexIfEmbeddingChangedAsync())
+        try
         {
-            return;
-        }
+            ValidateAndFormatShortName();
+            UpdateRepositories();
 
-        if (_isEditMode && _process != null)
-        {
-            // Handle validation pipeline
-            if (_validationSteps.Any())
-            {
-                var pipelineInfo = _validationPipeline ?? new DocumentProcessValidationPipelineInfo
-                {
-                    DocumentProcessId = _process.Id
-                };
+            // Write selected completion service back to the process model
+            _process.CompletionServiceType = _completionServiceType;
 
-                pipelineInfo.ValidationPipelineSteps = _validationSteps;
-                pipelineInfo.RunValidationAutomatically = _runValidationAutomatically;
-                await DocumentProcessApiClient.SaveValidationPipelineAsync(_process.Id, pipelineInfo);
-            }
-            else if (_validationPipeline != null)
+            if (!await ConfirmReindexIfEmbeddingChangedAsync())
             {
-                // Delete the validation pipeline if it exists but there are no steps
-                await DocumentProcessApiClient.DeleteValidationPipelineAsync(_process.Id);
-                _validationPipeline = null;
+                return;
             }
 
-            // Ensure embedding settings are only applied for SemanticKernelVectorStore
-            if (_process.LogicType != DocumentProcessLogicType.SemanticKernelVectorStore)
+            if (_isEditMode && _process != null)
             {
-                _process.EmbeddingModelDeploymentId = null;
-                _process.EmbeddingDimensionsOverride = null;
-            }
-
-            await DocumentProcessApiClient.UpdateDynamicDocumentProcessDefinitionAsync(_process);
-            Snackbar.Add("Document process updated successfully.", Severity.Success);
-
-            if (_process.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore && EmbeddingConfigChangedForProcess())
-            {
-                await StartImmediateProcessReindexAsync("Embedding model/dimensions changed");
-            }
-
-            _initialEmbeddingModelDeploymentId = _process.EmbeddingModelDeploymentId;
-            _initialEmbeddingDimensionsOverride = _process.EmbeddingDimensionsOverride;
-        }
-        else
-        {
-            var createdProcess = await DocumentProcessApiClient.CreateDynamicDocumentProcessDefinitionAsync(_process);
-            if (createdProcess != null)
-            {
-                _process = createdProcess;
-                _isEditMode = true;
-
-                // Save validation pipeline if there are steps
+                // Handle validation pipeline
                 if (_validationSteps.Any())
                 {
-                    var pipelineInfo = new DocumentProcessValidationPipelineInfo
+                    var pipelineInfo = _validationPipeline ?? new DocumentProcessValidationPipelineInfo
                     {
-                        DocumentProcessId = _process.Id,
-                        ValidationPipelineSteps = _validationSteps,
-                        RunValidationAutomatically = _runValidationAutomatically
+                        DocumentProcessId = _process.Id
                     };
 
-                    _validationPipeline = await DocumentProcessApiClient.SaveValidationPipelineAsync(_process.Id, pipelineInfo);
+                    pipelineInfo.ValidationPipelineSteps = _validationSteps;
+                    pipelineInfo.RunValidationAutomatically = _runValidationAutomatically;
+                    await DocumentProcessApiClient.SaveValidationPipelineAsync(_process.Id, pipelineInfo);
+                }
+                else if (_validationPipeline != null)
+                {
+                    // Delete the validation pipeline if it exists but there are no steps
+                    await DocumentProcessApiClient.DeleteValidationPipelineAsync(_process.Id);
+                    _validationPipeline = null;
                 }
 
-                // Load associated plugins and libraries
-                await LoadAssociatedPlugins();
-                await LoadAssociatedLibraries();
-                await LoadAvailableLibraries();
-                await LoadValidationPipelines();
+                // Ensure embedding settings are only applied for SemanticKernelVectorStore
+                if (_process.LogicType != DocumentProcessLogicType.SemanticKernelVectorStore)
+                {
+                    _process.EmbeddingModelDeploymentId = null;
+                    _process.EmbeddingDimensionsOverride = null;
+                }
 
-                // Load prompts
-                await LoadPrompts();
+                await DocumentProcessApiClient.UpdateDynamicDocumentProcessDefinitionAsync(_process);
+                SnackBar.Add("Document process updated successfully.", Severity.Success);
 
-                Snackbar.Add("Document process created successfully.", Severity.Success);
+                if (_process.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore && EmbeddingConfigChangedForProcess())
+                {
+                    await StartImmediateProcessReindexAsync("Embedding model/dimensions changed");
+                }
 
-                // Navigate back to list for new process creation
-                await OnProcessSaved.InvokeAsync();
+                _initialEmbeddingModelDeploymentId = _process.EmbeddingModelDeploymentId;
+                _initialEmbeddingDimensionsOverride = _process.EmbeddingDimensionsOverride;
             }
+            else
+            {
+                var createdProcess = await DocumentProcessApiClient.CreateDynamicDocumentProcessDefinitionAsync(_process);
+                if (createdProcess != null)
+                {
+                    _process = createdProcess;
+                    _isEditMode = true;
+
+                    // Ensure a default FileStorageSource exists on the default host and is associated
+                    try
+                    {
+                        await EnsureDefaultFileStorageSourceForProcessAsync(_process.Id, _process.BlobStorageContainerName ?? $"blob-{_process.ShortName.ToLower().Replace('.', '-')}" , "ingest-auto");
+                    }
+                    catch (Exception ex)
+                    {
+                        SnackBar.Add($"Created process, but failed to provision default storage source: {ex.Message}", Severity.Warning);
+                    }
+
+                    // Save validation pipeline if there are steps
+                    if (_validationSteps.Any())
+                    {
+                        var pipelineInfo = new DocumentProcessValidationPipelineInfo
+                        {
+                            DocumentProcessId = _process.Id,
+                            ValidationPipelineSteps = _validationSteps,
+                            RunValidationAutomatically = _runValidationAutomatically
+                        };
+
+                        _validationPipeline = await DocumentProcessApiClient.SaveValidationPipelineAsync(_process.Id, pipelineInfo);
+                    }
+
+                    // Load associated plugins and libraries
+                    await LoadAssociatedPlugins();
+                    await LoadAssociatedLibraries();
+                    await LoadAvailableLibraries();
+                    await LoadValidationPipelines();
+
+                    // Load prompts
+                    await LoadPrompts();
+
+                    SnackBar.Add("Document process created successfully.", Severity.Success);
+
+                    // Navigate back to list for new process creation
+                    await OnProcessSaved.InvokeAsync();
+                }
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
+        finally
+        {
+            _isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task EnsureDefaultFileStorageSourceForProcessAsync(Guid processId, string containerOrPath, string autoImportFolder)
+    {
+        var hosts = await FileStorageHostApiClient.GetAllFileStorageHostsAsync();
+        var defaultHost = hosts.FirstOrDefault(h => h.IsDefault && h.IsActive);
+        if (defaultHost == null) { throw new InvalidOperationException("No default FileStorageHost configured."); }
+
+        // Try to find existing source on default host
+        var allSources = await FileStorageSourceApiClient.GetAllFileStorageSourcesAsync();
+        var existing = allSources.FirstOrDefault(s => s.FileStorageHostId == defaultHost.Id && string.Equals(s.ContainerOrPath, containerOrPath, StringComparison.OrdinalIgnoreCase));
+        if (existing == null)
+        {
+            var createReq = new CreateFileStorageSourceRequest
+            {
+                Name = $"Default - {_process.ShortName}",
+                FileStorageHostId = defaultHost.Id,
+                ContainerOrPath = containerOrPath,
+                AutoImportFolderName = string.IsNullOrWhiteSpace(autoImportFolder) ? "ingest-auto" : autoImportFolder,
+                IsDefault = false,
+                IsActive = true,
+                ShouldMoveFiles = true,
+                Description = $"Auto-created for process {_process.ShortName}",
+                StorageSourceDataTypes = new List<FileStorageSourceDataType> { FileStorageSourceDataType.Ingestion }
+            };
+            existing = await FileStorageSourceApiClient.CreateFileStorageSourceAsync(createReq);
         }
 
-        await InvokeAsync(StateHasChanged);
+        // Associate and make it the upload source
+        await FileStorageSourceApiClient.AssociateSourceWithProcessAsync(processId, existing.Id);
+        await FileStorageSourceApiClient.UpdateProcessSourceAssociationAsync(processId, existing.Id, new UpdateProcessSourceAssociationRequest
+        {
+            AcceptsUploads = true,
+            IsActive = true,
+            Priority = 1
+        });
     }
 
     private async Task Cancel()
@@ -905,11 +1047,11 @@
             { "DocumentProcessId", _process.Id },
             { "DocumentProcessName", _process.ShortName}
         };
-        var options = new DialogOptions { MaxWidth = MaxWidth.ExtraLarge, FullWidth = true, DisableBackdropClick = true};
+        var options = new DialogOptions { MaxWidth = MaxWidth.ExtraLarge, FullWidth = true, BackdropClick = false };
         var dialog = await DialogService.ShowAsync<EditMetadataFieldsDialog>("Metadata Fields Editor", parameters, options);
         var result = await dialog.Result;
 
-    if (!result.Canceled)
+        if (!result.Canceled)
         {
             //_process.MetadataFields = result.Data;
         }
@@ -919,7 +1061,7 @@
     {
         if (string.IsNullOrWhiteSpace(_process.ShortName))
         {
-            Snackbar.Add("Short Name cannot be empty.", Severity.Error);
+            SnackBar.Add("Short Name cannot be empty.", Severity.Error);
             return;
         }
 
@@ -931,7 +1073,7 @@
 
         if (string.IsNullOrWhiteSpace(_process.ShortName))
         {
-            Snackbar.Add("Short Name must contain valid characters.", Severity.Error);
+            SnackBar.Add("Short Name must contain valid characters.", Severity.Error);
             return;
         }
 
@@ -1021,14 +1163,14 @@
         try
         {
             await DocumentLibraryApiClient.DisassociateDocumentProcessAsync(libraryId, _process.Id);
-            Snackbar.Add("Document library disassociated successfully.", Severity.Success);
+            SnackBar.Add("Document library disassociated successfully.", Severity.Success);
 
             await LoadAssociatedLibraries();
             await LoadAvailableLibraries();
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error disassociating document library: {ex.Message}", Severity.Error);
+            SnackBar.Add($"Error disassociating document library: {ex.Message}", Severity.Error);
         }
     }
 
@@ -1061,8 +1203,8 @@
     // Helper class for plugin associations
     private class PluginAssociationViewModel
     {
-    public McpPluginInfo Plugin { get; set; } = new();
-    public String Version { get; set; } = string.Empty;
+        public McpPluginInfo Plugin { get; set; } = new();
+        public String Version { get; set; } = string.Empty;
     }
 
     private bool EmbeddingConfigChangedForProcess()
@@ -1114,7 +1256,7 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to start reindex: {ex.Message}", Severity.Error);
+            SnackBar.Add($"Failed to start reindex: {ex.Message}", Severity.Error);
         }
     }
 
@@ -1132,7 +1274,7 @@
             { "DialogColor", Color.Error }
         };
         var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
-        var dialog = DialogService.Show<ConfirmationDialog>("Delete Document Process", parameters, options);
+        var dialog = await DialogService.ShowAsync<ConfirmationDialog>("Delete Document Process", parameters, options);
         var result = await dialog.Result;
         if (!result.Canceled)
         {
@@ -1141,17 +1283,17 @@
                 var ok = await DocumentProcessApiClient.DeleteDocumentProcessAsync(ProcessId.Value);
                 if (ok)
                 {
-                    Snackbar.Add("Document process deleted.", Severity.Success);
+                    SnackBar.Add("Document process deleted.", Severity.Success);
                     await OnProcessSaved.InvokeAsync();
                 }
                 else
                 {
-                    Snackbar.Add("Delete failed.", Severity.Error);
+                    SnackBar.Add("Delete failed.", Severity.Error);
                 }
             }
             catch (Exception ex)
             {
-                Snackbar.Add($"Failed to delete process: {ex.Message}", Severity.Error);
+                SnackBar.Add($"Failed to delete process: {ex.Message}", Severity.Error);
             }
         }
     }
@@ -1181,6 +1323,6 @@
             ["SuggestedFileName"] = $"process-{_process.ShortName}.json"
         };
         var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
-        await DialogService.ShowAsync<Microsoft.Greenlight.Web.DocGen.Client.Components.Definitions.ExportDefinitionDialog>("Export Definition", parameters, options);
+        await DialogService.ShowAsync<ExportDefinitionDialog>("Export Definition", parameters, options);
     }
 }

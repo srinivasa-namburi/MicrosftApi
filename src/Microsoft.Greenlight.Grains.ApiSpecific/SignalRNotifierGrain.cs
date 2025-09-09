@@ -7,7 +7,9 @@ using Microsoft.Greenlight.Shared.Contracts.Messages.DocumentGeneration.Events;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Reindexing.Events;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Review.Events;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Validation.Events;
+using Microsoft.Greenlight.Shared.Contracts.DTO.SystemStatus;
 using Microsoft.Greenlight.Shared.Hubs;
+using Microsoft.Greenlight.Grains.Shared.Contracts;
 using Orleans.Concurrency;
 
 namespace Microsoft.Greenlight.Grains.ApiSpecific
@@ -386,6 +388,8 @@ namespace Microsoft.Greenlight.Grains.ApiSpecific
         {
             try
             {
+                // Contribute to system status
+                await TryProcessStatusContributionAsync(notification);
                 string groupId = notification.OrchestrationId;
                 await _hubContext.Clients
                     .Group(groupId)
@@ -406,6 +410,7 @@ namespace Microsoft.Greenlight.Grains.ApiSpecific
         {
             try
             {
+                await TryProcessStatusContributionAsync(notification);
                 string groupId = notification.OrchestrationId;
                 await _hubContext.Clients
                     .Group(groupId)
@@ -426,6 +431,7 @@ namespace Microsoft.Greenlight.Grains.ApiSpecific
         {
             try
             {
+                await TryProcessStatusContributionAsync(notification);
                 string groupId = notification.OrchestrationId;
                 await _hubContext.Clients
                     .Group(groupId)
@@ -446,6 +452,7 @@ namespace Microsoft.Greenlight.Grains.ApiSpecific
         {
             try
             {
+                await TryProcessStatusContributionAsync(notification);
                 string groupId = notification.OrchestrationId;
                 await _hubContext.Clients
                     .Group(groupId)
@@ -462,5 +469,157 @@ namespace Microsoft.Greenlight.Grains.ApiSpecific
         }
 
         #endregion
+
+        #region System Status
+
+        /// <inheritdoc />
+        public async Task<SystemStatusSnapshot> GetSystemStatusAsync()
+        {
+            try
+            {
+                var aggregatorGrain = GrainFactory.GetGrain<ISystemStatusAggregatorGrain>(Guid.Empty);
+                return await aggregatorGrain.GetSystemStatusAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting system status");
+                throw;
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<SubsystemStatus?> GetSubsystemStatusAsync(string source)
+        {
+            try
+            {
+                var aggregatorGrain = GrainFactory.GetGrain<ISystemStatusAggregatorGrain>(Guid.Empty);
+                return await aggregatorGrain.GetSubsystemStatusAsync(source);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting subsystem status for {Source}", source);
+                throw;
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task NotifySystemStatusUpdateAsync(SystemStatusSnapshot statusSnapshot)
+        {
+            try
+            {
+                await _hubContext.Clients
+                    .Group("system-status")
+                    .ReceiveSystemStatusUpdateNotification(statusSnapshot);
+
+                _logger.LogDebug("Sent system status update notification to system-status group: {OverallStatus}, {SubsystemCount} subsystems",
+                    statusSnapshot.OverallStatus, statusSnapshot.Subsystems.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending system status update notification");
+            }
+        }
+
+        #endregion
+
+        #region Content Reference Reindexing Notifications
+
+        public async Task NotifyContentReferenceReindexStartedAsync(ContentReferenceReindexStartedNotification notification)
+        {
+            try
+            {
+                await TryProcessStatusContributionAsync(notification);
+                string groupId = notification.OrchestrationId;
+                await _hubContext.Clients
+                    .Group(groupId)
+                    .ReceiveContentReferenceReindexStartedNotification(notification);
+
+                _logger.LogInformation("Sent CR reindex started notification for {Type}, orchestration {OrchestrationId}",
+                    notification.ReferenceType, notification.OrchestrationId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending CR reindex started notification for orchestration {OrchestrationId}",
+                    notification.OrchestrationId);
+            }
+        }
+
+        public async Task NotifyContentReferenceReindexProgressAsync(ContentReferenceReindexProgressNotification notification)
+        {
+            try
+            {
+                await TryProcessStatusContributionAsync(notification);
+                string groupId = notification.OrchestrationId;
+                await _hubContext.Clients
+                    .Group(groupId)
+                    .ReceiveContentReferenceReindexProgressNotification(notification);
+
+                _logger.LogInformation("Sent CR reindex progress notification for {Type}: {Processed}/{Total}",
+                    notification.ReferenceType, notification.Processed, notification.Total);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending CR reindex progress notification for orchestration {OrchestrationId}",
+                    notification.OrchestrationId);
+            }
+        }
+
+        public async Task NotifyContentReferenceReindexCompletedAsync(ContentReferenceReindexCompletedNotification notification)
+        {
+            try
+            {
+                await TryProcessStatusContributionAsync(notification);
+                string groupId = notification.OrchestrationId;
+                await _hubContext.Clients
+                    .Group(groupId)
+                    .ReceiveContentReferenceReindexCompletedNotification(notification);
+
+                _logger.LogInformation("Sent CR reindex completed notification for {Type}, processed {Processed}/{Total}",
+                    notification.ReferenceType, notification.Processed, notification.Total);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending CR reindex completed notification for orchestration {OrchestrationId}",
+                    notification.OrchestrationId);
+            }
+        }
+
+        public async Task NotifyContentReferenceReindexFailedAsync(ContentReferenceReindexFailedNotification notification)
+        {
+            try
+            {
+                await TryProcessStatusContributionAsync(notification);
+                string groupId = notification.OrchestrationId;
+                await _hubContext.Clients
+                    .Group(groupId)
+                    .ReceiveContentReferenceReindexFailedNotification(notification);
+
+                _logger.LogInformation("Sent CR reindex failed notification for {Type}: {Error}",
+                    notification.ReferenceType, notification.ErrorMessage);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending CR reindex failed notification for orchestration {OrchestrationId}",
+                    notification.OrchestrationId);
+            }
+        }
+
+        #endregion
+
+        private async Task TryProcessStatusContributionAsync(object notification)
+        {
+            try
+            {
+                if (notification is ISystemStatusNotification statusNotification)
+                {
+                    var aggregatorGrain = GrainFactory.GetGrain<ISystemStatusAggregatorGrain>(Guid.Empty);
+                    await aggregatorGrain.ProcessStatusContributionAsync(statusNotification.GetStatusContribution());
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Failed to process system status contribution from notification");
+            }
+        }
     }
 }

@@ -3,7 +3,7 @@
 @inject IDefinitionsApiClient DefinitionsApiClient
 @inject IJSRuntime JSRuntime
 
-<MudDialog MaxWidth="MaxWidth.Small" FullWidth="true">
+<MudDialog Options="new DialogOptions { MaxWidth = MaxWidth.Small }">
     <TitleContent>
         <MudText Typo="Typo.h6">Export Definition</MudText>
     </TitleContent>
@@ -11,14 +11,32 @@
         @if (ProcessId.HasValue)
         {
             <MudText Typo="Typo.subtitle2">What do you want to include?</MudText>
-            <MudCheckBox @bind-Checked="IncludeOutline" Label="Document Outline" />
-            <MudCheckBox @bind-Checked="IncludeMetadata" Label="Metadata Fields" />
-            <MudCheckBox @bind-Checked="IncludePrompts" Label="Prompts" />
+            <MudCheckBox T="bool" @bind-Value="IncludeOutline" Label="Document Outline" />
+            <MudCheckBox T="bool" @bind-Value="IncludeMetadata" Label="Metadata Fields" />
+            <MudCheckBox T="bool" @bind-Value="IncludePrompts" Label="Prompts" />
+            @if (_warnings.Count > 0)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">
+                    @foreach (var w in _warnings)
+                    {
+                        <div>@w Only default-host sources are exported.</div>
+                    }
+                </MudAlert>
+            }
         }
         else if (LibraryId.HasValue)
         {
             <MudText Typo="Typo.subtitle2">Exporting Document Library definition</MudText>
             <MudText Typo="Typo.caption" Color="Color.Secondary">No additional options are required.</MudText>
+            @if (_warnings.Count > 0)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">
+                    @foreach (var w in _warnings)
+                    {
+                        <div>@w Only default-host sources are exported.</div>
+                    }
+                </MudAlert>
+            }
         }
     </DialogContent>
     <DialogActions>
@@ -28,7 +46,7 @@
 </MudDialog>
 
 @code {
-    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
 
     // Either ProcessId or LibraryId should be set
     [Parameter] public Guid? ProcessId { get; set; }
@@ -38,6 +56,30 @@
     private bool IncludeOutline { get; set; } = true;
     private bool IncludeMetadata { get; set; } = true;
     private bool IncludePrompts { get; set; } = true;
+    private List<string> _warnings = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            if (ProcessId.HasValue)
+            {
+                var pkg = await DefinitionsApiClient.ExportProcessAsync(ProcessId.Value);
+                if (pkg != null) { _warnings = pkg.Warnings ?? new List<string>(); }
+            }
+            else if (LibraryId.HasValue)
+            {
+                var pkg = await DefinitionsApiClient.ExportLibraryAsync(LibraryId.Value);
+                if (pkg != null) { _warnings = pkg.Warnings ?? new List<string>(); }
+            }
+            StateHasChanged();
+        }
+        catch
+        {
+            // non-fatal; ignore
+        }
+    }
 
     private async Task ExportAsync()
     {
@@ -49,6 +91,7 @@
                 MudDialog.Close(DialogResult.Ok(false));
                 return;
             }
+            _warnings = pkg.Warnings ?? new List<string>();
             if (!IncludeOutline) pkg.Outline = null;
             if (!IncludeMetadata) pkg.MetaDataFields = null;
             if (!IncludePrompts) pkg.Prompts = null;
@@ -66,6 +109,7 @@
                 MudDialog.Close(DialogResult.Ok(false));
                 return;
             }
+            _warnings = pkg.Warnings ?? new List<string>();
             var json = JsonSerializer.Serialize(pkg, new JsonSerializerOptions { WriteIndented = true });
             var fileName = string.IsNullOrWhiteSpace(SuggestedFileName) ? $"library-{pkg.ShortName}.json" : SuggestedFileName;
             await JSRuntime.InvokeVoidAsync("downloadFileFromText", fileName, json, "application/json;charset=utf-8");

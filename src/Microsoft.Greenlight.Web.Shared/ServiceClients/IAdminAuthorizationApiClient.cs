@@ -16,4 +16,6 @@ public interface IAdminAuthorizationApiClient : IServiceClient
     Task<List<UserSearchResult>> SearchUsersAsync(string query);
     Task<bool> CanAccessAdminAuthorizationAsync();
     Task<AuthorizationDebugInfo> GetAuthorizationDebugInfoAsync();
+    Task<List<EntraRoleMappingInfo>> ListEntraRoleMappingsAsync();
+    Task UpsertEntraRoleMappingAsync(UpsertEntraRoleMappingRequest request);
 }

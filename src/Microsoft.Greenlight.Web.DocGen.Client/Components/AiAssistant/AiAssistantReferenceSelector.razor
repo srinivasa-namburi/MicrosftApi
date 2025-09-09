@@ -1,0 +1,198 @@
+﻿@inject IJSRuntime JSRuntime
+
+<MudPopover AnchorOrigin="Origin.BottomCenter"
+            TransformOrigin="Origin.TopCenter"
+            Open="@IsOpen"
+            AnchorSelector="@GetAnchorSelector()"
+            Fixed="true"
+            Class="pa-4 rounded-lg reference-popover"
+            Style="max-height: 300px; overflow-y: auto; width: 400px; z-index: 1500;">
+    @if (_isLoading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+        <MudText Typo="Typo.body2" Class="mt-2">Loading references...</MudText>
+    }
+    else if (FilteredReferences?.Any() == true)
+    {
+        <MudList T="object">
+            @foreach (var reference in FilteredReferences)
+            {
+                <MudListItem T="object" OnClick="@(() => SelectReference(reference))"
+                             Class="@GetListItemClass(reference)">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        @switch (reference.ReferenceType)
+                        {
+                            case ContentReferenceType.GeneratedDocument:
+                                <MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Small" />
+                                break;
+                            case ContentReferenceType.ExternalFile:
+                                <MudIcon Icon="@Icons.Material.Filled.AttachFile" Size="Size.Small" />
+                                break;
+                            default:
+                                <MudIcon Icon="@Icons.Material.Filled.Link" Size="Size.Small" />
+                                break;
+                        }
+                        <div>
+                            <MudText Typo="Typo.body2">@reference.DisplayName</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@reference.CreatedDate.ToString("g")</MudText>
+                        </div>
+                    </MudStack>
+                </MudListItem>
+            }
+        </MudList>
+    }
+    else
+    {
+        <MudText Typo="Typo.body2">No matching references found</MudText>
+    }
+</MudPopover>
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public List<ContentReferenceItemInfo>? References { get; set; }
+    [Parameter] public string SearchTerm { get; set; } = string.Empty;
+    [Parameter] public ElementReference AnchorElement { get; set; }
+    [Parameter] public EventCallback<ContentReferenceItemInfo> OnReferenceSelected { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private List<ContentReferenceItemInfo>? _filteredReferences;
+    private int _selectedReferenceIndex = 0;
+    private DotNetObjectReference<AiAssistantReferenceSelector>? _componentReference;
+    // Updated anchor selector to use id selector now.
+    private readonly string _anchorSelector = "#caretAnchor";
+
+    private bool _isLoading => References == null;
+    private List<ContentReferenceItemInfo> FilteredReferences => _filteredReferences ?? new List<ContentReferenceItemInfo>();
+    private int SelectedReferenceIndex => _selectedReferenceIndex;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        _componentReference = DotNetObjectReference.Create(this);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                // First ensure the script is imported before registering the component
+                await JSRuntime.InvokeVoidAsync("import", "/js/contentReferenceUtils.js");
+                // Then register the component
+                await JSRuntime.InvokeVoidAsync("registerSelectorComponent", _componentReference);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error in AiAssistantReferenceSelector.OnAfterRenderAsync: {ex.Message}");
+            }
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+
+        if (IsOpen)
+        {
+            FilterReferences();
+            StateHasChanged();
+        }
+    }
+
+    private string GetAnchorSelector()
+    {
+        return _anchorSelector;
+    }
+
+    public void Dispose()
+    {
+        _componentReference?.Dispose();
+    }
+
+    [JSInvokable]
+    public void HandleKey(string key)
+    {
+        ProcessKeyPress(key);
+    }
+
+    public void ProcessKeyPress(string key)
+    {
+        switch (key)
+        {
+            case "ArrowDown":
+                if (FilteredReferences.Any())
+                {
+                    _selectedReferenceIndex = Math.Min(_selectedReferenceIndex + 1, FilteredReferences.Count - 1);
+                    StateHasChanged();
+                }
+                break;
+
+            case "ArrowUp":
+                if (FilteredReferences.Any())
+                {
+                    _selectedReferenceIndex = Math.Max(_selectedReferenceIndex - 1, 0);
+                    StateHasChanged();
+                }
+                break;
+
+            case "Enter":
+                if (_selectedReferenceIndex >= 0 && FilteredReferences.Any() && _selectedReferenceIndex < FilteredReferences.Count)
+                {
+                    SelectReference(FilteredReferences[_selectedReferenceIndex]);
+                }
+                break;
+
+            case "Escape":
+                Close();
+                break;
+        }
+    }
+
+
+    private void FilterReferences()
+    {
+        if (References == null)
+        {
+            _filteredReferences = new List<ContentReferenceItemInfo>();
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(SearchTerm))
+        {
+            _filteredReferences = References.Take(10).ToList();
+        }
+        else
+        {
+            _filteredReferences = References
+                .Where(r => r.DisplayName.Contains(SearchTerm, StringComparison.OrdinalIgnoreCase))
+                .Take(10)
+                .ToList();
+        }
+
+        // Reset selected index when filter changes
+        _selectedReferenceIndex = _filteredReferences.Any() ? 0 : -1;
+    }
+
+    private async Task SelectReference(ContentReferenceItemInfo reference)
+    {
+        await OnReferenceSelected.InvokeAsync(reference);
+    }
+
+    private async Task Close()
+    {
+        await OnClose.InvokeAsync();
+    }
+
+    public void ResetSelection()
+    {
+        _selectedReferenceIndex = _filteredReferences?.Any() == true ? 0 : -1;
+    }
+
+    private string GetListItemClass(ContentReferenceItemInfo reference)
+    {
+        var baseClass = "py-1";
+        var selectedClass = SelectedReferenceIndex == FilteredReferences.IndexOf(reference) ? " mud-selected-item" : "";
+        return baseClass + selectedClass;
+    }
+}

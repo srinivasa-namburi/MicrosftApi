@@ -10,7 +10,7 @@ namespace Microsoft.Greenlight.Web.DocGen.ServiceClients;
 public abstract class BaseServiceClient<T> where T : IServiceClient
 {
     private readonly ILogger<T> Logger;
-    private readonly HttpClient HttpClient;
+    protected readonly HttpClient HttpClient;
 
     private readonly AuthenticationStateProvider _authStateProvider;
     // Avoid sync-over-async token access; always fetch tokens asynchronously in request methods

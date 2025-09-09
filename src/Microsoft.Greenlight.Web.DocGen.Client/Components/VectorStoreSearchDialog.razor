@@ -27,7 +27,7 @@
                                     <MudText Typo="Typo.caption" Color="Color.Secondary">@GetOptionsSummary()</MudText>
                                     @if (IsCustomized)
                                     {
-                                        <MudChip Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined">Custom</MudChip>
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined">Custom</MudChip>
                                     }
                                     else
                                     {
@@ -40,21 +40,21 @@
                             <MudStack Spacing="2">
                                 <MudGrid>
                                     <MudItem xs="12" md="3">
-                                        <MudNumericField @bind-Value="_editableOptions.Top" Min="1" Max="100" Label="# Results (Top)" Immediate="true" />
+                                        <MudNumericField T="int" @bind-Value="_editableOptions.Top" Min="1" Max="100" Label="# Results (Top)" Immediate="true" />
                                     </MudItem>
                                     <MudItem xs="12" md="3">
-                                        <MudNumericField @bind-Value="_editableOptions.PrecedingPartitionCount" Min="0" Max="10" Label="Preceding Partitions" Immediate="true" />
+                                        <MudNumericField T="int" @bind-Value="_editableOptions.PrecedingPartitionCount" Min="0" Max="10" Label="Preceding Partitions" Immediate="true" />
                                     </MudItem>
                                     <MudItem xs="12" md="3">
-                                        <MudNumericField @bind-Value="_editableOptions.FollowingPartitionCount" Min="0" Max="10" Label="Following Partitions" Immediate="true" />
+                                        <MudNumericField T="int" @bind-Value="_editableOptions.FollowingPartitionCount" Min="0" Max="10" Label="Following Partitions" Immediate="true" />
                                     </MudItem>
                                     <MudItem xs="12" md="3">
                                         <MudSlider T="double" @bind-Value="_editableOptions.MinRelevance" Min="0" Max="1" Step="0.05" TickMarks="true" ValueLabel="true">Min Relevance</MudSlider>
                                     </MudItem>
                                 </MudGrid>
                                 <MudStack Row="true" Spacing="2">
-                                    <MudCheckBox @bind-Checked="_editableOptions.EnableProgressiveSearch" Label="Enable progressive search" />
-                                    <MudCheckBox @bind-Checked="_editableOptions.EnableKeywordFallback" Label="Enable keyword fallback" />
+                                    <MudCheckBox T="bool" @bind-Value="_editableOptions.EnableProgressiveSearch" Label="Enable progressive search" />
+                                    <MudCheckBox T="bool" @bind-Value="_editableOptions.EnableKeywordFallback" Label="Enable keyword fallback" />
                                 </MudStack>
                                 <MudStack Row="true" Spacing="2">
                                     <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="@ResetOptions">Reset to defaults</MudButton>
@@ -96,7 +96,7 @@
                                             </MudStack>
                                         </MudTd>
                                         <MudTd DataLabel="Details">
-                                            <MudText Typo="Typo.caption" Color="Color.Secondary">@context.FileType — @context.IngestedDate.ToString("yyyy-MM-dd")</MudText>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">@context.FileType ï¿½ @context.IngestedDate.ToString("yyyy-MM-dd")</MudText>
                                         </MudTd>
                                     </RowTemplate>
                                 </MudTable>
@@ -113,7 +113,7 @@
 </MudDialog>
 
 @code {
-    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
 
     // Scope parameters
     [Parameter] public bool IsLibraryScope { get; set; }
@@ -139,7 +139,7 @@
         {
             return string.Empty;
         }
-        return $"Top {o.Top} — Min {o.MinRelevance:F2} — Prev {o.PrecedingPartitionCount} — Next {o.FollowingPartitionCount}";
+        return $"Top {o.Top} ï¿½ Min {o.MinRelevance:F2} ï¿½ Prev {o.PrecedingPartitionCount} ï¿½ Next {o.FollowingPartitionCount}";
     }
 
     protected override async Task OnParametersSetAsync()

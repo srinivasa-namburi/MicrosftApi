@@ -1,0 +1,97 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+
+@using Microsoft.Greenlight.Shared.Contracts.DTO.FileStorage
+@using Microsoft.Greenlight.Shared.Enums
+
+@namespace Microsoft.Greenlight.Web.DocGen.Client.Components.FileStorage
+
+
+<MudCard Class="mb-2">
+    <MudCardContent>
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <div>
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudIcon Icon="@GetProviderIcon()" Color="@GetProviderColor()" />
+                    <div>
+                        <MudText Typo="Typo.subtitle1"><strong>@Source.Name</strong></MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            @Source.ProviderType.ToString() - @Source.ContainerOrPath
+                        </MudText>
+                        @if (Source.ProviderType == FileStorageProviderType.BlobStorage)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="@(Source.ShouldMoveFiles ? Color.Warning : Color.Info)">
+                                @(Source.ShouldMoveFiles ? "Move Files" : "Acknowledge Only")
+                            </MudChip>
+                        }
+                        <MudStack Row="true" Spacing="1" Class="mt-1">
+                            @foreach (var role in (Source.StorageSourceDataTypes?.Any() == true ? Source.StorageSourceDataTypes.Select(r => r.ToString()) : new [] { Source.StorageSourceDataType.ToString() }))
+                            {
+                                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@role</MudChip>
+                            }
+                        </MudStack>
+                    </div>
+                </MudStack>
+            </div>
+            
+            <MudStack Row="true" Spacing="1">
+                @if (!Source.IsActive)
+                {
+                    <MudChip T="string" Color="Color.Error" Size="Size.Small">Inactive</MudChip>
+                }
+                @if (Source.IsDefault)
+                {
+                    <MudChip T="string" Color="Color.Primary" Size="Size.Small">Default</MudChip>
+                }
+                
+                <PermissionView Permission="@RequiredPermission">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" 
+                                 Color="Color.Primary" 
+                                 Size="Size.Small"
+                                 OnClick="() => OnEdit.InvokeAsync(Source)"
+                                 Aria-Label="Edit source" />
+                </PermissionView>
+                
+                <PermissionView Permission="@RequiredPermission">
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" 
+                                 Color="Color.Error" 
+                                 Size="Size.Small"
+                                 OnClick="() => OnDelete.InvokeAsync(Source)"
+                                 Disabled="@(!ShowDeleteButton)"
+                                 Aria-Label="@(ShowDeleteButton ? "Delete source" : "Cannot delete - at least one source is required")" />
+                </PermissionView>
+            </MudStack>
+        </MudStack>
+        
+        @if (!string.IsNullOrEmpty(Source.AutoImportFolderName))
+        {
+            <MudDivider Class="my-2" />
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                Auto-import folder: <strong>@Source.AutoImportFolderName</strong>
+            </MudText>
+        }
+    </MudCardContent>
+</MudCard>
+
+@code {
+    [Parameter] public FileStorageSourceInfo Source { get; set; } = new();
+    [Parameter] public EventCallback<FileStorageSourceInfo> OnEdit { get; set; }
+    [Parameter] public EventCallback<FileStorageSourceInfo> OnDelete { get; set; }
+    [Parameter] public bool ShowDeleteButton { get; set; } = true;
+    [Parameter] public string RequiredPermission { get; set; } = string.Empty;
+
+    private string GetProviderIcon() => Source.ProviderType switch
+    {
+        FileStorageProviderType.BlobStorage => Icons.Material.Filled.Cloud,
+        FileStorageProviderType.LocalFileSystem => Icons.Material.Filled.Folder,
+        FileStorageProviderType.SharePoint => Icons.Material.Filled.ShareLocation,
+        _ => Icons.Material.Filled.Storage
+    };
+
+    private Color GetProviderColor() => Source.ProviderType switch
+    {
+        FileStorageProviderType.BlobStorage => Color.Primary,
+        FileStorageProviderType.LocalFileSystem => Color.Success,
+        FileStorageProviderType.SharePoint => Color.Warning,
+        _ => Color.Default
+    };
+}

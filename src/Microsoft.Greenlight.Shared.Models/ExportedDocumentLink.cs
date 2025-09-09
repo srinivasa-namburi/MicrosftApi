@@ -1,10 +1,13 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+
 using System.Text.Json.Serialization;
 using Microsoft.Greenlight.Shared.Enums;
 
 namespace Microsoft.Greenlight.Shared.Models;
 
 /// <summary>
-/// Represents a link to an exported document in the system.
+/// Legacy link record for exported documents stored by absolute URL and container name.
+/// Prefer <see cref="FileStorage.ExternalLinkAsset"/> for new file link scenarios.
 /// </summary>
 public class ExportedDocumentLink : EntityBase
 {

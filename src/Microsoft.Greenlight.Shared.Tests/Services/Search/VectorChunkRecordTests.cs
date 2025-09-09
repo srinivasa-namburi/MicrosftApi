@@ -15,7 +15,7 @@ public class VectorChunkRecordTests
         // Arrange
         const string documentId = "test-doc-123";
         const string fileName = "test-document.pdf";
-        const string originalDocumentUrl = "https://example.com/test-document.pdf";
+        const string documentReference = "doc:550e8400-e29b-41d4-a716-446655440000";
         const string chunkText = "This is a test chunk of text content for vector storage.";
         var embedding = Enumerable.Range(0, 384).Select(x => (float)(x * 0.001)).ToArray();
         const int partitionNumber = 5;
@@ -32,7 +32,7 @@ public class VectorChunkRecordTests
         {
             DocumentId = documentId,
             FileName = fileName,
-            OriginalDocumentUrl = originalDocumentUrl,
+            DocumentReference = documentReference,
             ChunkText = chunkText,
             Embedding = embedding,
             PartitionNumber = partitionNumber,
@@ -43,7 +43,7 @@ public class VectorChunkRecordTests
         // Assert
         Assert.Equal(documentId, record.DocumentId);
         Assert.Equal(fileName, record.FileName);
-        Assert.Equal(originalDocumentUrl, record.OriginalDocumentUrl);
+        Assert.Equal(documentReference, record.DocumentReference);
         Assert.Equal(chunkText, record.ChunkText);
         Assert.Equal(embedding, record.Embedding);
         Assert.Equal(partitionNumber, record.PartitionNumber);
@@ -68,7 +68,7 @@ public class VectorChunkRecordTests
         {
             DocumentId = documentId,
             FileName = fileName,
-            OriginalDocumentUrl = null, // Optional property
+            DocumentReference = null, // Optional property
             ChunkText = chunkText,
             Embedding = embedding,
             PartitionNumber = partitionNumber,
@@ -79,7 +79,7 @@ public class VectorChunkRecordTests
         // Assert
         Assert.Equal(documentId, record.DocumentId);
         Assert.Equal(fileName, record.FileName);
-        Assert.Null(record.OriginalDocumentUrl);
+        Assert.Null(record.DocumentReference);
         Assert.Equal(chunkText, record.ChunkText);
         Assert.Equal(embedding, record.Embedding);
         Assert.Equal(partitionNumber, record.PartitionNumber);
@@ -247,7 +247,7 @@ public class VectorChunkRecordTests
         {
             DocumentId = id,
             FileName = $"test-file-{id}.pdf",
-            OriginalDocumentUrl = $"https://example.com/{id}.pdf",
+            DocumentReference = $"doc:{Guid.NewGuid()}",
             ChunkText = $"This is test content for document {id}.",
             Embedding = Enumerable.Range(0, 384).Select(x => (float)(x * 0.001)).ToArray(),
             PartitionNumber = 1,

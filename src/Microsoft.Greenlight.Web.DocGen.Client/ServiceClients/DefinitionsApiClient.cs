@@ -61,11 +61,11 @@ public class DefinitionsApiClient : WebAssemblyBaseServiceClient<DefinitionsApiC
         return await resp!.Content.ReadFromJsonAsync<bool>();
     }
 
-    public async Task<IndexCompatibilityInfoDto?> GetIndexCompatibilityAsync(string indexName)
+    public async Task<IndexCompatibilityInfo?> GetIndexCompatibilityAsync(string indexName)
     {
         var resp = await SendGetRequestMessage($"/api/definitions/index/compatibility/{Uri.EscapeDataString(indexName)}");
         if (resp?.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
         resp?.EnsureSuccessStatusCode();
-        return await resp!.Content.ReadFromJsonAsync<IndexCompatibilityInfoDto>();
+        return await resp!.Content.ReadFromJsonAsync<IndexCompatibilityInfo>();
     }
 }

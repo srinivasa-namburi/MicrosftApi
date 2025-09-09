@@ -1,3 +1,4 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
 using AutoMapper;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Greenlight.Grains.Chat.Contracts;
@@ -6,6 +7,7 @@ using Microsoft.Greenlight.Shared.Prompts;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.Greenlight.API.Main.Authorization;
 using Microsoft.Greenlight.Shared.Contracts.Authorization;
+using Microsoft.Greenlight.Shared.Contracts.Chat.Commands;
 
 namespace Microsoft.Greenlight.API.Main.Controllers
 {
@@ -18,6 +20,7 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         private readonly IClusterClient _clusterClient;
         private readonly IPromptInfoService _promptInfoService;
         private readonly ILogger<ChatController> _logger;
+        private readonly IDocumentProcessInfoService _documentProcessInfoService;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ChatController"/> class.
@@ -26,12 +29,14 @@ namespace Microsoft.Greenlight.API.Main.Controllers
             IMapper mapper,
             IClusterClient clusterClient,
             IPromptInfoService promptInfoService,
-            ILogger<ChatController> logger)
+            ILogger<ChatController> logger,
+            IDocumentProcessInfoService documentProcessInfoService)
         {
             _mapper = mapper;
             _clusterClient = clusterClient;
             _promptInfoService = promptInfoService;
             _logger = logger;
+            _documentProcessInfoService = documentProcessInfoService;
         }
 
         /// <summary>
@@ -106,6 +111,43 @@ namespace Microsoft.Greenlight.API.Main.Controllers
             // Get the messages
             var messages = await grain.GetMessagesAsync();
             return Ok(messages);
+        }
+
+        /// <summary>
+        /// Sets or changes the Document Process for an existing conversation. Optionally updates the system prompt.
+        /// </summary>
+        /// <param name="conversationId">Conversation identifier.</param>
+        /// <param name="request">Request containing the new document process short name and flags.</param>
+        [HttpPost("conversation/{conversationId}/document-process")]
+        [RequiresPermission(PermissionKeys.Chat)]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> SetConversationDocumentProcess(Guid conversationId, [FromBody] SetConversationDocumentProcessRequest request)
+        {
+            if (conversationId == Guid.Empty)
+            {
+                return BadRequest("Conversation ID is required");
+            }
+            if (request == null || string.IsNullOrWhiteSpace(request.DocumentProcessName))
+            {
+                return BadRequest("DocumentProcessName is required");
+            }
+
+            // Validate the document process exists
+            var processInfo = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(request.DocumentProcessName);
+            if (processInfo == null)
+            {
+                return NotFound($"Document process '{request.DocumentProcessName}' not found");
+            }
+
+            var grain = _clusterClient.GetGrain<IConversationGrain>(conversationId);
+            var ok = await grain.SetDocumentProcessAsync(request.DocumentProcessName, request.UpdateSystemPrompt);
+            if (!ok)
+            {
+                return BadRequest("Failed to set document process on conversation");
+            }
+            return NoContent();
         }
     }
 }

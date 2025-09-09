@@ -17,14 +17,14 @@ namespace Microsoft.Greenlight.Shared.Mappings
         public ContentReferenceInfoProfile()
         {
             CreateMap<ContentReferenceItem, ContentReferenceItemInfo>()
+                .ForMember(dest => dest.CreatedDate, opt => opt.MapFrom(src => src.CreatedUtc))
                 .ForMember(dest => dest.CreatedUtc, opt => opt.MapFrom(src => (DateTime?)src.CreatedUtc))
                 .ForMember(dest => dest.ModifiedUtc, opt => opt.MapFrom(src => (DateTime?)src.ModifiedUtc));
 
             CreateMap<ContentReferenceItemInfo, ContentReferenceItem>()
                 .ForMember(dest => dest.CreatedUtc, opt => opt.MapFrom(src => src.CreatedUtc ?? DateTime.UtcNow))
                 .ForMember(dest => dest.ModifiedUtc, opt => opt.MapFrom(src => src.ModifiedUtc ?? DateTime.UtcNow))
-                .ForMember(dest => dest.RagText, opt => opt.Ignore())
-                .ForMember(dest => dest.Embeddings, opt => opt.Ignore());
+                .ForMember(dest => dest.RagText, opt => opt.Ignore());
         }
     }
 }

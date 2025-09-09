@@ -11,7 +11,7 @@
 @inject IConfigurationApiClient ConfigurationApiClient
 @inject ISnackbar Snackbar
 
-<MudDialog MaxWidth="MaxWidth.Medium" FullWidth="true">
+<MudDialog Options="new DialogOptions { MaxWidth = MaxWidth.Medium }">
     <TitleContent>
         <MudText Typo="Typo.h6">@Title</MudText>
     </TitleContent>
@@ -23,11 +23,11 @@
             </MudAlert>
 
             <MudFileUpload T="IReadOnlyList<IBrowserFile>" MaximumFileCount="1" Accept=".json" FilesChanged="OnFilesChanged">
-                <ButtonTemplate>
-                    <MudButton HtmlTag="label" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.UploadFile" for="@context">
+                <ActivatorContent>
+                    <MudButton HtmlTag="label" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.UploadFile">
                         @(HasFile ? "Replace File" : "Choose File")
                     </MudButton>
-                </ButtonTemplate>
+                </ActivatorContent>
             </MudFileUpload>
             @if (HasFile)
             {
@@ -39,9 +39,9 @@
                 <MudDivider />
                 <MudText Typo="Typo.subtitle2">Package Summary</MudText>
                 <MudStack Row="true" Spacing="2">
-                    <MudChip Color="Color.Primary">Prompts: @((ProcessPackage.Prompts?.Count ?? 0))</MudChip>
-                    <MudChip Color="Color.Primary">Metadata Fields: @((ProcessPackage.MetaDataFields?.Count ?? 0))</MudChip>
-                    <MudChip Color="Color.Primary">Outline Items: @(OutlineItemCount)</MudChip>
+                    <MudChip T="string" Color="Color.Primary">Prompts: @((ProcessPackage.Prompts?.Count ?? 0))</MudChip>
+                    <MudChip T="string" Color="Color.Primary">Metadata Fields: @((ProcessPackage.MetaDataFields?.Count ?? 0))</MudChip>
+                    <MudChip T="string" Color="Color.Primary">Outline Items: @(OutlineItemCount)</MudChip>
                 </MudStack>
             }
 
@@ -51,7 +51,7 @@
                 <MudText Typo="Typo.subtitle2">Editable Settings</MudText>
                 <MudTextField Label="Short Name" @bind-Value="ProcessShortName" Required="true"
                               Error="@(!IsShortNameAvailable)" ErrorText="@(IsShortNameAvailable ? null : ShortNameError)" />
-                <MudTextField Label="Description" @bind-Value="ProcessDescription" Lines="3" TextArea="true" />
+                <MudTextField Label="Description" @bind-Value="ProcessDescription" Lines="3" />
 
                 <MudExpansionPanels>
                     <MudExpansionPanel Text="Storage & Index" Expanded="true">
@@ -94,8 +94,8 @@
                 <MudText Typo="Typo.subtitle2">Editable Settings</MudText>
                 <MudTextField Label="Short Name" @bind-Value="LibraryShortName" Required="true"
                               Error="@(!IsShortNameAvailable)" ErrorText="@(IsShortNameAvailable ? null : ShortNameError)" />
-                <MudTextField Label="Description of Contents" @bind-Value="LibraryDescriptionOfContents" Lines="3" TextArea="true" />
-                <MudTextField Label="Description of When to Use" @bind-Value="LibraryDescriptionOfWhenToUse" Lines="3" TextArea="true" />
+                <MudTextField Label="Description of Contents" @bind-Value="LibraryDescriptionOfContents" Lines="3" />
+                <MudTextField Label="Description of When to Use" @bind-Value="LibraryDescriptionOfWhenToUse" Lines="3" />
 
                 <MudExpansionPanels>
                     <MudExpansionPanel Text="Storage & Index" Expanded="true">
@@ -125,7 +125,7 @@
                     <MudText Typo="Typo.body2">Container Warnings:</MudText>
                     @foreach (var warning in _containerWarnings)
                     {
-                        <MudText Typo="Typo.caption">• @warning</MudText>
+                        <MudText Typo="Typo.caption">ï¿½ @warning</MudText>
                     }
                 </MudAlert>
             }
@@ -136,7 +136,7 @@
                     <MudText Typo="Typo.body2">Index Conflicts:</MudText>
                     @foreach (var warning in _indexWarnings)
                     {
-                        <MudText Typo="Typo.caption">• @warning</MudText>
+                        <MudText Typo="Typo.caption">ï¿½ @warning</MudText>
                     }
                 </MudAlert>
             }
@@ -150,7 +150,7 @@
 </MudDialog>
 
 @code {
-    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
     [Parameter] public bool IsProcessMode { get; set; }
 
     private string Title => IsProcessMode ? "Import Document Process" : "Import Document Library";

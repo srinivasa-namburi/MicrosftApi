@@ -1,31 +1,41 @@
 {
-  "inputs": [
-    {
-      "id": "github_pat",
-      "description": "GitHub personal access token",
-      "type": "promptString",
-      "password": true
-    }
-  ],
+  "inputs": [],
   "servers": {
-    "github": {
+    "ADO": {
       "type": "stdio",
-      "command": "docker",
+      "command": "npx",
       "args": [
-        "run",
-        "-i",
-        "--rm",
-        "-e",
-        "GITHUB_PERSONAL_ACCESS_TOKEN",
-        "ghcr.io/github/github-mcp-server"
+        "@azure-devops/mcp",
+        "ipsenergy",
+        "--tenant",
+        "72f988bf-86f1-41af-91ab-2d7cd011db47",
+        "-d",
+        "core",
+        "work-items",
+        "repositories",
+        "pipelines",
+        "wiki"
       ],
-      "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "${input:github_pat}"
-      }
+      "env": {}
     },
-    "microsoft-docs": {
-      "type": "http",
-      "url": "https://learn.microsoft.com/api/mcp"
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "@executeautomation/playwright-mcp-server"
+      ],
+      "env": {}
+    },
+    "serena": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git\u002Bhttps://github.com/oraios/serena",
+        "serena",
+        "start-mcp-server"
+      ],
+      "env": {}
     }
   }
 }

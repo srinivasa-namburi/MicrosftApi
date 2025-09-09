@@ -1,0 +1,132 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+
+@using Microsoft.Greenlight.Shared.Enums
+@using Microsoft.Greenlight.Shared.Contracts.DTO.FileStorage
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@using Microsoft.Greenlight.Shared.Contracts.Authorization
+@inject IFileStorageSourceApiClient FileStorageSourceApiClient
+
+@namespace Microsoft.Greenlight.Web.DocGen.Client.Components.FileStorage
+
+<PermissionView Permission="@PermissionKeys.AlterSystemConfiguration">
+  @if (_loading)
+  {
+    <MudProgressLinear Indeterminate="true" />
+  }
+  else
+  {
+    <MudStack Spacing="2">
+      @foreach (var type in _types)
+      {
+        <MudPaper Class="pa-2" Elevation="0">
+          <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.subtitle1">@type</MudText>
+            <MudStack Row="true" Spacing="1">
+              <MudSelect @bind-Value="_newMappingSourceId[type]" Label="Add source" Dense="true" Style="min-width: 240px;">
+                @foreach (var s in _allSources.Where(s => !_mappings[type].Any(m => m.FileStorageSourceId == s.Id)))
+                {
+                  <MudSelectItem Value="@s.Id">@s.Name (@s.ContainerOrPath)</MudSelectItem>
+                }
+              </MudSelect>
+              <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="() => AddMapping(type)">Add</MudButton>
+            </MudStack>
+          </MudStack>
+          <MudTable Items="_mappings[type]" Dense="true" Hover="true">
+            <HeaderContent>
+              <MudTh>Source</MudTh>
+              <MudTh>Accepts Uploads</MudTh>
+              <MudTh>Priority</MudTh>
+              <MudTh>Active</MudTh>
+              <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+              <MudTd>
+                <FileStorageSourceDisplayComponent Source="@context.Source" />
+              </MudTd>
+              <MudTd>
+                <MudSwitch T="bool" Checked="@context.AcceptsUploads" Color="Color.Primary" @onchange="(e) => UpdateMapping(type, context, acceptsUploads: (bool)e.Value!)" />
+              </MudTd>
+              <MudTd>
+                <MudNumericField T="int" Value="@context.Priority" Min="0" Style="width: 100px;" @onchange="(e) => UpdateMapping(type, context, priority: (int)e.Value!)" />
+              </MudTd>
+              <MudTd>
+                <MudSwitch T="bool" Checked="@context.IsActive" Color="Color.Primary" @onchange="(e) => UpdateMapping(type, context, isActive: (bool)e.Value!)" />
+              </MudTd>
+              <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="() => RemoveMapping(type, context)" />
+              </MudTd>
+            </RowTemplate>
+          </MudTable>
+        </MudPaper>
+      }
+    </MudStack>
+  }
+</PermissionView>
+
+@code {
+  private bool _loading = true;
+  private List<FileStorageSourceInfo> _allSources = new();
+  private readonly ContentReferenceType[] _types = Enum.GetValues(typeof(ContentReferenceType)).Cast<ContentReferenceType>().ToArray();
+  private readonly Dictionary<ContentReferenceType, List<ContentReferenceTypeStorageSourceMappingInfo>> _mappings = new();
+  private readonly Dictionary<ContentReferenceType, Guid?> _newMappingSourceId = new();
+
+  protected override async Task OnInitializedAsync()
+  {
+    try
+    {
+      _loading = true;
+      _allSources = await FileStorageSourceApiClient.GetAllFileStorageSourcesAsync();
+      foreach (var t in _types)
+      {
+        _mappings[t] = await FileStorageSourceApiClient.GetContentReferenceTypeMappingsAsync(t);
+        _newMappingSourceId[t] = null;
+      }
+    }
+    finally
+    {
+      _loading = false;
+    }
+  }
+
+  private async Task AddMapping(ContentReferenceType type)
+  {
+    if (!_newMappingSourceId[type].HasValue) return;
+    var srcId = _newMappingSourceId[type]!.Value;
+    var created = await FileStorageSourceApiClient.CreateContentReferenceTypeMappingAsync(type, srcId);
+    _mappings[type].Add(created);
+    _newMappingSourceId[type] = null;
+    StateHasChanged();
+  }
+
+  private async Task UpdateMapping(ContentReferenceType type, ContentReferenceTypeStorageSourceMappingInfo m, int? priority = null, bool? isActive = null, bool? acceptsUploads = null)
+  {
+    var newPriority = priority ?? m.Priority;
+    var newIsActive = isActive ?? m.IsActive;
+    var newAcceptsUploads = acceptsUploads ?? m.AcceptsUploads;
+
+    // Client-side protection: ensure only one mapping per type has AcceptsUploads=true
+    if (acceptsUploads.HasValue && acceptsUploads.Value)
+    {
+      // Turn off any other mapping that currently accepts uploads
+      foreach (var other in _mappings[type].Where(x => x.FileStorageSourceId != m.FileStorageSourceId && x.AcceptsUploads).ToList())
+      {
+        var cleared = await FileStorageSourceApiClient.UpdateContentReferenceTypeMappingAsync(type, other.FileStorageSourceId, other.Priority, other.IsActive, false);
+        var oidx = _mappings[type].FindIndex(x => x.FileStorageSourceId == other.FileStorageSourceId);
+        if (oidx >= 0) _mappings[type][oidx] = cleared;
+      }
+    }
+
+    var updated = await FileStorageSourceApiClient.UpdateContentReferenceTypeMappingAsync(type, m.FileStorageSourceId, newPriority, newIsActive, newAcceptsUploads);
+    // replace locally
+    var idx = _mappings[type].FindIndex(x => x.FileStorageSourceId == m.FileStorageSourceId);
+    if (idx >= 0) _mappings[type][idx] = updated;
+    StateHasChanged();
+  }
+
+  private async Task RemoveMapping(ContentReferenceType type, ContentReferenceTypeStorageSourceMappingInfo m)
+  {
+    await FileStorageSourceApiClient.DeleteContentReferenceTypeMappingAsync(type, m.FileStorageSourceId);
+    _mappings[type].RemoveAll(x => x.FileStorageSourceId == m.FileStorageSourceId);
+    StateHasChanged();
+  }
+}

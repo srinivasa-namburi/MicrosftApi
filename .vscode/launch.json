@@ -1,0 +1,80 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Aspire AppHost (dotnet run)",
+      "type": "coreclr",
+      "request": "launch",
+      "program": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "src/Microsoft.Greenlight.AppHost/Microsoft.Greenlight.AppHost.csproj"
+      ],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "DOTNET_ENVIRONMENT": "Development"
+      },
+      "console": "integratedTerminal",
+      "serverReadyAction": {
+        "action": "openExternally",
+        "pattern": "\\bNow listening on:\\s+(https?://\\S+)",
+        "uriFormat": "https://localhost:17209"
+      },
+      "stopAtEntry": false
+    },
+    {
+      "name": "Debug Blazor WebAssembly (WSL/Linux)",
+      "type": "blazorwasm",
+      "request": "attach",
+      "url": "https://localhost:5001",
+      "webRoot": "${workspaceFolder}/src/Microsoft.Greenlight.Web.DocGen.Client",
+      "timeout": 30000,
+      "trace": true
+    },
+    {
+      "name": "Debug Blazor WebAssembly (Windows/macOS)",
+      "type": "blazorwasm",
+      "request": "launch",
+      "url": "https://localhost:5001",
+      "webRoot": "${workspaceFolder}/src/Microsoft.Greenlight.Web.DocGen.Client",
+      "browser": "edge",
+      "timeout": 30000,
+      "trace": true
+    },
+    {
+      "name": "Launch Edge Browser (Manual)",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/launch-browser.js",
+      "args": ["https://localhost:5001"]
+    },
+    {
+      "name": "Attach to .NET Process",
+      "type": "coreclr",
+      "request": "attach",
+      "processId": "${command:pickProcess}"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "AppHost + Manual Browser (WSL Recommended)",
+      "configurations": [
+        "Aspire AppHost (dotnet run)"
+      ],
+      "preLaunchTask": "kill-ports",
+      "postDebugTask": "setup-wsl-networking",
+      "stopAll": true
+    },
+    {
+      "name": "AppHost + Blazor Debug (Windows/macOS)",
+      "configurations": [
+        "Aspire AppHost (dotnet run)",
+        "Debug Blazor WebAssembly (Windows/macOS)"
+      ],
+      "preLaunchTask": "kill-ports",
+      "stopAll": true
+    }
+  ]
+}

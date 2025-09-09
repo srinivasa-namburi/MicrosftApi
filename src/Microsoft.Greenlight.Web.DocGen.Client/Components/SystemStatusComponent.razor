@@ -1,0 +1,843 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+
+@implements IAsyncDisposable
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.Greenlight.Shared.Contracts.DTO.SystemStatus
+@using Microsoft.Greenlight.Shared.Contracts.Messages.Reindexing.Events
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@using Microsoft.AspNetCore.Components.Authorization
+
+@inject SignalRConnectionService SignalRConnectionService
+@inject SignalRSubscriptionFactory SignalRSubscriptionFactory
+@inject ISystemStatusApiClient SystemStatusApiClient
+@inject ILogger<SystemStatusComponent> Logger
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+@* System Status Component - clickable area for opening status panel *@
+<MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+    @* Status text (when enabled) *@
+    @if (ShowStatusText)
+    {
+        <MudText Typo="Typo.body2" Color="Color.Inherit">Status: @GetUiOverallLabel()</MudText>
+    }
+
+    <MudMenu AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft" CloseOnSelection="false">
+        <ActivatorContent>
+            <MudTooltip Text="@GetStatusTooltip()">
+                <div Style="cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 4px;">
+                    <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                    @* Queue chips display *@
+                    @if (GetActiveQueues().Any())
+                    {
+                        <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+                            @foreach (var queue in GetActiveQueues())
+                            {
+                                var qColor = GetQueueChipColor(queue.ItemKey, queue.QueueLength, queue.MaxConcurrency);
+                                <MudTooltip Text="@($"{GetWorkerTypeDisplayName(queue.ItemKey)} queue length: {queue.QueueLength}")">
+                                    <MudChip T="string" Size="Size.Small" 
+                                             Color="@qColor" 
+                                             Variant="Variant.Filled"
+                                             Icon="@GetQueueIcon(queue.QueueLength, queue.MaxConcurrency)"
+                                             Class="pa-0 px-2">
+                                        @queue.QueueLength
+                                    </MudChip>
+                                </MudTooltip>
+                            }
+                        </MudStack>
+                    }
+                    @* Status icon - now outlined *@
+                    <MudIcon Icon="@GetStatusIcon()" 
+                             Color="@GetStatusColor()" 
+                             Size="Size.Medium" />
+                    </MudStack>
+                </div>
+            </MudTooltip>
+        </ActivatorContent>
+    <ChildContent>
+        <div class="pa-4" style="min-width: 420px; max-width: 640px;">
+        <MudStack Spacing="2">
+            <!-- Header -->
+            <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                <MudText Typo="Typo.h6">System Status</MudText>
+                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor()" Variant="Variant.Filled">@GetUiOverallLabel()</MudChip>
+            </MudStack>
+
+            <!-- Overall Status -->
+            <MudCard Outlined="true" Class="pa-3">
+                <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                    <MudIcon Icon="@GetStatusIcon()" Color="@GetStatusColor()" />
+                    <MudText Typo="Typo.subtitle1"><strong>Overall Status:</strong> @GetUiOverallLabel()</MudText>
+                    <MudSpacer />
+                    <MudText Typo="Typo.caption">Last Updated: @_systemStatus?.LastUpdatedUtc.ToLocalTime().ToString("HH:mm:ss")</MudText>
+                </MudStack>
+                
+                @if (_systemStatus?.Summary != null)
+                {
+                    var filteredAlerts = GetFilteredAlerts();
+                    var critCount = filteredAlerts.Count(a => a.Severity == SystemStatusSeverity.Critical);
+                    var warnCount = filteredAlerts.Count(a => a.Severity == SystemStatusSeverity.Warning);
+                    <MudStack Row Spacing="4" Class="mt-2">
+                        <MudText Typo="Typo.body2">
+                            <strong>@_systemStatus.Summary.TotalSubsystems</strong> subsystems
+                        </MudText>
+                        @if (critCount > 0)
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Error">
+                                <strong>@critCount</strong> critical alerts
+                            </MudText>
+                        }
+                        @if (warnCount > 0)
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Warning">
+                                <strong>@warnCount</strong> warnings
+                            </MudText>
+                        }
+                    </MudStack>
+                }
+            </MudCard>
+
+            <!-- Connection Status -->
+            @if (!_signalRConnected)
+            {
+                <MudAlert Severity="Severity.Info">
+                    @if (_isRetryingConnection)
+                    {
+                        <text>Attempting to connect for real-time updates... (Attempt @_retryAttempt)</text>
+                    }
+                    else
+                    {
+                        <text>Real-time updates unavailable. Using periodic refresh.</text>
+                    }
+                </MudAlert>
+            }
+
+            <!-- Worker Threads Status -->
+            @{
+                var workerSubsystem = _systemStatus?.Subsystems?.FirstOrDefault(s => s.Source == "WorkerThreads");
+            }
+            @if (workerSubsystem != null)
+            {
+                <MudStack Spacing="1">
+                    <MudText Typo="Typo.subtitle2">Worker Threads</MudText>
+                    @foreach (var item in workerSubsystem.Items.OrderBy(i => i.ItemKey))
+                    {
+                        var queueLen = GetQueueLength(item);
+                        var max = GetMaxConcurrency(item);
+                        var busy = queueLen > 0 || !string.Equals(item.Status, "Idle", StringComparison.OrdinalIgnoreCase);
+                        <MudCard Outlined="true" Class="ma-0 pa-2">
+                            <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                                <MudIcon Icon="@(busy ? GetQueueIcon(queueLen, max) : Icons.Material.Outlined.CheckCircle)" 
+                                         Color="@(busy ? GetQueueChipColor(item.ItemKey, queueLen, max) : Color.Success)" 
+                                         Size="Size.Small" />
+                                <div class="flex-grow-1">
+                                    <MudText Typo="Typo.body2"><strong>@GetWorkerTypeDisplayName(item.ItemKey)</strong></MudText>
+                                    <MudText Typo="Typo.caption">@GetFriendlyStatusMessage(item)</MudText>
+                                </div>
+                                @if (queueLen > 0)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="@GetQueueChipColor(item.ItemKey, queueLen, max)" Variant="Variant.Filled" Class="px-2">@queueLen queued</MudChip>
+                                }
+                                else
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Text" Class="px-2">Idle</MudChip>
+                                }
+                            </MudStack>
+                        </MudCard>
+                    }
+                </MudStack>
+            }
+
+            <!-- Other Subsystems -->
+            @if (_systemStatus?.Subsystems != null)
+            {
+                var otherSubsystems = _systemStatus.Subsystems.Where(s => s.Source != "WorkerThreads").OrderBy(s => s.DisplayName);
+                @if (otherSubsystems.Any())
+                {
+                    <MudText Typo="Typo.subtitle2" Class="mt-2">Other Systems</MudText>
+                    <MudGrid Spacing="1">
+                        @foreach (var subsystem in otherSubsystems)
+                        {
+                            <MudItem xs="12" sm="6">
+                                <MudCard Outlined="true" Class="@($"pa-2 {GetSubsystemClass(subsystem.OverallStatus)}")">
+                                    <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                                        <MudIcon Icon="@GetSubsystemIcon(subsystem.Source)" 
+                                                Color="@GetHealthColor(subsystem.OverallStatus)" />
+                                        <div class="flex-grow-1">
+                                            <MudText Typo="Typo.body2"><strong>@subsystem.DisplayName</strong></MudText>
+                                            <MudText Typo="Typo.caption">@subsystem.Items.Count items</MudText>
+                                        </div>
+                                        <MudChip T="string" Size="Size.Small" 
+                                                Color="@GetHealthColor(subsystem.OverallStatus)" 
+                                                Variant="Variant.Text">
+                                            @subsystem.OverallStatus
+                                        </MudChip>
+                                    </MudStack>
+                                </MudCard>
+                            </MudItem>
+                        }
+                    </MudGrid>
+                }
+            }
+
+            <!-- Active Alerts (excluding normal worker queue alerts) -->
+            @{
+                var uiAlerts = GetFilteredAlerts();
+            }
+            @if (uiAlerts.Any())
+            {
+                <MudText Typo="Typo.subtitle2" Color="Color.Error" Class="mt-2">Active Alerts</MudText>
+                @foreach (var alert in uiAlerts.OrderByDescending(a => a.CreatedUtc))
+                {
+                    <MudAlert Severity="@GetAlertSeverity(alert.Severity)" Variant="Variant.Filled" Class="ma-1">
+                        <MudText><strong>@GetFriendlyAlertTitle(alert)</strong></MudText>
+                        <MudText Typo="Typo.body2">@GetFriendlyAlertMessage(alert)</MudText>
+                        <MudText Typo="Typo.caption">@alert.Source - @alert.CreatedUtc.ToString("HH:mm:ss")</MudText>
+                    </MudAlert>
+                }
+            }
+
+            <!-- Refresh Button (does NOT close menu) -->
+            <MudStack Row AlignItems="AlignItems.Center" Spacing="2" Class="mt-2">
+                <MudButton Variant="Variant.Outlined" 
+                           StartIcon="Icons.Material.Outlined.Refresh" 
+                           OnClick="@(async e => await RefreshStatusAsync(manual:true))"
+                           Disabled="_isRefreshing">
+                    @if (_isRefreshing)
+                    {
+                        <MudProgressCircular Size="Size.Small" Class="mr-2" Indeterminate="true" />
+                        <MudText>Refreshing...</MudText>
+                    }
+                    else
+                    {
+                        <MudText>Refresh Status</MudText>
+                    }
+                </MudButton>
+                @if (_signalRConnected)
+                {
+                    <MudChip T="string" Color="Color.Success" Variant="Variant.Text" Icon="Icons.Material.Outlined.Power">Live</MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Color="Color.Warning" Variant="Variant.Text" Icon="Icons.Material.Outlined.CloudOff">Polling</MudChip>
+                }
+            </MudStack>
+        </MudStack>
+    </div>
+    </ChildContent>
+</MudMenu>
+</MudStack>
+
+@code {
+    [CascadingParameter] public HubConnection? HubConnection { get; set; }
+    [CascadingParameter(Name = "IsDarkMode")] public bool IsDarkMode { get; set; }
+    [Parameter] public bool ShowStatusText { get; set; } = false;
+
+    private SystemStatusSnapshot? _systemStatus;
+    private bool _isRefreshing = false;
+    private bool _signalRConnected = false;
+    private bool _signalRSetupAttempted = false;
+    private bool _isRetryingConnection = false;
+    private int _retryAttempt = 0;
+    private int _maxRetryAttempts = 10;
+    private TimeSpan _baseRetryDelay = TimeSpan.FromSeconds(2);
+    private DateTime? _lastRetryTime;
+    private SignalRSubscriptionManager? _subMgr;
+    private Timer? _connectionHealthTimer;
+    private Timer? _fallbackRefreshTimer;
+    private CancellationTokenSource? _retryTokenSource;
+    private long _signalRUpdateCount = 0;
+
+    private SystemHealthStatus GetUiOverallStatus()
+    {
+        if (_systemStatus == null)
+        {
+            return SystemHealthStatus.Unknown;
+        }
+
+        var raw = _systemStatus.OverallStatus;
+        if (raw == SystemHealthStatus.Critical || raw == SystemHealthStatus.Warning)
+        {
+            var worker = _systemStatus.Subsystems.FirstOrDefault(s => s.Source == "WorkerThreads");
+            var otherEscalated = _systemStatus.Subsystems.Any(s => s.Source != "WorkerThreads" && (s.OverallStatus == SystemHealthStatus.Critical || s.OverallStatus == SystemHealthStatus.Warning));
+            if (!otherEscalated && worker != null)
+            {
+                // Only workers are elevated => treat overall as Healthy (Busy)
+                return SystemHealthStatus.Healthy;
+            }
+        }
+        return raw;
+    }
+
+    private string GetUiOverallLabel()
+    {
+        if (_systemStatus == null)
+        {
+            return "Unknown";
+        }
+        var raw = _systemStatus.OverallStatus;
+        if ((raw == SystemHealthStatus.Critical || raw == SystemHealthStatus.Warning) && GetUiOverallStatus() == SystemHealthStatus.Healthy)
+        {
+            return "Busy"; // Normal busy state driven only by worker queues
+        }
+        return GetUiOverallStatus().ToString();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Logger.LogInformation("SystemStatusComponent: OnInitializedAsync called");
+        await RefreshStatusAsync();
+        AuthenticationStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
+        await TrySetupSignalRAsync();
+        Logger.LogInformation("SystemStatusComponent: OnInitializedAsync completed");
+    }
+
+    private async void OnAuthenticationStateChanged(Task<AuthenticationState> task)
+    {
+        try
+        {
+            var authState = await task;
+            Logger.LogDebug("Authentication state changed, IsAuthenticated: {IsAuthenticated}", authState.User?.Identity?.IsAuthenticated);
+            if (authState.User?.Identity?.IsAuthenticated == true && !_signalRConnected)
+            {
+                Logger.LogInformation("User authenticated and SignalR not connected, attempting to establish connection");
+                await TrySetupSignalRAsync(isRetry: true);
+            }
+            else if (authState.User?.Identity?.IsAuthenticated != true && _signalRConnected)
+            {
+                Logger.LogInformation("User logged out, disconnecting SignalR");
+                await DisconnectSignalRAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error handling authentication state change");
+        }
+    }
+
+    private async Task TrySetupSignalRAsync(bool isRetry = false)
+    {
+        if (_signalRConnected || (_isRetryingConnection && !isRetry))
+        {
+            return;
+        }
+        if (isRetry)
+        {
+            _signalRSetupAttempted = false;
+            _retryAttempt = 0;
+        }
+        if (_signalRSetupAttempted && !isRetry)
+        {
+            return;
+        }
+        _signalRSetupAttempted = true;
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            if (authState.User?.Identity?.IsAuthenticated != true)
+            {
+                Logger.LogDebug("User not authenticated, skipping SignalR setup for system status");
+                StartFallbackRefresh();
+                return;
+            }
+            await SetupSignalRAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to setup SignalR for system status monitoring. Will retry with exponential backoff.");
+            _signalRConnected = false;
+            await StartRetryWithBackoffAsync(ex);
+        }
+    }
+
+    private async Task StartRetryWithBackoffAsync(Exception? lastException = null)
+    {
+        if (_isRetryingConnection || _retryAttempt >= _maxRetryAttempts)
+        {
+            if (_retryAttempt >= _maxRetryAttempts)
+            {
+                Logger.LogWarning("Maximum retry attempts ({MaxAttempts}) reached for SignalR connection. Falling back to API-only mode.", _maxRetryAttempts);
+                StartFallbackRefresh();
+            }
+            return;
+        }
+        _isRetryingConnection = true;
+        _retryAttempt++;
+        var delay = TimeSpan.FromSeconds(_baseRetryDelay.TotalSeconds * Math.Pow(2, _retryAttempt - 1));
+        delay = TimeSpan.FromSeconds(Math.Min(delay.TotalSeconds, 60));
+        var jitter = TimeSpan.FromMilliseconds(Random.Shared.Next(0, 1000));
+        delay = delay.Add(jitter);
+        Logger.LogInformation("Scheduling SignalR retry attempt {Attempt}/{MaxAttempts} in {Delay}s", _retryAttempt, _maxRetryAttempts, delay.TotalSeconds);
+        _lastRetryTime = DateTime.UtcNow.Add(delay);
+        await InvokeAsync(StateHasChanged);
+        _retryTokenSource?.Cancel();
+        _retryTokenSource = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(delay, _retryTokenSource.Token);
+            if (!_retryTokenSource.Token.IsCancellationRequested)
+            {
+                Logger.LogDebug("Executing SignalR retry attempt {Attempt}", _retryAttempt);
+                await RetrySignalRConnectionAsync();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            Logger.LogDebug("SignalR retry attempt {Attempt} was cancelled", _retryAttempt);
+        }
+        finally
+        {
+            _isRetryingConnection = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task RetrySignalRConnectionAsync()
+    {
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            if (authState.User?.Identity?.IsAuthenticated != true)
+            {
+                Logger.LogDebug("User no longer authenticated during retry, stopping retry attempts");
+                _retryAttempt = _maxRetryAttempts;
+                StartFallbackRefresh();
+                return;
+            }
+            await DisconnectSignalRAsync();
+            await SetupSignalRAsync();
+            if (_signalRConnected)
+            {
+                Logger.LogInformation("SignalR connection established successfully on retry attempt {Attempt}", _retryAttempt);
+                _retryAttempt = 0;
+            }
+            else
+            {
+                throw new InvalidOperationException("SignalR connection setup completed but connection not established");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "SignalR retry attempt {Attempt} failed", _retryAttempt);
+            if (_retryAttempt < _maxRetryAttempts)
+            {
+                await StartRetryWithBackoffAsync(ex);
+            }
+            else
+            {
+                Logger.LogWarning("All SignalR retry attempts exhausted. Falling back to API-only mode.");
+                StartFallbackRefresh();
+            }
+        }
+    }
+
+    private async Task DisconnectSignalRAsync()
+    {
+        try
+        {
+            _signalRConnected = false;
+            if (_subMgr != null)
+            {
+                await _subMgr.DisposeAsync();
+                _subMgr = null;
+            }
+            HubConnection = null;
+            Logger.LogDebug("SignalR connection disconnected");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error during SignalR disconnection");
+        }
+    }
+
+    private async Task SetupSignalRAsync()
+    {
+        try
+        {
+            if (HubConnection == null)
+            {
+                Logger.LogDebug("Creating new SignalR hub connection for system status");
+                HubConnection = await SignalRConnectionService.TryGetOrCreateAsync();
+                if (HubConnection == null)
+                {
+                    Logger.LogWarning("Failed to create SignalR connection, falling back to API-only mode");
+                    StartFallbackRefresh();
+                    return;
+                }
+            }
+            Logger.LogDebug("Hub connection state: {State}", HubConnection.State);
+            _subMgr = SignalRSubscriptionFactory.Create(HubConnection);
+            _subMgr.TryRegisterHandlerOnce<DocumentReindexStartedNotification>("ReceiveDocumentReindexStartedNotification", async n => await OnReindexEvent());
+            _subMgr.TryRegisterHandlerOnce<DocumentReindexProgressNotification>("ReceiveDocumentReindexProgressNotification", async n => await OnReindexEvent());
+            _subMgr.TryRegisterHandlerOnce<DocumentReindexCompletedNotification>("ReceiveDocumentReindexCompletedNotification", async n => await OnReindexEvent());
+            _subMgr.TryRegisterHandlerOnce<DocumentReindexFailedNotification>("ReceiveDocumentReindexFailedNotification", async n => await OnReindexEvent());
+            _subMgr.TryRegisterHandlerOnce<SystemStatusSnapshot>("ReceiveSystemStatusUpdateNotification", HandleSystemStatusUpdateAsync);
+            var connectionSuccess = await _subMgr.TryEnsureConnectedAsync();
+            if (!connectionSuccess)
+            {
+                Logger.LogWarning("Failed to ensure SignalR connection, falling back to API-only mode");
+                StartFallbackRefresh();
+                return;
+            }
+            Logger.LogDebug("SignalR connection ensured, state: {State}", HubConnection.State);
+            var joinSuccess = await _subMgr.TryJoinGroupAsync("system-status");
+            if (HubConnection.State == HubConnectionState.Connected && joinSuccess)
+            {
+                Logger.LogInformation("Successfully joined 'system-status' SignalR group for real-time updates");
+                _signalRConnected = true;
+                _retryAttempt = 0;
+                StartConnectionHealthMonitoring();
+                _retryTokenSource?.Cancel();
+            }
+            else
+            {
+                if (!joinSuccess)
+                {
+                    Logger.LogWarning("Failed to join 'system-status' SignalR group, falling back to API-only mode");
+                }
+                else
+                {
+                    Logger.LogWarning("SignalR connection not in Connected state ({State}) after setup attempt", HubConnection.State);
+                }
+                _signalRConnected = false;
+                StartFallbackRefresh();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to setup SignalR for system status monitoring");
+            _signalRConnected = false;
+            StartFallbackRefresh();
+        }
+    }
+
+    private void StartConnectionHealthMonitoring()
+    {
+        if (_connectionHealthTimer != null)
+        {
+            return;
+        }
+        _connectionHealthTimer = new Timer(async _ => await CheckConnectionHealthAsync(), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
+
+    private async Task CheckConnectionHealthAsync()
+    {
+        try
+        {
+            if (HubConnection?.State != HubConnectionState.Connected)
+            {
+                Logger.LogWarning("SignalR connection lost (state: {State}), attempting to reconnect for system status updates", HubConnection?.State);
+                _signalRConnected = false;
+                await InvokeAsync(StateHasChanged);
+                await TrySetupSignalRAsync(isRetry: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error during connection health check");
+            _signalRConnected = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void StartFallbackRefresh()
+    {
+        if (_fallbackRefreshTimer != null)
+        {
+            return;
+        }
+        // Refresh every 60 seconds as fallback in case SignalR updates aren't working
+        _fallbackRefreshTimer = new Timer(async _ => 
+        {
+            Logger.LogTrace("Performing fallback refresh of system status");
+            await RefreshStatusAsync();
+        }, null, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
+    }
+
+    private async Task RefreshStatusAsync(bool manual = false)
+    {
+        if (_isRefreshing)
+        {
+            return;
+        }
+        try
+        {
+            Logger.LogInformation("RefreshStatusAsync: Starting refresh, current status: {CurrentStatus}", _systemStatus?.OverallStatus);
+            _isRefreshing = true;
+            StateHasChanged();
+            var newStatus = await SystemStatusApiClient.GetSystemStatusAsync();
+            Logger.LogInformation("RefreshStatusAsync: Received new status: {NewStatus}, {SubsystemCount} subsystems", newStatus?.OverallStatus, newStatus?.Subsystems?.Count);
+            _systemStatus = newStatus;
+            Logger.LogInformation("RefreshStatusAsync: Assigned to _systemStatus, calling StateHasChanged");
+            StateHasChanged();
+            Logger.LogInformation("RefreshStatusAsync: StateHasChanged called");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to refresh system status");
+        }
+        finally
+        {
+            _isRefreshing = false;
+            Logger.LogInformation("RefreshStatusAsync: Cleanup - _isRefreshing = false, calling final StateHasChanged");
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleSystemStatusUpdateAsync(SystemStatusSnapshot statusSnapshot)
+    {
+        try
+        {
+            var updateId = Interlocked.Increment(ref _signalRUpdateCount);
+            Logger.LogDebug("SignalR system status update #{UpdateId}: Overall={Overall} Subsystems={Count}", updateId, statusSnapshot.OverallStatus, statusSnapshot.Subsystems.Count);
+            _systemStatus = statusSnapshot;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed processing SignalR system status update");
+        }
+    }
+
+    private string GetFriendlyStatusMessage(ItemStatus item)
+    {
+        try
+        {
+            var activeInfo = item.StatusMessage ?? string.Empty;
+            var queueLen = GetQueueLength(item);
+            if (queueLen > 0 && !activeInfo.Contains("Queued:"))
+            {
+                activeInfo = string.IsNullOrWhiteSpace(activeInfo) ? $"Queued: {queueLen}" : $"{activeInfo}, Queued: {queueLen}";
+            }
+            return activeInfo.Length == 0 ? "No recent activity" : activeInfo;
+        }
+        catch
+        {
+            return item.StatusMessage ?? "Status unknown";
+        }
+    }
+
+    private int GetQueueLength(ItemStatus item)
+    {
+        try
+        {
+            if (item.Properties?.TryGetValue("QueueLength", out var q) == true && int.TryParse(q, out var v))
+            {
+                return v;
+            }
+            return 0;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    private int GetMaxConcurrency(ItemStatus item)
+    {
+        try
+        {
+            if (item.Properties?.TryGetValue("MaxConcurrency", out var mc) == true && int.TryParse(mc, out var m))
+            {
+                return m;
+            }
+            return 0;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    private string GetWorkerTypeDisplayName(string itemKey) => itemKey switch
+    {
+        "GenerationWorkers" => "Generation",
+        "ValidationWorkers" => "Validation",
+        "IngestionWorkers" => "Ingestion",
+        "ReviewWorkers" => "Review",
+        _ => itemKey.Replace("Workers", "")
+    };
+
+    private Color GetQueueChipColor(string itemKey, int queueLength, int maxConcurrency)
+    {
+        if (maxConcurrency <= 0)
+        {
+            // fallback to previous static thresholds without red
+            return queueLength switch
+            {
+                <= 0 => Color.Success,
+                <= 5 => Color.Info,
+                <= 10 => Color.Info,
+                _ => Color.Info
+            };
+        }
+        double ratio = queueLength / (double)maxConcurrency;
+        if (queueLength == 0)
+        {
+            return Color.Success;
+        }
+        if (ratio < 2)
+        {
+            return Color.Info; // light queue
+        }
+        if (ratio < 5)
+        {
+            return Color.Warning; // elevated but normal
+        }
+        // Even very large queues: still treat as info (normal saturation) - never red for workers
+        return Color.Info;
+    }
+
+    private string GetQueueIcon(int queueLength, int maxConcurrency)
+    {
+        if (queueLength == 0)
+        {
+            return Icons.Material.Outlined.CheckCircle;
+        }
+        if (maxConcurrency > 0)
+        {
+            var ratio = queueLength / (double)maxConcurrency;
+            if (ratio < 2)
+            {
+                return Icons.Material.Outlined.Schedule; // light queue
+            }
+            if (ratio < 5)
+            {
+                return Icons.Material.Outlined.HourglassBottom; // heavier queue
+            }
+            return Icons.Material.Outlined.MoreTime; // sustained saturation
+        }
+        return Icons.Material.Outlined.Schedule;
+    }
+
+
+    private string GetStatusIcon() => GetUiOverallStatus() switch
+    {
+        SystemHealthStatus.Healthy => Icons.Material.Outlined.CheckCircle,
+        SystemHealthStatus.Warning => Icons.Material.Outlined.Schedule,
+        SystemHealthStatus.Critical => Icons.Material.Outlined.Error,
+        _ => Icons.Material.Outlined.Help
+    };
+
+    private Color GetStatusColor() => GetUiOverallStatus() switch
+    {
+        SystemHealthStatus.Healthy => Color.Success,
+        SystemHealthStatus.Warning => Color.Info,
+        SystemHealthStatus.Critical => Color.Error,
+        _ => Color.Default
+    };
+
+    private string GetStatusTooltip()
+    {
+        if (_systemStatus == null)
+        {
+            return "Loading system status...";
+        }
+        var uiStatus = GetUiOverallStatus();
+        var alerts = GetFilteredAlerts();
+        var alertCount = alerts.Count();
+        var label = GetUiOverallLabel();
+        return alertCount > 0 ? $"System Status: {label} ({alertCount} alerts)" : $"System Status: {label}";
+    }
+
+    private Color GetHealthColor(SystemHealthStatus status) => status switch
+    {
+        SystemHealthStatus.Healthy => Color.Success,
+        SystemHealthStatus.Warning => Color.Info,
+        SystemHealthStatus.Critical => Color.Error,
+        _ => Color.Default
+    };
+
+    private string GetSubsystemClass(SystemHealthStatus status) => status switch
+    {
+        SystemHealthStatus.Critical => "mud-border-error",
+        SystemHealthStatus.Warning => "mud-border-info",
+        _ => string.Empty
+    };
+
+    private string GetSubsystemIcon(string source) => source switch
+    {
+        "VectorStore" => Icons.Material.Outlined.Storage,
+        "WorkerThreads" => Icons.Material.Outlined.Memory,
+        "Ingestion" => Icons.Material.Outlined.CloudUpload,
+        "Validation" => Icons.Material.Outlined.VerifiedUser,
+        "Generation" => Icons.Material.Outlined.AutoFixHigh,
+        "Chat" => Icons.Material.Outlined.Chat,
+        "Review" => Icons.Material.Outlined.RateReview,
+        _ => Icons.Material.Outlined.Computer
+    };
+
+    private Severity GetAlertSeverity(SystemStatusSeverity severity) => severity switch
+    {
+        SystemStatusSeverity.Critical => Severity.Error,
+        SystemStatusSeverity.Warning => Severity.Warning,
+        _ => Severity.Info
+    };
+
+    private string GetFriendlyAlertTitle(SystemAlert alert)
+    {
+        if (alert.Source == "WorkerThreads")
+        {
+            return "Workers Busy"; // we don't display worker alerts normally (filtered) but keep friendly name if shown
+        }
+        return alert.Title;
+    }
+
+    private string GetFriendlyAlertMessage(SystemAlert alert)
+    {
+        if (alert.Source == "WorkerThreads")
+        {
+            return alert.Message;
+        }
+        return alert.Message;
+    }
+
+    private IEnumerable<SystemAlert> GetFilteredAlerts()
+    {
+        if (_systemStatus?.ActiveAlerts == null)
+        {
+            return Enumerable.Empty<SystemAlert>();
+        }
+        // Exclude worker thread alerts (we treat queues as normal); keep others
+        return _systemStatus.ActiveAlerts.Where(a => a.Source != "WorkerThreads").ToList();
+    }
+
+    private IEnumerable<(string ItemKey, int QueueLength, int MaxConcurrency)> GetActiveQueues()
+    {
+        try
+        {
+            var workerSubsystem = _systemStatus?.Subsystems?.FirstOrDefault(s => s.Source == "WorkerThreads");
+            if (workerSubsystem == null)
+            {
+                return Enumerable.Empty<(string, int, int)>();
+            }
+            return workerSubsystem.Items
+                .Select(i => (i.ItemKey, GetQueueLength(i), GetMaxConcurrency(i)))
+                .Where(t => t.Item2 > 0)
+                .OrderByDescending(t => t.Item2)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed computing active queues");
+            return Enumerable.Empty<(string, int, int)>();
+        }
+    }
+
+    private async Task OnReindexEvent()
+    {
+        await RefreshStatusAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        AuthenticationStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
+        _retryTokenSource?.Cancel();
+        _connectionHealthTimer?.Dispose();
+        _fallbackRefreshTimer?.Dispose();
+        if (_subMgr != null)
+        {
+            await _subMgr.DisposeAsync();
+        }
+    }
+}
+

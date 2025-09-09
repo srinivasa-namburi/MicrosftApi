@@ -30,6 +30,7 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                 ContentReferenceType.GeneratedSection => _serviceProvider.GetService<IContentReferenceGenerationService<ContentNode>>(),
                 ContentReferenceType.ExternalFile => _serviceProvider.GetService<IContentReferenceGenerationService<ExportedDocumentLink>>(),
                 ContentReferenceType.ReviewItem => _serviceProvider.GetService<IContentReferenceGenerationService<ReviewInstance>>(),
+                ContentReferenceType.ExternalLinkAsset => _serviceProvider.GetService<IContentReferenceGenerationService<Microsoft.Greenlight.Shared.Models.FileStorage.ExternalLinkAsset>>(),
                 // Add other content types as they are implemented
                 _ => null
             };

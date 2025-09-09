@@ -12,6 +12,7 @@ using Microsoft.Greenlight.Shared.Models.Configuration;
 using Microsoft.Greenlight.Shared.Models.DomainGroups;
 using Microsoft.Greenlight.Shared.Models.Review;
 using Microsoft.Greenlight.Shared.Models.Plugins;
+using Microsoft.Greenlight.Shared.Models.FileStorage;
 using Microsoft.Greenlight.Shared.Contracts.Components;
 using Microsoft.Greenlight.Shared.Models.Authorization;
 
@@ -187,15 +188,10 @@ public class DocGenerationDbContext : DbContext
             .Property(x => x.ContentNodeVersionsJson)
             .HasColumnType("nvarchar(max)");
 
-        modelBuilder.Entity<ContentEmbedding>()
-            .ToTable("ContentEmbeddings");
+        // Legacy ContentEmbeddings removed; SK vector store is authoritative for embeddings.
 
-        modelBuilder.Entity<ContentEmbedding>()
-            .HasOne(x => x.ContentReferenceItem)
-            .WithMany(x => x.Embeddings)
-            .HasForeignKey(x => x.ContentReferenceItemId)
-            .IsRequired(false)
-            .OnDelete(DeleteBehavior.Restrict);
+        // ContentReferenceVectorDocument
+        modelBuilder.ApplyConfiguration(new Configurations.ContentReferenceVectorDocumentConfiguration());
 
         modelBuilder.Entity<AiModel>(entity =>
         {
@@ -879,28 +875,6 @@ public class DocGenerationDbContext : DbContext
             .IsRequired(false)
             .OnDelete(DeleteBehavior.Restrict);
 
-        modelBuilder.Entity<IngestedDocument>()
-            .ToTable("IngestedDocuments");
-
-        modelBuilder.Entity<IngestedDocument>()
-            .Property(x => x.RunId)
-            .IsRequired();
-
-        modelBuilder.Entity<IngestedDocument>()
-            .HasIndex(d => d.FileHash)
-            .IsUnique(false);
-
-        modelBuilder.Entity<IngestedDocument>()
-            .HasIndex(d => new { d.Container, d.FolderPath, d.FileName, d.FileHash, d.IngestionState })
-            .IsUnique();
-
-        modelBuilder.Entity<IngestedDocument>()
-            .HasIndex(d => d.OrchestrationId)
-            .IsUnique(false);
-
-        modelBuilder.Entity<IngestedDocument>()
-            .HasIndex(x => new { x.DocumentLibraryType, x.DocumentLibraryOrProcessName })
-            .IsUnique(false);
 
         modelBuilder.Entity<ContentNode>()
             .HasOne(x => x.ContentNodeVersionTracker)
@@ -1040,6 +1014,7 @@ public class DocGenerationDbContext : DbContext
             entity.HasIndex(e => new { e.McpPluginId, e.DynamicDocumentProcessDefinitionId })
                 .IsUnique(false);
         });
+
 
         // Authorization entities
         modelBuilder.Entity<GreenlightPermission>(entity =>
@@ -1272,7 +1247,7 @@ public class DocGenerationDbContext : DbContext
     /// <summary>
     /// Embeddings generated from content reference item
     /// </summary>
-    public DbSet<ContentEmbedding> ContentEmbeddings { get; set; }
+    // Legacy ContentEmbeddings removed
 
     /// <summary>
     /// Gets or sets the MCP plugins.
@@ -1306,5 +1281,50 @@ public class DocGenerationDbContext : DbContext
     /// User-role assignments.
     /// </summary>
     public DbSet<GreenlightUserRole> UserRoles { get; set; }
-}
 
+    // File Storage
+    /// <summary>
+    /// Gets or sets the file storage hosts.
+    /// </summary>
+    public DbSet<FileStorageHost> FileStorageHosts { get; set; }
+
+    /// <summary>
+    /// Gets or sets the file storage sources.
+    /// </summary>
+    public DbSet<FileStorageSource> FileStorageSources { get; set; }
+
+    /// <summary>
+    /// Gets or sets the document process file storage source associations.
+    /// </summary>
+    public DbSet<DocumentProcessFileStorageSource> DocumentProcessFileStorageSources { get; set; }
+
+    /// <summary>
+    /// Gets or sets the document library file storage source associations.
+    /// </summary>
+    public DbSet<DocumentLibraryFileStorageSource> DocumentLibraryFileStorageSources { get; set; }
+
+    /// <summary>
+    /// Gets or sets the content reference type to file storage source associations.
+    /// </summary>
+    public DbSet<ContentReferenceTypeFileStorageSource> ContentReferenceTypeFileStorageSources { get; set; }
+
+    /// <summary>
+    /// Gets or sets the file storage source categories (multi-type assignment).
+    /// </summary>
+    public DbSet<FileStorageSourceCategory> FileStorageSourceCategories { get; set; }
+
+    /// <summary>
+    /// Gets or sets the file acknowledgment records.
+    /// </summary>
+    public DbSet<FileAcknowledgmentRecord> FileAcknowledgmentRecords { get; set; }
+
+    /// <summary>
+    /// Gets or sets the join mappings between ingested documents and file acknowledgment records.
+    /// </summary>
+    public DbSet<IngestedDocumentFileAcknowledgment> IngestedDocumentFileAcknowledgments { get; set; }
+
+    /// <summary>
+    /// Gets or sets the external link assets for URL shortening and file access.
+    /// </summary>
+    public DbSet<ExternalLinkAsset> ExternalLinkAssets { get; set; }
+}

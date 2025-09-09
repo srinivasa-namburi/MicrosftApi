@@ -2,40 +2,91 @@
 @inject ISnackbar Snackbar
 
 <MudPaper Elevation="0" Class="d-flex align-center gap-2">
-    <MudFileUpload T="IBrowserFile" FilesChanged="UploadSingleFile" Accept=".pdf,.doc,.docx,.txt,.rtf">
-        <ButtonTemplate>
-            @if (string.IsNullOrEmpty(ButtonText))
-            {
-                <MudIconButton HtmlTag="label"
+    @if (AllowMultiple)
+    {
+        <MudFileUpload T="IReadOnlyList<IBrowserFile>" 
+                       FilesChanged="UploadMultipleFiles" 
+                       Accept="@AcceptedFileTypes"
+                       MaximumFileCount="@MaxFileCount">
+            <ActivatorContent>
+                @if (string.IsNullOrEmpty(ButtonText))
+                {
+                    <MudTooltip Text="@($"Attach files (max {MaxFileCount})")">
+                        <MudIconButton HtmlTag="label"
+                                       Color="Color.Primary"
+                                       Icon="@Icons.Material.Filled.AttachFile"
+                                       Size="Size.Small"
+                                       Disabled="@IsUploading">
+                        </MudIconButton>
+                    </MudTooltip>
+                }
+                else
+                {
+                    <MudButton HtmlTag="label"
                                Color="Color.Primary"
-                               Icon="@Icons.Material.Filled.AttachFile"
-                               for="@context"
-                               Size="Size.Small">
-                </MudIconButton>
-            }
-            else
-            {
-                <MudButton HtmlTag="label"
-                           Color="Color.Primary"
-                           Variant="Variant.Filled"
-                           StartIcon="@Icons.Material.Filled.CloudUpload"
-                           for="@context">
-                    @ButtonText
-                </MudButton>
-            }
-        </ButtonTemplate>
-    </MudFileUpload>
+                               Variant="Variant.Filled"
+                               StartIcon="@Icons.Material.Filled.CloudUpload"
+                               Disabled="@IsUploading">
+                        @ButtonText
+                    </MudButton>
+                }
+            </ActivatorContent>
+        </MudFileUpload>
+    }
+    else
+    {
+        <MudFileUpload T="IBrowserFile" 
+                       FilesChanged="UploadSingleFile" 
+                       Accept="@AcceptedFileTypes">
+            <ActivatorContent>
+                @if (string.IsNullOrEmpty(ButtonText))
+                {
+                    <MudTooltip Text="Attach file">
+                        <MudIconButton HtmlTag="label"
+                                       Color="Color.Primary"
+                                       Icon="@Icons.Material.Filled.AttachFile"
+                                       Size="Size.Small"
+                                       Disabled="@IsUploading">
+                        </MudIconButton>
+                    </MudTooltip>
+                }
+                else
+                {
+                    <MudButton HtmlTag="label"
+                               Color="Color.Primary"
+                               Variant="Variant.Filled"
+                               StartIcon="@Icons.Material.Filled.CloudUpload"
+                               Disabled="@IsUploading">
+                        @ButtonText
+                    </MudButton>
+                }
+            </ActivatorContent>
+        </MudFileUpload>
+    }
+    
     @if (IsUploading)
     {
-        <MudProgressCircular Indeterminate Size="Size.Small" />
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+            <MudProgressCircular Indeterminate Size="Size.Small" />
+            @if (_uploadProgress > 0)
+            {
+                <MudText Typo="Typo.caption">@($"{_uploadProgress}/{_totalFiles}")</MudText>
+            }
+        </MudStack>
     }
 </MudPaper>
 
 @code {
     [Parameter] public string? ButtonText { get; set; }
     [Parameter] public EventCallback<ContentReferenceItemInfo> OnFileUploaded { get; set; }
+    [Parameter] public EventCallback<List<ContentReferenceItemInfo>> OnFilesUploaded { get; set; }
+    [Parameter] public bool AllowMultiple { get; set; } = false; // Default to single for backward compatibility
+    [Parameter] public int MaxFileCount { get; set; } = 10; // Reasonable default
+    [Parameter] public string AcceptedFileTypes { get; set; } = ".pdf,.doc,.docx,.txt,.rtf,.xlsx,.xls,.ppt,.pptx";
 
     private bool IsUploading { get; set; }
+    private int _uploadProgress = 0;
+    private int _totalFiles = 0;
 
     private async Task UploadSingleFile(IBrowserFile? file)
     {
@@ -57,14 +108,113 @@
             
             // Notify the parent component
             await OnFileUploaded.InvokeAsync(uploadedReference);
+            
+            // Also invoke the multiple files callback with a single item if it's bound
+            if (OnFilesUploaded.HasDelegate)
+            {
+                await OnFilesUploaded.InvokeAsync(new List<ContentReferenceItemInfo> { uploadedReference });
+            }
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error uploading file: {ex.Message}", Severity.Error);
+            Snackbar.Add($"Error uploading file '{file.Name}': {ex.Message}", Severity.Error);
         }
         finally
         {
             IsUploading = false;
+            _uploadProgress = 0;
+            _totalFiles = 0;
+            StateHasChanged();
+        }
+    }
+
+    private async Task UploadMultipleFiles(IReadOnlyList<IBrowserFile>? files)
+    {
+        if (files == null || files.Count == 0)
+        {
+            Snackbar.Add("No files selected", Severity.Warning);
+            return;
+        }
+
+        if (files.Count > MaxFileCount)
+        {
+            Snackbar.Add($"Too many files selected. Maximum is {MaxFileCount}", Severity.Warning);
+            return;
+        }
+
+        var uploadedReferences = new List<ContentReferenceItemInfo>();
+        var failedFiles = new List<string>();
+
+        try
+        {
+            IsUploading = true;
+            _uploadProgress = 0;
+            _totalFiles = files.Count;
+            StateHasChanged();
+
+            // Upload files sequentially to avoid overwhelming the server
+            foreach (var file in files)
+            {
+                try
+                {
+                    // Upload the file as a temporary reference
+                    var uploadedReference = await FileApiClient.UploadTemporaryReferenceFileAsync(file.Name, file);
+                    uploadedReferences.Add(uploadedReference);
+                    
+                    _uploadProgress++;
+                    StateHasChanged();
+                    
+                    // Notify for each individual file if the single callback is bound
+                    if (OnFileUploaded.HasDelegate)
+                    {
+                        await OnFileUploaded.InvokeAsync(uploadedReference);
+                    }
+                    
+                    // Small delay between uploads to prevent server overload
+                    if (_uploadProgress < _totalFiles)
+                    {
+                        await Task.Delay(100);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failedFiles.Add(file.Name);
+                    Console.Error.WriteLine($"Error uploading file '{file.Name}': {ex.Message}");
+                }
+            }
+
+            // Show summary notification
+            if (uploadedReferences.Count > 0)
+            {
+                if (failedFiles.Count > 0)
+                {
+                    Snackbar.Add($"Uploaded {uploadedReferences.Count} file(s). Failed: {string.Join(", ", failedFiles)}", Severity.Warning);
+                }
+                else
+                {
+                    Snackbar.Add($"Successfully uploaded {uploadedReferences.Count} file(s)", Severity.Success);
+                }
+            }
+            else
+            {
+                Snackbar.Add("Failed to upload any files", Severity.Error);
+            }
+            
+            // Notify the parent component with all uploaded references
+            if (OnFilesUploaded.HasDelegate && uploadedReferences.Count > 0)
+            {
+                await OnFilesUploaded.InvokeAsync(uploadedReferences);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error during file upload: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsUploading = false;
+            _uploadProgress = 0;
+            _totalFiles = 0;
             StateHasChanged();
         }
     }

@@ -19,6 +19,15 @@ namespace Microsoft.Greenlight.Grains.Ingestion.Contracts
             string folderPath);
 
         /// <summary>
+        /// Starts or resumes ingestion for a FileStorageSource, handling multiple DL/DPs that use it.
+        /// This is the efficient approach for large repositories.
+        /// </summary>
+        Task StartIngestionAsync(
+            Guid fileStorageSourceId,
+            List<(string shortName, Guid id, DocumentLibraryType type, bool isDocumentLibrary)> dlDpList,
+            string folderPath);
+
+        /// <summary>
         /// Called by file grains when a file has completed processing successfully.
         /// </summary>
         Task OnIngestionCompletedAsync();

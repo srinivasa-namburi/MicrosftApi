@@ -1,0 +1,583 @@
+﻿@inject IJSRuntime JSRuntime
+@inject IContentReferenceApiClient ContentReferenceApiClient
+@inject ISnackbar Snackbar
+
+@using System.Text.Json
+@using System.Text.RegularExpressions
+
+<div class="chat-input-row" style="position: relative;">
+    <MudTextField @ref="_mudChatTextField" T="string"
+                  OnKeyDown="OnChatTextKeyDown"
+                  ValueChanged="OnChatTextFieldUpdated"
+                  Value="@_displayMessage"
+                  Immediate="false"
+                  DebounceInterval="100"
+                  Lines="2"
+                  MaxLines="6"
+                  AutoGrow="true"
+                  AutoFocus="true"
+                  FullWidth="true"
+                  Placeholder="Type a message... Hit the # key to insert document references"
+                  Variant="Variant.Outlined"
+                  AdornmentColor="Color.Primary"
+                  AdornmentIcon="@Icons.Material.Filled.Send" />
+
+    <MudIconButton Icon="@Icons.Material.Filled.Send"
+                   Color="Color.Primary"
+                   OnClick="@SendMessage"
+                   Size="Size.Medium"
+                   Class="mb-1" />
+
+    <div id="caretAnchor" @ref="_caretPositionAnchor" class="caret-position-anchor" style="position:absolute;width:1px;height:1px;display:none;z-index:1499;"></div>
+
+    <AiAssistantReferenceSelector @ref="_referenceSelector"
+                              IsOpen="@_showReferenceSelector"
+                              References="@AllReferences"
+                              SearchTerm="@_currentSearchTerm"
+                              AnchorElement="@_caretPositionAnchor"
+                              OnReferenceSelected="HandleReferenceSelected"
+                              OnClose="HandleReferenceSelectorClosed" />
+</div>
+
+@if (!DisableFileUpload)
+{
+    <div class="mt-2">
+        <FileReferenceUploadComponent 
+            OnFileUploaded="HandleFileUploaded"
+            OnFilesUploaded="HandleMultipleFilesUploaded"
+            AllowMultiple="true"
+            MaxFileCount="10" />
+    </div>
+}
+
+@* Reference chips display *@
+@if (_attachedReferences.Any())
+{
+    <div class="mt-2">
+        <MudPaper Class="pa-2" Elevation="0" Style="background-color: var(--mud-palette-background-gray);">
+            <MudStack Row="false" Spacing="1">
+                <MudText Typo="Typo.caption" Style="font-weight: 500;">Attached References:</MudText>
+                <div class="d-flex flex-wrap gap-2">
+                    @foreach (var reference in _attachedReferences)
+                    {
+                        <MudChip T="string"
+                                 Size="Size.Small"
+                                 Variant="Variant.Outlined"
+                                 Color="@GetReferenceChipColor(reference.ReferenceType)"
+                                 Icon="@GetReferenceIcon(reference.ReferenceType)"
+                                 OnClose="() => RemoveReference(reference)">
+                            @reference.DisplayName
+                        </MudChip>
+                    }
+                </div>
+            </MudStack>
+        </MudPaper>
+    </div>
+}
+
+@code {
+    [Parameter] public EventCallback<string> OnMessageSubmit { get; set; }
+    [Parameter] public EventCallback<bool> OnInputFocusChanged { get; set; }
+    [Parameter] public List<ContentReferenceItemInfo>? AllReferences { get; set; }
+    [Parameter] public bool DisableFileUpload { get; set; } = false;
+
+    private MudTextField<string>? _mudChatTextField;
+    private AiAssistantReferenceSelector? _referenceSelector;
+    private ElementReference _caretPositionAnchor;
+
+    // Input state
+    private string _rawMessage = string.Empty;
+    private string _displayMessage = string.Empty;
+    private string _previousDisplayMessage = string.Empty;
+    private bool _chatTextLastKeyWasEnter = false;
+    private DotNetObjectReference<AiAssistantInputComponent>? _componentReference;
+    private InputState _currentState = InputState.Ready;
+
+    // Reference selection state
+    private bool _showReferenceSelector = false;
+    private string _currentSearchTerm = string.Empty;
+    private int _hashTagPosition = -1;
+
+    // New: Attached references list (no more text insertion)
+    private List<ContentReferenceItemInfo> _attachedReferences = new List<ContentReferenceItemInfo>();
+
+    // Enum to track component state
+    private enum InputState
+    {
+        Ready,
+        ProcessingInput,
+        SelectingReference,
+        Sending
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+
+        // Create component reference for JS interop
+        _componentReference = DotNetObjectReference.Create(this);
+
+        // Load references for selector (lightweight list)
+        await LoadReferencesAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try {
+                // Register JS interop
+                await JSRuntime.InvokeVoidAsync("import", "/js/contentReferenceUtils.js");
+                await Task.Delay(100); // Give a small delay to ensure JS is loaded
+                await JSRuntime.InvokeVoidAsync("registerInputComponent", _componentReference);
+
+                // Setup keyboard event interception
+                if (_mudChatTextField != null)
+                {
+                    string elementId = await JSRuntime.InvokeAsync<string>("eval",
+                        $"document.querySelector('.chat-input-row .mud-input').id");
+                    await JSRuntime.InvokeVoidAsync("setupKeyboardInterceptor", elementId, _componentReference);
+                }
+            }
+            catch (Exception ex) {
+                await Console.Error.WriteLineAsync($"Error in AiAssistantInputComponent.OnAfterRenderAsync: {ex.Message}");
+            }
+        }
+
+        // Update caret position anchor when reference selector is shown
+        if (_showReferenceSelector)
+        {
+            await UpdateCaretPositionAnchor();
+        }
+    }
+
+    // JS Interop Methods
+    [JSInvokable]
+    public bool ShouldInterceptKeyEvent(string key)
+    {
+        return _showReferenceSelector && _referenceSelector != null;
+    }
+
+    [JSInvokable]
+    public bool IsReferenceSelectorVisible()
+    {
+        return _showReferenceSelector;
+    }
+
+    [JSInvokable]
+    public void ProcessKeyboardEvent(string key)
+    {
+        if (_referenceSelector != null)
+        {
+            _referenceSelector.ProcessKeyPress(key);
+        }
+    }
+
+    [JSInvokable]
+    public async Task SendMessageFromJS()
+    {
+        if (_currentState != InputState.Sending && !string.IsNullOrWhiteSpace(_displayMessage))
+        {
+            await SendMessage();
+        }
+    }
+
+    private async Task HandleFileUploaded(ContentReferenceItemInfo uploadedReference)
+    {
+        if (uploadedReference == null)
+        {
+            Snackbar.Add("Error: Uploaded reference is null.", Severity.Error);
+            return;
+        }
+
+        // Check if reference is already attached
+        if (!_attachedReferences.Any(r => r.Id == uploadedReference.Id))
+        {
+            _attachedReferences.Add(uploadedReference);
+            
+            // Add the file reference to the global reference list if not already there
+            if (AllReferences != null && !AllReferences.Any(r => r.Id == uploadedReference.Id))
+            {
+                AllReferences.Add(uploadedReference);
+            }
+
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleMultipleFilesUploaded(List<ContentReferenceItemInfo> uploadedReferences)
+    {
+        if (uploadedReferences == null || !uploadedReferences.Any())
+        {
+            return;
+        }
+
+        foreach (var reference in uploadedReferences)
+        {
+            // Check if reference is already attached
+            if (!_attachedReferences.Any(r => r.Id == reference.Id))
+            {
+                _attachedReferences.Add(reference);
+                
+                // Add to global reference list if not already there
+                if (AllReferences != null && !AllReferences.Any(r => r.Id == reference.Id))
+                {
+                    AllReferences.Add(reference);
+                }
+            }
+        }
+
+        StateHasChanged();
+    }
+
+    private void RemoveReference(ContentReferenceItemInfo reference)
+    {
+        _attachedReferences.Remove(reference);
+        StateHasChanged();
+    }
+
+    private Color GetReferenceChipColor(ContentReferenceType type)
+    {
+        return type switch
+        {
+            ContentReferenceType.GeneratedDocument => Color.Primary,
+            ContentReferenceType.ExternalFile => Color.Secondary,
+            ContentReferenceType.ReviewItem => Color.Tertiary,
+            _ => Color.Default
+        };
+    }
+
+    private string GetReferenceIcon(ContentReferenceType type)
+    {
+        return type switch
+        {
+            ContentReferenceType.GeneratedDocument => Icons.Material.Filled.Description,
+            ContentReferenceType.ExternalFile => Icons.Material.Filled.AttachFile,
+            ContentReferenceType.ReviewItem => Icons.Material.Filled.RateReview,
+            ContentReferenceType.GeneratedSection => Icons.Material.Filled.Subject,
+            _ => Icons.Material.Filled.Link
+        };
+    }
+
+    private async Task UpdateCaretPositionAnchor()
+    {
+        try
+        {
+            if (_mudChatTextField != null)
+            {
+                // Get the input element ID safely
+                var inputId = await JSRuntime.InvokeAsync<string>("eval", 
+                    "document.querySelector('.mud-input-slot')?.id || ''");
+                
+                if (!string.IsNullOrEmpty(inputId))
+                {
+                    // Position the caret anchor using the element ID instead of passing the reference
+                    await JSRuntime.InvokeVoidAsync("positionCaretAnchorById", inputId, "caretAnchor");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error positioning caret anchor: {ex.Message}");
+        }
+    }
+
+    public void Dispose()
+    {
+        _componentReference?.Dispose();
+    }
+
+    private async Task LoadReferencesAsync()
+    {
+        if (ContentReferenceApiClient == null)
+            return;
+
+        if (AllReferences == null)
+        {
+            try
+            {
+                AllReferences = await ContentReferenceApiClient.GetAssistantReferenceListAsync(200);
+            }
+            catch (JsonException jsonEx)
+            {
+                Console.Error.WriteLine($"JSON Deserialization error loading references: {jsonEx.Message}");
+                Console.Error.WriteLine($"Path: {jsonEx.Path}, Line: {jsonEx.LineNumber}, Position: {jsonEx.BytePositionInLine}");
+                AllReferences = new List<ContentReferenceItemInfo>();
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error loading references: {ex.Message}");
+                Console.Error.WriteLine($"Exception type: {ex.GetType().Name}");
+                Console.Error.WriteLine($"Stack trace: {ex.StackTrace}");
+                AllReferences = new List<ContentReferenceItemInfo>();
+            }
+            StateHasChanged();
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task SendMessage()
+    {
+        if (string.IsNullOrWhiteSpace(_displayMessage) || _currentState == InputState.Sending)
+            return;
+
+        try
+        {
+            _currentState = InputState.Sending;
+
+            // Build the message with references
+            string messageToSend = BuildMessageWithReferences(_displayMessage);
+            await OnMessageSubmit.InvokeAsync(messageToSend);
+
+            // Clear state
+            _rawMessage = string.Empty;
+            _displayMessage = string.Empty;
+            _previousDisplayMessage = string.Empty;
+            _attachedReferences.Clear();
+
+            if (_mudChatTextField != null)
+            {
+                await _mudChatTextField.Clear();
+                await _mudChatTextField.FocusAsync();
+            }
+        }
+        finally
+        {
+            _currentState = InputState.Ready;
+            StateHasChanged();
+        }
+    }
+
+    private string BuildMessageWithReferences(string message)
+    {
+        // If there are no attached references, return the message as-is
+        if (!_attachedReferences.Any())
+        {
+            return message;
+        }
+
+        // Append references to the message in the expected format
+        var messageWithRefs = message;
+        foreach (var reference in _attachedReferences)
+        {
+            messageWithRefs += $" #(Reference:{reference.ReferenceType}:{reference.Id})";
+        }
+
+        return messageWithRefs;
+    }
+
+    private async Task OnChatTextKeyDown(KeyboardEventArgs e)
+    {
+        if (_currentState == InputState.Sending)
+            return;
+
+        // When '#' is pressed, enable reference suggestions
+        if (e.Key == "#" && _currentState == InputState.Ready)
+        {
+            _hashTagPosition = _displayMessage.Length;
+            _currentSearchTerm = "";
+            _showReferenceSelector = true;
+            _currentState = InputState.SelectingReference;
+
+            // Prevent default behavior for '#' key
+            await JSRuntime.InvokeVoidAsync("preventDefaultForKey", e.Key);
+
+            // Force render to show popover, then update position
+            StateHasChanged();
+            await Task.Delay(10); // Short delay to ensure DOM is updated
+            await UpdateCaretPositionAnchor();
+            return;
+        }
+
+        // Handle Enter key
+        if (e.Key == "Enter" && !e.ShiftKey)
+        {
+            if (_showReferenceSelector)
+            {
+                // If the reference selector is open, let it handle the Enter key
+                return;
+            }
+
+            // Prevent default behavior for Enter key
+            await JSRuntime.InvokeVoidAsync("preventDefaultForKey", e.Key);
+
+            // Otherwise, send the message
+            await SendMessage();
+        }
+    }
+
+    private async Task OnChatTextFieldUpdated(string newText)
+    {
+        if (_currentState == InputState.ProcessingInput || _currentState == InputState.Sending)
+            return;
+
+        _currentState = InputState.ProcessingInput;
+        try
+        {
+            // Store previous message for reference tracking
+            string oldText = _previousDisplayMessage;
+            _previousDisplayMessage = newText;
+            _displayMessage = newText;
+
+            // Update reference selection if active
+            if (_showReferenceSelector && _hashTagPosition >= 0)
+            {
+                UpdateSearchTerm(newText);
+                await UpdateCaretPositionAnchor();
+            }
+
+            // Check if we need to send the message
+            if (!string.IsNullOrWhiteSpace(newText) && _chatTextLastKeyWasEnter && !_showReferenceSelector)
+            {
+                await SendMessage();
+                return;
+            }
+
+            // Check for reference removals by comparing old and new text
+            if (oldText != newText)
+            {
+                await DetectReferenceChanges(oldText, newText);
+            }
+        }
+        finally
+        {
+            _currentState = _showReferenceSelector ? InputState.SelectingReference : InputState.Ready;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DetectReferenceChanges(string oldText, string newText)
+    {
+        // No longer needed since we're not inserting references into text
+        // References are managed separately in _attachedReferences list
+        await Task.CompletedTask;
+    }
+
+    private void UpdateSearchTerm(string text)
+    {
+        if (_hashTagPosition < 0 || _hashTagPosition >= text.Length || text[_hashTagPosition] != '#')
+        {
+            CloseReferenceSelector();
+            return;
+        }
+
+        int startPos = _hashTagPosition + 1;
+        if (startPos >= text.Length)
+        {
+            _currentSearchTerm = "";
+            return;
+        }
+
+        int endPos = text.IndexOf(' ', startPos);
+        if (endPos == -1) endPos = text.Length;
+
+        string searchTerm = text.Substring(startPos, endPos - startPos);
+        if (_currentSearchTerm != searchTerm)
+        {
+            _currentSearchTerm = searchTerm;
+        }
+    }
+
+    private void HandleReferenceSelected(ContentReferenceItemInfo reference)
+    {
+        Task.Run(async () => await InsertReference(reference));
+    }
+
+    private void HandleReferenceSelectorClosed()
+    {
+        CloseReferenceSelector();
+    }
+
+    private async Task InsertReference(ContentReferenceItemInfo reference)
+    {
+        if (_hashTagPosition < 0 || _currentState != InputState.SelectingReference)
+            return;
+
+        await InvokeAsync(async () =>
+        {
+            _currentState = InputState.ProcessingInput;
+            try
+            {
+                // Add reference to attached list if not already there
+                if (!_attachedReferences.Any(r => r.Id == reference.Id))
+                {
+                    _attachedReferences.Add(reference);
+                }
+
+                // Remove the # and search term from the message
+                string currentDisplayText = _displayMessage;
+                int displayStartPos = _hashTagPosition;
+                int displayEndPos = currentDisplayText.IndexOf(' ', displayStartPos);
+                if (displayEndPos == -1) displayEndPos = currentDisplayText.Length;
+
+                string newDisplayText = currentDisplayText.Substring(0, displayStartPos);
+                if (displayEndPos < currentDisplayText.Length)
+                    newDisplayText += currentDisplayText.Substring(displayEndPos);
+
+                // Close reference selector first
+                CloseReferenceSelector();
+
+                // Update the display text
+                _displayMessage = newDisplayText.TrimEnd();
+                _previousDisplayMessage = _displayMessage;
+
+                // Update the text field
+                if (_mudChatTextField != null)
+                {
+                    await _mudChatTextField.SetText(_displayMessage);
+                }
+
+                StateHasChanged();
+
+                // Move cursor to end of text
+                await Task.Delay(50);
+                await JSRuntime.InvokeVoidAsync("setCaretPosition", _displayMessage.Length);
+            }
+            finally
+            {
+                _currentState = InputState.Ready;
+                StateHasChanged();
+            }
+        });
+    }
+
+    private void CloseReferenceSelector()
+    {
+        _showReferenceSelector = false;
+        _hashTagPosition = -1;
+        _currentSearchTerm = string.Empty;
+        _currentState = InputState.Ready;
+        _chatTextLastKeyWasEnter = false; // Reset this to avoid premature sending
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task OnFocusChanged(bool hasFocus)
+    {
+        await OnInputFocusChanged.InvokeAsync(hasFocus);
+    }
+
+    public async Task Clear()
+    {
+        _rawMessage = string.Empty;
+        _displayMessage = string.Empty;
+        _previousDisplayMessage = string.Empty;
+        _attachedReferences.Clear();
+
+        if (_mudChatTextField != null)
+        {
+            await _mudChatTextField.Clear();
+        }
+
+        StateHasChanged();
+    }
+
+    public async Task Focus()
+    {
+        if (_mudChatTextField != null)
+        {
+            await _mudChatTextField.FocusAsync();
+        }
+    }
+}

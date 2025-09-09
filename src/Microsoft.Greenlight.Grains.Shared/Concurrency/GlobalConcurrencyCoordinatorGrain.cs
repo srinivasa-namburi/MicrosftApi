@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Grains.Shared.Contracts;
+using Microsoft.Greenlight.Shared.Enums;
 using Orleans.Concurrency;
 
 namespace Microsoft.Greenlight.Grains.Shared.Concurrency;
@@ -21,6 +22,14 @@ public class GlobalConcurrencyCoordinatorGrain : Grain, IGlobalConcurrencyCoordi
     private readonly Dictionary<Guid, ActiveLease> _active = new();
     private int _activeWeight = 0;
     private ConcurrencyCategory _category;
+    
+    // For pushing status updates
+    private ConcurrencyStatus? _lastPushedStatus;
+    private DateTime _lastPushTime = DateTime.MinValue;
+
+    // Throttling (lower to improve UI responsiveness)
+    // Force push at least every 10s instead of 2 minutes.
+    private static readonly TimeSpan ForcePushInterval = TimeSpan.FromSeconds(10);
 
     private sealed class PendingRequest
     {
@@ -50,7 +59,10 @@ public class GlobalConcurrencyCoordinatorGrain : Grain, IGlobalConcurrencyCoordi
     {
         var key = this.GetPrimaryKeyString();
         _category = Enum.TryParse<ConcurrencyCategory>(key, ignoreCase: true, out var cat) ? cat : ConcurrencyCategory.Generation;
+        // Timer 1: lease cleanup
         RegisterTimer(_ => CleanupExpiredLeasesAsync(), null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+        // Timer 2: periodic heartbeat push so UI gets updates even when queue/active counts remain unchanged
+        RegisterTimer(_ => PushStatusUpdateIfNeededAsync(), null, TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(15));
         return base.OnActivateAsync(cancellationToken);
     }
 
@@ -68,6 +80,16 @@ public class GlobalConcurrencyCoordinatorGrain : Grain, IGlobalConcurrencyCoordi
         {
             var lease = GrantLease(requesterId, weight, leaseTtl);
             _logger.LogDebug("Granted immediate lease {LeaseId} for {Category} to {Requester} (weight={Weight})", lease.LeaseId, _category, requesterId, weight);
+            
+            // Push status update for immediate lease grants
+            _ = PushStatusUpdateIfNeededAsync().ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    _logger.LogError(t.Exception, "Failed to push status update for immediate lease grant");
+                }
+            });
+            
             return lease;
         }
 
@@ -104,6 +126,16 @@ public class GlobalConcurrencyCoordinatorGrain : Grain, IGlobalConcurrencyCoordi
             if (_activeWeight < 0) _activeWeight = 0;
             _logger.LogDebug("Released lease {LeaseId} for {Category} (weight={Weight}); activeWeight={Active}", leaseId, _category, lease.Lease.Weight, _activeWeight);
             DrainQueue();
+            
+            // Push status update for lease releases
+            _ = PushStatusUpdateIfNeededAsync().ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    _logger.LogError(t.Exception, "Failed to push status update for lease release");
+                }
+            });
+            
             return Task.FromResult(true);
         }
 
@@ -154,6 +186,8 @@ public class GlobalConcurrencyCoordinatorGrain : Grain, IGlobalConcurrencyCoordi
     {
         var max = GetMaxConcurrency();
         var progressed = true;
+        var statusChanged = false;
+        
         while (progressed)
         {
             progressed = false;
@@ -166,6 +200,7 @@ public class GlobalConcurrencyCoordinatorGrain : Grain, IGlobalConcurrencyCoordi
                 _queue.Dequeue();
                 next.Tcs.TrySetException(new TimeoutException("Timeout waiting for concurrency lease"));
                 progressed = true;
+                statusChanged = true; // Queue changed
                 continue;
             }
 
@@ -175,13 +210,26 @@ public class GlobalConcurrencyCoordinatorGrain : Grain, IGlobalConcurrencyCoordi
                 var lease = GrantLease(next.RequesterId, next.Weight, next.LeaseTtl);
                 next.Tcs.TrySetResult(lease);
                 progressed = true;
+                statusChanged = true; // Active weight and queue changed
             }
+        }
+        
+        // Push status update if anything changed in the queue
+        if (statusChanged)
+        {
+            _ = PushStatusUpdateIfNeededAsync().ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    _logger.LogError(t.Exception, "Failed to push status update for queue changes");
+                }
+            });
         }
     }
 
-    private Task CleanupExpiredLeasesAsync()
+    private async Task CleanupExpiredLeasesAsync()
     {
-        if (_active.Count == 0) return Task.CompletedTask;
+        if (_active.Count == 0) return;
 
         var now = DateTime.UtcNow;
         var expired = _active.Values.Where(a => a.ExpiresUtc.HasValue && a.ExpiresUtc.Value <= now).Select(a => a.Lease.LeaseId).ToList();
@@ -198,7 +246,132 @@ public class GlobalConcurrencyCoordinatorGrain : Grain, IGlobalConcurrencyCoordi
         if (expired.Count > 0)
         {
             DrainQueue();
+            await PushStatusUpdateIfNeededAsync(); // Notify on changes
         }
-        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Pushes status updates to the system status aggregator if there have been significant changes.
+    /// Uses throttling to avoid excessive notifications while still being responsive.
+    /// </summary>
+    private async Task PushStatusUpdateIfNeededAsync(bool forceUpdate = false)
+    {
+        try
+        {
+            var now = DateTime.UtcNow;
+            var currentStatus = new ConcurrencyStatus
+            {
+                MaxConcurrency = GetMaxConcurrency(),
+                ActiveWeight = _activeWeight,
+                QueueLength = _queue.Count
+            };
+
+            // Only push if there's a significant change or enough time has passed
+            var shouldPush = forceUpdate ||
+                            _lastPushedStatus == null ||
+                            HasSignificantChange(_lastPushedStatus, currentStatus) ||
+                            now - _lastPushTime > ForcePushInterval; // much shorter interval
+
+            if (!shouldPush) return;
+
+            // Create status contribution for the aggregator
+            var utilizationPercent = currentStatus.MaxConcurrency > 0 ? (double)currentStatus.ActiveWeight / currentStatus.MaxConcurrency * 100 : 0;
+            var contribution = new Microsoft.Greenlight.Shared.Contracts.Messages.SystemStatusContribution
+            {
+                Source = "WorkerThreads",
+                ItemKey = $"{_category}Workers",
+                Status = GetWorkerStatusString(currentStatus),
+                Severity = GetWorkerSeverity(currentStatus),
+                StatusType = Microsoft.Greenlight.Shared.Enums.SystemStatusType.WorkerStatus,
+                StatusMessage = $"Active: {currentStatus.ActiveWeight}/{currentStatus.MaxConcurrency}, Queued: {currentStatus.QueueLength}",
+                Properties = new Dictionary<string, string>
+                {
+                    ["Category"] = _category.ToString(),
+                    ["MaxConcurrency"] = currentStatus.MaxConcurrency.ToString(),
+                    ["ActiveWeight"] = currentStatus.ActiveWeight.ToString(),
+                    ["QueueLength"] = currentStatus.QueueLength.ToString(),
+                    ["UtilizationPercent"] = utilizationPercent.ToString("F1")
+                },
+                ExpiresAtUtc = DateTime.UtcNow.AddMinutes(5) // 5 minute expiry
+            };
+
+            // Push to the system status aggregator
+            var aggregatorGrain = GrainFactory.GetGrain<ISystemStatusAggregatorGrain>(Guid.Empty);
+            await aggregatorGrain.ProcessStatusContributionAsync(contribution);
+
+            _lastPushedStatus = currentStatus;
+            _lastPushTime = now;
+
+            _logger.LogTrace("Pushed {Category} worker status update: Active={Active}/{Max}, Queue={Queue}", 
+                _category, currentStatus.ActiveWeight, currentStatus.MaxConcurrency, currentStatus.QueueLength);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to push status update for {Category} workers", _category);
+        }
+    }
+
+    /// <summary>
+    /// Determines if there's been a significant change in concurrency status that warrants a notification.
+    /// </summary>
+    private static bool HasSignificantChange(ConcurrencyStatus oldStatus, ConcurrencyStatus newStatus)
+    {
+        // Make more sensitive: any change in queue length or active weight triggers.
+        return oldStatus.ActiveWeight != newStatus.ActiveWeight ||
+               oldStatus.MaxConcurrency != newStatus.MaxConcurrency ||
+               oldStatus.QueueLength != newStatus.QueueLength;
+    }
+
+    private static string GetWorkerStatusString(ConcurrencyStatus status)
+    {
+        if (status.MaxConcurrency == 0)
+        {
+            return "Disabled";
+        }
+        
+        var utilizationPercent = (double)status.ActiveWeight / status.MaxConcurrency * 100;
+        
+        if (status.QueueLength == 0)
+        {
+            return utilizationPercent switch
+            {
+                0 => "Idle",
+                < 50 => "Light Load",
+                < 80 => "Moderate Load",
+                < 95 => "High Load",
+                _ => "Full Capacity"
+            };
+        }
+
+        // With queue present
+        return utilizationPercent >= 95 ? "Queued (Saturated)" : "Queued";
+    }
+    
+    private static Microsoft.Greenlight.Shared.Enums.SystemStatusSeverity GetWorkerSeverity(ConcurrencyStatus status)
+    {
+        // Updated severity mapping: Queues are normal unless they are proportionally large.
+        if (status.MaxConcurrency == 0)
+        {
+            return Microsoft.Greenlight.Shared.Enums.SystemStatusSeverity.Warning;
+        }
+
+        var max = status.MaxConcurrency;
+        var q = status.QueueLength;
+        var utilizationPercent = (double)status.ActiveWeight / max * 100;
+
+        // Critical only if queue is very large relative to capacity (e.g. > 5x) and fully saturated.
+        if (q >= max * 5 && utilizationPercent >= 95)
+        {
+            return Microsoft.Greenlight.Shared.Enums.SystemStatusSeverity.Critical;
+        }
+
+        // Warning if queue exceeds capacity (>= 2x) OR saturated with any queue.
+        if (q >= max * 2 || (utilizationPercent >= 95 && q > 0))
+        {
+            return Microsoft.Greenlight.Shared.Enums.SystemStatusSeverity.Warning;
+        }
+
+        // Otherwise informational.
+        return Microsoft.Greenlight.Shared.Enums.SystemStatusSeverity.Info;
     }
 }

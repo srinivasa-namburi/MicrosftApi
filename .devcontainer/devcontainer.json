@@ -1,0 +1,66 @@
+{
+  "name": "Microsoft Greenlight - Aspire WSL Dev Container",
+  "image": "mcr.microsoft.com/devcontainers/dotnet:9.0-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/azure-cli:1": {},
+    "ghcr.io/devcontainers/features/node:1": { "version": "20" },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/powershell:1": {}
+  },
+  "hostRequirements": {
+    "cpus": 8,
+    "memory": "32gb",
+    "storage": "64gb"
+  },
+  "containerEnv": {
+    "ASPNETCORE_ENVIRONMENT": "Development",
+    "DOTNET_ENVIRONMENT": "Development",
+    "ASPIRE_CONTAINER_RUNTIME": "docker"
+  },
+  "onCreateCommand": "dotnet workload update && dotnet workload install aspire && dotnet tool update -g dotnet-ef",
+  "postStartCommand": "dotnet dev-certs https --trust",
+  "forwardPorts": [17209, 5001, 6001, 15010, 21209, 22209],
+  "portsAttributes": {
+    "17209": {
+      "label": "Aspire Dashboard (HTTPS)",
+      "onAutoForward": "notify"
+    },
+    "5001": {
+      "label": "Web App (HTTPS)",
+      "onAutoForward": "notify"
+    },
+    "6001": {
+      "label": "API (HTTPS)",
+      "onAutoForward": "notify"
+    },
+    "15010": {
+      "label": "Aspire Dashboard (HTTP)",
+      "onAutoForward": "silent"
+    },
+    "21209": {
+      "label": "Aspire OTLP Endpoint",
+      "onAutoForward": "silent"
+    },
+    "22209": {
+      "label": "Aspire Resource Service",
+      "onAutoForward": "silent"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-dotnettools.csdevkit",
+        "ms-azuretools.vscode-docker",
+        "ms-vscode.vscode-json",
+        "ms-vscode.azure-account",
+        "GitHub.copilot",
+        "GitHub.copilot-chat"
+      ],
+      "settings": {
+        "dotnet.server.useOmnisharp": false,
+        "omnisharp.useModernNet": true
+      }
+    }
+  },
+  "remoteUser": "vscode"
+}

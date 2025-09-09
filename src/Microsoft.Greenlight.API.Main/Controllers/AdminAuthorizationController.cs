@@ -10,6 +10,7 @@ using Microsoft.Greenlight.Shared.Contracts.Authorization;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Models.Authorization;
 using System.Security.Claims;
+using Microsoft.Greenlight.Shared.Contracts.DTO.Authorization;
 
 namespace Microsoft.Greenlight.API.Main.Controllers;
 
@@ -56,7 +57,9 @@ public sealed class AdminAuthorizationController : BaseController
     {
         var user = HttpContext.User;
         var providerSubjectId = user.FindFirstValue("oid") ?? user.FindFirstValue(ClaimTypes.NameIdentifier) ?? user.FindFirstValue("sub");
-        
+
+        // Debug endpoint should not mutate state; proactive sync removed in favor of first‑login sync.
+
         var userRoles = await _db.UserRoles
             .Where(ur => ur.ProviderSubjectId == providerSubjectId)
             .ToListAsync();
@@ -352,6 +355,106 @@ public sealed class AdminAuthorizationController : BaseController
         await _cachedPermissionService.InvalidateUserPermissionsAsync(providerSubjectId);
         _logger.LogInformation("Role assignment removed for user {ProviderSubjectId} and cache invalidated", providerSubjectId);
         
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Lists known Entra App Roles and their current mappings to internal roles. Always includes 'DocumentGeneration'.
+    /// </summary>
+    [HttpGet("entra-roles")]
+    [RequiresPermission(PermissionKeys.ManageUsersAndRoles)]
+    public async Task<ActionResult<List<EntraRoleMappingInfo>>> ListEntraRoleMappings()
+    {
+        var roles = await _db.Roles.AsNoTracking().ToListAsync();
+
+        var mappings = roles
+            .Where(r => !string.IsNullOrEmpty(r.EntraAppRoleValue))
+            .GroupBy(r => r.EntraAppRoleValue!, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new EntraRoleMappingInfo
+            {
+                EntraAppRoleValue = g.Key,
+                EntraAppRoleId = g.FirstOrDefault(r => r.EntraAppRoleId.HasValue)?.EntraAppRoleId,
+                MappedRoleId = g.First().Id,
+                MappedRoleName = g.First().Name
+            })
+            .ToList();
+
+        // Ensure DocumentGeneration is present in the list even if not mapped
+        if (!mappings.Any(m => string.Equals(m.EntraAppRoleValue, "DocumentGeneration", StringComparison.OrdinalIgnoreCase)))
+        {
+            mappings.Add(new EntraRoleMappingInfo { EntraAppRoleValue = "DocumentGeneration" });
+        }
+
+        return Ok(mappings.OrderBy(m => m.EntraAppRoleValue, StringComparer.OrdinalIgnoreCase).ToList());
+    }
+
+    /// <summary>
+    /// Sets or changes the mapping from a Microsoft Entra App Role to an internal role.
+    /// Prevents removal of the last DocumentGeneration mapping.
+    /// </summary>
+    [HttpPost("entra-roles")]
+    [RequiresPermission(PermissionKeys.ManageUsersAndRoles)]
+    public async Task<IActionResult> UpsertEntraRoleMapping([FromBody] UpsertEntraRoleMappingRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.EntraAppRoleValue) && req.EntraAppRoleId is null)
+        {
+            return BadRequest("Either EntraAppRoleValue or EntraAppRoleId must be provided.");
+        }
+
+        var value = req.EntraAppRoleValue?.Trim();
+        var isDocumentGeneration = !string.IsNullOrEmpty(value) && string.Equals(value, "DocumentGeneration", StringComparison.OrdinalIgnoreCase);
+
+        // Single transaction to avoid transient violation of constraints
+        await using var tx = await _db.Database.BeginTransactionAsync();
+
+        // Find any existing mapping for this Entra role by value (preferred) or id
+        GreenlightRole? previouslyMappedRole = null;
+        if (!string.IsNullOrEmpty(value))
+        {
+            previouslyMappedRole = await _db.Roles.FirstOrDefaultAsync(r => r.EntraAppRoleValue != null && r.EntraAppRoleValue.ToLower() == value!.ToLower());
+        }
+        if (previouslyMappedRole == null && req.EntraAppRoleId is Guid rid)
+        {
+            previouslyMappedRole = await _db.Roles.FirstOrDefaultAsync(r => r.EntraAppRoleId == rid);
+        }
+
+        // If mapping points to a different role, detach it
+        if (previouslyMappedRole != null && previouslyMappedRole.Id != req.TargetRoleId)
+        {
+            // If this is DocumentGeneration, ensure we will immediately remap it to another role
+            if (isDocumentGeneration && req.TargetRoleId == Guid.Empty)
+            {
+                return BadRequest("Cannot remove DocumentGeneration mapping. It must be mapped to at least one role.");
+            }
+
+            previouslyMappedRole.EntraAppRoleValue = null;
+            previouslyMappedRole.EntraAppRoleId = null;
+            _db.Roles.Update(previouslyMappedRole);
+        }
+
+        // Set mapping on the target role
+        var target = await _db.Roles.FirstOrDefaultAsync(r => r.Id == req.TargetRoleId);
+        if (target == null)
+        {
+            return NotFound("Target role not found.");
+        }
+
+        // Prevent editing FullAccess through this path if needed — role protection rules
+        if (target.Id == AuthorizationIds.Roles.FullAccess)
+        {
+            // Note: Allow mapping changes, but ensure FullAccess remains valid; UI enforces caution.
+        }
+
+        target.EntraAppRoleValue = value;
+        target.EntraAppRoleId = req.EntraAppRoleId;
+        _db.Roles.Update(target);
+
+        await _db.SaveChangesAsync();
+        await tx.CommitAsync();
+
+        // Invalidate caches
+        await _cachedPermissionService.InvalidateAllPermissionsAsync();
+
         return NoContent();
     }
 

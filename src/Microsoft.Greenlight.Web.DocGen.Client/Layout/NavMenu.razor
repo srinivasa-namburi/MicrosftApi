@@ -1,92 +1,129 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
 @using Microsoft.Greenlight.Shared.Configuration
-@using Microsoft.Greenlight.Web.DocGen.Client.Components.Authorization
-@using Microsoft.Greenlight.Web.DocGen.Client.Services
 @using Microsoft.Greenlight.Shared.Contracts.Authorization
-@using Microsoft.Greenlight.Web.Shared.ServiceClients
 
-@inject IDocumentProcessApiClient DocumentProcessApiClient
-@inject IConfigurationApiClient ConfigurationApiClient
-@inject IDialogService DialogService
-@inject IAdminAuthorizationApiClient AdminAuthorizationApiClient
-@inject NavigationManager NavigationManager
 @inject ILogger<NavMenu> Logger
-@inject IPermissionService PermissionService
 @inject INavMenuStateService NavMenuStateService
 @implements IDisposable
 
-<MudNavMenu>
-    <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">Home</MudNavLink>
-    
+<MudNavMenu Class="pt-2">
+    @* Home *@
+    <MudNavLink Href="" 
+                Icon="fas fa-home" 
+                IconColor="Color.Primary"
+                Match="NavLinkMatch.All">Home</MudNavLink>
+
+    @* Documents Section *@
     <PermissionView Permission="@PermissionKeys.GenerateDocument">
-        <MudNavLink Href="/docs" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ViewList">All Documents</MudNavLink>
+        <MudNavLink Href="/docs" 
+                    Icon="fas fa-file-alt" 
+                    IconColor="Color.Primary">All Documents</MudNavLink>
+
+        @if (_documentProcesses.Any())
+        {
+            <MudNavGroup Title="Create Document" 
+                         Icon="fas fa-plus-circle" 
+                         IconColor="Color.Primary">
+                @foreach (var dp in _documentProcesses)
+                {
+                    var url = $"/{dp.ShortName}/generate";
+                    var description = !string.IsNullOrEmpty(dp.Description) ? dp.Description : dp.ShortName;
+                    <MudNavLink Href="@url" 
+                                Icon="fas fa-file-plus" 
+                                IconColor="Color.Primary">@description</MudNavLink>
+                }
+            </MudNavGroup>
+        }
     </PermissionView>
 
-    <PermissionView Permission="@PermissionKeys.GenerateDocument">
-        <MudNavGroup Title="New Document" Icon="@Icons.Material.Filled.Description">
-            @foreach (var dp in _documentProcesses)
-            {
-                var url = $"/{dp.ShortName}/generate";
-                var description = !string.IsNullOrEmpty(dp.Description) ? dp.Description : dp.ShortName;
-                <MudNavLink Href="@url">@description</MudNavLink>
-            }
-        </MudNavGroup>
-    </PermissionView>
+    @* CoPilot Section *@
+    @if (_documentProcesses.Any())
+    {
+        <PermissionView Permission="@PermissionKeys.Chat">
+            <MudNavGroup Title="AI Assistant" 
+                         Icon="fas fa-brain" 
+                         IconColor="Color.Success">
+                @foreach (var dp in _documentProcesses)
+                {
+                    var url = $"/ai-assistant/{dp.ShortName}";
+                    var description = !string.IsNullOrEmpty(dp.Description) ? dp.Description : dp.ShortName;
+                    <MudNavLink Href="@url" 
+                                Icon="@Icons.Material.Filled.Chat" 
+                                IconColor="Color.Success">@description</MudNavLink>
+                }
+            </MudNavGroup>
+        </PermissionView>
+    }
 
-    <PermissionView Permission="@PermissionKeys.Chat">
-        <MudNavGroup Title="Permitting CoPilot" Icon="@Icons.Material.Filled.AssistantDirection">
-            @foreach (var dp in _documentProcesses)
-            {
-                var url = $"/copilot/{dp.ShortName}";
-                var description = !string.IsNullOrEmpty(dp.Description) ? dp.Description : dp.ShortName;
-                <MudNavLink Href="@url" Match="NavLinkMatch.Prefix">@description</MudNavLink>
-            }
-        </MudNavGroup>
-    </PermissionView>
-
+    @* Reviews *@
     @if (_featureFlags?.EnableReviews == true)
     {
         <PermissionView AnyPermissions="@(new[] { PermissionKeys.DefineReviews, PermissionKeys.ExecuteReviews })">
-            <MudNavLink Href="/reviews" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Reviews">Reviews</MudNavLink>
+            <MudNavLink Href="/reviews" 
+                        Icon="fas fa-clipboard-check" 
+                        IconColor="Color.Primary">Reviews</MudNavLink>
         </PermissionView>
     }
-    
+
+    @* Mass Document Production *@
     @if (_featureFlags?.EnableMassDocumentProduction == true)
     {
         <PermissionView Permission="@PermissionKeys.GenerateDocument">
-            <MudNavLink Href="/mass-document-creation" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Receipt">Mass Document Creation</MudNavLink>
+            <MudNavLink Href="/mass-document-creation" 
+                        Icon="fas fa-layer-group" 
+                        IconColor="Color.Primary">Mass Document Creation</MudNavLink>
         </PermissionView>
     }
 
-    <PermissionView AnyPermissions="@(new[] { 
-        PermissionKeys.AlterDocumentProcessesAndLibraries, 
-        PermissionKeys.AlterSystemConfiguration, 
-        PermissionKeys.ManageUsersAndRoles 
-    })">
-        <MudNavGroup Title="Administration" Icon="@Icons.Material.Filled.AdminPanelSettings">
+    @* Administration Section *@
+    <PermissionView AnyPermissions="@(new[] { PermissionKeys.AlterDocumentProcessesAndLibraries, PermissionKeys.AlterSystemConfiguration, PermissionKeys.ManageUsersAndRoles })">
+        <MudDivider Class="my-2" />
+        <MudNavGroup Title="Administration" 
+                     Icon="fas fa-cog" 
+                     IconColor="Color.Secondary"
+                     data-testid="admin-nav-group">
             <PermissionView Permission="@PermissionKeys.AlterDocumentProcessesAndLibraries">
-                <MudNavLink Href="/document-processes" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Build">Document Processes</MudNavLink>
+                <MudNavLink Href="/document-processes" 
+                            Icon="fas fa-cogs" 
+                            IconColor="Color.Secondary">Document Processes</MudNavLink>
             </PermissionView>
-            
             <PermissionView Permission="@PermissionKeys.AlterDocumentProcessesAndLibraries">
-                <MudNavLink Href="/document-libraries" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.LibraryBooks">Document Libraries</MudNavLink>
+                <MudNavLink Href="/document-libraries" 
+                            Icon="fas fa-book" 
+                            IconColor="Color.Secondary">Document Libraries</MudNavLink>
             </PermissionView>
-            
             <PermissionView Permission="@PermissionKeys.AlterSystemConfiguration">
-                <MudNavLink Href="/plugins" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Api">MCP Servers</MudNavLink>
+                <MudNavLink Href="/plugins" 
+                            Icon="fas fa-plug" 
+                            IconColor="Color.Secondary">MCP Servers</MudNavLink>
             </PermissionView>
+            @if (_featureFlags!.EnableExternalDataView)
+            {
+                <PermissionView Permission="@PermissionKeys.AlterSystemConfiguration">
+                    <MudNavLink Href="/admin/external-data" 
+                                Icon="fas fa-database" 
+                                IconColor="Color.Secondary">External Data</MudNavLink>
+                </PermissionView>
+            }
             
-            <PermissionView Permission="@PermissionKeys.AlterDocumentProcessesAndLibraries">
-                <MudNavLink Href="/domain-groups" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Group">Domain Groups</MudNavLink>
-            </PermissionView>
-            
+            @* Domain Groups are temporarily disabled as we reimplement the concept for MCP instead of OpenAPI *@
+            @* <PermissionView Permission="@PermissionKeys.AlterDocumentProcessesAndLibraries">
+                <MudNavLink Href="/domain-groups" 
+                            Icon="fas fa-users" 
+                            IconColor="Color.Secondary">Domain Groups</MudNavLink>
+            </PermissionView> *@
             <PermissionView Permission="@PermissionKeys.AlterSystemConfiguration">
-                <MudNavLink Href="/configuration" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Settings">Configuration</MudNavLink>
+                <MudNavLink Href="/configuration" 
+                            Icon="fas fa-sliders-h" 
+                            IconColor="Color.Secondary"
+                            data-testid="configuration-nav-link">Configuration</MudNavLink>
             </PermissionView>
-            
+           
             <PermissionView Permission="@PermissionKeys.ManageUsersAndRoles">
-                <MudNavLink Href="/admin/authorization" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Security">Authorization</MudNavLink>
+                <MudNavLink Href="/admin/authorization" 
+                            Icon="fas fa-shield-alt" 
+                            IconColor="Color.Secondary">Authorization</MudNavLink>
             </PermissionView>
-
         </MudNavGroup>
     </PermissionView>
 </MudNavMenu>
@@ -99,15 +136,11 @@
     protected override async Task OnInitializedAsync()
     {
         Logger.LogInformation("NavMenu OnInitializedAsync starting");
-        
         try
         {
-            // Subscribe to NavMenu state changes
             NavMenuStateService.NavMenuChanged += OnNavMenuStateChanged;
-
             Logger.LogInformation("Loading NavMenu data through state service");
             await LoadNavMenuDataAsync();
-            
             Logger.LogInformation("NavMenu initialization completed. Document processes: {ProcessCount}", _documentProcesses.Count);
         }
         catch (Exception ex)
@@ -120,15 +153,11 @@
     {
         try
         {
-            // Load data through the state service (handles caching)
             var processesTask = NavMenuStateService.GetDocumentProcessesAsync();
             var featureFlagsTask = NavMenuStateService.GetFeatureFlagsAsync();
-
             await Task.WhenAll(processesTask, featureFlagsTask);
-
             _documentProcesses = await processesTask;
             _featureFlags = await featureFlagsTask as ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions;
-
             StateHasChanged();
         }
         catch (Exception ex)

@@ -77,9 +77,24 @@ public class FileApiClient : WebAssemblyBaseServiceClient<FileApiClient>, IFileA
         return await response.Content.ReadFromJsonAsync<ExportedDocumentLinkInfo>();
     }
 
-    public string GetDownloadUrlForExportedLinkId(Guid linkId)
+    public string GetDownloadUrlForExportedLinkId(Guid linkId, bool? openInline = null)
     {
-        return $"{HttpClient.BaseAddress}api/file/download/asset/{linkId}";
+        var url = $"{HttpClient.BaseAddress}api/file/download/asset/{linkId}";
+        if (openInline.HasValue)
+        {
+            url += openInline.Value ? "?disposition=inline" : "?disposition=attachment";
+        }
+        return url;
+    }
+
+    public string GetDownloadUrlForExternalLinkAsset(Guid assetId, bool? openInline = null)
+    {
+        var url = $"{HttpClient.BaseAddress}api/file/download/external-asset/{assetId}";
+        if (openInline.HasValue)
+        {
+            url += openInline.Value ? "?disposition=inline" : "?disposition=attachment";
+        }
+        return url;
     }
 
     public string ExtractBlobUrlFromProxiedUrl(string proxiedUrl)
@@ -90,5 +105,21 @@ public class FileApiClient : WebAssemblyBaseServiceClient<FileApiClient>, IFileA
         // WebUtility.UrlDecode the cleaned URL
         cleanedUrl = WebUtility.UrlDecode(cleanedUrl);
         return cleanedUrl;
+    }
+
+    public async Task<string> UploadFileToDocumentProcessAsync(string processShortName, string fileName, IBrowserFile file)
+    {
+        var encodedFileName = Uri.EscapeDataString(fileName);
+        var encodedProcessName = Uri.EscapeDataString(processShortName);
+        var url = $"/api/file/upload/document-process/{encodedProcessName}/{encodedFileName}";
+        return await UploadFileAsync(url, file);
+    }
+
+    public async Task<string> UploadFileToDocumentLibraryAsync(string libraryShortName, string fileName, IBrowserFile file)
+    {
+        var encodedFileName = Uri.EscapeDataString(fileName);
+        var encodedLibraryName = Uri.EscapeDataString(libraryShortName);
+        var url = $"/api/file/upload/document-library/{encodedLibraryName}/{encodedFileName}";
+        return await UploadFileAsync(url, file);
     }
 }

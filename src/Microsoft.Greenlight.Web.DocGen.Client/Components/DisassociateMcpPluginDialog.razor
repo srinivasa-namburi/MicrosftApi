@@ -4,20 +4,20 @@
 
 <MudDialog>
     <DialogContent>
-        <MudForm @bind-Form="form" OnValidSubmit="HandleValidSubmit">
-            <MudSelect @bind-Value="selectedDocumentProcessId" Label="Select Document Process" Required="true">
+        <MudForm @ref="form">
+            <MudSelect T="Guid" @bind-Value="selectedDocumentProcessId" Label="Select Document Process" Required="true">
                 @foreach (var process in _documentProcesses)
                 {
                     <MudSelectItem Value="@process.Id">@process.ShortName</MudSelectItem>
                 }
             </MudSelect>
-            <MudButton Class="mt-4" Type="Submit" Variant="Variant.Filled" Color="Color.Primary">Disassociate</MudButton>
+            <MudButton Class="mt-4" Variant="Variant.Filled" Color="Color.Primary" OnClick="HandleValidSubmit">Disassociate</MudButton>
         </MudForm>
     </DialogContent>
 </MudDialog>
 
 @code {
-    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = default!;
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = default!;
     [Parameter] public McpPluginInfo Plugin { get; set; }
     private List<DocumentProcessInfo> _documentProcesses = new();
     private Guid selectedDocumentProcessId;

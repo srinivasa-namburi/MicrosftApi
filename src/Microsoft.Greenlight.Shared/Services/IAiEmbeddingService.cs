@@ -50,6 +50,11 @@ public interface IAiEmbeddingService
     Task<(string DeploymentName, int Dimensions)> ResolveEmbeddingConfigForDocumentLibraryAsync(string documentLibraryShortName);
 
     /// <summary>
+    /// Resolves the effective embedding deployment name and vector dimensions for a content reference type.
+    /// </summary>
+    Task<(string DeploymentName, int Dimensions)> ResolveEmbeddingConfigForContentReferenceTypeAsync(Microsoft.Greenlight.Shared.Enums.ContentReferenceType referenceType);
+
+    /// <summary>
     /// Calculates the cosine similarity between two embedding vectors
     /// </summary>
     /// <param name="vector1">First embedding vector</param>

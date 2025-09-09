@@ -1,38 +1,31 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
-using Azure;
-using Azure.Storage.Blobs;
-using Azure.Storage.Blobs.Models;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Grains.Ingestion.Contracts;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Models;
+using Microsoft.Greenlight.Shared.Services.FileStorage;
 using Orleans.Concurrency;
-using System;
-using System.Net;
-using System.Threading.Tasks;
 
 namespace Microsoft.Greenlight.Grains.Ingestion;
 
 /// <summary>
 /// Grain responsible for moving an ingested document from its discovery location
-/// to a canonical ingest path, updating DB state, and cleaning up the source blob.
+/// to a canonical ingest path, updating DB state, and cleaning up the source file.
 /// 
 /// Behavior highlights
-/// - Resolves the source from OriginalDocumentUrl when available to avoid path reconstruction errors
+/// - Uses file storage service providers to support multiple storage types
 /// - Generates a unique target name (ingest/yyyy-MM-dd/{documentId}/{leaf-file}) to avoid collisions
-/// - On successful copy: first updates DB (FinalBlobUrl, FileCopied), then deletes source
-/// - On 409 (already exists): heals DB to FileCopied and deletes source (with existence validation)
-/// - If source is missing but target exists or FinalBlobUrl is set, heals and returns success (idempotent)
-/// - Validates that FinalBlobUrl points at an existing blob to prevent downstream 404s
+/// - On successful copy: first updates DB (FinalBlobUrl, FileCopied), then acknowledges source
+/// - If source is already gone, attempts to heal state rather than failing immediately
+/// - Validates that target file exists to prevent downstream 404s
 /// </summary>
 [Reentrant]
 public class DocumentFileCopyGrain : Grain, IDocumentFileCopyGrain
 {
     private readonly ILogger<DocumentFileCopyGrain> _logger;
-    private readonly BlobServiceClient _blobServiceClient;
+    private readonly IFileStorageServiceFactory _fileStorageServiceFactory;
     private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
 
     /// <summary>
@@ -40,18 +33,17 @@ public class DocumentFileCopyGrain : Grain, IDocumentFileCopyGrain
     /// </summary>
     public DocumentFileCopyGrain(
         ILogger<DocumentFileCopyGrain> logger,
-        [FromKeyedServices("blob-docing")] BlobServiceClient blobServiceClient,
+        IFileStorageServiceFactory fileStorageServiceFactory,
         IDbContextFactory<DocGenerationDbContext> dbContextFactory)
     {
         _logger = logger;
-        _blobServiceClient = blobServiceClient;
+        _fileStorageServiceFactory = fileStorageServiceFactory;
         _dbContextFactory = dbContextFactory;
     }
 
     /// <summary>
-    /// Copies the blob for the specified document to the ingest area and updates DB state.
-    /// This method is idempotent and self-healing for common race conditions (e.g., 409 conflicts).
-    /// Validates that the FinalBlobUrl we save actually exists.
+    /// Copies the file for the specified document to the ingest area and updates DB state.
+    /// This method is idempotent and self-healing for common race conditions.
     /// </summary>
     /// <param name="documentId">The document id.</param>
     /// <returns>A <see cref="FileCopyResult"/> indicating success or failure.</returns>
@@ -78,90 +70,105 @@ public class DocumentFileCopyGrain : Grain, IDocumentFileCopyGrain
             return FileCopyResult.Fail("Document record is missing FileName.");
         }
 
-        // Resolve source directly from OriginalDocumentUrl when present to avoid nested-folder path issues.
-        // Fallback to Container + FolderPath/FileName for legacy rows with no OriginalDocumentUrl.
-        string sourceContainerName;
-        string sourceBlobPath;
-        try
+        // Fast-path: For DiscoveredForConsumer, skip any physical file operation and simply
+        // mark as FileCopied so the pipeline continues through the processing queue.
+        if (entityToCopy.IngestionState == IngestionState.DiscoveredForConsumer)
         {
-            if (!string.IsNullOrWhiteSpace(entityToCopy.OriginalDocumentUrl))
+            try
             {
-                var sourceUri = new Uri(entityToCopy.OriginalDocumentUrl);
-                // Container is the first path segment: https://account.blob.core.windows.net/{container}/{blobPath}
-                sourceContainerName = sourceUri.Segments.Length > 1 ? sourceUri.Segments[1].TrimEnd('/') : entityToCopy.Container;
-
-                // Blob path is the remainder after host and container
-                var prefix = $"{sourceUri.Scheme}://{sourceUri.Host}/{sourceContainerName}/";
-                sourceBlobPath = entityToCopy.OriginalDocumentUrl.Replace(prefix, string.Empty, StringComparison.OrdinalIgnoreCase);
-
-                // Strip SAS if present
-                var qIndex = sourceBlobPath.IndexOf('?', StringComparison.Ordinal);
-                if (qIndex >= 0)
+                await using var db = await _dbContextFactory.CreateDbContextAsync();
+                var entity = await db.IngestedDocuments.FirstOrDefaultAsync(x => x.Id == documentId);
+                if (entity == null)
                 {
-                    sourceBlobPath = sourceBlobPath.Substring(0, qIndex);
+                    _logger.LogWarning("IngestedDocument with Id {Id} not found in DB during DiscoveredForConsumer fast-path.", documentId);
+                    return FileCopyResult.Fail("Document record not found during fast-path.");
                 }
 
-                // Decode any percent-encoding
-                sourceBlobPath = WebUtility.UrlDecode(sourceBlobPath);
+                // For file-storage-sourced items, the OriginalDocumentUrl is already the canonical path.
+                // If FinalBlobUrl is missing, default it to OriginalDocumentUrl.
+                entity.FinalBlobUrl ??= entity.OriginalDocumentUrl;
+                entity.IngestionState = IngestionState.FileCopied;
+                entity.ModifiedUtc = DateTime.UtcNow;
+                await db.SaveChangesAsync();
+                _logger.LogInformation("[CopyFileAsync] DiscoveredForConsumer fast-path: set FileCopied for {DocumentId}", documentId);
+                return FileCopyResult.Ok();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in DiscoveredForConsumer fast-path for documentId {DocumentId}", documentId);
+                return FileCopyResult.Fail($"Fast-path update failed: {ex.Message}");
+            }
+        }
+
+        try
+        {
+            // Get the appropriate file storage service for this document
+            IFileStorageService fileStorageService;
+            
+            // Check if this is a document library (any of the library types) or a document process
+            // Note: PrimaryDocumentProcessLibrary is used for document processes, not libraries
+            bool isDocumentLibrary = entityToCopy.DocumentLibraryType == DocumentLibraryType.AdditionalDocumentLibrary ||
+                                   entityToCopy.DocumentLibraryType == DocumentLibraryType.Reviews;
+
+            if (isDocumentLibrary)
+            {
+                var name = entityToCopy.DocumentLibraryOrProcessName ?? string.Empty;
+                var services = await _fileStorageServiceFactory.GetServicesForDocumentProcessOrLibraryAsync(
+                    name, isDocumentLibrary: true);
+                fileStorageService = services.FirstOrDefault()!;
             }
             else
             {
-                sourceContainerName = entityToCopy.Container;
-                var folder = entityToCopy.FolderPath ?? string.Empty;
-                var file = entityToCopy.FileName;
-                var combined = string.IsNullOrEmpty(folder)
-                    ? file
-                    : $"{folder.TrimEnd('/')}/{file.TrimStart('/')}";
-                // Normalize to avoid accidental double slashes
-                sourceBlobPath = string.Join("/", combined.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries));
+                var name = entityToCopy.DocumentLibraryOrProcessName ?? string.Empty;
+                var services = await _fileStorageServiceFactory.GetServicesForDocumentProcessOrLibraryAsync(
+                    name, isDocumentLibrary: false);
+                fileStorageService = services.FirstOrDefault()!;
             }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to parse OriginalDocumentUrl for {DocumentId}", documentId);
-            return FileCopyResult.Fail("Invalid OriginalDocumentUrl for document.");
-        }
 
-        // Generate a unique, collision-free target name under the same container.
-        // Using documentId ensures uniqueness across files with identical leaf names and across retries.
-        const string ingestPath = "ingest";
-        var todayString = DateTime.UtcNow.ToString("yyyy-MM-dd");
-        var simpleFileName = sourceBlobPath.Contains('/')
-            ? sourceBlobPath[(sourceBlobPath.LastIndexOf('/') + 1)..]
-            : sourceBlobPath;
-        var uniqueSubfolder = documentId.ToString("N");
-        var newBlobName = $"{ingestPath}/{todayString}/{uniqueSubfolder}/{simpleFileName}";
-
-        try
-        {
-            var sourceContainerClient = _blobServiceClient.GetBlobContainerClient(sourceContainerName);
-            var targetContainerClient = _blobServiceClient.GetBlobContainerClient(entityToCopy.Container);
-            await targetContainerClient.CreateIfNotExistsAsync();
-
-            var sourceBlobClient = sourceContainerClient.GetBlobClient(sourceBlobPath);
-            var targetBlobClient = targetContainerClient.GetBlobClient(newBlobName);
-
-            // If the source is already gone, attempt to heal state rather than failing immediately.
-            if (!await sourceBlobClient.ExistsAsync())
+            if (fileStorageService == null)
             {
-                _logger.LogWarning("Source blob {SourceBlobName} not found in container {SourceContainerName} for documentId {DocumentId}",
-                    sourceBlobPath, sourceContainerName, documentId);
+                _logger.LogError("No file storage service found for {DocumentLibraryType} {Name}", 
+                    entityToCopy.DocumentLibraryType, entityToCopy.DocumentLibraryOrProcessName);
+                return FileCopyResult.Fail($"No file storage service configured for {entityToCopy.DocumentLibraryType} {entityToCopy.DocumentLibraryOrProcessName}");
+            }
 
-                // If FinalBlobUrl is already set, assume previous copy completed successfully.
+            // Build the source path based on the original location
+            var sourcePath = string.IsNullOrEmpty(entityToCopy.FolderPath) 
+                ? entityToCopy.FileName 
+                : $"{entityToCopy.FolderPath.TrimEnd('/')}/{entityToCopy.FileName}";
+
+            // Generate a unique target path to avoid collisions (used when moving)
+            const string ingestPath = "ingest";
+            var todayString = DateTime.UtcNow.ToString("yyyy-MM-dd");
+            var uniqueSubfolder = documentId.ToString("N");
+            var targetPath = $"{ingestPath}/{todayString}/{uniqueSubfolder}/{entityToCopy.FileName}";
+
+            _logger.LogInformation("Attempting to copy file from {SourcePath} to {TargetPath} using {ServiceType}", 
+                sourcePath, targetPath, fileStorageService.GetType().Name);
+
+            // Check if source file exists
+            var sourceExists = await fileStorageService.FileExistsAsync(sourcePath);
+            if (!sourceExists)
+            {
+                _logger.LogWarning("Source file {SourcePath} not found for documentId {DocumentId}", sourcePath, documentId);
+
+                // If FinalBlobUrl is already set, assume previous copy completed successfully
                 if (!string.IsNullOrWhiteSpace(entityToCopy.FinalBlobUrl))
                 {
                     _logger.LogInformation("FinalBlobUrl already set for {DocumentId}, assuming previous copy completed.", documentId);
                     return FileCopyResult.Ok();
                 }
 
-                // Otherwise, if the expected target exists, update DB and return success.
-                if (await targetBlobClient.ExistsAsync())
+                // Check if target already exists from a previous run
+                var targetExists = await fileStorageService.FileExistsAsync(targetPath);
+                if (targetExists)
                 {
+                    var targetUrl = fileStorageService.GetFullPath(targetPath);
                     await using var dbHeal = await _dbContextFactory.CreateDbContextAsync();
                     var healEntity = await dbHeal.IngestedDocuments.FirstOrDefaultAsync(x => x.Id == documentId);
                     if (healEntity != null)
                     {
-                        healEntity.FinalBlobUrl = targetBlobClient.Uri.ToString();
+                        healEntity.FinalBlobUrl = targetUrl;
                         healEntity.IngestionState = IngestionState.FileCopied;
                         healEntity.ModifiedUtc = DateTime.UtcNow;
                         await dbHeal.SaveChangesAsync();
@@ -170,134 +177,85 @@ public class DocumentFileCopyGrain : Grain, IDocumentFileCopyGrain
                     }
                 }
 
-                return FileCopyResult.Fail($"Source blob '{sourceBlobPath}' not found in container '{sourceContainerName}'.");
+                return FileCopyResult.Fail($"Source file '{sourcePath}' not found.");
             }
 
-            _logger.LogInformation("Attempting to copy blob {SourceBlobFullPath} to {TargetBlobFullPath}", sourceBlobClient.Uri, targetBlobClient.Uri);
-
-            // Start server-side copy
-            var _ = await targetBlobClient.StartCopyFromUriAsync(sourceBlobClient.Uri);
-
-            // Poll status; consider backoff for very large blobs in future if needed
-            BlobProperties properties;
-            do
+            // Check if target already exists
+            var targetAlreadyExists = await fileStorageService.FileExistsAsync(targetPath);
+            if (targetAlreadyExists)
             {
-                await Task.Delay(500);
-                properties = await targetBlobClient.GetPropertiesAsync();
-                _logger.LogDebug("Polling copy status for {TargetBlobName}: {CopyStatus}", newBlobName, properties.CopyStatus);
-            }
-            while (properties.CopyStatus == CopyStatus.Pending);
-
-            if (properties.CopyStatus == CopyStatus.Success)
-            {
-                // Validate that the target actually exists before writing FinalBlobUrl
-                if (!await targetBlobClient.ExistsAsync())
-                {
-                    _logger.LogError("Copy reported success but target does not exist for {TargetBlob}", newBlobName);
-                    return FileCopyResult.Fail("Copy reported success but target blob was not found.");
-                }
-
-                _logger.LogInformation("Successfully copied blob {SourceBlobName} from {SourceContainer} to {TargetContainer}/{NewBlobName}",
-                    sourceBlobPath, sourceContainerName, entityToCopy.Container, newBlobName);
-
-                // 1) Update DB so processing uses FinalBlobUrl even if source delete fails
+                _logger.LogWarning("Target file {TargetPath} already exists for documentId {DocumentId}. Healing DB state.", targetPath, documentId);
+                
+                // Heal DB to FileCopied using the existing target
+                var targetUrl = fileStorageService.GetFullPath(targetPath);
                 await using (var db = await _dbContextFactory.CreateDbContextAsync())
                 {
                     var entityToUpdate = await db.IngestedDocuments.FirstOrDefaultAsync(x => x.Id == documentId);
-                    if (entityToUpdate == null)
+                    if (entityToUpdate != null)
                     {
-                        _logger.LogWarning("IngestedDocument with Id {Id} not found in DB for update after copy (second fetch).", documentId);
-                        return FileCopyResult.Fail("Couldn't find file record for update after successful copy.");
+                        entityToUpdate.FinalBlobUrl = targetUrl;
+                        entityToUpdate.IngestionState = IngestionState.FileCopied;
+                        entityToUpdate.ModifiedUtc = DateTime.UtcNow;
+                        await db.SaveChangesAsync();
+                        _logger.LogInformation("Updated IngestedDocument {Id} with existing target URL: {Url}", documentId, targetUrl);
                     }
-
-                    entityToUpdate.FinalBlobUrl = targetBlobClient.Uri.ToString();
-                    entityToUpdate.IngestionState = IngestionState.FileCopied;
-                    entityToUpdate.ModifiedUtc = DateTime.UtcNow;
-                    await db.SaveChangesAsync();
-                    _logger.LogInformation("Updated IngestedDocument {Id} with FinalBlobUrl and FileCopied state. New URL: {NewUrl}",
-                        documentId, entityToUpdate.FinalBlobUrl);
                 }
 
-                // 2) Delete the source to prevent reprocessing. Ignore delete errors.
+                // Acknowledge the source file (which may delete or move it depending on the provider)
                 try
                 {
-                    await sourceBlobClient.DeleteIfExistsAsync();
-                    _logger.LogInformation("Deleted source blob {SourceBlobName} from {SourceContainer}", sourceBlobPath, sourceContainerName);
+                    await fileStorageService.AcknowledgeFileAsync(sourcePath, targetPath);
+                    _logger.LogInformation("Acknowledged source file {SourcePath} after finding existing target.", sourcePath);
                 }
-                catch (Exception delEx)
+                catch (Exception ackEx)
                 {
-                    _logger.LogWarning(delEx, "Failed to delete source blob {SourceBlobName} from {SourceContainer}. Continuing.", sourceBlobPath, sourceContainerName);
+                    _logger.LogWarning(ackEx, "Failed to acknowledge source file {SourcePath}. Continuing.", sourcePath);
                 }
 
                 return FileCopyResult.Ok();
             }
 
-            // Copy not successful
-            _logger.LogError("Copy failed for blob {SourceBlobName} to {TargetBlobName}. Status: {Status}, Description: {Description}",
-                sourceBlobPath, newBlobName, properties.CopyStatus, properties.CopyStatusDescription);
-            return FileCopyResult.Fail($"Copy failed: {properties.CopyStatus} - {properties.CopyStatusDescription}");
-        }
-        catch (RequestFailedException exception)
-        {
-            // Handle conflict: target already exists (e.g., retried run or previous copy completed)
-            if (exception.Status == 409)
+            // Perform the acknowledgment/copy operation. If provider is in ack-only mode, the returned URL will be the source URL.
+            var finalTargetUrl = await fileStorageService.AcknowledgeFileAsync(sourcePath, targetPath);
+
+            // If provider moves files, verify the target exists; otherwise we accept the source URL
+            if (fileStorageService.ShouldMoveFiles)
             {
-                var targetContainerClient = _blobServiceClient.GetBlobContainerClient(entityToCopy.Container);
-                var targetBlobClient = targetContainerClient.GetBlobClient(newBlobName);
-
-                // Validate existence before healing DB
-                if (!await targetBlobClient.ExistsAsync())
+                var finalTargetExists = await fileStorageService.FileExistsAsync(targetPath);
+                if (!finalTargetExists)
                 {
-                    _logger.LogError("Received 409 for {TargetBlobName} but target does not exist.", newBlobName);
-                    return FileCopyResult.Fail("Conflict reported but target blob not found.");
+                    _logger.LogError("Acknowledge operation completed but target file {TargetPath} does not exist for documentId {DocumentId}", targetPath, documentId);
+                    return FileCopyResult.Fail("File acknowledgment completed but target file was not found.");
                 }
-
-                _logger.LogWarning(exception, "Target blob already exists (409) for {NewBlobName}. Healing DB and deleting source {SourceBlobName}.", newBlobName, sourceBlobPath);
-
-                try
-                {
-                    // Heal DB to FileCopied using the known target
-                    await using (var db = await _dbContextFactory.CreateDbContextAsync())
-                    {
-                        var entityToUpdate = await db.IngestedDocuments.FirstOrDefaultAsync(x => x.Id == documentId);
-                        if (entityToUpdate != null)
-                        {
-                            entityToUpdate.FinalBlobUrl = targetBlobClient.Uri.ToString();
-                            entityToUpdate.IngestionState = IngestionState.FileCopied;
-                            entityToUpdate.ModifiedUtc = DateTime.UtcNow;
-                            await db.SaveChangesAsync();
-                        }
-                    }
-                }
-                catch (Exception healEx)
-                {
-                    _logger.LogWarning(healEx, "Failed to update DB after 409 for {DocumentId}.", documentId);
-                }
-
-                try
-                {
-                    var sourceContainerClient = _blobServiceClient.GetBlobContainerClient(sourceContainerName);
-                    var sourceBlobClient = sourceContainerClient.GetBlobClient(sourceBlobPath);
-                    await sourceBlobClient.DeleteIfExistsAsync();
-                    _logger.LogInformation("Deleted source blob {SourceBlobName} after 409 conflict on target.", sourceBlobPath);
-                }
-                catch (Exception delEx)
-                {
-                    _logger.LogWarning(delEx, "Failed deleting source blob after 409 for {DocumentId}", documentId);
-                }
-
-                return FileCopyResult.Ok();
             }
 
-            // Other storage errors
-            _logger.LogError(exception, "RequestFailedException while copying blob {SourceBlobName} to {TargetContainerName}/{NewBlobName}",
-                sourceBlobPath, entityToCopy.Container, newBlobName);
-            return FileCopyResult.Fail($"Failed to copy blob {sourceBlobPath}: {exception.Message}");
+            _logger.LogInformation("Successfully copied file from {SourcePath} to {TargetPath} for documentId {DocumentId}", 
+                sourcePath, targetPath, documentId);
+
+            // Update DB with new location
+            await using (var db = await _dbContextFactory.CreateDbContextAsync())
+            {
+                var entityToUpdate = await db.IngestedDocuments.FirstOrDefaultAsync(x => x.Id == documentId);
+                if (entityToUpdate == null)
+                {
+                    _logger.LogWarning("IngestedDocument with Id {Id} not found in DB for update after copy.", documentId);
+                    return FileCopyResult.Fail("Couldn't find file record for update after successful copy.");
+                }
+
+                entityToUpdate.FinalBlobUrl = finalTargetUrl;
+                entityToUpdate.IngestionState = IngestionState.FileCopied;
+                entityToUpdate.ModifiedUtc = DateTime.UtcNow;
+                await db.SaveChangesAsync();
+                _logger.LogInformation("Updated IngestedDocument {Id} with FinalBlobUrl and FileCopied state. New URL: {NewUrl}",
+                    documentId, entityToUpdate.FinalBlobUrl);
+            }
+
+            return FileCopyResult.Ok();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unexpected error copying blob {SourceBlobName} for documentId {DocumentId}", sourceBlobPath, documentId);
-            return FileCopyResult.Fail($"Unexpected error copying blob {sourceBlobPath}: {ex.Message}");
+            _logger.LogError(ex, "Unexpected error copying file for documentId {DocumentId}", documentId);
+            return FileCopyResult.Fail($"Unexpected error copying file: {ex.Message}");
         }
     }
 }

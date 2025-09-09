@@ -48,12 +48,12 @@
                 
                 <MudItem xs="12">
                     <MudText Typo="Typo.subtitle1">Source Type</MudText>
-                    <MudChip Color="@GetSourceTypeColor(_plugin.SourceType)">@_plugin.SourceType</MudChip>
+                    <MudChip T="string" Color="@GetSourceTypeColor(_plugin.SourceType)">@_plugin.SourceType</MudChip>
                 </MudItem>
                 
                 <MudItem xs="12">
                     <MudText Typo="Typo.h5">Versions</MudText>
-                    <MudTable Items="@_plugin.Versions.OrderByDescending(v => v.Major).ThenByDescending(v => v.Minor).ThenByDescending(v => v.Patch)" 
+                    <MudTable T="McpPluginVersionInfo" Items="@_plugin.Versions.OrderByDescending(v => v.Major).ThenByDescending(v => v.Minor).ThenByDescending(v => v.Patch)" 
                              Hover="true" Striped="true">
                         <HeaderContent>
                             <MudTh>Version</MudTh>
@@ -78,7 +78,7 @@
                             <MudTd>
                                 @if (context.EnvironmentVariables != null && context.EnvironmentVariables.Any())
                                 {
-                                    <MudChip Size="Size.Small">@context.EnvironmentVariables.Count variables</MudChip>
+                                    <MudChip T="string" Size="Size.Small">@context.EnvironmentVariables.Count variables</MudChip>
                                 }
                                 else
                                 {
@@ -173,7 +173,7 @@
         
         dialog.Result.ContinueWith(async result =>
         {
-            if (!result.Result.Cancelled)
+            if (!result.Result.Canceled)
             {
                 await LoadPlugin();
                 StateHasChanged();
@@ -195,7 +195,7 @@
         
         dialog.Result.ContinueWith(async result =>
         {
-            if (!result.Result.Cancelled)
+            if (!result.Result.Canceled)
             {
                 await LoadPlugin();
                 StateHasChanged();
@@ -216,7 +216,7 @@
         
         dialog.Result.ContinueWith(async result =>
         {
-            if (!result.Result.Cancelled)
+            if (!result.Result.Canceled)
             {
                 await LoadPlugin();
                 StateHasChanged();
@@ -240,7 +240,7 @@
 
         dialog.Result.ContinueWith(async result =>
         {
-            if (!result.Result.Cancelled)
+            if (!result.Result.Canceled)
             {
                 await DeletePlugin();
             }

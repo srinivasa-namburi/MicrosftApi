@@ -65,17 +65,38 @@ public class AiEmbeddingService : IAiEmbeddingService
 
     private async Task<float[]> GenerateEmbeddingsSafeAsync(string text, string deploymentName, int? dimensions)
     {
+        var prep = PrepareEmbeddingOptions(deploymentName, dimensions);
+
         try
         {
             var embeddingClient = _openAIClient.GetEmbeddingClient(deploymentName);
-            var options = new EmbeddingGenerationOptions { EndUserId = "system" };
-            if (dimensions.HasValue && dimensions.Value > 0)
+            var options = prep.Options;
+            bool attemptedWithDimensions = prep.AttemptedWithDimensions;
+
+            if (prep.OmitDimensionsForModel && dimensions.HasValue)
             {
-                options.Dimensions = dimensions.Value;
+                _logger.LogDebug("Omitting explicit dimensions {Dims} for model deployment {Deployment} as it does not support overriding dimensions.", dimensions.Value, deploymentName);
             }
 
-            var embeddingResult = await embeddingClient.GenerateEmbeddingAsync(text, options);
-            return embeddingResult.Value.ToFloats().ToArray();
+            try
+            {
+                var embeddingResult = await embeddingClient.GenerateEmbeddingAsync(text, options);
+                return embeddingResult.Value.ToFloats().ToArray();
+            }
+            catch (Exception innerEx) when (!IsContextLengthExceeded(innerEx))
+            {
+                // Specific retry logic: if we tried with dimensions and server indicates they are not supported, retry once without dimensions.
+                var msg = innerEx.ToString();
+                if (attemptedWithDimensions && (msg.Contains("does not support specifying dimensions", StringComparison.OrdinalIgnoreCase) || msg.Contains("This model does not support specifying dimensions", StringComparison.OrdinalIgnoreCase)))
+                {
+                    _logger.LogInformation("Model deployment {Deployment} rejected dimension specification. Retrying without dimensions.", deploymentName);
+                    var retryOptions = new EmbeddingGenerationOptions { EndUserId = "system" }; // no Dimensions set
+                    var retryResult = await embeddingClient.GenerateEmbeddingAsync(text, retryOptions);
+                    return retryResult.Value.ToFloats().ToArray();
+                }
+
+                throw; // rethrow to outer catch blocks
+            }
         }
         catch (Exception ex) when (IsContextLengthExceeded(ex))
         {
@@ -88,6 +109,28 @@ public class AiEmbeddingService : IAiEmbeddingService
             _logger.LogError(ex, "Error generating embeddings for deployment {Deployment}", deploymentName);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Prepares embedding options based on deployment and desired dimensions.
+    /// Exposed as internal for unit testing of dimension omission rules.
+    /// </summary>
+    internal static (EmbeddingGenerationOptions Options, bool AttemptedWithDimensions, bool OmitDimensionsForModel) PrepareEmbeddingOptions(string deploymentName, int? dimensions)
+    {
+        // Some legacy / base OpenAI models (e.g. text-embedding-ada-002) do NOT support specifying dimensions.
+        // Requirement: if deployment name CONTAINS "text-embedding-ada-002" (case-insensitive) we must not send Dimensions at all.
+        bool omitDimensionsForModel = deploymentName.Contains("text-embedding-ada-002", StringComparison.OrdinalIgnoreCase);
+
+        var options = new EmbeddingGenerationOptions { EndUserId = "system" };
+        bool attemptedWithDimensions = false;
+
+        if (!omitDimensionsForModel && dimensions.HasValue && dimensions.Value > 0)
+        {
+            options.Dimensions = dimensions.Value;
+            attemptedWithDimensions = true;
+        }
+
+        return (options, attemptedWithDimensions, omitDimensionsForModel);
     }
 
     private static bool IsContextLengthExceeded(Exception ex)
@@ -293,6 +336,84 @@ public class AiEmbeddingService : IAiEmbeddingService
                 .Include(d => d.AiModel)
                 .AsNoTracking()
                 .FirstOrDefaultAsync(x => x.Id == lib.EmbeddingModelDeploymentId.Value);
+            if (dep != null)
+            {
+                deploymentName = dep.DeploymentName;
+                if (!dimsOverride.HasValue)
+                {
+                    dimsOverride = dep.AiModel?.EmbeddingSettings?.Dimensions;
+                }
+            }
+        }
+
+        int effectiveDims = dimsOverride ?? defaultDims;
+        return (deploymentName, effectiveDims);
+    }
+
+    /// <inheritdoc />
+    public async Task<(string DeploymentName, int Dimensions)> ResolveEmbeddingConfigForContentReferenceTypeAsync(ContentReferenceType referenceType)
+    {
+        var opts = _serviceConfigurationOptions.GreenlightServices.VectorStore;
+        var cr = opts.ContentReferences;
+
+        Guid? deploymentId = referenceType switch
+        {
+            ContentReferenceType.GeneratedDocument => cr.GeneratedDocument.EmbeddingModelDeploymentId,
+            ContentReferenceType.GeneratedSection => cr.GeneratedSection.EmbeddingModelDeploymentId,
+            ContentReferenceType.ExternalFile => cr.ExternalFile.EmbeddingModelDeploymentId,
+            ContentReferenceType.ReviewItem => cr.ReviewItem.EmbeddingModelDeploymentId,
+            ContentReferenceType.ExternalLinkAsset => cr.ExternalLinkAsset.EmbeddingModelDeploymentId,
+            _ => null
+        };
+
+        string? deploymentNameOverride = referenceType switch
+        {
+            ContentReferenceType.GeneratedDocument => cr.GeneratedDocument.EmbeddingModelDeploymentName,
+            ContentReferenceType.GeneratedSection => cr.GeneratedSection.EmbeddingModelDeploymentName,
+            ContentReferenceType.ExternalFile => cr.ExternalFile.EmbeddingModelDeploymentName,
+            ContentReferenceType.ReviewItem => cr.ReviewItem.EmbeddingModelDeploymentName,
+            ContentReferenceType.ExternalLinkAsset => cr.ExternalLinkAsset.EmbeddingModelDeploymentName,
+            _ => null
+        };
+
+        int? dimsOverride = referenceType switch
+        {
+            ContentReferenceType.GeneratedDocument => cr.GeneratedDocument.EmbeddingDimensionsOverride,
+            ContentReferenceType.GeneratedSection => cr.GeneratedSection.EmbeddingDimensionsOverride,
+            ContentReferenceType.ExternalFile => cr.ExternalFile.EmbeddingDimensionsOverride,
+            ContentReferenceType.ReviewItem => cr.ReviewItem.EmbeddingDimensionsOverride,
+            ContentReferenceType.ExternalLinkAsset => cr.ExternalLinkAsset.EmbeddingDimensionsOverride,
+            _ => null
+        };
+
+        string deploymentName = _serviceConfigurationOptions.OpenAi.EmbeddingModelDeploymentName;
+        int defaultDims = opts.VectorSize > 0 ? opts.VectorSize : 1536;
+
+        // Prefer explicit deployment name from config if provided
+        if (!string.IsNullOrWhiteSpace(deploymentNameOverride))
+        {
+            deploymentName = deploymentNameOverride!;
+            // If dimensions not specified, try to resolve from deployment by name
+            if (!dimsOverride.HasValue)
+            {
+                await using var db = await _dbContextFactory.CreateDbContextAsync();
+                var depByName = await db.AiModelDeployments
+                    .Include(d => d.AiModel)
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(x => x.DeploymentName == deploymentNameOverride);
+                if (depByName?.AiModel?.EmbeddingSettings?.Dimensions is int nameDims && nameDims > 0)
+                {
+                    dimsOverride = nameDims;
+                }
+            }
+        }
+        else if (deploymentId.HasValue)
+        {
+            await using var db = await _dbContextFactory.CreateDbContextAsync();
+            var dep = await db.AiModelDeployments
+                .Include(d => d.AiModel)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == deploymentId.Value);
             if (dep != null)
             {
                 deploymentName = dep.DeploymentName;

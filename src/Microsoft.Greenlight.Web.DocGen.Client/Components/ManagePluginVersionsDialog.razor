@@ -12,7 +12,7 @@
         <MudText Typo="Typo.h6">Manage Plugin Versions</MudText>
     </TitleContent>
     <DialogContent>
-        <MudTable Items="Plugin.Versions" Hover="true" Striped="true">
+        <MudTable T="McpPluginVersionInfo" Items="Plugin.Versions" Hover="true" Striped="true">
             <HeaderContent>
                 <MudTh>Version</MudTh>
                 <MudTh>Command</MudTh>
@@ -44,7 +44,7 @@
 </MudDialog>
 
 @code {
-    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
     [Parameter] public McpPluginInfo Plugin { get; set; } = null!;
 
     private void EditVersion(McpPluginVersionInfo version)
