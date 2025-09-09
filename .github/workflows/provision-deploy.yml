@@ -332,7 +332,8 @@ jobs:
             exit 0
           fi
           appsettings=$(cat Microsoft.Greenlight.AppHost/appsettings.Production.json)
-          azureAdConfig=$(echo "${PVICO_ENTRA_CREDENTIALS}")
+          # Ensure TrustedCallerClientIds defaults to [ ClientId ] if not provided
+          azureAdConfig=$(echo "${PVICO_ENTRA_CREDENTIALS}" | jq -c 'if (.TrustedCallerClientIds? | length > 0) then . else . + {TrustedCallerClientIds: ([.ClientId] | map(select(. != null)))} end')
           merged=$(echo "${appsettings}" | jq --argjson azureAdConfig "${azureAdConfig}" '. + {AzureAd: $azureAdConfig}')
           echo "${merged}" > Microsoft.Greenlight.AppHost/appsettings.Production.json
           echo "*****************************************************************************************"
