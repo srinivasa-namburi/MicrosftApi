@@ -103,84 +103,82 @@ jobs:
           creds: ${{ steps.convert-creds.outputs.azure-credentials }}
       - name: Validate AKS access (post-login)
         if: ${{ vars.DEPLOY_AKS != 'true' }}
-        uses: azure/CLI@v2
-        with:
-          inlineScript: |
-            set -euo pipefail
+        run: |
+          set -euo pipefail
 
-            echo "Validating Existing AKS Cluster Access:"
-            echo "────────────────────────────────────────"
+          echo "Validating Existing AKS Cluster Access:"
+          echo "────────────────────────────────────────"
 
-            AKS_RG="${AKS_RESOURCE_GROUP:-${AZURE_RESOURCE_GROUP}}"
-            AKS_NAME="${AKS_CLUSTER_NAME:-aks-${AZURE_RESOURCE_GROUP}}"
+          AKS_RG="${AKS_RESOURCE_GROUP:-${AZURE_RESOURCE_GROUP}}"
+          AKS_NAME="${AKS_CLUSTER_NAME:-aks-${AZURE_RESOURCE_GROUP}}"
 
-            echo "  Cluster: $AKS_NAME"
-            echo "  Resource Group: $AKS_RG"
-            echo ""
+          echo "  Cluster: $AKS_NAME"
+          echo "  Resource Group: $AKS_RG"
+          echo ""
 
-            echo "  Checking cluster existence and permissions..."
-            set +e
-            AKS_SHOW_OUTPUT=$(az aks show --name "$AKS_NAME" --resource-group "$AKS_RG" --query "name" -o tsv 2>&1)
-            AKS_SHOW_EXIT=$?
-            set -e
+          echo "  Checking cluster existence and permissions..."
+          set +e
+          AKS_SHOW_OUTPUT=$(az aks show --name "$AKS_NAME" --resource-group "$AKS_RG" --query "name" -o tsv 2>&1)
+          AKS_SHOW_EXIT=$?
+          set -e
 
-            if [[ $AKS_SHOW_EXIT -eq 0 ]] && [[ -n "$AKS_SHOW_OUTPUT" ]]; then
-              echo "  ✅ Cluster exists and accessible via Azure API"
+          if [[ $AKS_SHOW_EXIT -eq 0 ]] && [[ -n "$AKS_SHOW_OUTPUT" ]]; then
+            echo "  ✅ Cluster exists and accessible via Azure API"
 
-              CLUSTER_MODE=$(az aks show --name "$AKS_NAME" --resource-group "$AKS_RG" --query "apiServerAccessProfile.enablePrivateCluster" -o tsv 2>/dev/null || echo "false")
+            CLUSTER_MODE=$(az aks show --name "$AKS_NAME" --resource-group "$AKS_RG" --query "apiServerAccessProfile.enablePrivateCluster" -o tsv 2>/dev/null || echo "false")
 
-              if [[ "$CLUSTER_MODE" == "true" ]]; then
-                echo "  ⚠️  Private cluster detected - API server not publicly accessible"
-                echo "     Ensure GitHub Actions runners can reach the cluster via VNET connectivity"
-              else
-                echo "  ✅ Public cluster - API server is accessible"
-              fi
-
-              echo ""
-              echo "  Testing credential retrieval..."
-              if az aks get-credentials --resource-group "$AKS_RG" --name "$AKS_NAME" --overwrite-existing >/dev/null 2>&1; then
-                echo "  ✅ Successfully retrieved cluster credentials"
-
-                echo ""
-                echo "  Testing kubectl connectivity..."
-                if timeout 10 kubectl cluster-info >/dev/null 2>&1; then
-                  echo "  ✅ Successfully connected to cluster API server"
-
-                  NAMESPACE="${AKS_NAMESPACE:-greenlight-${GITHUB_EVENT_INPUTS_ENVIRONMENT:-dev}}"
-                  if kubectl get namespace "$NAMESPACE" >/dev/null 2>&1; then
-                    echo "  ✅ Namespace '$NAMESPACE' exists"
-                  else
-                    echo "  ℹ️  Namespace '$NAMESPACE' will be created during deployment"
-                  fi
-                else
-                  if [[ "$CLUSTER_MODE" == "true" ]]; then
-                    echo "  ❌ Cannot connect to private cluster API server"
-                    echo "     GitHub Actions runners must have network access to private clusters"
-                    exit 1
-                  else
-                    echo "  ❌ Cannot connect to cluster API server (timeout)"
-                    echo "     Possible issues: network/firewall or API server availability"
-                    exit 1
-                  fi
-                fi
-              else
-                echo "  ❌ Failed to retrieve cluster credentials"
-                echo "     Ensure the service principal has required AKS roles"
-                exit 1
-              fi
+            if [[ "$CLUSTER_MODE" == "true" ]]; then
+              echo "  ⚠️  Private cluster detected - API server not publicly accessible"
+              echo "     Ensure GitHub Actions runners can reach the cluster via VNET connectivity"
             else
-              echo "  ❌ Cluster does not exist or no access permissions"
-              echo "     az aks show exit code: $AKS_SHOW_EXIT"
-              echo "     az aks show output:"
-              echo "$AKS_SHOW_OUTPUT"
-              echo ""
-              echo "     To create the cluster, set DEPLOY_AKS=true in your GitHub environment variables"
-              exit 1
+              echo "  ✅ Public cluster - API server is accessible"
             fi
 
             echo ""
-            echo "  AKS cluster validation completed"
-            echo "  ────────────────────────────────────────"
+            echo "  Testing credential retrieval..."
+            if az aks get-credentials --resource-group "$AKS_RG" --name "$AKS_NAME" --overwrite-existing >/dev/null 2>&1; then
+              echo "  ✅ Successfully retrieved cluster credentials"
+
+              echo ""
+              echo "  Testing kubectl connectivity..."
+              if timeout 10 kubectl cluster-info >/dev/null 2>&1; then
+                echo "  ✅ Successfully connected to cluster API server"
+
+                NAMESPACE="${AKS_NAMESPACE:-greenlight-${GITHUB_EVENT_INPUTS_ENVIRONMENT:-dev}}"
+                if kubectl get namespace "$NAMESPACE" >/dev/null 2>&1; then
+                  echo "  ✅ Namespace '$NAMESPACE' exists"
+                else
+                  echo "  ℹ️  Namespace '$NAMESPACE' will be created during deployment"
+                fi
+              else
+                if [[ "$CLUSTER_MODE" == "true" ]]; then
+                  echo "  ❌ Cannot connect to private cluster API server"
+                  echo "     GitHub Actions runners must have network access to private clusters"
+                  exit 1
+                else
+                  echo "  ❌ Cannot connect to cluster API server (timeout)"
+                  echo "     Possible issues: network/firewall or API server availability"
+                  exit 1
+                fi
+              fi
+            else
+              echo "  ❌ Failed to retrieve cluster credentials"
+              echo "     Ensure the service principal has required AKS roles"
+              exit 1
+            fi
+          else
+            echo "  ❌ Cluster does not exist or no access permissions"
+            echo "     az aks show exit code: $AKS_SHOW_EXIT"
+            echo "     az aks show output:"
+            echo "$AKS_SHOW_OUTPUT"
+            echo ""
+            echo "     To create the cluster, set DEPLOY_AKS=true in your GitHub environment variables"
+            exit 1
+          fi
+
+          echo ""
+          echo "  AKS cluster validation completed"
+          echo "  ────────────────────────────────────────"
         env:
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
           AKS_CLUSTER_NAME: ${{ vars.AKS_CLUSTER_NAME }}
@@ -189,162 +187,124 @@ jobs:
           GITHUB_EVENT_INPUTS_ENVIRONMENT: ${{ github.event.inputs.environment }}
       - name: Deploy Azure Resources
         id: azure-deploy
-        uses: azure/CLI@v2
-        with:
-          inlineScript: |
-            set -euo pipefail
+        run: |
+          set -euo pipefail
 
-            # Install CLI dependencies in Azure CLI container (Alpine Linux)
-            echo "[GitHub] Installing CLI dependencies in Azure CLI container..."
-            echo "[GitHub] Detecting package manager..."
+          # Verify critical tools are available (already in Ubuntu runner)
+          echo "[GitHub] Verifying required tools..."
+          for tool in ssh-keygen awk jq python3 az; do
+            if ! command -v $tool >/dev/null 2>&1; then
+              echo "[GitHub] ERROR: Required tool '$tool' not found"
+              exit 1
+            fi
+            echo "[GitHub]   ✅ $tool: $(command -v $tool)"
+          done
 
-            # Azure CLI container uses Alpine Linux (apk)
-            if command -v apk >/dev/null 2>&1; then
-              echo "[GitHub] Using apk (Alpine Linux)"
-              apk add --no-cache \
-                openssh-client \
-                gawk \
-                python3 \
-                py3-pip \
-                jq \
-                curl \
-                bash \
-                sed \
-                grep \
-                coreutils \
-                || { echo "[GitHub] ERROR: Failed to install dependencies"; exit 1; }
-            elif command -v apt-get >/dev/null 2>&1; then
-              echo "[GitHub] Using apt-get (Debian/Ubuntu)"
-              apt-get update -y && apt-get install -y \
-                openssh-client \
-                gawk \
-                python3 \
-                python3-pip \
-                jq \
-                curl \
-                || { echo "[GitHub] ERROR: Failed to install dependencies"; exit 1; }
-            else
-              echo "[GitHub] ERROR: No supported package manager found (apk or apt-get)"
+          # Clean up any existing outputs file
+          rm -f azure-outputs.env
+
+          # Optional AKS provisioning (idempotent) when DEPLOY_AKS=true
+          if [ "${DEPLOY_AKS:-false}" = "true" ]; then
+            echo "[GitHub] DEPLOY_AKS=true - ensuring AKS cluster exists before infra deployment"
+            chmod +x build/scripts/provision-aks-cluster.sh
+
+            AKS_RG="${AKS_RESOURCE_GROUP:-${AZURE_RESOURCE_GROUP}}"
+            AKS_NAME="${AKS_CLUSTER_NAME:-aks-${AZURE_RESOURCE_GROUP}}"
+            DEPLOYMENT_MODEL="${DEPLOYMENT_MODEL:-public}"
+
+            # Provision cluster non-interactively (will no-op if exists)
+            PROVISION_ARGS=()
+            PROVISION_ARGS+=("$AKS_RG")
+            PROVISION_ARGS+=("$AZURE_LOCATION")
+            PROVISION_ARGS+=("$AKS_NAME")
+            PROVISION_ARGS+=("--deployment-model" "$DEPLOYMENT_MODEL")
+
+            # Add subnet parameters for private/hybrid modes
+            if [[ "$DEPLOYMENT_MODEL" == "private" ]] || [[ "$DEPLOYMENT_MODEL" == "hybrid" ]]; then
+              if [ -n "${AKS_SUBNET:-}" ]; then
+                PROVISION_ARGS+=("--subnet-id" "$AKS_SUBNET")
+              fi
+            fi
+
+            echo "[GitHub] Running AKS provisioning script..."
+            ACCEPT_DEFAULTS=true \
+            AKS_DIAGNOSTICLOGS="${AKS_DIAGNOSTICLOGS:-false}" \
+            build/scripts/provision-aks-cluster.sh "${PROVISION_ARGS[@]}"
+
+            AKS_EXIT_CODE=$?
+            if [ $AKS_EXIT_CODE -ne 0 ]; then
+              echo "[GitHub] ❌ ERROR: AKS provisioning failed with exit code $AKS_EXIT_CODE"
+              echo "[GitHub] Cannot continue without AKS cluster - aborting deployment"
               exit 1
             fi
 
-            echo "[GitHub] ✅ CLI dependencies installed successfully"
+            echo "[GitHub] ✅ AKS cluster provisioned successfully"
 
-            # Verify critical tools are available
-            echo "[GitHub] Verifying installed tools..."
-            for tool in ssh-keygen awk jq python3; do
-              if ! command -v $tool >/dev/null 2>&1; then
-                echo "[GitHub] ERROR: Required tool '$tool' not found after installation"
-                exit 1
+            # Capture workload identity variables if summary exists
+            if [ -f "aks-provision-summary.json" ]; then
+              echo "[GitHub] Capturing workload identity values from provisioning summary"
+              WI_CLIENT_ID=$(jq -r '.workloadIdentity.clientId // empty' aks-provision-summary.json || true)
+              WI_PRINCIPAL_ID=$(jq -r '.workloadIdentity.principalId // empty' aks-provision-summary.json || true)
+              WI_RESOURCE_ID=$(jq -r '.workloadIdentity.resourceId // empty' aks-provision-summary.json || true)
+              WI_NAME=$(echo "$WI_RESOURCE_ID" | sed 's|.*/||' || true)
+
+              if [ -n "$WI_CLIENT_ID" ]; then
+                echo "WORKLOAD_IDENTITY_CLIENT_ID=$WI_CLIENT_ID" >> $GITHUB_ENV
+                echo "WORKLOAD_IDENTITY_PRINCIPAL_ID=$WI_PRINCIPAL_ID" >> $GITHUB_ENV
+                echo "WORKLOAD_IDENTITY_NAME=$WI_NAME" >> $GITHUB_ENV
+                echo "[GitHub] Updated environment with workload identity values"
               fi
-              echo "[GitHub]   ✅ $tool: $(command -v $tool)"
-            done
-
-            # Clean up any existing outputs file
-            rm -f azure-outputs.env
-
-            # Optional AKS provisioning (idempotent) when DEPLOY_AKS=true
-            if [ "${DEPLOY_AKS:-false}" = "true" ]; then
-              echo "[GitHub] DEPLOY_AKS=true - ensuring AKS cluster exists before infra deployment"
-              chmod +x build/scripts/provision-aks-cluster.sh
-
-              AKS_RG="${AKS_RESOURCE_GROUP:-${AZURE_RESOURCE_GROUP}}"
-              AKS_NAME="${AKS_CLUSTER_NAME:-aks-${AZURE_RESOURCE_GROUP}}"
-              DEPLOYMENT_MODEL="${DEPLOYMENT_MODEL:-public}"
-
-              # Provision cluster non-interactively (will no-op if exists)
-              PROVISION_ARGS=()
-              PROVISION_ARGS+=("$AKS_RG")
-              PROVISION_ARGS+=("$AZURE_LOCATION")
-              PROVISION_ARGS+=("$AKS_NAME")
-              PROVISION_ARGS+=("--deployment-model" "$DEPLOYMENT_MODEL")
-
-              # Add subnet parameters for private/hybrid modes
-              if [[ "$DEPLOYMENT_MODEL" == "private" ]] || [[ "$DEPLOYMENT_MODEL" == "hybrid" ]]; then
-                if [ -n "${AKS_SUBNET:-}" ]; then
-                  PROVISION_ARGS+=("--subnet-id" "$AKS_SUBNET")
-                fi
-              fi
-
-              echo "[GitHub] Running AKS provisioning script..."
-              ACCEPT_DEFAULTS=true \
-              AKS_DIAGNOSTICLOGS="${AKS_DIAGNOSTICLOGS:-false}" \
-              build/scripts/provision-aks-cluster.sh "${PROVISION_ARGS[@]}"
-
-              AKS_EXIT_CODE=$?
-              if [ $AKS_EXIT_CODE -ne 0 ]; then
-                echo "[GitHub] ❌ ERROR: AKS provisioning failed with exit code $AKS_EXIT_CODE"
-                echo "[GitHub] Cannot continue without AKS cluster - aborting deployment"
-                exit 1
-              fi
-
-              echo "[GitHub] ✅ AKS cluster provisioned successfully"
-
-              # Capture workload identity variables if summary exists
-              if [ -f "aks-provision-summary.json" ]; then
-                echo "[GitHub] Capturing workload identity values from provisioning summary"
-                WI_CLIENT_ID=$(jq -r '.workloadIdentity.clientId // empty' aks-provision-summary.json || true)
-                WI_PRINCIPAL_ID=$(jq -r '.workloadIdentity.principalId // empty' aks-provision-summary.json || true)
-                WI_RESOURCE_ID=$(jq -r '.workloadIdentity.resourceId // empty' aks-provision-summary.json || true)
-                WI_NAME=$(echo "$WI_RESOURCE_ID" | sed 's|.*/||' || true)
-
-                if [ -n "$WI_CLIENT_ID" ]; then
-                  echo "WORKLOAD_IDENTITY_CLIENT_ID=$WI_CLIENT_ID" >> $GITHUB_ENV
-                  echo "WORKLOAD_IDENTITY_PRINCIPAL_ID=$WI_PRINCIPAL_ID" >> $GITHUB_ENV
-                  echo "WORKLOAD_IDENTITY_NAME=$WI_NAME" >> $GITHUB_ENV
-                  echo "[GitHub] Updated environment with workload identity values"
-                fi
-              fi
-            else
-              echo "[GitHub] DEPLOY_AKS not enabled (DEPLOY_AKS=${DEPLOY_AKS:-false}) - expecting cluster to pre-exist"
             fi
+          else
+            echo "[GitHub] DEPLOY_AKS not enabled (DEPLOY_AKS=${DEPLOY_AKS:-false}) - expecting cluster to pre-exist"
+          fi
 
-            # Set up paths
-            SCRIPTS_DIR="build/scripts/pipeline-internal"
-            PUB_DIR="out/publish"
+          # Set up paths
+          SCRIPTS_DIR="build/scripts/pipeline-internal"
+          PUB_DIR="out/publish"
 
-            # Make scripts executable
-            chmod +x "$SCRIPTS_DIR"/*.sh
-            chmod +x build/scripts/*.sh
+          # Make scripts executable
+          chmod +x "$SCRIPTS_DIR"/*.sh
+          chmod +x build/scripts/*.sh
 
-            # Run deploy-stage fixes (principal type, subscription scope, role alignment)
-            echo "[GitHub] Applying deploy-stage fixes..."
-            WORKLOAD_IDENTITY_PRINCIPAL_ID="${WORKLOAD_IDENTITY_PRINCIPAL_ID:-}" \
-            WORKLOAD_IDENTITY_NAME="${WORKLOAD_IDENTITY_NAME:-}" \
-              "$SCRIPTS_DIR/build-modern-post-publish-fixes.sh" "$PUB_DIR" deploy
+          # Run deploy-stage fixes (principal type, subscription scope, role alignment)
+          echo "[GitHub] Applying deploy-stage fixes..."
+          WORKLOAD_IDENTITY_PRINCIPAL_ID="${WORKLOAD_IDENTITY_PRINCIPAL_ID:-}" \
+          WORKLOAD_IDENTITY_NAME="${WORKLOAD_IDENTITY_NAME:-}" \
+            "$SCRIPTS_DIR/build-modern-post-publish-fixes.sh" "$PUB_DIR" deploy
 
-            # Deploy Azure resources (script will write outputs to file)
-            export AZURE_OUTPUT_FILE="azure-outputs.env"
-            "$SCRIPTS_DIR/build-modern-deploy-azure.sh" "$PUB_DIR" "$AZURE_RESOURCE_GROUP" "$AZURE_LOCATION"
+          # Deploy Azure resources (script will write outputs to file)
+          export AZURE_OUTPUT_FILE="azure-outputs.env"
+          "$SCRIPTS_DIR/build-modern-deploy-azure.sh" "$PUB_DIR" "$AZURE_RESOURCE_GROUP" "$AZURE_LOCATION"
 
-            # Capture outputs for next steps
-            echo "[GitHub] Capturing Azure deployment outputs..."
+          # Capture outputs for next steps
+          echo "[GitHub] Capturing Azure deployment outputs..."
 
-            if [ -f "azure-outputs.env" ]; then
-              echo "[GitHub] Found azure-outputs.env file:"
-              cat azure-outputs.env
+          if [ -f "azure-outputs.env" ]; then
+            echo "[GitHub] Found azure-outputs.env file:"
+            cat azure-outputs.env
 
-              # Source the file to load variables
-              source azure-outputs.env
+            # Source the file to load variables
+            source azure-outputs.env
 
-              # Set as GitHub outputs for next steps
-              while IFS= read -r line; do
-                if [[ "$line" =~ ^AZURE_OUTPUT_([^=]+)=(.*)$ ]]; then
-                  var_name="${BASH_REMATCH[1]}"
-                  var_value="${BASH_REMATCH[2]}"
-                  echo "${var_name}=${var_value}" >> $GITHUB_OUTPUT
-                  # Don't echo sensitive values
-                  if [[ "$var_name" == *"Connection"* ]] || [[ "$var_name" == *"Password"* ]] || [[ "$var_name" == *"Key"* ]] || [[ "$var_name" == *"Endpoint"* ]]; then
-                    echo "[GitHub] Set output: $var_name (sensitive - redacted)"
-                  else
-                    echo "[GitHub] Set output: $var_name"
-                  fi
+            # Set as GitHub outputs for next steps
+            while IFS= read -r line; do
+              if [[ "$line" =~ ^AZURE_OUTPUT_([^=]+)=(.*)$ ]]; then
+                var_name="${BASH_REMATCH[1]}"
+                var_value="${BASH_REMATCH[2]}"
+                echo "${var_name}=${var_value}" >> $GITHUB_OUTPUT
+                # Don't echo sensitive values
+                if [[ "$var_name" == *"Connection"* ]] || [[ "$var_name" == *"Password"* ]] || [[ "$var_name" == *"Key"* ]] || [[ "$var_name" == *"Endpoint"* ]]; then
+                  echo "[GitHub] Set output: $var_name (sensitive - redacted)"
+                else
+                  echo "[GitHub] Set output: $var_name"
                 fi
-              done < azure-outputs.env
-            else
-              echo "[GitHub] WARNING: No azure-outputs.env file found"
-              touch azure-outputs.env
-            fi
+              fi
+            done < azure-outputs.env
+          else
+            echo "[GitHub] WARNING: No azure-outputs.env file found"
+            touch azure-outputs.env
+          fi
         env:
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
           AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
@@ -358,39 +318,37 @@ jobs:
           AKS_SUBNET: ${{ vars.AKS_SUBNET }}
           AKS_DIAGNOSTICLOGS: ${{ vars.AKS_DIAGNOSTICLOGS }}
       - name: Build and Push Docker Images to ACR
-        uses: azure/CLI@v2
-        with:
-          inlineScript: |
-            set -euo pipefail
+        run: |
+          set -euo pipefail
 
-            # Determine ACR name
-            ACR_NAME="${AZURE_CONTAINER_REGISTRY_NAME:-${ACR_NAME:-acr$(echo $AZURE_RESOURCE_GROUP | tr -d '-')}}"
-            echo "[GitHub] Building and pushing images to ACR: $ACR_NAME"
+          # Determine ACR name
+          ACR_NAME="${AZURE_CONTAINER_REGISTRY_NAME:-${ACR_NAME:-acr$(echo $AZURE_RESOURCE_GROUP | tr -d '-')}}"
+          echo "[GitHub] Building and pushing images to ACR: $ACR_NAME"
 
-            # Export variables for the script
-            export AZURE_RESOURCE_GROUP="$AZURE_RESOURCE_GROUP"
-            export AKS_CLUSTER_NAME="${AKS_CLUSTER_NAME:-aks-$AZURE_RESOURCE_GROUP}"
-            export WORKLOAD_IDENTITY_PRINCIPAL_ID="${WORKLOAD_IDENTITY_PRINCIPAL_ID:-}"
-            export BUILD_BUILDNUMBER="${GITHUB_RUN_NUMBER}-${GITHUB_SHA:0:7}"
+          # Export variables for the script
+          export AZURE_RESOURCE_GROUP="$AZURE_RESOURCE_GROUP"
+          export AKS_CLUSTER_NAME="${AKS_CLUSTER_NAME:-aks-$AZURE_RESOURCE_GROUP}"
+          export WORKLOAD_IDENTITY_PRINCIPAL_ID="${WORKLOAD_IDENTITY_PRINCIPAL_ID:-}"
+          export BUILD_BUILDNUMBER="${GITHUB_RUN_NUMBER}-${GITHUB_SHA:0:7}"
 
-            # Use optimized build with cached base image (1-2 min builds)
-            if [ -f "build/scripts/pipeline-internal/build-modern-build-push-images-optimized.sh" ]; then
-              echo "[GitHub] Using optimized build with cached base image (fastest)"
-              build/scripts/pipeline-internal/build-modern-build-push-images-optimized.sh \
-                "$ACR_NAME" \
-                "$(pwd)"
-            elif [ -f "build/scripts/pipeline-internal/build-modern-build-push-images-parallel.sh" ]; then
-              echo "[GitHub] Using parallel build script (fast fallback)"
-              build/scripts/pipeline-internal/build-modern-build-push-images-parallel.sh \
-                "$ACR_NAME" \
-                "$(pwd)"
-            else
-              echo "[GitHub] ERROR: Build scripts not found"
-              exit 1
-            fi
+          # Use optimized build with cached base image (1-2 min builds)
+          if [ -f "build/scripts/pipeline-internal/build-modern-build-push-images-optimized.sh" ]; then
+            echo "[GitHub] Using optimized build with cached base image (fastest)"
+            build/scripts/pipeline-internal/build-modern-build-push-images-optimized.sh \
+              "$ACR_NAME" \
+              "$(pwd)"
+          elif [ -f "build/scripts/pipeline-internal/build-modern-build-push-images-parallel.sh" ]; then
+            echo "[GitHub] Using parallel build script (fast fallback)"
+            build/scripts/pipeline-internal/build-modern-build-push-images-parallel.sh \
+              "$ACR_NAME" \
+              "$(pwd)"
+          else
+            echo "[GitHub] ERROR: Build scripts not found"
+            exit 1
+          fi
 
-            # Export ACR endpoint
-            echo "AZURE_CONTAINER_REGISTRY_ENDPOINT=${ACR_NAME}.azurecr.io" >> $GITHUB_ENV
+          # Export ACR endpoint
+          echo "AZURE_CONTAINER_REGISTRY_ENDPOINT=${ACR_NAME}.azurecr.io" >> $GITHUB_ENV
         env:
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
           AZURE_CONTAINER_REGISTRY_NAME: ${{ vars.AZURE_CONTAINER_REGISTRY_NAME }}
@@ -398,24 +356,22 @@ jobs:
           AKS_CLUSTER_NAME: ${{ vars.AKS_CLUSTER_NAME }}
           WORKLOAD_IDENTITY_PRINCIPAL_ID: ${{ vars.WORKLOAD_IDENTITY_PRINCIPAL_ID }}
       - name: Configure AKS credentials
-        uses: azure/CLI@v2
-        with:
-          inlineScript: |
-            AKS_RG="${AKS_RESOURCE_GROUP:-$AZURE_RESOURCE_GROUP}"
-            AKS_NAME="${AKS_CLUSTER_NAME:-aks-$AZURE_RESOURCE_GROUP}"
-            echo "[GitHub Actions] Retrieving credentials for AKS: $AKS_NAME in RG: $AKS_RG"
-            az aks get-credentials --resource-group "$AKS_RG" --name "$AKS_NAME" --overwrite-existing
-            kubectl cluster-info
+        run: |
+          AKS_RG="${AKS_RESOURCE_GROUP:-$AZURE_RESOURCE_GROUP}"
+          AKS_NAME="${AKS_CLUSTER_NAME:-aks-$AZURE_RESOURCE_GROUP}"
+          echo "[GitHub Actions] Retrieving credentials for AKS: $AKS_NAME in RG: $AKS_RG"
+          az aks get-credentials --resource-group "$AKS_RG" --name "$AKS_NAME" --overwrite-existing
+          kubectl cluster-info
 
-            # Get ACR endpoint if available
-            ACR_NAME="${AZURE_CONTAINER_REGISTRY_NAME:-${ACR_NAME:-acr$(echo $AZURE_RESOURCE_GROUP | tr -d '-')}}"
-            ACR_LOGIN_SERVER=$(az acr show --name "$ACR_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query loginServer -o tsv 2>/dev/null || echo "")
-            if [ -n "$ACR_LOGIN_SERVER" ]; then
-              echo "AZURE_CONTAINER_REGISTRY_ENDPOINT=$ACR_LOGIN_SERVER" >> $GITHUB_ENV
-              echo "[GitHub Actions] Using ACR: $ACR_LOGIN_SERVER"
-              # Log into ACR for image pulls
-              az acr login --name "$ACR_NAME" 2>/dev/null || true
-            fi
+          # Get ACR endpoint if available
+          ACR_NAME="${AZURE_CONTAINER_REGISTRY_NAME:-${ACR_NAME:-acr$(echo $AZURE_RESOURCE_GROUP | tr -d '-')}}"
+          ACR_LOGIN_SERVER=$(az acr show --name "$ACR_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query loginServer -o tsv 2>/dev/null || echo "")
+          if [ -n "$ACR_LOGIN_SERVER" ]; then
+            echo "AZURE_CONTAINER_REGISTRY_ENDPOINT=$ACR_LOGIN_SERVER" >> $GITHUB_ENV
+            echo "[GitHub Actions] Using ACR: $ACR_LOGIN_SERVER"
+            # Log into ACR for image pulls
+            az acr login --name "$ACR_NAME" 2>/dev/null || true
+          fi
         env:
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
           AKS_RESOURCE_GROUP: ${{ vars.AKS_RESOURCE_GROUP }}
@@ -475,41 +431,32 @@ jobs:
           AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
           # Azure outputs are loaded from azure-outputs.env file directly
       - name: Expose endpoints and setup Front Door
-        uses: azure/CLI@v2
-        with:
-          inlineScript: |
-            set -euo pipefail
+        run: |
+          set -euo pipefail
 
-            # Install jq for endpoint exposure scripts (fresh Alpine container)
-            echo "[GitHub] Installing required dependencies..."
-            if command -v apk >/dev/null 2>&1; then
-              apk add --no-cache jq || { echo "[GitHub] ERROR: Failed to install jq"; exit 1; }
-            fi
-            echo "[GitHub] ✅ Dependencies installed"
+          SCRIPTS_DIR="build/scripts/pipeline-internal"
+          chmod +x "$SCRIPTS_DIR"/*.sh
 
-            SCRIPTS_DIR="build/scripts/pipeline-internal"
-            chmod +x "$SCRIPTS_DIR"/*.sh
+          # Ensure we have cluster context
+          AKS_RG="${AKS_RESOURCE_GROUP:-$AZURE_RESOURCE_GROUP}"
+          AKS_NAME="${AKS_CLUSTER_NAME:-aks-$AZURE_RESOURCE_GROUP}"
+          az aks get-credentials --resource-group "$AKS_RG" --name "$AKS_NAME" --overwrite-existing
 
-            # Ensure we have cluster context
-            AKS_RG="${AKS_RESOURCE_GROUP:-$AZURE_RESOURCE_GROUP}"
-            AKS_NAME="${AKS_CLUSTER_NAME:-aks-$AZURE_RESOURCE_GROUP}"
-            az aks get-credentials --resource-group "$AKS_RG" --name "$AKS_NAME" --overwrite-existing
+          # Expose services based on deployment model
+          DEPLOYMENT_MODEL="${DEPLOYMENT_MODEL:-public}"
+          echo "[GitHub] Configuring service endpoints for $DEPLOYMENT_MODEL deployment..."
 
-            # Expose services based on deployment model
-            DEPLOYMENT_MODEL="${DEPLOYMENT_MODEL:-public}"
-            echo "[GitHub] Configuring service endpoints for $DEPLOYMENT_MODEL deployment..."
+          DISABLE_EXPOSEDENDPOINTS="${DISABLE_EXPOSEDENDPOINTS:-false}" \
+            "$SCRIPTS_DIR/build-modern-expose-endpoints.sh" "${AKS_NAMESPACE}" "$DEPLOYMENT_MODEL"
 
+          # Setup Azure Front Door only for public and hybrid modes
+          if [[ "$DEPLOYMENT_MODEL" == "public" ]] || [[ "$DEPLOYMENT_MODEL" == "hybrid" ]]; then
+            echo "[GitHub] Creating Azure Front Door for $DEPLOYMENT_MODEL deployment..."
             DISABLE_EXPOSEDENDPOINTS="${DISABLE_EXPOSEDENDPOINTS:-false}" \
-              "$SCRIPTS_DIR/build-modern-expose-endpoints.sh" "${AKS_NAMESPACE}" "$DEPLOYMENT_MODEL"
-
-            # Setup Azure Front Door only for public and hybrid modes
-            if [[ "$DEPLOYMENT_MODEL" == "public" ]] || [[ "$DEPLOYMENT_MODEL" == "hybrid" ]]; then
-              echo "[GitHub] Creating Azure Front Door for $DEPLOYMENT_MODEL deployment..."
-              DISABLE_EXPOSEDENDPOINTS="${DISABLE_EXPOSEDENDPOINTS:-false}" \
-                "$SCRIPTS_DIR/build-modern-afd-setup.sh" "$AZURE_RESOURCE_GROUP" "$AZURE_LOCATION" "greenlight-${ENVIRONMENT}" "${AKS_NAMESPACE}"
-            else
-              echo "[GitHub] Skipping Azure Front Door setup for private deployment"
-            fi
+              "$SCRIPTS_DIR/build-modern-afd-setup.sh" "$AZURE_RESOURCE_GROUP" "$AZURE_LOCATION" "greenlight-${ENVIRONMENT}" "${AKS_NAMESPACE}"
+          else
+            echo "[GitHub] Skipping Azure Front Door setup for private deployment"
+          fi
         env:
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
           AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
@@ -520,21 +467,19 @@ jobs:
           DISABLE_EXPOSEDENDPOINTS: ${{ vars.DISABLE_EXPOSEDENDPOINTS }}
           ENVIRONMENT: ${{ github.event.inputs.environment }}
       - name: Run DB SetupManager job
-        uses: azure/CLI@v2
-        with:
-          inlineScript: |
-            set -euo pipefail
+        run: |
+          set -euo pipefail
 
-            SCRIPTS_DIR="build/scripts/pipeline-internal"
-            chmod +x "$SCRIPTS_DIR"/*.sh
+          SCRIPTS_DIR="build/scripts/pipeline-internal"
+          chmod +x "$SCRIPTS_DIR"/*.sh
 
-            # Ensure we have cluster context
-            AKS_RG="${AKS_RESOURCE_GROUP:-$AZURE_RESOURCE_GROUP}"
-            AKS_NAME="${AKS_CLUSTER_NAME:-aks-$AZURE_RESOURCE_GROUP}"
-            az aks get-credentials --resource-group "$AKS_RG" --name "$AKS_NAME" --overwrite-existing
+          # Ensure we have cluster context
+          AKS_RG="${AKS_RESOURCE_GROUP:-$AZURE_RESOURCE_GROUP}"
+          AKS_NAME="${AKS_CLUSTER_NAME:-aks-$AZURE_RESOURCE_GROUP}"
+          az aks get-credentials --resource-group "$AKS_RG" --name "$AKS_NAME" --overwrite-existing
 
-            # Run job from inside cluster context with longer backoff for workload identity token propagation
-            "$SCRIPTS_DIR/build-modern-run-db-setup-job.sh" "${AKS_NAMESPACE}" 120
+          # Run job from inside cluster context with longer backoff for workload identity token propagation
+          "$SCRIPTS_DIR/build-modern-run-db-setup-job.sh" "${AKS_NAMESPACE}" 120
         env:
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
           AKS_RESOURCE_GROUP: ${{ vars.AKS_RESOURCE_GROUP }}
