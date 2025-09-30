@@ -266,9 +266,9 @@ jobs:
               "$SCRIPTS_DIR/build-modern-add-wi-serviceaccount.sh" "$PUB_DIR" "$AKS_NAMESPACE" "${WORKLOAD_IDENTITY_SERVICE_ACCOUNT:-greenlight-app}" || echo "[GitHub] ServiceAccount injection skipped"
           fi
 
-          # Deploy with Helm (stays in main scripts dir for user access)
+          # Deploy with Helm using unified clean deployment script (same as ADO)
           echo "[GitHub] Starting Helm deployment..."
-          build/scripts/build-modern-helm-deploy.sh "$PUB_DIR" "$HELM_RELEASE" "$AKS_NAMESPACE"
+          build/scripts/build-modern-helm-deploy-clean.sh "$PUB_DIR" "$HELM_RELEASE" "$AKS_NAMESPACE"
         env:
           HELM_RELEASE: ${{ vars.HELM_RELEASE }}
           AKS_NAMESPACE: ${{ vars.AKS_NAMESPACE }}
