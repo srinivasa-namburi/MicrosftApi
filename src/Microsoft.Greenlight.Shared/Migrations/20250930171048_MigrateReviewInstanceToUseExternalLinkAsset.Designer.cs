@@ -12,7 +12,7 @@ using Microsoft.Greenlight.Shared.Data.Sql;
 namespace Microsoft.Greenlight.Shared.Migrations
 {
     [DbContext(typeof(DocGenerationDbContext))]
-    [Migration("20250930165523_MigrateReviewInstanceToUseExternalLinkAsset")]
+    [Migration("20250930171048_MigrateReviewInstanceToUseExternalLinkAsset")]
     partial class MigrateReviewInstanceToUseExternalLinkAsset
     {
         /// <inheritdoc />
@@ -2052,7 +2052,7 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<string>("DocumentProcessShortName")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<Guid>("ExternalLinkAssetId")
+                    b.Property<Guid?>("ExternalLinkAssetId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime>("ModifiedUtc")

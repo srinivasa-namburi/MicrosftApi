@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+﻿using System;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
@@ -14,15 +15,24 @@ namespace Microsoft.Greenlight.Shared.Migrations
                 name: "FK_ReviewInstances_ExportedDocumentLinks_ExportedLinkId",
                 table: "ReviewInstances");
 
-            migrationBuilder.RenameColumn(
-                name: "ExportedLinkId",
-                table: "ReviewInstances",
-                newName: "ExternalLinkAssetId");
-
-            migrationBuilder.RenameIndex(
+            migrationBuilder.DropIndex(
                 name: "IX_ReviewInstances_ExportedLinkId",
+                table: "ReviewInstances");
+
+            migrationBuilder.DropColumn(
+                name: "ExportedLinkId",
+                table: "ReviewInstances");
+
+            migrationBuilder.AddColumn<Guid>(
+                name: "ExternalLinkAssetId",
                 table: "ReviewInstances",
-                newName: "IX_ReviewInstances_ExternalLinkAssetId");
+                type: "uniqueidentifier",
+                nullable: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ReviewInstances_ExternalLinkAssetId",
+                table: "ReviewInstances",
+                column: "ExternalLinkAssetId");
 
             migrationBuilder.AddForeignKey(
                 name: "FK_ReviewInstances_ExternalLinkAssets_ExternalLinkAssetId",
@@ -40,15 +50,25 @@ namespace Microsoft.Greenlight.Shared.Migrations
                 name: "FK_ReviewInstances_ExternalLinkAssets_ExternalLinkAssetId",
                 table: "ReviewInstances");
 
-            migrationBuilder.RenameColumn(
-                name: "ExternalLinkAssetId",
-                table: "ReviewInstances",
-                newName: "ExportedLinkId");
-
-            migrationBuilder.RenameIndex(
+            migrationBuilder.DropIndex(
                 name: "IX_ReviewInstances_ExternalLinkAssetId",
+                table: "ReviewInstances");
+
+            migrationBuilder.DropColumn(
+                name: "ExternalLinkAssetId",
+                table: "ReviewInstances");
+
+            migrationBuilder.AddColumn<Guid>(
+                name: "ExportedLinkId",
                 table: "ReviewInstances",
-                newName: "IX_ReviewInstances_ExportedLinkId");
+                type: "uniqueidentifier",
+                nullable: false,
+                defaultValue: new Guid("00000000-0000-0000-0000-000000000000"));
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ReviewInstances_ExportedLinkId",
+                table: "ReviewInstances",
+                column: "ExportedLinkId");
 
             migrationBuilder.AddForeignKey(
                 name: "FK_ReviewInstances_ExportedDocumentLinks_ExportedLinkId",

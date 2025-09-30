@@ -164,11 +164,14 @@ public class ReviewInstanceController : BaseController
             return BadRequest("ReviewId is invalid");
         }
 
-        // Validate that the external link asset exists
-        var externalLinkAsset = await _dbContext.ExternalLinkAssets.FindAsync(reviewInstanceInfo.ExternalLinkAssetId);
-        if (externalLinkAsset == null)
+        // Validate that the external link asset exists (if provided)
+        if (reviewInstanceInfo.ExternalLinkAssetId.HasValue)
         {
-            return BadRequest("ExternalLinkAssetId is invalid");
+            var externalLinkAsset = await _dbContext.ExternalLinkAssets.FindAsync(reviewInstanceInfo.ExternalLinkAssetId.Value);
+            if (externalLinkAsset == null)
+            {
+                return BadRequest("ExternalLinkAssetId is invalid");
+            }
         }
 
         // Map into a domain model

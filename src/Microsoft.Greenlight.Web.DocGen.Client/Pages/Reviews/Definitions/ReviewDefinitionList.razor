@@ -114,7 +114,7 @@
                                         </div>
                                     </MudItem>
                                     <MudItem xs="2" Class="d-flex justify-end">
-                                        @if (instance.ExternalLinkAssetId != Guid.Empty)
+                                        @if (instance.ExternalLinkAssetId.HasValue && instance.ExternalLinkAssetId.Value != Guid.Empty)
                                         {
                                             <MudTooltip Text="Download Document">
                                                 <MudIconButton Icon="@Icons.Material.Filled.DownloadForOffline"

@@ -22,8 +22,9 @@ public class ReviewInstance : EntityBase
 
     /// <summary>
     /// Unique identifier of the external link asset (file being reviewed).
+    /// Nullable to support reviews without documents or during migration.
     /// </summary>
-    public required Guid ExternalLinkAssetId { get; set; }
+    public Guid? ExternalLinkAssetId { get; set; }
 
     /// <summary>
     /// External link asset associated with this instance.

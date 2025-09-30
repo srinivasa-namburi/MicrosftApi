@@ -189,22 +189,45 @@ else
   MCP_PLS_GROUP=""
 fi
 
-# Always recreate the origin-group to avoid CLI update bugs around healthProbeSettings
+# Check if origin-group needs update based on actual configuration
 create_or_update_origin_group() {
   local name=$1
+  local needs_recreate=false
+
   if az afd origin-group show -g "$RG" --profile-name "$PROFILE_NAME" -n "$name" >/dev/null 2>&1; then
-    echo "[afd] Deleting existing origin-group: $name"
-    az afd origin-group delete -g "$RG" --profile-name "$PROFILE_NAME" -n "$name" -y >/dev/null 2>&1 || true
+    # Check if existing config matches desired state
+    local health_probe_enabled=$(az afd origin-group show -g "$RG" --profile-name "$PROFILE_NAME" -n "$name" --query "healthProbeSettings.probeProtocol" -o tsv 2>/dev/null || echo "disabled")
+    local session_affinity=$(az afd origin-group show -g "$RG" --profile-name "$PROFILE_NAME" -n "$name" --query "sessionAffinityState" -o tsv 2>/dev/null || echo "")
+
+    # Only recreate if configuration differs
+    if [[ "$health_probe_enabled" != "NotSet" ]] || [[ "$session_affinity" != "Enabled" ]]; then
+      echo "[afd] Origin-group $name config differs (health probe or session affinity) - recreating"
+      needs_recreate=true
+    else
+      echo "[afd] Origin-group $name exists with correct config - skipping"
+      return 0
+    fi
+  else
+    needs_recreate=true
   fi
-  echo "[afd] Creating origin-group (probes disabled, session affinity enabled): $name"
-  # LoadBalancingSettings subobject is required by ARM; provide minimal valid values
-  # Session affinity enabled for SignalR sticky sessions support
-  if ! az afd origin-group create -g "$RG" --profile-name "$PROFILE_NAME" -n "$name" \
-    --enable-health-probe false \
-    --session-affinity-state Enabled \
-    --sample-size 4 --successful-samples-required 3 --additional-latency-in-milliseconds 0 >/dev/null; then
-    echo "[afd] ERROR: Failed to create origin-group $name"
-    exit 1
+
+  if [[ "$needs_recreate" == "true" ]]; then
+    # Delete if exists
+    if az afd origin-group show -g "$RG" --profile-name "$PROFILE_NAME" -n "$name" >/dev/null 2>&1; then
+      echo "[afd] Deleting origin-group: $name"
+      az afd origin-group delete -g "$RG" --profile-name "$PROFILE_NAME" -n "$name" -y >/dev/null 2>&1 || true
+    fi
+
+    echo "[afd] Creating origin-group (probes disabled, session affinity enabled): $name"
+    # LoadBalancingSettings subobject is required by ARM; provide minimal valid values
+    # Session affinity enabled for SignalR sticky sessions support
+    if ! az afd origin-group create -g "$RG" --profile-name "$PROFILE_NAME" -n "$name" \
+      --enable-health-probe false \
+      --session-affinity-state Enabled \
+      --sample-size 4 --successful-samples-required 3 --additional-latency-in-milliseconds 0 >/dev/null; then
+      echo "[afd] ERROR: Failed to create origin-group $name"
+      exit 1
+    fi
   fi
 }
 
@@ -220,15 +243,33 @@ create_or_update_origin() {
   fi
 
   if az afd origin show -g "$RG" --profile-name "$PROFILE_NAME" --origin-group-name "$group" -n "$name" >/dev/null 2>&1; then
-    echo "[afd] Updating origin: $name ($host)"
-    if ! az afd origin update -g "$RG" --profile-name "$PROFILE_NAME" --origin-group-name "$group" -n "$name" \
-      --host-name "$host" --http-port 80 --enabled-state Enabled --origin-host-header "$host" \
-      "${pl_args[@]}" >/dev/null; then
-      echo "[afd] origin update failed; recreating $name"
-      az afd origin delete -g "$RG" --profile-name "$PROFILE_NAME" --origin-group-name "$group" -n "$name" -y >/dev/null 2>&1 || true
-      az afd origin create -g "$RG" --profile-name "$PROFILE_NAME" --origin-group-name "$group" -n "$name" \
+    # Check if existing origin points to the same host and Private Link resource
+    local existing_host=$(az afd origin show -g "$RG" --profile-name "$PROFILE_NAME" --origin-group-name "$group" -n "$name" --query "hostName" -o tsv 2>/dev/null || echo "")
+    local existing_pl=$(az afd origin show -g "$RG" --profile-name "$PROFILE_NAME" --origin-group-name "$group" -n "$name" --query "sharedPrivateLinkResource.privateLink.id" -o tsv 2>/dev/null || echo "")
+
+    # Compare with desired state
+    local needs_update=false
+    if [[ "$existing_host" != "$host" ]]; then
+      echo "[afd] Origin $name host changed: $existing_host -> $host"
+      needs_update=true
+    elif [[ -n "$pl_resource" && "$existing_pl" != "$pl_resource" ]]; then
+      echo "[afd] Origin $name private link changed: $existing_pl -> $pl_resource"
+      needs_update=true
+    fi
+
+    if [[ "$needs_update" == "true" ]]; then
+      echo "[afd] Updating origin: $name ($host)"
+      if ! az afd origin update -g "$RG" --profile-name "$PROFILE_NAME" --origin-group-name "$group" -n "$name" \
         --host-name "$host" --http-port 80 --enabled-state Enabled --origin-host-header "$host" \
-        "${pl_args[@]}" >/dev/null
+        "${pl_args[@]}" >/dev/null; then
+        echo "[afd] origin update failed; recreating $name"
+        az afd origin delete -g "$RG" --profile-name "$PROFILE_NAME" --origin-group-name "$group" -n "$name" -y >/dev/null 2>&1 || true
+        az afd origin create -g "$RG" --profile-name "$PROFILE_NAME" --origin-group-name "$group" -n "$name" \
+          --host-name "$host" --http-port 80 --enabled-state Enabled --origin-host-header "$host" \
+          "${pl_args[@]}" >/dev/null
+      fi
+    else
+      echo "[afd] Origin $name already configured correctly - skipping"
     fi
   else
     echo "[afd] Creating origin: $name ($host)"
@@ -252,15 +293,22 @@ create_or_update_endpoint() {
 create_or_update_route() {
   local ep=$1; local route=$2; local group=$3
   if az afd route show -g "$RG" --profile-name "$PROFILE_NAME" --endpoint-name "$ep" -n "$route" >/dev/null 2>&1; then
-    echo "[afd] Updating route: $route on $ep"
-    if ! az afd route update -g "$RG" --profile-name "$PROFILE_NAME" --endpoint-name "$ep" -n "$route" \
-      --origin-group "$group" --https-redirect Enabled --supported-protocols Http Https --forwarding-protocol HttpOnly \
-      --link-to-default-domain Enabled --patterns-to-match "/*" --enable-caching false >/dev/null; then
-      echo "[afd] route update failed; recreating route $route"
-      az afd route delete -g "$RG" --profile-name "$PROFILE_NAME" --endpoint-name "$ep" -n "$route" -y >/dev/null 2>&1 || true
-      az afd route create -g "$RG" --profile-name "$PROFILE_NAME" --endpoint-name "$ep" -n "$route" \
+    # Check if route already points to correct origin group
+    local existing_og=$(az afd route show -g "$RG" --profile-name "$PROFILE_NAME" --endpoint-name "$ep" -n "$route" --query "originGroup.id" -o tsv 2>/dev/null | sed 's|.*/||' || echo "")
+
+    if [[ "$existing_og" == "$group" ]]; then
+      echo "[afd] Route $route already points to $group - skipping"
+    else
+      echo "[afd] Updating route: $route on $ep (origin group changed: $existing_og -> $group)"
+      if ! az afd route update -g "$RG" --profile-name "$PROFILE_NAME" --endpoint-name "$ep" -n "$route" \
         --origin-group "$group" --https-redirect Enabled --supported-protocols Http Https --forwarding-protocol HttpOnly \
-        --link-to-default-domain Enabled --patterns-to-match "/*" --enable-caching false >/dev/null
+        --link-to-default-domain Enabled --patterns-to-match "/*" --enable-caching false >/dev/null; then
+        echo "[afd] route update failed; recreating route $route"
+        az afd route delete -g "$RG" --profile-name "$PROFILE_NAME" --endpoint-name "$ep" -n "$route" -y >/dev/null 2>&1 || true
+        az afd route create -g "$RG" --profile-name "$PROFILE_NAME" --endpoint-name "$ep" -n "$route" \
+          --origin-group "$group" --https-redirect Enabled --supported-protocols Http Https --forwarding-protocol HttpOnly \
+          --link-to-default-domain Enabled --patterns-to-match "/*" --enable-caching false >/dev/null
+      fi
     fi
   else
     echo "[afd] Creating route: $route on $ep"
@@ -274,17 +322,30 @@ wait_for_private_endpoint_connection() {
   local pls_id=$1
   local retries=${2:-24}
   local delay=${3:-5}
+
+  # First check if there's already an approved connection (common on re-deployments)
+  local initial_status
+  initial_status=$(az network private-link-service show --ids "$pls_id" --query "privateEndpointConnections[?properties.connectionState.status=='Approved'].length(@)" -o tsv 2>/dev/null || echo "0")
+
+  if [[ "$initial_status" != "" && "$initial_status" -gt 0 ]]; then
+    echo "[afd] Private Link $pls_id already has $initial_status approved connection(s) - skipping wait" >&2
+    return 0
+  fi
+
+  # If no approved connections yet, wait for first approval (new deployment scenario)
+  echo "[afd] Waiting for Private Link connection approval on $pls_id..." >&2
   local attempt=0
   while [[ $attempt -lt $retries ]]; do
     local status
     status=$(az network private-link-service show --ids "$pls_id" --query "privateEndpointConnections[?properties.connectionState.status=='Approved'].length(@)" -o tsv 2>/dev/null || echo "0")
     if [[ "$status" != "" && "$status" -gt 0 ]]; then
+      echo "[afd] Private Link connection approved after $attempt attempts" >&2
       return 0
     fi
     sleep "$delay"
     attempt=$((attempt+1))
   done
-  echo "[afd] WARNING: Private Link service $pls_id has no approved connections yet" >&2
+  echo "[afd] WARNING: Private Link service $pls_id has no approved connections after ${retries} attempts (may require manual approval)" >&2
   return 1
 }
 

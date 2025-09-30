@@ -2049,7 +2049,7 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<string>("DocumentProcessShortName")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<Guid>("ExternalLinkAssetId")
+                    b.Property<Guid?>("ExternalLinkAssetId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime>("ModifiedUtc")

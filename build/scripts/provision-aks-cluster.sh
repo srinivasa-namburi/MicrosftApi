@@ -318,15 +318,26 @@ if az aks show --resource-group $RESOURCE_GROUP --name $CLUSTER_NAME > /dev/null
         EXISTING_CLUSTER=true
     fi
 
-    # Update node pool if needed
-    az aks nodepool scale \
-        --resource-group $RESOURCE_GROUP \
-        --cluster-name $CLUSTER_NAME \
-        --name nodepool1 \
-        --node-count $NODE_COUNT \
-        --output none
+    # Only update node pool if not skipping cluster modification
+    if [[ -z "${EXISTING_CLUSTER:-}" ]]; then
+        # Check if autoscaler is enabled before attempting manual scale
+        AUTOSCALER_ENABLED=$(az aks show --resource-group $RESOURCE_GROUP --name $CLUSTER_NAME \
+            --query "agentPoolProfiles[?name=='nodepool1'].enableAutoScaling | [0]" -o tsv 2>/dev/null || echo "false")
 
-    print_success "Cluster node count updated"
+        if [[ "$AUTOSCALER_ENABLED" == "true" ]]; then
+            print_warning "Cluster has autoscaler enabled - skipping manual node count update"
+            print_info "Autoscaler will manage node count automatically (current config: min=2, max=10)"
+        else
+            print_info "Updating node pool size..."
+            az aks nodepool scale \
+                --resource-group $RESOURCE_GROUP \
+                --cluster-name $CLUSTER_NAME \
+                --name nodepool1 \
+                --node-count $NODE_COUNT \
+                --output none
+            print_success "Cluster node count updated"
+        fi
+    fi
 elif [[ -z "${EXISTING_CLUSTER:-}" ]]; then
     print_info "Creating AKS cluster (this may take 10-15 minutes)..."
 

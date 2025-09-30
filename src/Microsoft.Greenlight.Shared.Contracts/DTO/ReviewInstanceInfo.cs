@@ -19,8 +19,9 @@ public record ReviewInstanceInfo
 
     /// <summary>
     /// Unique identifier of the external link asset (file being reviewed).
+    /// Nullable to support reviews without documents or during migration.
     /// </summary>
-    public Guid ExternalLinkAssetId { get; set; }
+    public Guid? ExternalLinkAssetId { get; set; }
 
     /// <summary>
     /// State of the review definition when it was submitted.
