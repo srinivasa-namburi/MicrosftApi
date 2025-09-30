@@ -410,6 +410,33 @@ else
   echo "[clean] PVICO_OPENAI_CONNECTIONSTRING not provided - skipping OpenAI secret injection"
 fi
 
+# Ensure Azure Maps key is present in per-app Secrets (fallback if Helm chart omitted it)
+if [[ -n "${PVICO_AZUREMAPS_KEY:-}" ]]; then
+  echo "[clean] Ensuring ServiceConfiguration__AzureMaps__Key exists in per-app secrets"
+  # Base64-encode once for merge patch (portable: no line wraps)
+  AZUREMAPS_B64=$(printf '%s' "$PVICO_AZUREMAPS_KEY" | base64 | tr -d '\n')
+  for app in api-main db-setupmanager mcp-server silo web-docgen; do
+    secret="${app}-secrets"
+    if kubectl -n "$NAMESPACE" get secret "$secret" >/dev/null 2>&1; then
+      if kubectl -n "$NAMESPACE" get secret "$secret" -o json | jq -e '.data["ServiceConfiguration__AzureMaps__Key"]' >/dev/null 2>&1; then
+        echo "[clean] $secret already has ServiceConfiguration__AzureMaps__Key; ensuring value is current"
+      else
+        echo "[clean] Adding ServiceConfiguration__AzureMaps__Key to $secret"
+      fi
+      kubectl -n "$NAMESPACE" patch secret "$secret" --type='merge' \
+        -p "{\"data\":{\"ServiceConfiguration__AzureMaps__Key\":\"$AZUREMAPS_B64\"}}" >/dev/null && \
+        echo "[clean] Patched $secret with Azure Maps key"
+    else
+      echo "[clean] Creating $secret with Azure Maps key"
+      kubectl -n "$NAMESPACE" create secret generic "$secret" \
+        --from-literal=ServiceConfiguration__AzureMaps__Key="$PVICO_AZUREMAPS_KEY" \
+        --dry-run=client -o yaml | kubectl apply -f -
+    fi
+  done
+else
+  echo "[clean] PVICO_AZUREMAPS_KEY not provided - skipping Azure Maps secret injection"
+fi
+
 # IMPORTANT: Patch connection strings FIRST before restarting pods
 # Force-correct critical connection string keys in ConfigMaps with sanitized values
 echo "[clean] Patching critical connection strings in ConfigMaps with sanitized values"
