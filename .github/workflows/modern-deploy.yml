@@ -1,0 +1,236 @@
+name: Modern Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment name (matches GitHub environment)'
+        required: true
+        default: 'dev'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - name: Install Aspire CLI
+        run: |
+          # Install GA version of Aspire CLI
+          curl -sSL https://aspire.dev/install.sh | bash
+          # Verify installation
+          aspire --version
+      - name: Build
+        run: dotnet build src/Microsoft.Greenlight.slnx -v minimal
+      - name: Aspire publish
+        run: |
+          # Ensure aspire is in PATH
+          export PATH="$HOME/.aspire/bin:$PATH"
+          # Set execute permissions for scripts
+          chmod +x build/scripts/*.sh
+          build/scripts/pipeline-internal/build-modern-aspire-publish.sh out/publish
+          # Post-publish fixes now handles all patching
+          build/scripts/pipeline-internal/build-modern-post-publish-fixes.sh out/publish publish
+      - name: Upload publish artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: publish
+          path: out/publish
+
+  deploy:
+    needs: publish
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: publish
+          path: publish
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Build and Push Docker Images to ACR
+        uses: azure/CLI@v2
+        with:
+          inlineScript: |
+            set -euo pipefail
+
+            # Determine ACR name
+            ACR_NAME="${AZURE_CONTAINER_REGISTRY_NAME:-${ACR_NAME:-acr$(echo $AZURE_RESOURCE_GROUP | tr -d '-')}}"
+            echo "[GitHub] Building and pushing images to ACR: $ACR_NAME"
+
+            # Make scripts executable
+            chmod +x $(pwd)/build/scripts/pipeline-internal/build-modern-build-push-images*.sh
+
+            # Export variables for the script
+            export AZURE_RESOURCE_GROUP="$AZURE_RESOURCE_GROUP"
+            export AKS_CLUSTER_NAME="${AKS_CLUSTER_NAME:-aks-$AZURE_RESOURCE_GROUP}"
+            export WORKLOAD_IDENTITY_PRINCIPAL_ID="${WORKLOAD_IDENTITY_PRINCIPAL_ID:-}"
+            export BUILD_BUILDNUMBER="${GITHUB_RUN_NUMBER}-${GITHUB_SHA:0:7}"
+
+            # Use optimized build with cached base image (1-2 min builds)
+            if [ -f "$(pwd)/build/scripts/pipeline-internal/build-modern-build-push-images-optimized.sh" ]; then
+              echo "[GitHub] Using optimized build with cached base image (fastest)"
+              $(pwd)/build/scripts/pipeline-internal/build-modern-build-push-images-optimized.sh \
+                "$ACR_NAME" \
+                "$(pwd)"
+            elif [ -f "$(pwd)/build/scripts/pipeline-internal/build-modern-build-push-images-parallel.sh" ]; then
+              echo "[GitHub] Using parallel build script (fast fallback)"
+              $(pwd)/build/scripts/pipeline-internal/build-modern-build-push-images-parallel.sh \
+                "$ACR_NAME" \
+                "$(pwd)"
+            else
+              echo "[GitHub] ERROR: Build scripts not found"
+              exit 1
+            fi
+
+            # Export ACR endpoint
+            echo "AZURE_CONTAINER_REGISTRY_ENDPOINT=${ACR_NAME}.azurecr.io" >> $GITHUB_ENV
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_CONTAINER_REGISTRY_NAME: ${{ vars.AZURE_CONTAINER_REGISTRY_NAME }}
+          ACR_NAME: ${{ vars.ACR_NAME }}
+          AKS_CLUSTER_NAME: ${{ vars.AKS_CLUSTER_NAME }}
+          WORKLOAD_IDENTITY_PRINCIPAL_ID: ${{ vars.WORKLOAD_IDENTITY_PRINCIPAL_ID }}
+      - name: Deploy Azure Resources
+        id: azure-deploy
+        uses: azure/CLI@v2
+        with:
+          inlineScript: |
+            set -euo pipefail
+
+            # Clean up any existing outputs file
+            rm -f azure-outputs.env
+
+            # Set up paths
+            SCRIPTS_DIR="$(pwd)/build/scripts/pipeline-internal"
+            PUB_DIR="$(pwd)/publish"
+
+            # Make scripts executable
+            chmod +x "$SCRIPTS_DIR"/*.sh
+
+            # Run deploy-stage fixes (principal type, subscription scope, role alignment)
+            echo "[GitHub] Applying deploy-stage fixes..."
+            WORKLOAD_IDENTITY_PRINCIPAL_ID="${WORKLOAD_IDENTITY_PRINCIPAL_ID:-}" \
+            WORKLOAD_IDENTITY_NAME="${WORKLOAD_IDENTITY_NAME:-}" \
+              "$SCRIPTS_DIR/build-modern-post-publish-fixes.sh" "$PUB_DIR" deploy
+
+            # Deploy Azure resources (script will write outputs to file)
+            export AZURE_OUTPUT_FILE="azure-outputs.env"
+            "$SCRIPTS_DIR/build-modern-deploy-azure.sh" "$PUB_DIR" "$AZURE_RESOURCE_GROUP" "$AZURE_LOCATION"
+
+            # Capture outputs for next steps
+            echo "[GitHub] Capturing Azure deployment outputs..."
+
+            if [ -f "azure-outputs.env" ]; then
+              echo "[GitHub] Found azure-outputs.env file:"
+              cat azure-outputs.env
+
+              # Source the file to load variables
+              source azure-outputs.env
+
+              # Set as GitHub outputs for next steps
+              while IFS= read -r line; do
+                if [[ "$line" =~ ^AZURE_OUTPUT_([^=]+)=(.*)$ ]]; then
+                  var_name="${BASH_REMATCH[1]}"
+                  var_value="${BASH_REMATCH[2]}"
+                  echo "${var_name}=${var_value}" >> $GITHUB_OUTPUT
+                  # Don't echo sensitive values
+                  if [[ "$var_name" == *"Connection"* ]] || [[ "$var_name" == *"Password"* ]] || [[ "$var_name" == *"Key"* ]] || [[ "$var_name" == *"Endpoint"* ]]; then
+                    echo "[GitHub] Set output: $var_name (sensitive - redacted)"
+                  else
+                    echo "[GitHub] Set output: $var_name"
+                  fi
+                fi
+              done < azure-outputs.env
+            else
+              echo "[GitHub] WARNING: No azure-outputs.env file found"
+              touch azure-outputs.env
+            fi
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+          AZURE_PRINCIPAL_ID: ${{ vars.AZURE_PRINCIPAL_ID }}
+          WORKLOAD_IDENTITY_PRINCIPAL_ID: ${{ vars.WORKLOAD_IDENTITY_PRINCIPAL_ID }}
+          WORKLOAD_IDENTITY_NAME: ${{ vars.WORKLOAD_IDENTITY_NAME }}
+      - name: Configure AKS credentials
+        uses: azure/CLI@v2
+        with:
+          inlineScript: |
+            AKS_RG="${AKS_RESOURCE_GROUP:-$AZURE_RESOURCE_GROUP}"
+            AKS_NAME="${AKS_CLUSTER_NAME:-aks-$AZURE_RESOURCE_GROUP}"
+            echo "[GitHub Actions] Retrieving credentials for AKS: $AKS_NAME in RG: $AKS_RG"
+            az aks get-credentials --resource-group "$AKS_RG" --name "$AKS_NAME" --overwrite-existing
+            kubectl cluster-info
+
+            # Get ACR endpoint if available
+            ACR_NAME="${ACR_NAME:-acr$AZURE_RESOURCE_GROUP}"
+            ACR_LOGIN_SERVER=$(az acr show --name "$ACR_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query loginServer -o tsv 2>/dev/null || echo "")
+            if [ -n "$ACR_LOGIN_SERVER" ]; then
+              echo "AZURE_CONTAINER_REGISTRY_ENDPOINT=$ACR_LOGIN_SERVER" >> $GITHUB_ENV
+              echo "[GitHub Actions] Using ACR: $ACR_LOGIN_SERVER"
+              # Log into ACR for image pulls
+              az acr login --name "$ACR_NAME" 2>/dev/null || true
+            fi
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AKS_RESOURCE_GROUP: ${{ vars.AKS_RESOURCE_GROUP }}
+          AKS_CLUSTER_NAME: ${{ vars.AKS_CLUSTER_NAME }}
+          ACR_NAME: ${{ vars.ACR_NAME }}
+      - name: Deploy to AKS with Helm
+        run: |
+          # Set up paths
+          SCRIPTS_DIR="$(pwd)/build/scripts/pipeline-internal"
+          PUB_DIR="$(pwd)/publish"
+
+          # Load Azure deployment outputs
+          echo "[GitHub] Loading Azure deployment outputs..."
+          if [ -f "azure-outputs.env" ]; then
+            echo "[GitHub] Found azure-outputs.env file:"
+            cat azure-outputs.env
+            source azure-outputs.env
+            echo "[GitHub] Loaded $(grep -c '^AZURE_OUTPUT_' azure-outputs.env || echo 0) Azure outputs"
+          else
+            echo "[GitHub] WARNING: No azure-outputs.env file found"
+          fi
+
+          # Pass configuration as environment variables to Helm
+          export PVICO_OPENAI_CONNECTIONSTRING="${PVICO_OPENAI_CONNECTIONSTRING:-}"
+          export PVICO_ENTRA_CREDENTIALS="${PVICO_ENTRA_CREDENTIALS:-}"
+          export HOSTNAME_OVERRIDE="${HOSTNAME_OVERRIDE:-}"
+          export PVICO_AZUREMAPS_KEY="${PVICO_AZUREMAPS_KEY:-}"
+          export KUBERNETES_RESOURCES_CONFIG="${KUBERNETES_RESOURCES_CONFIG:-}"
+
+          # Make scripts executable
+          chmod +x build/scripts/*.sh
+          chmod +x "$SCRIPTS_DIR"/*.sh
+
+          # Inject workload identity service account if configured
+          if [ -n "${WORKLOAD_IDENTITY_CLIENT_ID:-}" ]; then
+            echo "[GitHub] Injecting workload identity service account..."
+            AZURE_TENANT_ID="${AZURE_TENANT_ID:-$(az account show --query tenantId -o tsv)}"
+            WORKLOAD_IDENTITY_CLIENT_ID="${WORKLOAD_IDENTITY_CLIENT_ID}" \
+            AZURE_TENANT_ID="$AZURE_TENANT_ID" \
+              "$SCRIPTS_DIR/build-modern-add-wi-serviceaccount.sh" "$PUB_DIR" "$AKS_NAMESPACE" "${WORKLOAD_IDENTITY_SERVICE_ACCOUNT:-greenlight-app}" || echo "[GitHub] ServiceAccount injection skipped"
+          fi
+
+          # Deploy with Helm (stays in main scripts dir for user access)
+          echo "[GitHub] Starting Helm deployment..."
+          build/scripts/build-modern-helm-deploy.sh "$PUB_DIR" "$HELM_RELEASE" "$AKS_NAMESPACE"
+        env:
+          HELM_RELEASE: ${{ vars.HELM_RELEASE }}
+          AKS_NAMESPACE: ${{ vars.AKS_NAMESPACE }}
+          PVICO_OPENAI_CONNECTIONSTRING: ${{ secrets.PVICO_OPENAI_CONNECTIONSTRING }}
+          PVICO_ENTRA_CREDENTIALS: ${{ secrets.PVICO_ENTRA_CREDENTIALS }}
+          HOSTNAME_OVERRIDE: ${{ vars.HOSTNAME_OVERRIDE }}
+          PVICO_AZUREMAPS_KEY: ${{ secrets.PVICO_AZUREMAPS_KEY }}
+          KUBERNETES_RESOURCES_CONFIG: ${{ vars.KUBERNETES_RESOURCES_CONFIG }}
+          WORKLOAD_IDENTITY_CLIENT_ID: ${{ vars.WORKLOAD_IDENTITY_CLIENT_ID }}
+          WORKLOAD_IDENTITY_SERVICE_ACCOUNT: ${{ vars.WORKLOAD_IDENTITY_SERVICE_ACCOUNT }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          # Azure outputs are loaded from azure-outputs.env file directly
+
