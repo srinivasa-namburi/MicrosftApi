@@ -1,5 +1,22 @@
 name: Modern Deploy
 
+# This workflow deploys to Azure using a service principal stored in the AZURE_CREDENTIALS secret.
+#
+# AZURE_CREDENTIALS Secret Format:
+# The workflow supports both output formats from Azure CLI:
+#
+# Option 1: Output from 'az ad sp create-for-rbac' (recommended - paste directly):
+#   {"appId":"...","password":"...","tenant":"...","subscriptionId":"..."}
+#
+# Option 2: GitHub Actions format (also supported):
+#   {"clientId":"...","clientSecret":"...","tenantId":"...","subscriptionId":"..."}
+#
+# The subscriptionId field is optional - if omitted, it will use AZURE_SUBSCRIPTION_ID variable.
+# The workflow automatically converts between formats, so use whichever is convenient.
+#
+# To set the secret:
+#   gh secret set AZURE_CREDENTIALS --env dev --body '{"appId":"...","password":"...","tenant":"...","subscriptionId":"..."}'
+
 on:
   workflow_dispatch:
     inputs:
@@ -37,10 +54,55 @@ jobs:
           build/scripts/pipeline-internal/build-modern-aspire-publish.sh out/publish
           # Post-publish fixes now handles all patching
           build/scripts/pipeline-internal/build-modern-post-publish-fixes.sh out/publish publish
+      - name: Convert Azure credentials format
+        id: convert-creds
+        run: |
+          # Convert from az ad sp create format (appId/password/tenant)
+          # to azure/login format (clientId/clientSecret/tenantId/subscriptionId)
+          echo "Converting Azure credentials to GitHub Actions format..."
+
+          # Read the credentials secret
+          CREDS='${{ secrets.AZURE_CREDENTIALS }}'
+
+          # Parse fields (supporting both formats)
+          CLIENT_ID=$(echo "$CREDS" | jq -r '.clientId // .appId')
+          CLIENT_SECRET=$(echo "$CREDS" | jq -r '.clientSecret // .password')
+          TENANT_ID=$(echo "$CREDS" | jq -r '.tenantId // .tenant')
+          SUBSCRIPTION_ID=$(echo "$CREDS" | jq -r '.subscriptionId // empty')
+
+          # Use subscription from variables if not in credentials
+          if [ -z "$SUBSCRIPTION_ID" ]; then
+            SUBSCRIPTION_ID="${AZURE_SUBSCRIPTION_ID:-}"
+          fi
+
+          # Create properly formatted credentials
+          if [ -n "$SUBSCRIPTION_ID" ]; then
+            FORMATTED_CREDS=$(jq -n \
+              --arg clientId "$CLIENT_ID" \
+              --arg clientSecret "$CLIENT_SECRET" \
+              --arg tenantId "$TENANT_ID" \
+              --arg subscriptionId "$SUBSCRIPTION_ID" \
+              '{clientId: $clientId, clientSecret: $clientSecret, tenantId: $tenantId, subscriptionId: $subscriptionId}')
+          else
+            FORMATTED_CREDS=$(jq -n \
+              --arg clientId "$CLIENT_ID" \
+              --arg clientSecret "$CLIENT_SECRET" \
+              --arg tenantId "$TENANT_ID" \
+              '{clientId: $clientId, clientSecret: $clientSecret, tenantId: $tenantId}')
+          fi
+
+          # Store in output (masked)
+          echo "azure-credentials<<EOF" >> $GITHUB_OUTPUT
+          echo "$FORMATTED_CREDS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          echo "✅ Credentials converted successfully"
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       - name: Azure login
         uses: azure/login@v2
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          creds: ${{ steps.convert-creds.outputs.azure-credentials }}
       - name: Build and Push Docker Images to ACR
         uses: azure/CLI@v2
         with:
