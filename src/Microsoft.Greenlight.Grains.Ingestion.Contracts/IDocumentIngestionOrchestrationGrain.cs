@@ -1,6 +1,7 @@
 ﻿using System.Threading.Tasks;
 using Microsoft.Greenlight.Shared.Enums;
 using Orleans;
+using Orleans.Concurrency;
 
 namespace Microsoft.Greenlight.Grains.Ingestion.Contracts
 {
@@ -11,7 +12,9 @@ namespace Microsoft.Greenlight.Grains.Ingestion.Contracts
     {
         /// <summary>
         /// Starts or resumes ingestion for a specific container/folder orchestration.
+        /// This method coordinates multiple file ingestion operations that may queue for extended periods.
         /// </summary>
+        [ResponseTimeout("2.00:00:00")] // 2 days timeout to handle long-running ingestion orchestrations
         Task StartIngestionAsync(
             string documentLibraryShortName,
             DocumentLibraryType documentLibraryType,
@@ -21,7 +24,9 @@ namespace Microsoft.Greenlight.Grains.Ingestion.Contracts
         /// <summary>
         /// Starts or resumes ingestion for a FileStorageSource, handling multiple DL/DPs that use it.
         /// This is the efficient approach for large repositories.
+        /// This method coordinates multiple file ingestion operations that may queue for extended periods.
         /// </summary>
+        [ResponseTimeout("2.00:00:00")] // 2 days timeout to handle long-running ingestion orchestrations
         Task StartIngestionAsync(
             Guid fileStorageSourceId,
             List<(string shortName, Guid id, DocumentLibraryType type, bool isDocumentLibrary)> dlDpList,
@@ -52,5 +57,11 @@ namespace Microsoft.Greenlight.Grains.Ingestion.Contracts
         /// Diagnostic method to check for stuck documents and attempt recovery.
         /// </summary>
         Task CheckAndRecoverStuckDocumentsAsync();
+
+        /// <summary>
+        /// Forces a reset of the orchestration's active state, clearing any stuck flags.
+        /// Used for recovery scenarios during scheduler startup.
+        /// </summary>
+        Task ForceResetAsync();
     }
 }

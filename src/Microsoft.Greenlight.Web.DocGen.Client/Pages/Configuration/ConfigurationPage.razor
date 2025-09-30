@@ -1,733 +1,170 @@
 @* Copyright (c) Microsoft Corporation. All rights reserved. *@
-@page "/configuration"
+@page "/admin/configuration"
 @using Microsoft.Greenlight.Shared.Configuration
 @using Microsoft.Greenlight.Shared.Contracts.DTO.Configuration
-@using Microsoft.Greenlight.Web.DocGen.Client.Components.Authorization
-@using Microsoft.Greenlight.Web.DocGen.Client.Components.FileStorage
-@using Microsoft.Greenlight.Shared.Contracts.DTO.Configuration
-@using Microsoft.Greenlight.Shared.Enums
-@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@using Microsoft.Greenlight.Web.DocGen.Client.Components.Configuration
 @inject IConfigurationApiClient ConfigurationApiClient
 @inject IContentReferenceReindexApiClient ContentReferenceReindexApiClient
-@using Microsoft.Greenlight.Grains.Shared.Contracts.State
 @inject IDialogService DialogService
-@inject ISnackbar Snackbar
-@inject Microsoft.Greenlight.Web.DocGen.Client.Services.INavMenuStateService NavMenuStateService
+@inject ISnackbar SnackBar
+@inject INavMenuStateService NavMenuStateService
+@inject NavigationManager Nav
+@implements IDisposable
 
 <PageTitle>Configuration</PageTitle>
 
-<MudPaper Class="pa-4">
-    <MudText Typo="Typo.h5">Configuration Management</MudText>
-    <MudDivider Class="mt-2 mb-3" />
-
-    <!-- Floating Save All button (visible when any section is dirty) -->
-    <MudTooltip Text="Save all unsaved changes">
-        <MudFab StartIcon="@Icons.Material.Filled.Save" Color="Color.Primary" OnClick="SaveAllAsync" Disabled="@(!AnyDirty)"
-                Class="d-none d-md-flex" Style="position: fixed; right: 24px; bottom: 24px; z-index: 1300;"
-                Label="Save All Changes" />
-    </MudTooltip>
-
-    @* Reindex chip (shows only if there is an active content reference reindex) *@
-    @if (_activeCrReindexCount > 0)
-    {
-        <PermissionView Permission="@Microsoft.Greenlight.Shared.Contracts.Authorization.PermissionKeys.AlterDocumentProcessesAndLibraries" Mode="PermissionMode.DisableControls">
-            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
-                <MudChip T="string" Color="Color.Info" Variant="Variant.Filled" OnClick="OpenContentReferenceReindexDialog">
-                    Content Reference Reindexing: @_activeCrReindexCount
-                </MudChip>
-                <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="RefreshActiveCrReindexCountAsync" AriaLabel="Refresh reindex status" />
-            </MudStack>
-        </PermissionView>
-        <MudDivider Class="mt-1 mb-3" />
-    }
-
-    <MudGrid>
-        <MudItem xs="12" md="3">
-            <MudCard Class="mb-4">
-                <MudCardContent>
-                    <MudText Typo="Typo.subtitle1">Sections</MudText>
-                    <MudDivider Class="mt-2 mb-2" />
-                    <MudList T="ConfigSection" Dense="true">
-                        <MudListItem T="ConfigSection" OnClick="@(()=>SelectSection(ConfigSection.Frontend))" Class="@GetSectionClass(ConfigSection.Frontend)">
-                            <MudIcon Icon="@Icons.Material.Filled.Web" Class="me-2" /> Frontend
-                        </MudListItem>
-                        <MudListItem T="ConfigSection" OnClick="@(()=>SelectSection(ConfigSection.Features))" Class="@GetSectionClass(ConfigSection.Features)">
-                            <MudIcon Icon="@Icons.Material.Filled.Tune" Class="me-2" /> Features
-                        </MudListItem>
-                        <MudListItem T="ConfigSection" OnClick="@(()=>SelectSection(ConfigSection.Scalability))" Class="@GetSectionClass(ConfigSection.Scalability)">
-                            <MudIcon Icon="@Icons.Material.Filled.Speed" Class="me-2" /> Scalability
-                        </MudListItem>
-                        <MudListItem T="ConfigSection" OnClick="@(()=>SelectSection(ConfigSection.VectorStore))" Class="@GetSectionClass(ConfigSection.VectorStore)">
-                            <MudIcon Icon="@Icons.Material.Filled.Hub" Class="me-2" /> Vector Store
-                        </MudListItem>
-                        <MudListItem T="ConfigSection" OnClick="@(()=>SelectSection(ConfigSection.Ocr))" Class="@GetSectionClass(ConfigSection.Ocr)">
-                            <MudIcon Icon="@Icons.Material.Filled.TextFields" Class="me-2" /> OCR
-                        </MudListItem>
-                        <MudListItem T="ConfigSection" OnClick="@(()=>SelectSection(ConfigSection.AiModels))" Class="@GetSectionClass(ConfigSection.AiModels)">
-                            <MudIcon Icon="@Icons.Material.Filled.SmartToy" Class="me-2" /> AI Models
-                        </MudListItem>
-                        <MudListItem T="ConfigSection" OnClick="@(()=>SelectSection(ConfigSection.Secrets))" Class="@GetSectionClass(ConfigSection.Secrets)">
-                            <MudIcon Icon="@Icons.Material.Filled.VpnKey" Class="me-2" /> Secrets
-                        </MudListItem>
-                        <MudListItem T="ConfigSection" OnClick="@(()=>SelectSection(ConfigSection.FileStorage))" Class="@GetSectionClass(ConfigSection.FileStorage)">
-                            <MudIcon Icon="@Icons.Material.Filled.Storage" Class="me-2" /> File Storage
-                        </MudListItem>
-                    </MudList>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-        <MudItem xs="12" md="9">
-        <!-- Frontend Options Section -->
-        @if (_section == ConfigSection.Frontend)
-        {
-            @if (IsFrontendDirty)
-            {
-                <MudAlert Severity="Severity.Warning" Variant="Variant.Filled" Class="mb-2">You have unsaved changes</MudAlert>
-            }
-            <MudGrid>
-                <MudItem xs="12" md="6">
-                    <MudCard Class="mb-4">
-                        <MudCardContent>
-                            <MudText Typo="Typo.h6">Frontend Options</MudText>
-                            <MudDivider Class="mt-2 mb-3" />
-                            <MudItem xs="12">
-                                <MudTextField @bind-Value="_frontendOptions.SiteName" Label="Site Name" Variant="Variant.Filled" Immediate="true" />
-                            </MudItem>
-                            <MudDivider Class="mt-2 mb-3" />
-                            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" Disabled="@(!IsFrontendDirty)" OnClick="SaveFrontendAsync">Save Frontend</MudButton>
-                        </MudCardContent>
-                    </MudCard>
-                </MudItem>
-            </MudGrid>
-        }
-
-        <!-- Feature Flags Section -->
-        @if (_section == ConfigSection.Features)
-        {
-            @if (IsFeaturesDirty)
-            {
-                <MudAlert Severity="Severity.Warning" Variant="Variant.Filled" Class="mb-2">You have unsaved changes</MudAlert>
-            }
-            <MudGrid>
-                <MudItem xs="12" md="8">
-                    <MudCard Class="mb-4">
-                        <MudCardContent>
-                            <MudText Typo="Typo.h6">Feature Toggles</MudText>
-                            <MudDivider Class="mt-2 mb-3" />
-                            <MudItem xs="12">
-                                <MudSwitch T="bool" @bind-Value="_featureFlags.EnableMassDocumentProduction" Color="Color.Primary" Label="Enable Mass Document Production" />
-                            </MudItem>
-                            <MudItem xs="12">
-                                <MudSwitch T="bool" @bind-Value="_featureFlags.EnableReviews" Color="Color.Primary" Label="Enable Reviews" />
-                            </MudItem>
-                            <MudItem xs="12">
-                                <MudSwitch T="bool" @bind-Value="_featureFlags.EnableReferenceFrontend" Color="Color.Primary" Label="Enable Source Reference Frontend for generation" />
-                            </MudItem>
-                            <MudItem xs="12">
-                                <MudSwitch T="bool" @bind-Value="_featureFlags.EnableContentReferences" Color="Color.Primary" Label="Enable Content Reference System (internal links)" />
-                            </MudItem>
-                            <MudItem xs="12">
-                                <MudSwitch T="bool" @bind-Value="_featureFlags.EnableExternalDataView" Color="Color.Primary" Label="Enable External Data View" />
-                            </MudItem>
-                            <MudDivider Class="mt-2 mb-3" />
-                            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" Disabled="@(!IsFeaturesDirty)" OnClick="SaveFeaturesAsync">Save Features</MudButton>
-                        </MudCardContent>
-                    </MudCard>
-                </MudItem>
-            </MudGrid>
-        }
-
-        <!-- Scalability Options Section -->
-        @if (_section == ConfigSection.Scalability)
-        {
-            @if (IsScalabilityDirty)
-            {
-                <MudAlert Severity="Severity.Warning" Variant="Variant.Filled" Class="mb-2">You have unsaved changes</MudAlert>
-            }
-            <MudGrid>
-                <MudItem xs="12" md="10">
-                    <MudCard Class="mb-4">
-                        <MudCardContent>
-                            <MudText Typo="Typo.h6">Scalability Options</MudText>
-                            <MudDivider Class="mt-2 mb-3" />
-                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                                <MudSlider T="int" @bind-Value="_scalabilityOptions.NumberOfValidationWorkers" Min="1" Max="10" TickMarks="true" ValueLabel="true" Immediate="true">Number of Validation Workers</MudSlider>
-                                <MudNumericField T="int" @bind-Value="_scalabilityOptions.NumberOfValidationWorkers" Min="1" Max="10" Immediate="true" Style="width:80px;" />
-                            </MudStack>
-                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                                <MudSlider T="int" @bind-Value="_scalabilityOptions.NumberOfGenerationWorkers" Min="1" Max="10" TickMarks="true" ValueLabel="true" Immediate="true">Number of Document Generation Workers</MudSlider>
-                                <MudNumericField T="int" @bind-Value="_scalabilityOptions.NumberOfGenerationWorkers" Min="1" Max="10" Immediate="true" Style="width:80px;" />
-                            </MudStack>
-                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                                <MudSlider T="int" @bind-Value="_scalabilityOptions.NumberOfIngestionWorkers" Min="1" Max="10" TickMarks="true" ValueLabel="true" Immediate="true">Number of Document Ingestion Workers</MudSlider>
-                                <MudNumericField T="int" @bind-Value="_scalabilityOptions.NumberOfIngestionWorkers" Min="1" Max="10" Immediate="true" Style="width:80px;" />
-                            </MudStack>
-                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                                <MudSlider T="int" @bind-Value="_scalabilityOptions.NumberOfReviewWorkers" Min="1" Max="10" TickMarks="true" ValueLabel="true" Immediate="true">Number of Document Review Workers</MudSlider>
-                                <MudNumericField T="int" @bind-Value="_scalabilityOptions.NumberOfReviewWorkers" Min="1" Max="10" Immediate="true" Style="width:80px;" />
-                            </MudStack>
-                            <MudDivider Class="mt-2 mb-3" />
-                            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" Disabled="@(!IsScalabilityDirty)" OnClick="SaveScalabilityAsync">Save Scalability</MudButton>
-                        </MudCardContent>
-                    </MudCard>
-                </MudItem>
-            </MudGrid>
-        }
-
-        <!-- Vector Store Options Section -->
-        @if (_section == ConfigSection.VectorStore)
-        {
-            @if (IsVectorStoreDirty)
-            {
-                <MudAlert Severity="Severity.Warning" Variant="Variant.Filled" Class="mb-2">You have unsaved changes</MudAlert>
-            }
-            <MudGrid>
-                <MudItem xs="12">
-                    <MudCard Class="mb-4">
-                        <MudCardContent>
-                            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-                                <MudText Typo="Typo.h6">Vector Store Options</MudText>
-                                <MudChip T="string" Color="Color.Info" Size="Size.Small">
-                                    <MudText Typo="Typo.body2">
-                                        <strong>Store Type:</strong> @_vectorStoreOptions.StoreType.ToString()
-                                    </MudText>
-                                </MudChip>
-                            </MudStack>
-                            <MudDivider Class="mt-2 mb-3" />
-                            <MudGrid>
-                                <MudItem xs="12" md="3"><MudNumericField T="int" @bind-Value="_vectorStoreOptions.ChunkSize" Label="Chunk Size" Min="100" Max="8000" Immediate="true" /></MudItem>
-                                <MudItem xs="12" md="3"><MudNumericField T="int" @bind-Value="_vectorStoreOptions.ChunkOverlap" Label="Chunk Overlap" Min="0" Max="4000" Immediate="true" /></MudItem>
-                                <MudItem xs="12" md="3"><MudNumericField T="int" @bind-Value="_vectorStoreOptions.MaxSearchResults" Label="Max Search Results" Min="1" Max="100" Immediate="true" /></MudItem>
-                                <MudItem xs="12" md="3"><MudNumericField T="double" @bind-Value="_vectorStoreOptions.MinRelevanceScore" Label="Min Relevance Score" Min="0" Max="1" Immediate="true" /></MudItem>
-                                <MudItem xs="12" md="3"><MudNumericField T="int" @bind-Value="_vectorStoreOptions.DocumentChunkCacheTtlMinutes" Label="Chunk Cache TTL (min)" Min="1" Max="1440" Immediate="true" /></MudItem>
-                                <MudItem xs="12" md="3"><MudSwitch T="bool" @bind-Value="_vectorStoreOptions.EnableFileNameDocIdCacheIndex" Color="Color.Primary" Label="FileName->DocId Cache Index" /></MudItem>
-                                <MudItem xs="12" md="3"><MudNumericField T="double" @bind-Value="ScoreCutoffValue" Label="Score Cutoff" Min="0" Max="1" Immediate="true" /></MudItem>
-                                <MudItem xs="12" md="3"><MudNumericField T="int" @bind-Value="_vectorStoreOptions.MinResultsBeforeCutoff" Label="Min Results Before Cutoff" Min="0" Max="100" Immediate="true" /></MudItem>
-                                <MudItem xs="12" md="3"><MudSwitch T="bool" @bind-Value="_vectorStoreOptions.EnableHybridScoring" Color="Color.Primary" Label="Enable Hybrid Scoring" /></MudItem>
-                                <MudItem xs="12" md="3"><MudNumericField T="double" @bind-Value="_vectorStoreOptions.HybridVectorWeight" Label="Hybrid Vector Weight" Min="0" Max="1" Immediate="true" /></MudItem>
-                                <MudItem xs="12" md="3"><MudNumericField T="int" @bind-Value="_vectorStoreOptions.MaxChunkTextLength" Label="Max Chunk Text Length" Min="100" Max="20000" Immediate="true" /></MudItem>
-                                <MudItem xs="12" md="3"><MudSwitch T="bool" @bind-Value="_vectorStoreOptions.EnableWarmup" Color="Color.Primary" Label="Enable Warmup" /></MudItem>
-                                <MudItem xs="12" md="3"><MudSwitch T="bool" @bind-Value="_vectorStoreOptions.EnableEmbeddingDimensionVerification" Color="Color.Primary" Label="Verify Embedding Dimensions" /></MudItem>
-                            </MudGrid>
-                            <MudAlert Severity="Severity.Info" Dense="true" Class="mt-3">
-                                <strong>Note:</strong> Store Type is automatically determined by the UsePostgresMemory global setting and cannot be directly modified here.
-                            </MudAlert>
-                            <MudDivider Class="mt-2 mb-3" />
-                            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" Disabled="@(!IsVectorStoreDirty)" OnClick="SaveVectorStoreAsync">Save Vector Store</MudButton>
-                        </MudCardContent>
-                    </MudCard>
-                </MudItem>
-                
-                <!-- Content Reference Embedding Configuration -->
-                <MudItem xs="12">
-                    <MudCard Class="mb-4">
-                        <MudCardContent>
-                            <MudText Typo="Typo.h6">Content Reference Vector Store</MudText>
-                            <MudDivider Class="mt-2 mb-3" />
-
-                            <MudGrid>
-                                <!-- GeneratedDocument -->
-                                <MudItem xs="12" md="6">
-                                    <MudText Typo="Typo.subtitle2" Class="mb-2">Generated Document</MudText>
-                                    <MudSelect T="AiModelDeploymentInfo" @bind-Value="SelectedEmbeddingDeployment_GeneratedDocument" Label="Embedding Model Deployment" ToStringFunc="@(d => d.DeploymentName)">
-                                        @foreach (var deployment in _aiModelDeployments.Where(d => d.AiModel?.ModelType == AiModelType.Embedding))
-                                        {
-                                            <MudSelectItem Value="@deployment">@deployment.DeploymentName</MudSelectItem>
-                                        }
-                                    </MudSelect>
-                                    <MudSelect T="int?" @bind-Value="_vectorStoreOptions.ContentReferences.GeneratedDocument.EmbeddingDimensionsOverride" Label="Embedding Size Override (dimensions)" Class="mt-2" Disabled="@IsAdaDefaultEmbedding(SelectedEmbeddingDeployment_GeneratedDocument)" data-testid="dim-override-generated-document">
-                                        <MudSelectItem T="int?" Value="@(default(int?))">Use deployment default</MudSelectItem>
-                                        <MudSelectItem T="int?" Value="256">256</MudSelectItem>
-                                        <MudSelectItem T="int?" Value="512">512</MudSelectItem>
-                                        <MudSelectItem T="int?" Value="1024">1024</MudSelectItem>
-                                        <MudSelectItem T="int?" Value="1536">1536</MudSelectItem>
-                                        <MudSelectItem T="int?" Value="3072">3072</MudSelectItem>
-                                    </MudSelect>
-                                    <MudStack Row="true" Spacing="2" Class="mt-2">
-                                        <PermissionView Permission="@Microsoft.Greenlight.Shared.Contracts.Authorization.PermissionKeys.AlterDocumentProcessesAndLibraries" Mode="PermissionMode.DisableControls">
-                                            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="@(() => TriggerContentReferenceReindexAsync(ContentReferenceType.GeneratedDocument))" StartIcon="@Icons.Material.Filled.Refresh">Reindex Generated Documents</MudButton>
-                                        </PermissionView>
-                                    </MudStack>
-                                </MudItem>
-
-                                <!-- GeneratedSection -->
-                                <MudItem xs="12" md="6">
-                                    <MudText Typo="Typo.subtitle2" Class="mb-2">Generated Section</MudText>
-                                    <MudSelect T="AiModelDeploymentInfo" @bind-Value="SelectedEmbeddingDeployment_GeneratedSection" Label="Embedding Model Deployment" ToStringFunc="@(d => d.DeploymentName)">
-                                        @foreach (var deployment in _aiModelDeployments.Where(d => d.AiModel?.ModelType == AiModelType.Embedding))
-                                        {
-                                            <MudSelectItem Value="@deployment">@deployment.DeploymentName</MudSelectItem>
-                                        }
-                                    </MudSelect>
-                                    <MudSelect T="int?" @bind-Value="_vectorStoreOptions.ContentReferences.GeneratedSection.EmbeddingDimensionsOverride" Label="Embedding Size Override (dimensions)" Class="mt-2" Disabled="@IsAdaDefaultEmbedding(SelectedEmbeddingDeployment_GeneratedSection)" data-testid="dim-override-generated-section">
-                                        <MudSelectItem T="int?" Value="@(default(int?))">Use deployment default</MudSelectItem>
-                                        <MudSelectItem T="int?" Value="256">256</MudSelectItem>
-                                        <MudSelectItem T="int?" Value="512">512</MudSelectItem>
-                                        <MudSelectItem T="int?" Value="1024">1024</MudSelectItem>
-                                        <MudSelectItem T="int?" Value="1536">1536</MudSelectItem>
-                                        <MudSelectItem T="int?" Value="3072">3072</MudSelectItem>
-                                    </MudSelect>
-                                    <MudStack Row="true" Spacing="2" Class="mt-2">
-                                        <PermissionView Permission="@Microsoft.Greenlight.Shared.Contracts.Authorization.PermissionKeys.AlterDocumentProcessesAndLibraries" Mode="PermissionMode.DisableControls">
-                                            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="@(() => TriggerContentReferenceReindexAsync(ContentReferenceType.GeneratedSection))" StartIcon="@Icons.Material.Filled.Refresh">Reindex Generated Sections</MudButton>
-                                        </PermissionView>
-                                    </MudStack>
-                                </MudItem>
-
-                                <!-- ReviewItem -->
-                                <MudItem xs="12" md="6">
-                                    <MudText Typo="Typo.subtitle2" Class="mb-2">Review Item</MudText>
-                                    <MudSelect T="AiModelDeploymentInfo" @bind-Value="SelectedEmbeddingDeployment_ReviewItem" Label="Embedding Model Deployment" ToStringFunc="@(d => d.DeploymentName)">
-                                        @foreach (var deployment in _aiModelDeployments.Where(d => d.AiModel?.ModelType == AiModelType.Embedding))
-                                        {
-                                            <MudSelectItem Value="@deployment">@deployment.DeploymentName</MudSelectItem>
-                                        }
-                                    </MudSelect>
-                                    <MudSelect T="int?" @bind-Value="_vectorStoreOptions.ContentReferences.ReviewItem.EmbeddingDimensionsOverride" Label="Embedding Size Override (dimensions)" Class="mt-2" Disabled="@IsAdaDefaultEmbedding(SelectedEmbeddingDeployment_ReviewItem)" data-testid="dim-override-review-item">
-                                        <MudSelectItem T="int?" Value="@(default(int?))">Use deployment default</MudSelectItem>
-                                        <MudSelectItem T="int?" Value="256">256</MudSelectItem>
-                                        <MudSelectItem T="int?" Value="512">512</MudSelectItem>
-                                        <MudSelectItem T="int?" Value="1024">1024</MudSelectItem>
-                                        <MudSelectItem T="int?" Value="1536">1536</MudSelectItem>
-                                        <MudSelectItem T="int?" Value="3072">3072</MudSelectItem>
-                                    </MudSelect>
-                                    <MudStack Row="true" Spacing="2" Class="mt-2">
-                                        <PermissionView Permission="@Microsoft.Greenlight.Shared.Contracts.Authorization.PermissionKeys.AlterDocumentProcessesAndLibraries" Mode="PermissionMode.DisableControls">
-                                            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="@(() => TriggerContentReferenceReindexAsync(ContentReferenceType.ReviewItem))" StartIcon="@Icons.Material.Filled.Refresh">Reindex Review Items</MudButton>
-                                        </PermissionView>
-                                    </MudStack>
-                                </MudItem>
-
-                                <!-- ExternalFile -->
-                                <MudItem xs="12" md="6">
-                                    <MudText Typo="Typo.subtitle2" Class="mb-2">External File</MudText>
-                                    <MudSelect T="AiModelDeploymentInfo" @bind-Value="SelectedEmbeddingDeployment_ExternalFile" Label="Embedding Model Deployment" ToStringFunc="@(d => d.DeploymentName)">
-                                        @foreach (var deployment in _aiModelDeployments.Where(d => d.AiModel?.ModelType == AiModelType.Embedding))
-                                        {
-                                            <MudSelectItem Value="@deployment">@deployment.DeploymentName</MudSelectItem>
-                                        }
-                                    </MudSelect>
-                                    <MudSelect T="int?" @bind-Value="_vectorStoreOptions.ContentReferences.ExternalFile.EmbeddingDimensionsOverride" Label="Embedding Size Override (dimensions)" Class="mt-2" Disabled="@IsAdaDefaultEmbedding(SelectedEmbeddingDeployment_ExternalFile)" data-testid="dim-override-external-file">
-                                        <MudSelectItem T="int?" Value="@(default(int?))">Use deployment default</MudSelectItem>
-                                        <MudSelectItem T="int?" Value="256">256</MudSelectItem>
-                                        <MudSelectItem T="int?" Value="512">512</MudSelectItem>
-                                        <MudSelectItem T="int?" Value="1024">1024</MudSelectItem>
-                                        <MudSelectItem T="int?" Value="1536">1536</MudSelectItem>
-                                        <MudSelectItem T="int?" Value="3072">3072</MudSelectItem>
-                                    </MudSelect>
-                                    <MudStack Row="true" Spacing="2" Class="mt-2">
-                                        <PermissionView Permission="@Microsoft.Greenlight.Shared.Contracts.Authorization.PermissionKeys.AlterDocumentProcessesAndLibraries" Mode="PermissionMode.DisableControls">
-                                            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="@(() => TriggerContentReferenceReindexAsync(ContentReferenceType.ExternalFile))" StartIcon="@Icons.Material.Filled.Refresh">Reindex External Files</MudButton>
-                                        </PermissionView>
-                                    </MudStack>
-                                </MudItem>
-
-                                <!-- ExternalLinkAsset -->
-                                <MudItem xs="12" md="6">
-                                    <MudText Typo="Typo.subtitle2" Class="mb-2">External Link Asset</MudText>
-                                    <MudSelect T="AiModelDeploymentInfo" @bind-Value="SelectedEmbeddingDeployment_ExternalLinkAsset" Label="Embedding Model Deployment" ToStringFunc="@(d => d.DeploymentName)">
-                                        @foreach (var deployment in _aiModelDeployments.Where(d => d.AiModel?.ModelType == AiModelType.Embedding))
-                                        {
-                                            <MudSelectItem Value="@deployment">@deployment.DeploymentName</MudSelectItem>
-                                        }
-                                    </MudSelect>
-                                    <MudSelect T="int?" @bind-Value="_vectorStoreOptions.ContentReferences.ExternalLinkAsset.EmbeddingDimensionsOverride" Label="Embedding Size Override (dimensions)" Class="mt-2" Disabled="@IsAdaDefaultEmbedding(SelectedEmbeddingDeployment_ExternalLinkAsset)" data-testid="dim-override-external-link-asset">
-                                        <MudSelectItem T="int?" Value="@(default(int?))">Use deployment default</MudSelectItem>
-                                        <MudSelectItem T="int?" Value="256">256</MudSelectItem>
-                                        <MudSelectItem T="int?" Value="512">512</MudSelectItem>
-                                        <MudSelectItem T="int?" Value="1024">1024</MudSelectItem>
-                                        <MudSelectItem T="int?" Value="1536">1536</MudSelectItem>
-                                        <MudSelectItem T="int?" Value="3072">3072</MudSelectItem>
-                                    </MudSelect>
-                                    <MudStack Row="true" Spacing="2" Class="mt-2">
-                                        <PermissionView Permission="@Microsoft.Greenlight.Shared.Contracts.Authorization.PermissionKeys.AlterDocumentProcessesAndLibraries" Mode="PermissionMode.DisableControls">
-                                            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="@(() => TriggerContentReferenceReindexAsync(ContentReferenceType.ExternalLinkAsset))" StartIcon="@Icons.Material.Filled.Refresh">Reindex External Link Assets</MudButton>
-                                        </PermissionView>
-                                    </MudStack>
-                                </MudItem>
-                            </MudGrid>
-                        </MudCardContent>
-                    </MudCard>
-                </MudItem>
-            </MudGrid>
-        }
-
-        <!-- OCR Options Section -->
-        @if (_section == ConfigSection.Ocr)
-        {
-            @if (IsOcrDirty)
-            {
-                <MudAlert Severity="Severity.Warning" Variant="Variant.Filled" Class="mb-2">You have unsaved changes</MudAlert>
-            }
-            <MudGrid>
-                <MudItem xs="12" md="10">
-                    <MudCard Class="mb-4">
-                        <MudCardContent>
-                            <MudText Typo="Typo.h6">OCR Options</MudText>
-                            <MudDivider Class="mt-2 mb-3" />
-                            <MudItem xs="12">
-                                <MudSwitch T="bool" @bind-Value="_ocrOptions.AllowExternalDownloads" Color="Color.Primary" Label="Allow External Downloads" />
-                            </MudItem>
-                            <MudItem xs="12" md="8">
-                                <MudTextField @bind-Value="_ocrOptions.ExternalRepoBaseUrl" Label="External Repo Base Url" Variant="Variant.Filled" Immediate="true" />
-                            </MudItem>
-
-                            <MudDivider Class="my-4" />
-                            <MudText Typo="Typo.subtitle1">Default Languages</MudText>
-                            <MudText Typo="Typo.body2" Class="mb-2">Choose which OCR language data files to prefer. These are codes like 'eng', 'spa', 'chi_sim'.</MudText>
-
-                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                                <MudTextField @bind-Value="_languageFilter" Label="Filter languages" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true" />
-                                <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="RefreshCachedLanguagesAsync" StartIcon="@Icons.Material.Filled.Refresh">Refresh</MudButton>
-                            </MudStack>
-                            <MudSelect T="string" Label="Select Default Languages" Variant="Variant.Outlined" MultiSelection="true" SelectedValues="@_selectedDefaultLanguages" SelectedValuesChanged="@((IEnumerable<string> values) => OnSelectedDefaultLanguagesChanged(values))" Dense="true" Class="mt-2">
-                                @foreach (var lang in AllSelectableLanguages)
-                                {
-                                    if (IsLanguageVisible(lang))
-                                    {
-                                        <MudSelectItem Value="@lang.Code">@lang.Label</MudSelectItem>
-                                    }
-                                }
-                            </MudSelect>
-
-                            <MudDivider Class="my-4" />
-                            <MudText Typo="Typo.subtitle1">Download New Language</MudText>
-                            <MudText Typo="Typo.body2" Class="mb-2">Provide a Tesseract language code (e.g., 'eng', 'spa', 'chi_sim') to download from the configured repo and cache to blob.</MudText>
-                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                                <MudTextField @bind-Value="_languageCodeToDownload" Label="Language code" Variant="Variant.Outlined" Immediate="true" />
-                                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="DownloadLanguageAsync" Disabled="string.IsNullOrWhiteSpace(_languageCodeToDownload)" StartIcon="@Icons.Material.Filled.Download">Download</MudButton>
-                            </MudStack>
-
-                            <MudDivider Class="my-4" />
-                            <MudStack Row="true" Spacing="2">
-                                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveOcrOptionsAsync" StartIcon="@Icons.Material.Filled.Save" Disabled="@(!IsOcrDirty)">Save OCR Settings</MudButton>
-                            </MudStack>
-                        </MudCardContent>
-                    </MudCard>
-                </MudItem>
-            </MudGrid>
-        }
-
-        <!-- AI Models Section -->
-        @if (_section == ConfigSection.AiModels)
-        {
-            <MudCard>
-                <MudCardContent>
-                    <AiModelEditorComponent />
-                </MudCardContent>
-            </MudCard>
-        }
-
-        <!-- Secrets Section -->
-        @if (_section == ConfigSection.Secrets)
-        {
-            @if (IsSecretsDirty)
-            {
-                <MudAlert Severity="Severity.Warning" Variant="Variant.Filled" Class="mb-2">You have unsaved changes</MudAlert>
-            }
-            <MudGrid>
-                <MudItem xs="12" md="8">
-                    <MudCard Class="mb-4">
-                        <MudCardContent>
-                            <MudText Typo="Typo.h6">Secret Configuration Overrides</MudText>
-                            <MudDivider Class="mt-2 mb-3" />
-                            <MudText Typo="Typo.body2" Class="mb-4">
-                                Override secret configuration values like API keys and connection strings. Current values are never displayed for security.
-                            </MudText>
-
-                            <!-- Azure Maps Key Override -->
-                            <MudExpansionPanels>
-                                <MudExpansionPanel Text="Azure Maps API Key">
-                                    <MudStack Spacing="3">
-                                        @if (_azureMapsKeyInfo != null)
-                                        {
-                                            <MudAlert Severity="@(_azureMapsKeyInfo.HasValue ? Severity.Success : Severity.Warning)" Dense="true">
-                                                <strong>Status:</strong> @(_azureMapsKeyInfo.IsOverridden ? "Using custom override" : "Using default configuration")
-                                                @if (_azureMapsKeyInfo.HasValue)
-                                                {
-                                                    <text> - Key is configured</text>
-                                                }
-                                                else
-                                                {
-                                                    <text> - No key configured</text>
-                                                }
-                                                @if (_azureMapsKeyInfo.LastUpdated.HasValue)
-                                                {
-                                                    <br /><small>Last updated: @_azureMapsKeyInfo.LastUpdated.Value.ToString("yyyy-MM-dd HH:mm:ss") UTC</small>
-                                                }
-                                            </MudAlert>
-                                        }
-
-                                        <MudTextField @bind-Value="_azureMapsKeyOverride" 
-                                                      Label="Azure Maps API Key" 
-                                                      InputType="InputType.Password"
-                                                      Variant="Variant.Filled" 
-                                                      Immediate="true"
-                                                      HelperText="Enter your Azure Maps API key. Leave empty to use default configuration."
-                                                      Clearable="true" />
-
-                                        <MudStack Row="true" Spacing="2">
-                                            <MudButton Variant="Variant.Filled" 
-                                                       Color="Color.Primary" 
-                                                       StartIcon="@Icons.Material.Filled.Save" 
-                                                       OnClick="SetAzureMapsKeyOverrideAsync"
-                                                       Disabled="string.IsNullOrWhiteSpace(_azureMapsKeyOverride)">
-                                                Set Override
-                                            </MudButton>
-                                            
-                                            @if (_azureMapsKeyInfo?.IsOverridden == true)
-                                            {
-                                                <MudButton Variant="Variant.Outlined" 
-                                                           Color="Color.Warning" 
-                                                           StartIcon="@Icons.Material.Filled.RestoreFromTrash" 
-                                                           OnClick="RemoveAzureMapsKeyOverrideAsync">
-                                                    Remove Override
-                                                </MudButton>
-                                            }
-                                        </MudStack>
-                                    </MudStack>
-                                </MudExpansionPanel>
-                            </MudExpansionPanels>
-                        </MudCardContent>
-                    </MudCard>
-                </MudItem>
-            </MudGrid>
-        }
-
-        <!-- File Storage Section -->
-        @if (_section == ConfigSection.FileStorage)
-        {
-            <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-2">
-                <MudTabPanel Text="Storage Hosts">
-                    <MudCard>
-                        <MudCardContent>
-                            <MudText Typo="Typo.h6" Class="mb-2">File Storage Hosts</MudText>
-                            <MudText Typo="Typo.body2" Class="mb-4">
-                                Manage the underlying storage infrastructure. Hosts define the connection details for storage providers like Azure Blob Storage, local file systems, or SharePoint.
-                            </MudText>
-                            <PermissionView Permission="@Microsoft.Greenlight.Shared.Contracts.Authorization.PermissionKeys.AlterSystemConfiguration">
-                                <ChildContent>
-                                    <FileStorageHostListComponent />
-                                </ChildContent>
-                                <NotAuthorized>
-                                    <MudAlert Severity="Severity.Info">
-                                        You need the "Alter System Configuration" permission to manage file storage hosts.
-                                    </MudAlert>
-                                </NotAuthorized>
-                            </PermissionView>
-                        </MudCardContent>
-                    </MudCard>
-                </MudTabPanel>
-            </MudTabs>
-        }
-        </MudItem>
-    </MudGrid>
-
-        <!-- Content Reference Reindex Status (per-source) -->
-        <MudCard Class="mb-4">
-            <MudCardContent>
-                <MudText Typo="Typo.h6">Content Reference Reindex Status</MudText>
-                <MudDivider Class="mt-2 mb-3" />
-                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
-                    <MudSelect T="ContentReferenceType" @bind-Value="_contentReferenceStatusType" Label="Reference Type">
-                        <MudSelectItem Value="ContentReferenceType.GeneratedDocument">Generated Document</MudSelectItem>
-                        <MudSelectItem Value="ContentReferenceType.GeneratedSection">Generated Section</MudSelectItem>
-                        <MudSelectItem Value="ContentReferenceType.ReviewItem">Review Item</MudSelectItem>
-                        <MudSelectItem Value="ContentReferenceType.ExternalFile">External File</MudSelectItem>
-                        <MudSelectItem Value="ContentReferenceType.ExternalLinkAsset">External Link Asset</MudSelectItem>
-                    </MudSelect>
-                </MudStack>
-
-                <!-- Enhanced status display component with auto-refresh and progress -->
-                <ContentReferenceReindexProgressDisplay Type="@_contentReferenceStatusType" />
-
-                @if (_contentReferenceStatus != null)
-                {
-                    <MudText Typo="Typo.body2" Class="mt-2">Processed: @_contentReferenceStatus.Processed / @_contentReferenceStatus.Total; Failed: @_contentReferenceStatus.Failed; Running: @_contentReferenceStatus.Running</MudText>
-                    @if (_contentReferenceStatus.Sources != null && _contentReferenceStatus.Sources.Count > 0)
-                    {
-                        <MudTable Items="_contentReferenceStatus.Sources" Dense="true" Hover="true" Class="mt-2">
-                            <HeaderContent>
-                                <MudTh>SourceId</MudTh>
-                                <MudTh>Total</MudTh>
-                                <MudTh>Processed</MudTh>
-                                <MudTh>Failed</MudTh>
-                            </HeaderContent>
-                            <RowTemplate>
-                                <MudTd DataLabel="SourceId">@(string.IsNullOrWhiteSpace(context.SourceId) ? "(none)" : context.SourceId)</MudTd>
-                                <MudTd DataLabel="Total">@context.Total</MudTd>
-                                <MudTd DataLabel="Processed">@context.Processed</MudTd>
-                                <MudTd DataLabel="Failed">@context.Failed</MudTd>
-                            </RowTemplate>
-                        </MudTable>
-                    }
-                    else
-                    {
-                        <MudText Typo="Typo.caption" Class="mt-2">No per-source data available yet.</MudText>
-                    }
-                }
-            </MudCardContent>
-        </MudCard>
+@if (_isCardView)
+{
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h4" Class="mb-2">Configuration Management</MudText>
+        <MudText Typo="Typo.body1" Class="mb-4 mud-text-secondary">Select a configuration section to manage</MudText>
+        
+        <ConfigurationCardGrid OnCardSelected="HandleCardSelection" IsAnimating="_isAnimating" />
     </MudPaper>
+}
+else
+{
+    <ConfigurationMenuBar SelectedSection="_section" 
+                         OnSectionChange="HandleSectionChange" 
+                         OnExpand="HandleMenuExpand" />
+    
+    <MudPaper Class="pa-4">
+        <MudTooltip Text="Save all unsaved changes">
+            <MudFab StartIcon="@Icons.Material.Filled.Save" Color="Color.Primary" OnClick="SaveAllAsync" Disabled="@(!AnyDirty)"
+                    Class="d-none d-md-flex" Style="position: fixed; right: 24px; bottom: 24px; z-index: 1300;"
+                    Label="Save All Changes" />
+        </MudTooltip>
+
+        @if (_activeCrReindexCount > 0)
+        {
+            <PermissionView Permission="@Microsoft.Greenlight.Shared.Contracts.Authorization.PermissionKeys.AlterDocumentProcessesAndLibraries" Mode="PermissionMode.DisableControls">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
+                    <MudChip T="string" Color="Color.Info" Variant="Variant.Filled" OnClick="OpenContentReferenceReindexDialog">
+                        Content Reference Reindexing: @_activeCrReindexCount
+                    </MudChip>
+                    <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="RefreshActiveCrReindexCountAsync" AriaLabel="Refresh reindex status" />
+                </MudStack>
+            </PermissionView>
+            <MudDivider Class="mt-1 mb-3" />
+        }
+
+        <div class="configuration-content">
+            @if (_section == ConfigSection.Frontend)
+            {
+                <CascadingValue Value="_coordinator">
+                    <FrontendConfiguration />
+                </CascadingValue>
+            }
+            @if (_section == ConfigSection.Features)
+            {
+                <CascadingValue Value="_coordinator">
+                    <FeatureFlagsConfiguration />
+                </CascadingValue>
+            }
+            @if (_section == ConfigSection.Scalability)
+            {
+                <CascadingValue Value="_coordinator">
+                    <ScalabilityConfiguration />
+                </CascadingValue>
+            }
+            @if (_section == ConfigSection.VectorStore)
+            {
+                <CascadingValue Value="_coordinator">
+                    <VectorStoreConfiguration />
+                </CascadingValue>
+            }
+            @if (_section == ConfigSection.Ocr)
+            {
+                <CascadingValue Value="_coordinator">
+                    <OcrConfiguration />
+                </CascadingValue>
+            }
+            @if (_section == ConfigSection.Secrets)
+            {
+                <CascadingValue Value="_coordinator">
+                    <SecretsConfiguration />
+                </CascadingValue>
+            }
+            @if (_section == ConfigSection.FileStorage)
+            {
+                <CascadingValue Value="_coordinator">
+                    <FileStorageConfiguration />
+                </CascadingValue>
+            }
+            @if (_section == ConfigSection.HostNames)
+            {
+                <CascadingValue Value="_coordinator">
+                    <HostNameConfiguration />
+                </CascadingValue>
+            }
+            @if (_section == ConfigSection.Mcp)
+            {
+                <CascadingValue Value="_coordinator">
+                    <McpConfiguration />
+                </CascadingValue>
+            }
+            @if (_section == ConfigSection.AiModels)
+            {
+                <CascadingValue Value="_coordinator">
+                    <AiModelConfiguration />
+                </CascadingValue>
+            }
+            @if (_section == ConfigSection.Flow)
+            {
+                <CascadingValue Value="_coordinator">
+                    <FlowConfiguration />
+                </CascadingValue>
+            }
+        </div>
+    </MudPaper>
+}
 
 @code {
-    private const string DefaultAdaEmbeddingModelName = "text-embedding-ada-002";
-
-    private bool IsAdaDefaultEmbedding(AiModelDeploymentInfo? deployment)
-    {
-        if (deployment?.AiModel?.Name is string name)
-        {
-            return string.Equals(name, DefaultAdaEmbeddingModelName, StringComparison.Ordinal);
-        }
-
-        if (deployment?.AiModelId is Guid id && id != Guid.Empty)
-        {
-            var modelName = _aiModelDeployments
-                .FirstOrDefault(d => d.AiModelId == id)?.AiModel?.Name;
-            if (!string.IsNullOrWhiteSpace(modelName))
-            {
-                return string.Equals(modelName, DefaultAdaEmbeddingModelName, StringComparison.Ordinal);
-            }
-        }
-
-        return false;
-    }
     private ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions _featureFlags = new();
     private ServiceConfigurationOptions.GreenlightServicesOptions.FrontendOptions _frontendOptions = new();
     private ServiceConfigurationOptions.GreenlightServicesOptions.ScalabilityOptions _scalabilityOptions = new();
     private VectorStoreOptions _vectorStoreOptions = new();
-
-    // Snapshots for dirty-checking
-    private ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions _initialFeatureFlags = new();
-    private ServiceConfigurationOptions.GreenlightServicesOptions.FrontendOptions _initialFrontendOptions = new();
-    private ServiceConfigurationOptions.GreenlightServicesOptions.ScalabilityOptions _initialScalabilityOptions = new();
-    private VectorStoreOptions _initialVectorStoreOptions = new();
-
-    // Embedding deployments for content reference config
-    private List<AiModelDeploymentInfo> _aiModelDeployments = new();
-
-    private AiModelDeploymentInfo? SelectedEmbeddingDeployment_GeneratedDocument
-    {
-        get => _aiModelDeployments.FirstOrDefault(d => d.DeploymentName == _vectorStoreOptions.ContentReferences.GeneratedDocument.EmbeddingModelDeploymentName);
-        set => _vectorStoreOptions.ContentReferences.GeneratedDocument.EmbeddingModelDeploymentName = value?.DeploymentName;
-    }
-
-    private AiModelDeploymentInfo? SelectedEmbeddingDeployment_GeneratedSection
-    {
-        get => _aiModelDeployments.FirstOrDefault(d => d.DeploymentName == _vectorStoreOptions.ContentReferences.GeneratedSection.EmbeddingModelDeploymentName);
-        set => _vectorStoreOptions.ContentReferences.GeneratedSection.EmbeddingModelDeploymentName = value?.DeploymentName;
-    }
-
-    private AiModelDeploymentInfo? SelectedEmbeddingDeployment_ReviewItem
-    {
-        get => _aiModelDeployments.FirstOrDefault(d => d.DeploymentName == _vectorStoreOptions.ContentReferences.ReviewItem.EmbeddingModelDeploymentName);
-        set => _vectorStoreOptions.ContentReferences.ReviewItem.EmbeddingModelDeploymentName = value?.DeploymentName;
-    }
-
-    private AiModelDeploymentInfo? SelectedEmbeddingDeployment_ExternalFile
-    {
-        get => _aiModelDeployments.FirstOrDefault(d => d.DeploymentName == _vectorStoreOptions.ContentReferences.ExternalFile.EmbeddingModelDeploymentName);
-        set => _vectorStoreOptions.ContentReferences.ExternalFile.EmbeddingModelDeploymentName = value?.DeploymentName;
-    }
-
-    private AiModelDeploymentInfo? SelectedEmbeddingDeployment_ExternalLinkAsset
-    {
-        get => _aiModelDeployments.FirstOrDefault(d => d.DeploymentName == _vectorStoreOptions.ContentReferences.ExternalLinkAsset.EmbeddingModelDeploymentName);
-        set => _vectorStoreOptions.ContentReferences.ExternalLinkAsset.EmbeddingModelDeploymentName = value?.DeploymentName;
-    }
-    private ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions.OcrOptions _initialOcrOptions = new();
-    private HashSet<string> _initialDefaultLanguages = new(StringComparer.OrdinalIgnoreCase);
-
-    // Prevent repeated snapshotting during Save All
-    private bool _suppressSnapshot = false;
-
-    // OCR state
     private ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions.OcrOptions _ocrOptions = new();
-    private List<LanguageDisplayInfo> _cachedLanguages = new();
-    private HashSet<string> _selectedDefaultLanguages = new(StringComparer.OrdinalIgnoreCase);
-    private string _languageFilter = string.Empty;
-    private string _languageCodeToDownload = string.Empty;
+    private ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions.OcrOptions _initialOcrOptions = new();
 
-    // Secrets state
     private SecretOverrideInfo? _azureMapsKeyInfo;
     private string _azureMapsKeyOverride = string.Empty;
 
-    // Wrapper to handle nullable ScoreCutoff
-    private double ScoreCutoffValue
-    {
-        get => _vectorStoreOptions.ScoreCutoff ?? 0d;
-        set => _vectorStoreOptions.ScoreCutoff = value == 0d ? null : value;
-    }
+    private string _languageFilter = string.Empty;
+    private HashSet<string> _selectedDefaultLanguages = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _initialDefaultLanguages = new(StringComparer.OrdinalIgnoreCase);
+    private List<LanguageDisplayInfo> _cachedLanguages = new();
+    private string _languageCodeToDownload = string.Empty;
 
-    private bool IsFrontendDirty => _frontendOptions.SiteName != _initialFrontendOptions.SiteName;
-    private bool IsFeaturesDirty =>
-        _featureFlags.EnableMassDocumentProduction != _initialFeatureFlags.EnableMassDocumentProduction ||
-        _featureFlags.EnableReviews != _initialFeatureFlags.EnableReviews ||
-        _featureFlags.EnableReferenceFrontend != _initialFeatureFlags.EnableReferenceFrontend ||
-        _featureFlags.EnableContentReferences != _initialFeatureFlags.EnableContentReferences ||
-        _featureFlags.EnableExternalDataView != _initialFeatureFlags.EnableExternalDataView;
-    private bool IsScalabilityDirty =>
-        _scalabilityOptions.NumberOfValidationWorkers != _initialScalabilityOptions.NumberOfValidationWorkers ||
-        _scalabilityOptions.NumberOfGenerationWorkers != _initialScalabilityOptions.NumberOfGenerationWorkers ||
-        _scalabilityOptions.NumberOfIngestionWorkers != _initialScalabilityOptions.NumberOfIngestionWorkers ||
-        _scalabilityOptions.NumberOfReviewWorkers != _initialScalabilityOptions.NumberOfReviewWorkers;
-    private bool IsVectorStoreDirty =>
-        _vectorStoreOptions.ChunkSize != _initialVectorStoreOptions.ChunkSize ||
-        _vectorStoreOptions.ChunkOverlap != _initialVectorStoreOptions.ChunkOverlap ||
-        _vectorStoreOptions.MaxSearchResults != _initialVectorStoreOptions.MaxSearchResults ||
-        _vectorStoreOptions.MinRelevanceScore != _initialVectorStoreOptions.MinRelevanceScore ||
-        _vectorStoreOptions.DocumentChunkCacheTtlMinutes != _initialVectorStoreOptions.DocumentChunkCacheTtlMinutes ||
-        _vectorStoreOptions.EnableFileNameDocIdCacheIndex != _initialVectorStoreOptions.EnableFileNameDocIdCacheIndex ||
-        (_vectorStoreOptions.ScoreCutoff ?? 0) != (_initialVectorStoreOptions.ScoreCutoff ?? 0) ||
-        _vectorStoreOptions.MinResultsBeforeCutoff != _initialVectorStoreOptions.MinResultsBeforeCutoff ||
-        _vectorStoreOptions.EnableHybridScoring != _initialVectorStoreOptions.EnableHybridScoring ||
-        _vectorStoreOptions.HybridVectorWeight != _initialVectorStoreOptions.HybridVectorWeight ||
-        _vectorStoreOptions.MaxChunkTextLength != _initialVectorStoreOptions.MaxChunkTextLength ||
-        _vectorStoreOptions.EnableWarmup != _initialVectorStoreOptions.EnableWarmup ||
-        _vectorStoreOptions.EnableEmbeddingDimensionVerification != _initialVectorStoreOptions.EnableEmbeddingDimensionVerification ||
-        _vectorStoreOptions.ContentReferences.GeneratedDocument.EmbeddingModelDeploymentName != _initialVectorStoreOptions.ContentReferences.GeneratedDocument.EmbeddingModelDeploymentName ||
-        _vectorStoreOptions.ContentReferences.GeneratedDocument.EmbeddingDimensionsOverride != _initialVectorStoreOptions.ContentReferences.GeneratedDocument.EmbeddingDimensionsOverride ||
-        _vectorStoreOptions.ContentReferences.GeneratedSection.EmbeddingModelDeploymentName != _initialVectorStoreOptions.ContentReferences.GeneratedSection.EmbeddingModelDeploymentName ||
-        _vectorStoreOptions.ContentReferences.GeneratedSection.EmbeddingDimensionsOverride != _initialVectorStoreOptions.ContentReferences.GeneratedSection.EmbeddingDimensionsOverride ||
-        _vectorStoreOptions.ContentReferences.ReviewItem.EmbeddingModelDeploymentName != _initialVectorStoreOptions.ContentReferences.ReviewItem.EmbeddingModelDeploymentName ||
-        _vectorStoreOptions.ContentReferences.ReviewItem.EmbeddingDimensionsOverride != _initialVectorStoreOptions.ContentReferences.ReviewItem.EmbeddingDimensionsOverride ||
-        _vectorStoreOptions.ContentReferences.ExternalFile.EmbeddingModelDeploymentName != _initialVectorStoreOptions.ContentReferences.ExternalFile.EmbeddingModelDeploymentName ||
-        _vectorStoreOptions.ContentReferences.ExternalFile.EmbeddingDimensionsOverride != _initialVectorStoreOptions.ContentReferences.ExternalFile.EmbeddingDimensionsOverride ||
-        _vectorStoreOptions.ContentReferences.ExternalLinkAsset.EmbeddingModelDeploymentName != _initialVectorStoreOptions.ContentReferences.ExternalLinkAsset.EmbeddingModelDeploymentName ||
-        _vectorStoreOptions.ContentReferences.ExternalLinkAsset.EmbeddingDimensionsOverride != _initialVectorStoreOptions.ContentReferences.ExternalLinkAsset.EmbeddingDimensionsOverride;
+    private VectorStoreOptions _initialVectorStoreOptions = new();
+    private ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions _initialFeatureFlags = new();
+    private ServiceConfigurationOptions.GreenlightServicesOptions.FrontendOptions _initialFrontendOptions = new();
+    private ServiceConfigurationOptions.GreenlightServicesOptions.ScalabilityOptions _initialScalabilityOptions = new();
+
+    private readonly Microsoft.Greenlight.Web.DocGen.Client.Components.Configuration.Infrastructure.ConfigurationSectionCoordinator _coordinator = new();
+    private bool AnyDirty => _coordinator.HasAnyDirty;
+    private bool IsVectorStoreDirty => !VectorStoreEquals(_vectorStoreOptions, _initialVectorStoreOptions);
     private bool IsOcrDirty =>
         _ocrOptions.AllowExternalDownloads != _initialOcrOptions.AllowExternalDownloads ||
-        string.Compare(_ocrOptions.ExternalRepoBaseUrl ?? string.Empty, _initialOcrOptions.ExternalRepoBaseUrl ?? string.Empty, StringComparison.Ordinal) != 0 ||
+        !string.Equals(_ocrOptions.ExternalRepoBaseUrl, _initialOcrOptions.ExternalRepoBaseUrl, StringComparison.Ordinal) ||
         !_selectedDefaultLanguages.SetEquals(_initialDefaultLanguages);
 
-    private bool IsSecretsDirty => !string.IsNullOrWhiteSpace(_azureMapsKeyOverride);
-
-    private bool AnyDirty => IsFrontendDirty || IsFeaturesDirty || IsScalabilityDirty || IsVectorStoreDirty || IsOcrDirty || IsSecretsDirty;
+    private ConfigSection _section = ConfigSection.Features;
+    private bool _isCardView = true;
+    private bool _isAnimating = false;
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
+            _coordinator.DirtyChanged += OnCoordinatorDirtyChanged;
             _featureFlags = await ConfigurationApiClient.GetFeatureFlagsAsync();
             _frontendOptions = await ConfigurationApiClient.GetFrontEndAsync();
             _scalabilityOptions = await ConfigurationApiClient.GetScalabilityOptionsAsync();
-            _vectorStoreOptions = await ConfigurationApiClient.GetVectorStoreOptionsAsync();
-            _aiModelDeployments = await ConfigurationApiClient.GetAiModelDeploymentsAsync();
-
-            // Load OCR
-            _ocrOptions = await ConfigurationApiClient.GetOcrOptionsAsync();
-            var languages = await ConfigurationApiClient.GetCachedOcrLanguagesAsync();
-            _cachedLanguages = languages ?? new List<LanguageDisplayInfo>();
-            _selectedDefaultLanguages = new HashSet<string>(_ocrOptions.DefaultLanguages ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
-
-            // Load secrets information
             await LoadSecretsInfoAsync();
-
-            // Take snapshots for dirty-checking
-            SnapshotInitialState();
-
-            // Initial check for any active content reference reindex operations
             await RefreshActiveCrReindexCountAsync();
+            SnapshotInitialState();
+            ApplySectionFromQuery();
         }
         catch (Exception ex)
         {
@@ -735,71 +172,75 @@
         }
     }
 
-    private void SnapshotInitialState()
+    protected override void OnParametersSet()
     {
-        _initialFeatureFlags = new ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions
+        ApplySectionFromQuery();
+    }
+
+    private void ApplySectionFromQuery()
+    {
+        try
         {
-            EnableMassDocumentProduction = _featureFlags.EnableMassDocumentProduction,
-            EnableReviews = _featureFlags.EnableReviews,
-            EnableReferenceFrontend = _featureFlags.EnableReferenceFrontend,
-            EnableContentReferences = _featureFlags.EnableContentReferences,
-            EnableExternalDataView = _featureFlags.EnableExternalDataView
-        };
-        _initialFrontendOptions = new ServiceConfigurationOptions.GreenlightServicesOptions.FrontendOptions
-        {
-            SiteName = _frontendOptions.SiteName
-        };
-        _initialScalabilityOptions = new ServiceConfigurationOptions.GreenlightServicesOptions.ScalabilityOptions
-        {
-            NumberOfValidationWorkers = _scalabilityOptions.NumberOfValidationWorkers,
-            NumberOfGenerationWorkers = _scalabilityOptions.NumberOfGenerationWorkers,
-            NumberOfIngestionWorkers = _scalabilityOptions.NumberOfIngestionWorkers,
-            NumberOfReviewWorkers = _scalabilityOptions.NumberOfReviewWorkers
-        };
-        _initialVectorStoreOptions = new VectorStoreOptions
-        {
-            ChunkSize = _vectorStoreOptions.ChunkSize,
-            ChunkOverlap = _vectorStoreOptions.ChunkOverlap,
-            MaxSearchResults = _vectorStoreOptions.MaxSearchResults,
-            MinRelevanceScore = _vectorStoreOptions.MinRelevanceScore,
-            DocumentChunkCacheTtlMinutes = _vectorStoreOptions.DocumentChunkCacheTtlMinutes,
-            EnableFileNameDocIdCacheIndex = _vectorStoreOptions.EnableFileNameDocIdCacheIndex,
-            ScoreCutoff = _vectorStoreOptions.ScoreCutoff,
-            MinResultsBeforeCutoff = _vectorStoreOptions.MinResultsBeforeCutoff,
-            EnableHybridScoring = _vectorStoreOptions.EnableHybridScoring,
-            HybridVectorWeight = _vectorStoreOptions.HybridVectorWeight,
-            MaxChunkTextLength = _vectorStoreOptions.MaxChunkTextLength,
-            EnableWarmup = _vectorStoreOptions.EnableWarmup,
-            EnableEmbeddingDimensionVerification = _vectorStoreOptions.EnableEmbeddingDimensionVerification,
-            ContentReferences = new ContentReferenceVectorOptions
+            var uri = Nav.ToAbsoluteUri(Nav.Uri);
+            var query = uri.Query; // includes leading '?'
+            if (string.IsNullOrWhiteSpace(query) || query.Length <= 1) { return; }
+            // split manually without pulling extra package
+            var pairs = query.Substring(1).Split('&', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            foreach (var pair in pairs)
             {
-                GeneratedDocument = new ContentReferenceTypeOptions
+                var kvp = pair.Split('=', 2);
+                if (kvp.Length == 2)
                 {
-                    EmbeddingModelDeploymentName = _vectorStoreOptions.ContentReferences.GeneratedDocument.EmbeddingModelDeploymentName,
-                    EmbeddingDimensionsOverride = _vectorStoreOptions.ContentReferences.GeneratedDocument.EmbeddingDimensionsOverride
-                },
-                GeneratedSection = new ContentReferenceTypeOptions
-                {
-                    EmbeddingModelDeploymentName = _vectorStoreOptions.ContentReferences.GeneratedSection.EmbeddingModelDeploymentName,
-                    EmbeddingDimensionsOverride = _vectorStoreOptions.ContentReferences.GeneratedSection.EmbeddingDimensionsOverride
-                },
-                ReviewItem = new ContentReferenceTypeOptions
-                {
-                    EmbeddingModelDeploymentName = _vectorStoreOptions.ContentReferences.ReviewItem.EmbeddingModelDeploymentName,
-                    EmbeddingDimensionsOverride = _vectorStoreOptions.ContentReferences.ReviewItem.EmbeddingDimensionsOverride
-                },
-                ExternalFile = new ContentReferenceTypeOptions
-                {
-                    EmbeddingModelDeploymentName = _vectorStoreOptions.ContentReferences.ExternalFile.EmbeddingModelDeploymentName,
-                    EmbeddingDimensionsOverride = _vectorStoreOptions.ContentReferences.ExternalFile.EmbeddingDimensionsOverride
-                },
-                ExternalLinkAsset = new ContentReferenceTypeOptions
-                {
-                    EmbeddingModelDeploymentName = _vectorStoreOptions.ContentReferences.ExternalLinkAsset.EmbeddingModelDeploymentName,
-                    EmbeddingDimensionsOverride = _vectorStoreOptions.ContentReferences.ExternalLinkAsset.EmbeddingDimensionsOverride
+                    var key = Uri.UnescapeDataString(kvp[0]);
+                    if (!key.Equals("section", StringComparison.OrdinalIgnoreCase)) { continue; }
+                    var raw = Uri.UnescapeDataString(kvp[1]);
+                    if (TryResolveSection(raw, out var target))
+                    {
+                        _section = target;
+                        _isCardView = false;
+                    }
+                    break;
                 }
             }
-        };
+        }
+        catch { }
+    }
+
+    private static bool TryResolveSection(string value, out ConfigSection section)
+    {
+        section = ConfigSection.Features;
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        value = value.Trim();
+        if (Enum.TryParse<ConfigSection>(value, true, out var parsed)) { section = parsed; return true; }
+        switch (value.ToLowerInvariant())
+        {
+            case "ai":
+            case "models": section = ConfigSection.AiModels; return true;
+            case "openai":
+            case "secrets": section = ConfigSection.Secrets; return true;
+            case "vector":
+            case "vectors": section = ConfigSection.VectorStore; return true;
+            case "ocr": section = ConfigSection.Ocr; return true;
+            case "flow": section = ConfigSection.Flow; return true;
+            case "mcp": section = ConfigSection.Mcp; return true;
+            case "frontend":
+            case "front": section = ConfigSection.Frontend; return true;
+            case "scalability":
+            case "scale": section = ConfigSection.Scalability; return true;
+            case "files":
+            case "storage": section = ConfigSection.FileStorage; return true;
+            case "hosts":
+            case "hostnames": section = ConfigSection.HostNames; return true;
+        }
+        return false;
+    }
+
+    private void OnCoordinatorDirtyChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => _coordinator.DirtyChanged -= OnCoordinatorDirtyChanged;
+
+    private void SnapshotInitialState()
+    {
         _initialOcrOptions = new ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions.OcrOptions
         {
             AllowExternalDownloads = _ocrOptions.AllowExternalDownloads,
@@ -808,6 +249,197 @@
             DefaultLanguages = new List<string>(_ocrOptions.DefaultLanguages ?? new List<string>())
         };
         _initialDefaultLanguages = new HashSet<string>(_initialOcrOptions.DefaultLanguages ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
+        _initialVectorStoreOptions = CloneVectorStore(_vectorStoreOptions);
+        _initialFeatureFlags = new ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions
+        {
+            EnableMassDocumentProduction = _featureFlags.EnableMassDocumentProduction,
+            EnableReviews = _featureFlags.EnableReviews,
+            EnableReferenceFrontend = _featureFlags.EnableReferenceFrontend,
+            EnableContentReferences = _featureFlags.EnableContentReferences,
+            EnableExternalDataView = _featureFlags.EnableExternalDataView
+        };
+        _initialFrontendOptions = new ServiceConfigurationOptions.GreenlightServicesOptions.FrontendOptions { SiteName = _frontendOptions.SiteName };
+        _initialScalabilityOptions = new ServiceConfigurationOptions.GreenlightServicesOptions.ScalabilityOptions
+        {
+            NumberOfValidationWorkers = _scalabilityOptions.NumberOfValidationWorkers,
+            NumberOfGenerationWorkers = _scalabilityOptions.NumberOfGenerationWorkers,
+            NumberOfIngestionWorkers = _scalabilityOptions.NumberOfIngestionWorkers,
+            NumberOfReviewWorkers = _scalabilityOptions.NumberOfReviewWorkers
+        };
+    }
+
+    private static VectorStoreOptions CloneVectorStore(VectorStoreOptions src) => new()
+    {
+        StoreType = src.StoreType,
+        ChunkSize = src.ChunkSize,
+        ChunkOverlap = src.ChunkOverlap,
+        MaxSearchResults = src.MaxSearchResults,
+        MinRelevanceScore = src.MinRelevanceScore,
+        DocumentChunkCacheTtlMinutes = src.DocumentChunkCacheTtlMinutes,
+        VectorSize = src.VectorSize,
+        EnableFileNameDocIdCacheIndex = src.EnableFileNameDocIdCacheIndex,
+        ScoreCutoff = src.ScoreCutoff,
+        MinResultsBeforeCutoff = src.MinResultsBeforeCutoff,
+        EnableHybridScoring = src.EnableHybridScoring,
+        HybridVectorWeight = src.HybridVectorWeight,
+        MaxChunkTextLength = src.MaxChunkTextLength,
+        EnableWarmup = src.EnableWarmup,
+        EnableEmbeddingDimensionVerification = src.EnableEmbeddingDimensionVerification,
+        ContentReferences = new ContentReferenceVectorOptions
+        {
+            GeneratedDocument = new ContentReferenceTypeOptions
+            {
+                EmbeddingModelDeploymentName = src.ContentReferences.GeneratedDocument.EmbeddingModelDeploymentName,
+                EmbeddingDimensionsOverride = src.ContentReferences.GeneratedDocument.EmbeddingDimensionsOverride
+            },
+            GeneratedSection = new ContentReferenceTypeOptions
+            {
+                EmbeddingModelDeploymentName = src.ContentReferences.GeneratedSection.EmbeddingModelDeploymentName,
+                EmbeddingDimensionsOverride = src.ContentReferences.GeneratedSection.EmbeddingDimensionsOverride
+            },
+            ReviewItem = new ContentReferenceTypeOptions
+            {
+                EmbeddingModelDeploymentName = src.ContentReferences.ReviewItem.EmbeddingModelDeploymentName,
+                EmbeddingDimensionsOverride = src.ContentReferences.ReviewItem.EmbeddingDimensionsOverride
+            },
+            ExternalFile = new ContentReferenceTypeOptions
+            {
+                EmbeddingModelDeploymentName = src.ContentReferences.ExternalFile.EmbeddingModelDeploymentName,
+                EmbeddingDimensionsOverride = src.ContentReferences.ExternalFile.EmbeddingDimensionsOverride
+            },
+            ExternalLinkAsset = new ContentReferenceTypeOptions
+            {
+                EmbeddingModelDeploymentName = src.ContentReferences.ExternalLinkAsset.EmbeddingModelDeploymentName,
+                EmbeddingDimensionsOverride = src.ContentReferences.ExternalLinkAsset.EmbeddingDimensionsOverride
+            }
+        }
+    };
+
+    private static bool VectorStoreEquals(VectorStoreOptions a, VectorStoreOptions b)
+    {
+        if (a.StoreType != b.StoreType || a.ChunkSize != b.ChunkSize || a.ChunkOverlap != b.ChunkOverlap || a.MaxSearchResults != b.MaxSearchResults ||
+            a.MinRelevanceScore != b.MinRelevanceScore || a.DocumentChunkCacheTtlMinutes != b.DocumentChunkCacheTtlMinutes ||
+            a.VectorSize != b.VectorSize || a.EnableFileNameDocIdCacheIndex != b.EnableFileNameDocIdCacheIndex ||
+            a.ScoreCutoff != b.ScoreCutoff || a.MinResultsBeforeCutoff != b.MinResultsBeforeCutoff || a.EnableHybridScoring != b.EnableHybridScoring ||
+            Math.Abs(a.HybridVectorWeight - b.HybridVectorWeight) > 0.0001 || a.MaxChunkTextLength != b.MaxChunkTextLength ||
+            a.EnableWarmup != b.EnableWarmup || a.EnableEmbeddingDimensionVerification != b.EnableEmbeddingDimensionVerification)
+        {
+            return false;
+        }
+        return a.ContentReferences.GeneratedDocument.EmbeddingModelDeploymentName == b.ContentReferences.GeneratedDocument.EmbeddingModelDeploymentName &&
+               a.ContentReferences.GeneratedDocument.EmbeddingDimensionsOverride == b.ContentReferences.GeneratedDocument.EmbeddingDimensionsOverride &&
+               a.ContentReferences.GeneratedSection.EmbeddingModelDeploymentName == b.ContentReferences.GeneratedSection.EmbeddingModelDeploymentName &&
+               a.ContentReferences.GeneratedSection.EmbeddingDimensionsOverride == b.ContentReferences.GeneratedSection.EmbeddingDimensionsOverride &&
+               a.ContentReferences.ReviewItem.EmbeddingModelDeploymentName == b.ContentReferences.ReviewItem.EmbeddingModelDeploymentName &&
+               a.ContentReferences.ReviewItem.EmbeddingDimensionsOverride == b.ContentReferences.ReviewItem.EmbeddingDimensionsOverride &&
+               a.ContentReferences.ExternalFile.EmbeddingModelDeploymentName == b.ContentReferences.ExternalFile.EmbeddingModelDeploymentName &&
+               a.ContentReferences.ExternalFile.EmbeddingDimensionsOverride == b.ContentReferences.ExternalFile.EmbeddingDimensionsOverride &&
+               a.ContentReferences.ExternalLinkAsset.EmbeddingModelDeploymentName == b.ContentReferences.ExternalLinkAsset.EmbeddingModelDeploymentName &&
+               a.ContentReferences.ExternalLinkAsset.EmbeddingDimensionsOverride == b.ContentReferences.ExternalLinkAsset.EmbeddingDimensionsOverride;
+    }
+
+    private async Task SaveFrontendAsync()
+    {
+        var request = new ConfigurationUpdateRequest
+        {
+            ConfigurationItems = new Dictionary<string, string>
+            {
+                { "ServiceConfiguration:GreenlightServices:FrontEnd:SiteName", _frontendOptions.SiteName ?? string.Empty }
+            }
+        };
+        await ConfigurationApiClient.UpdateConfigurationAsync(request);
+        SnapshotInitialState();
+        SnackBar.Add("Frontend options saved.", Severity.Success);
+    }
+
+    private async Task SaveFeaturesAsync()
+    {
+        var request = new ConfigurationUpdateRequest
+        {
+            ConfigurationItems = new Dictionary<string, string>
+            {
+                { "ServiceConfiguration:GreenlightServices:FeatureFlags:EnableMassDocumentProduction", _featureFlags.EnableMassDocumentProduction.ToString() },
+                { "ServiceConfiguration:GreenlightServices:FeatureFlags:EnableReviews", _featureFlags.EnableReviews.ToString() },
+                { "ServiceConfiguration:GreenlightServices:FeatureFlags:EnableReferenceFrontend", _featureFlags.EnableReferenceFrontend.ToString() },
+                { "ServiceConfiguration:GreenlightServices:FeatureFlags:EnableContentReferences", _featureFlags.EnableContentReferences.ToString() },
+                { "ServiceConfiguration:GreenlightServices:FeatureFlags:EnableExternalDataView", _featureFlags.EnableExternalDataView.ToString() }
+            }
+        };
+        await ConfigurationApiClient.UpdateConfigurationAsync(request);
+        try { await NavMenuStateService.RefreshAllAsync(); } catch { }
+        SnapshotInitialState();
+        SnackBar.Add("Feature flags saved.", Severity.Success);
+    }
+
+    private async Task SaveScalabilityAsync()
+    {
+        var request = new ConfigurationUpdateRequest
+        {
+            ConfigurationItems = new Dictionary<string, string>
+            {
+                { "ServiceConfiguration:GreenlightServices:Scalability:NumberOfValidationWorkers", _scalabilityOptions.NumberOfValidationWorkers.ToString() },
+                { "ServiceConfiguration:GreenlightServices:Scalability:NumberOfGenerationWorkers", _scalabilityOptions.NumberOfGenerationWorkers.ToString() },
+                { "ServiceConfiguration:GreenlightServices:Scalability:NumberOfIngestionWorkers", _scalabilityOptions.NumberOfIngestionWorkers.ToString() },
+                { "ServiceConfiguration:GreenlightServices:Scalability:NumberOfReviewWorkers", _scalabilityOptions.NumberOfReviewWorkers.ToString() }
+            }
+        };
+        await ConfigurationApiClient.UpdateConfigurationAsync(request);
+        SnapshotInitialState();
+        SnackBar.Add("Scalability options saved.", Severity.Success);
+    }
+
+    private async Task SaveVectorStoreAsync()
+    {
+        var request = new ConfigurationUpdateRequest
+        {
+            ConfigurationItems = new Dictionary<string, string>
+            {
+                { "ServiceConfiguration:GreenlightServices:VectorStore:ChunkSize", _vectorStoreOptions.ChunkSize.ToString() },
+                { "ServiceConfiguration:GreenlightServices:VectorStore:ChunkOverlap", _vectorStoreOptions.ChunkOverlap.ToString() },
+                { "ServiceConfiguration:GreenlightServices:VectorStore:MaxSearchResults", _vectorStoreOptions.MaxSearchResults.ToString() },
+                { "ServiceConfiguration:GreenlightServices:VectorStore:MinRelevanceScore", _vectorStoreOptions.MinRelevanceScore.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                { "ServiceConfiguration:GreenlightServices:VectorStore:DocumentChunkCacheTtlMinutes", _vectorStoreOptions.DocumentChunkCacheTtlMinutes.ToString() },
+                { "ServiceConfiguration:GreenlightServices:VectorStore:VectorSize", _vectorStoreOptions.VectorSize.ToString() },
+                { "ServiceConfiguration:GreenlightServices:VectorStore:EnableFileNameDocIdCacheIndex", _vectorStoreOptions.EnableFileNameDocIdCacheIndex.ToString() },
+                { "ServiceConfiguration:GreenlightServices:VectorStore:ScoreCutoff", _vectorStoreOptions.ScoreCutoff?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty },
+                { "ServiceConfiguration:GreenlightServices:VectorStore:MinResultsBeforeCutoff", _vectorStoreOptions.MinResultsBeforeCutoff.ToString() },
+                { "ServiceConfiguration:GreenlightServices:VectorStore:EnableHybridScoring", _vectorStoreOptions.EnableHybridScoring.ToString() },
+                { "ServiceConfiguration:GreenlightServices:VectorStore:HybridVectorWeight", _vectorStoreOptions.HybridVectorWeight.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                { "ServiceConfiguration:GreenlightServices:VectorStore:MaxChunkTextLength", _vectorStoreOptions.MaxChunkTextLength.ToString() },
+                { "ServiceConfiguration:GreenlightServices:VectorStore:EnableWarmup", _vectorStoreOptions.EnableWarmup.ToString() },
+                { "ServiceConfiguration:GreenlightServices:VectorStore:EnableEmbeddingDimensionVerification", _vectorStoreOptions.EnableEmbeddingDimensionVerification.ToString() },
+                { "ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:GeneratedDocument:EmbeddingModelDeploymentName", _vectorStoreOptions.ContentReferences.GeneratedDocument.EmbeddingModelDeploymentName ?? string.Empty },
+                { "ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:GeneratedDocument:EmbeddingDimensionsOverride", (_vectorStoreOptions.ContentReferences.GeneratedDocument.EmbeddingDimensionsOverride?.ToString() ?? string.Empty) },
+                { "ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:GeneratedSection:EmbeddingModelDeploymentName", _vectorStoreOptions.ContentReferences.GeneratedSection.EmbeddingModelDeploymentName ?? string.Empty },
+                { "ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:GeneratedSection:EmbeddingDimensionsOverride", (_vectorStoreOptions.ContentReferences.GeneratedSection.EmbeddingDimensionsOverride?.ToString() ?? string.Empty) },
+                { "ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:ReviewItem:EmbeddingModelDeploymentName", _vectorStoreOptions.ContentReferences.ReviewItem.EmbeddingModelDeploymentName ?? string.Empty },
+                { "ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:ReviewItem:EmbeddingDimensionsOverride", (_vectorStoreOptions.ContentReferences.ReviewItem.EmbeddingDimensionsOverride?.ToString() ?? string.Empty) },
+                { "ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:ExternalFile:EmbeddingModelDeploymentName", _vectorStoreOptions.ContentReferences.ExternalFile.EmbeddingModelDeploymentName ?? string.Empty },
+                { "ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:ExternalFile:EmbeddingDimensionsOverride", (_vectorStoreOptions.ContentReferences.ExternalFile.EmbeddingDimensionsOverride?.ToString() ?? string.Empty) },
+                { "ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:ExternalLinkAsset:EmbeddingModelDeploymentName", _vectorStoreOptions.ContentReferences.ExternalLinkAsset.EmbeddingModelDeploymentName ?? string.Empty },
+                { "ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:ExternalLinkAsset:EmbeddingDimensionsOverride", (_vectorStoreOptions.ContentReferences.ExternalLinkAsset.EmbeddingDimensionsOverride?.ToString() ?? string.Empty) }
+            }
+        };
+        await ConfigurationApiClient.UpdateConfigurationAsync(request);
+        SnapshotInitialState();
+        SnackBar.Add("Vector store options saved.", Severity.Success);
+    }
+
+    private async Task SaveOcrOptionsAsync()
+    {
+        var request = new ConfigurationUpdateRequest
+        {
+            ConfigurationItems = new Dictionary<string, string>
+            {
+                { "ServiceConfiguration:GreenlightServices:DocumentIngestion:Ocr:AllowExternalDownloads", _ocrOptions.AllowExternalDownloads.ToString() },
+                { "ServiceConfiguration:GreenlightServices:DocumentIngestion:Ocr:ExternalRepoBaseUrl", _ocrOptions.ExternalRepoBaseUrl ?? string.Empty },
+                { "ServiceConfiguration:GreenlightServices:DocumentIngestion:Ocr:TessdataBlobContainer", _ocrOptions.TessdataBlobContainer ?? string.Empty },
+                { "ServiceConfiguration:GreenlightServices:DocumentIngestion:Ocr:DefaultLanguages", string.Join(',', _selectedDefaultLanguages) }
+            }
+        };
+        await ConfigurationApiClient.UpdateConfigurationAsync(request);
+        SnapshotInitialState();
+        SnackBar.Add("OCR options saved.", Severity.Success);
     }
 
     private IEnumerable<LanguageDisplayInfo> AllSelectableLanguages
@@ -835,14 +467,11 @@
 
     private bool IsLanguageVisible(LanguageDisplayInfo lang)
     {
-        if (string.IsNullOrWhiteSpace(_languageFilter))
-        {
-            return true;
-        }
+        if (string.IsNullOrWhiteSpace(_languageFilter)) return true;
         var f = _languageFilter.Trim();
-        return lang.Code.Contains(f, StringComparison.OrdinalIgnoreCase)
-               || (!string.IsNullOrWhiteSpace(lang.EnglishName) && lang.EnglishName.Contains(f, StringComparison.OrdinalIgnoreCase))
-               || (!string.IsNullOrWhiteSpace(lang.Label) && lang.Label.Contains(f, StringComparison.OrdinalIgnoreCase));
+        return lang.Code.Contains(f, StringComparison.OrdinalIgnoreCase) ||
+               (!string.IsNullOrWhiteSpace(lang.EnglishName) && lang.EnglishName.Contains(f, StringComparison.OrdinalIgnoreCase)) ||
+               (!string.IsNullOrWhiteSpace(lang.Label) && lang.Label.Contains(f, StringComparison.OrdinalIgnoreCase));
     }
 
     private async Task RefreshCachedLanguagesAsync()
@@ -851,11 +480,10 @@
         {
             var languages = await ConfigurationApiClient.GetCachedOcrLanguagesAsync();
             _cachedLanguages = languages ?? new List<LanguageDisplayInfo>();
-            Snackbar.Add("Refreshed cached OCR languages.", Severity.Success);
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to refresh OCR languages: {ex.Message}", Severity.Error);
+            SnackBar.Add($"Failed to refresh OCR languages: {ex.Message}", Severity.Error);
         }
     }
 
@@ -864,19 +492,14 @@
         try
         {
             var code = _languageCodeToDownload?.Trim();
-            if (string.IsNullOrWhiteSpace(code))
-            {
-                return;
-            }
-
-            var resp = await ConfigurationApiClient.DownloadOcrLanguageAsync(code);
-            Snackbar.Add($"Downloaded '{resp.Language}'.", Severity.Success);
+            if (string.IsNullOrWhiteSpace(code)) return;
+            await ConfigurationApiClient.DownloadOcrLanguageAsync(code);
             _languageCodeToDownload = string.Empty;
             await RefreshCachedLanguagesAsync();
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to download language: {ex.Message}", Severity.Error);
+            SnackBar.Add($"Failed to download language: {ex.Message}", Severity.Error);
         }
     }
 
@@ -888,194 +511,28 @@
         return Task.CompletedTask;
     }
 
-    private async Task SaveFrontendAsync()
-    {
-        var request = new ConfigurationUpdateRequest
-        {
-            ConfigurationItems = new Dictionary<string, string>
-            {
-                { "ServiceConfiguration:GreenlightServices:FrontEnd:SiteName", _frontendOptions.SiteName ?? string.Empty }
-            }
-        };
-        await ConfigurationApiClient.UpdateConfigurationAsync(request);
-        if (!_suppressSnapshot) { SnapshotInitialState(); }
-        Snackbar.Add("Frontend options saved.", Severity.Success);
-    }
-
-    private async Task SaveFeaturesAsync()
-    {
-        var request = new ConfigurationUpdateRequest
-        {
-            ConfigurationItems = new Dictionary<string, string>
-            {
-                { "ServiceConfiguration:GreenlightServices:FeatureFlags:EnableMassDocumentProduction", _featureFlags.EnableMassDocumentProduction.ToString() },
-                { "ServiceConfiguration:GreenlightServices:FeatureFlags:EnableReviews", _featureFlags.EnableReviews.ToString() },
-                { "ServiceConfiguration:GreenlightServices:FeatureFlags:EnableReferenceFrontend", _featureFlags.EnableReferenceFrontend.ToString() },
-                { "ServiceConfiguration:GreenlightServices:FeatureFlags:EnableContentReferences", _featureFlags.EnableContentReferences.ToString() },
-                { "ServiceConfiguration:GreenlightServices:FeatureFlags:EnableExternalDataView", _featureFlags.EnableExternalDataView.ToString() }
-            }
-        };
-        await ConfigurationApiClient.UpdateConfigurationAsync(request);
-        try { await NavMenuStateService.RefreshAllAsync(); } catch { }
-        if (!_suppressSnapshot) { SnapshotInitialState(); }
-        Snackbar.Add("Feature flags saved.", Severity.Success);
-    }
-
-    private async Task SaveScalabilityAsync()
-    {
-        var request = new ConfigurationUpdateRequest
-        {
-            ConfigurationItems = new Dictionary<string, string>
-            {
-                { "ServiceConfiguration:GreenlightServices:Scalability:NumberOfValidationWorkers", _scalabilityOptions.NumberOfValidationWorkers.ToString() },
-                { "ServiceConfiguration:GreenlightServices:Scalability:NumberOfGenerationWorkers", _scalabilityOptions.NumberOfGenerationWorkers.ToString() },
-                { "ServiceConfiguration:GreenlightServices:Scalability:NumberOfIngestionWorkers", _scalabilityOptions.NumberOfIngestionWorkers.ToString() },
-                { "ServiceConfiguration:GreenlightServices:Scalability:NumberOfReviewWorkers", _scalabilityOptions.NumberOfReviewWorkers.ToString() }
-            }
-        };
-        await ConfigurationApiClient.UpdateConfigurationAsync(request);
-        if (!_suppressSnapshot) { SnapshotInitialState(); }
-        Snackbar.Add("Scalability options saved.", Severity.Success);
-    }
-
-    // --- Content Reference Reindex Status (per-source) ---
-    private ContentReferenceType _contentReferenceStatusType = ContentReferenceType.ExternalFile;
-    private ContentReferenceReindexState? _contentReferenceStatus;
-    private bool _contentReferenceStatusLoading = false;
-    private bool _contentReferenceAutoRefresh = false;
-    private CancellationTokenSource? _contentReferenceAutoRefreshCts;
-
-    private async Task RefreshContentReferenceReindexStatusAsync()
-    {
-        try
-        {
-            _contentReferenceStatusLoading = true;
-            StateHasChanged();
-            _contentReferenceStatus = await ContentReferenceReindexApiClient.GetStateAsync(_contentReferenceStatusType);
-        }
-        finally
-        {
-            _contentReferenceStatusLoading = false;
-        }
-    }
-
-    private async Task OnContentReferenceAutoRefreshChanged()
-    {
-        if (_contentReferenceAutoRefresh)
-        {
-            _contentReferenceAutoRefreshCts?.Cancel();
-            _contentReferenceAutoRefreshCts = new CancellationTokenSource();
-            var token = _contentReferenceAutoRefreshCts.Token;
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    while (!token.IsCancellationRequested)
-                    {
-                        await InvokeAsync(RefreshContentReferenceReindexStatusAsync);
-                        await Task.Delay(TimeSpan.FromSeconds(5), token);
-                    }
-                }
-                catch (TaskCanceledException) { }
-            }, token);
-        }
-        else
-        {
-            _contentReferenceAutoRefreshCts?.Cancel();
-            _contentReferenceAutoRefreshCts = null;
-        }
-    }
-
-
-    private async Task SaveVectorStoreAsync()
-    {
-        var request = new ConfigurationUpdateRequest
-        {
-            ConfigurationItems = new Dictionary<string, string>
-            {
-                { "ServiceConfiguration:GreenlightServices:VectorStore:ChunkSize", _vectorStoreOptions.ChunkSize.ToString() },
-                { "ServiceConfiguration:GreenlightServices:VectorStore:ChunkOverlap", _vectorStoreOptions.ChunkOverlap.ToString() },
-                { "ServiceConfiguration:GreenlightServices:VectorStore:MaxSearchResults", _vectorStoreOptions.MaxSearchResults.ToString() },
-                { "ServiceConfiguration:GreenlightServices:VectorStore:MinRelevanceScore", _vectorStoreOptions.MinRelevanceScore.ToString(System.Globalization.CultureInfo.InvariantCulture) },
-                { "ServiceConfiguration:GreenlightServices:VectorStore:DocumentChunkCacheTtlMinutes", _vectorStoreOptions.DocumentChunkCacheTtlMinutes.ToString() },
-                { "ServiceConfiguration:GreenlightServices:VectorStore:EnableFileNameDocIdCacheIndex", _vectorStoreOptions.EnableFileNameDocIdCacheIndex.ToString() },
-                { "ServiceConfiguration:GreenlightServices:VectorStore:ScoreCutoff", (_vectorStoreOptions.ScoreCutoff ?? 0).ToString(System.Globalization.CultureInfo.InvariantCulture) },
-                { "ServiceConfiguration:GreenlightServices:VectorStore:MinResultsBeforeCutoff", _vectorStoreOptions.MinResultsBeforeCutoff.ToString() },
-                { "ServiceConfiguration:GreenlightServices:VectorStore:EnableHybridScoring", _vectorStoreOptions.EnableHybridScoring.ToString() },
-                { "ServiceConfiguration:GreenlightServices:VectorStore:HybridVectorWeight", _vectorStoreOptions.HybridVectorWeight.ToString(System.Globalization.CultureInfo.InvariantCulture) },
-                { "ServiceConfiguration:GreenlightServices:VectorStore:MaxChunkTextLength", _vectorStoreOptions.MaxChunkTextLength.ToString() },
-                { "ServiceConfiguration:GreenlightServices:VectorStore:EnableWarmup", _vectorStoreOptions.EnableWarmup.ToString() },
-                { "ServiceConfiguration:GreenlightServices:VectorStore:EnableEmbeddingDimensionVerification", _vectorStoreOptions.EnableEmbeddingDimensionVerification.ToString() },
-                // Per-type content reference embedding config (use deployment NAME)
-                { "ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:GeneratedDocument:EmbeddingModelDeploymentName", _vectorStoreOptions.ContentReferences.GeneratedDocument.EmbeddingModelDeploymentName ?? string.Empty },
-                { "ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:GeneratedDocument:EmbeddingDimensionsOverride", _vectorStoreOptions.ContentReferences.GeneratedDocument.EmbeddingDimensionsOverride?.ToString() ?? string.Empty },
-                { "ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:GeneratedSection:EmbeddingModelDeploymentName", _vectorStoreOptions.ContentReferences.GeneratedSection.EmbeddingModelDeploymentName ?? string.Empty },
-                { "ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:GeneratedSection:EmbeddingDimensionsOverride", _vectorStoreOptions.ContentReferences.GeneratedSection.EmbeddingDimensionsOverride?.ToString() ?? string.Empty },
-                { "ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:ReviewItem:EmbeddingModelDeploymentName", _vectorStoreOptions.ContentReferences.ReviewItem.EmbeddingModelDeploymentName ?? string.Empty },
-                { "ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:ReviewItem:EmbeddingDimensionsOverride", _vectorStoreOptions.ContentReferences.ReviewItem.EmbeddingDimensionsOverride?.ToString() ?? string.Empty },
-                { "ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:ExternalFile:EmbeddingModelDeploymentName", _vectorStoreOptions.ContentReferences.ExternalFile.EmbeddingModelDeploymentName ?? string.Empty },
-                { "ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:ExternalFile:EmbeddingDimensionsOverride", _vectorStoreOptions.ContentReferences.ExternalFile.EmbeddingDimensionsOverride?.ToString() ?? string.Empty },
-                { "ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:ExternalLinkAsset:EmbeddingModelDeploymentName", _vectorStoreOptions.ContentReferences.ExternalLinkAsset.EmbeddingModelDeploymentName ?? string.Empty },
-                { "ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:ExternalLinkAsset:EmbeddingDimensionsOverride", _vectorStoreOptions.ContentReferences.ExternalLinkAsset.EmbeddingDimensionsOverride?.ToString() ?? string.Empty }
-            }
-        };
-        await ConfigurationApiClient.UpdateConfigurationAsync(request);
-        if (!_suppressSnapshot) { SnapshotInitialState(); }
-        Snackbar.Add("Vector store options saved.", Severity.Success);
-    }
-
-    private async Task TriggerContentReferenceReindexAsync(ContentReferenceType type)
-    {
-        try
-        {
-            await ContentReferenceReindexApiClient.StartAsync(type, "Manual reindex via configuration UI");
-            Snackbar.Add($"Started reindex for {type}.", Severity.Success);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Failed to start reindex for {type}: {ex.Message}", Severity.Error);
-        }
-    }
-
-    private async Task SaveOcrOptionsAsync()
-    {
-        try
-        {
-            var request = new ConfigurationUpdateRequest
-            {
-                ConfigurationItems = new Dictionary<string, string>
-                {
-                    { "ServiceConfiguration:GreenlightServices:DocumentIngestion:Ocr:AllowExternalDownloads", _ocrOptions.AllowExternalDownloads.ToString() },
-                    { "ServiceConfiguration:GreenlightServices:DocumentIngestion:Ocr:ExternalRepoBaseUrl", _ocrOptions.ExternalRepoBaseUrl ?? string.Empty }
-                }
-            };
-
-            await ConfigurationApiClient.UpdateConfigurationAsync(request);
-            await ConfigurationApiClient.SetDefaultOcrLanguagesAsync(_selectedDefaultLanguages.ToList());
-
-            if (!_suppressSnapshot) { SnapshotInitialState(); }
-            Snackbar.Add("OCR settings saved.", Severity.Success);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Failed to save OCR settings: {ex.Message}", Severity.Error);
-        }
-    }
-
+    private bool _suppressSnapshot = false;
     private async Task SaveAllAsync()
     {
         try
         {
             _suppressSnapshot = true;
-            if (IsFrontendDirty) { await SaveFrontendAsync(); }
-            if (IsFeaturesDirty) { await SaveFeaturesAsync(); }
-            if (IsScalabilityDirty) { await SaveScalabilityAsync(); }
-            if (IsVectorStoreDirty) { await SaveVectorStoreAsync(); }
-            if (IsOcrDirty) { await SaveOcrOptionsAsync(); }
+            var summaryLines = new List<string>();
+            var compMessage = await _coordinator.BuildUnifiedSnackbarAsync();
+            if (!string.IsNullOrWhiteSpace(compMessage) && compMessage != "No changes to save.")
+            {
+                summaryLines.Add(compMessage);
+            }
+            await _coordinator.SaveAllAsync(new[] { "MCP" });
             _suppressSnapshot = false;
-
             SnapshotInitialState();
-            await DialogService.ShowMessageBox("Success", "All changes saved successfully.");
+            var message = summaryLines.Count == 0 ? "No changes to save." : string.Join("\n", summaryLines);
+            SnackBar.Add(message, Severity.Success);
+        }
+        catch (OperationCanceledException)
+        {
+            _suppressSnapshot = false;
+            SnackBar.Add("Save canceled.", Severity.Info);
         }
         catch (Exception ex)
         {
@@ -1092,7 +549,7 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to load Azure Maps key info: {ex.Message}", Severity.Warning);
+            SnackBar.Add($"Failed to load Azure Maps key info: {ex.Message}", Severity.Warning);
         }
     }
 
@@ -1100,10 +557,9 @@
     {
         if (string.IsNullOrWhiteSpace(_azureMapsKeyOverride))
         {
-            Snackbar.Add("Please enter an Azure Maps API key.", Severity.Warning);
+            SnackBar.Add("Please enter an Azure Maps API key.", Severity.Warning);
             return;
         }
-
         try
         {
             var request = new SecretOverrideRequest
@@ -1112,16 +568,14 @@
                 SecretValue = _azureMapsKeyOverride,
                 Description = "Azure Maps API key override set via configuration UI"
             };
-
             await ConfigurationApiClient.SetSecretOverrideAsync(request);
-            _azureMapsKeyOverride = string.Empty; // Clear the input field
-            await LoadSecretsInfoAsync(); // Reload the status
-            
-            Snackbar.Add("Azure Maps API key override set successfully.", Severity.Success);
+            _azureMapsKeyOverride = string.Empty;
+            await LoadSecretsInfoAsync();
+            SnackBar.Add("Azure Maps API key override set successfully.", Severity.Success);
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to set Azure Maps API key override: {ex.Message}", Severity.Error);
+            SnackBar.Add($"Failed to set Azure Maps API key override: {ex.Message}", Severity.Error);
         }
     }
 
@@ -1130,19 +584,16 @@
         try
         {
             await ConfigurationApiClient.RemoveSecretOverrideAsync("ServiceConfiguration:AzureMaps:Key");
-            await LoadSecretsInfoAsync(); // Reload the status
-            
-            Snackbar.Add("Azure Maps API key override removed. Using default configuration.", Severity.Success);
+            await LoadSecretsInfoAsync();
+            SnackBar.Add("Azure Maps API key override removed. Using default configuration.", Severity.Success);
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to remove Azure Maps API key override: {ex.Message}", Severity.Error);
+            SnackBar.Add($"Failed to remove Azure Maps API key override: {ex.Message}", Severity.Error);
         }
     }
 
-    // Content Reference reindex status chip helpers
     private int _activeCrReindexCount = 0;
-
     private async Task RefreshActiveCrReindexCountAsync()
     {
         try
@@ -1171,29 +622,26 @@
         DialogService.Show<Microsoft.Greenlight.Web.DocGen.Client.Components.ContentReferenceReindexDialog>("Content Reference Reindex", options: options);
     }
 
-    // --- Section Navigation ---
-    private enum ConfigSection
+    private async Task HandleCardSelection(ConfigSection section)
     {
-        Frontend,
-        Features,
-        Scalability,
-        VectorStore,
-        Ocr,
-        AiModels,
-        Secrets,
-        FileStorage
+        _isAnimating = true;
+        StateHasChanged();
+        await Task.Delay(400);
+        _section = section;
+        _isCardView = false;
+        _isAnimating = false;
+        StateHasChanged();
     }
 
-    private ConfigSection _section = ConfigSection.Features;
-
-    private void SelectSection(ConfigSection section)
+    private void HandleSectionChange(ConfigSection section)
     {
         _section = section;
+        StateHasChanged();
     }
 
-    private string GetSectionClass(ConfigSection section)
+    private void HandleMenuExpand()
     {
-        return _section == section ? "mud-primary-text" : string.Empty;
+        _isCardView = true;
+        StateHasChanged();
     }
-
 }

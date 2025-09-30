@@ -1,0 +1,216 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+@using Microsoft.Greenlight.Shared.Configuration
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Configuration
+@using Microsoft.Greenlight.Shared.Enums
+@using Microsoft.Greenlight.Web.DocGen.Client.ServiceClients
+@inject IConfigurationApiClient ConfigApi
+@inherits Microsoft.Greenlight.Web.DocGen.Client.Components.Configuration.Infrastructure.ConfigurationSectionBase
+
+<MudPaper Class="pa-4">
+    <MudText Typo="Typo.h6">Flow AI Assistant Configuration</MudText>
+    <MudText Typo="Typo.body2" Class="mb-3">Configure settings for the Flow AI Assistant including model selection and conversation parameters.</MudText>
+    <MudDivider Class="mt-2 mb-3" />
+
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudCard Outlined>
+                <MudCardContent>
+                    <MudText Typo="Typo.h6" Class="mb-3">Model Configuration</MudText>
+
+                    <MudSelect T="AiModelDeploymentInfo" @bind-Value="SelectedDeployment"
+                              Label="AI Model Deployment"
+                              ToStringFunc="@(d => d.DeploymentName)"
+                              HelperText="The AI model deployment used for Flow conversations. Temperature and token limits are configured per model deployment."
+                              Class="mb-3">
+                        @foreach (var deployment in _chatModelDeployments)
+                        {
+                            <MudSelectItem Value="@deployment">
+                                @deployment.DeploymentName
+                            </MudSelectItem>
+                        }
+                    </MudSelect>
+
+                    @if (SelectedDeployment?.AiModel != null)
+                    {
+                        <MudAlert Severity="Severity.Info" Class="mb-3">
+                            <strong>@SelectedDeployment.DeploymentName</strong> model settings (temperature, max tokens, etc.) are configured via AI Model Deployments in the system configuration.
+                        </MudAlert>
+                    }
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        <MudItem xs="12" md="6">
+            <MudCard Outlined>
+                <MudCardContent>
+                    <MudText Typo="Typo.h6" Class="mb-3">Conversation Settings</MudText>
+
+                    <MudSwitch @bind-Value="EnableIntentDetection"
+                              Label="Enable Intent Detection"
+                              Color="Color.Primary"
+                              Immediate="true"
+                              Class="mb-3" />
+                    <MudText Typo="Typo.caption" Class="mb-3">Automatically detect when users need specific document processes</MudText>
+
+                    <MudSwitch @bind-Value="EnableConversationalFallback"
+                              Label="Enable Conversational Fallback"
+                              Color="Color.Primary"
+                              Immediate="true"
+                              Class="mb-3" />
+                    <MudText Typo="Typo.caption" Class="mb-3">Respond conversationally when no specific intent is detected</MudText>
+
+                    <MudNumericField @bind-Value="ConversationHistoryLimit"
+                                    Label="Conversation History Limit"
+                                    Min="1"
+                                    Max="100"
+                                    HelperText="Number of previous messages to include in context"
+                                    Immediate="true"
+                                    Class="mb-3" />
+
+                    <MudDivider Class="my-3" />
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">Intent Detection Thresholds</MudText>
+
+                    <MudSlider @bind-Value="MinimumIntentRelevanceThreshold"
+                              Min="0.0"
+                              Max="1.0"
+                              Step="0.05"
+                              Color="Color.Secondary"
+                              Immediate="true"
+                              Class="mb-1">
+                        Minimum Relevance: @MinimumIntentRelevanceThreshold.ToString("0.00")
+                    </MudSlider>
+                    <MudText Typo="Typo.caption" Class="mb-3">
+                        Document processes must score above this threshold to be engaged (0.0 = any match, 1.0 = perfect match)
+                    </MudText>
+
+                    <MudSwitch @bind-Value="RequireMinimumRelevanceForEngagement"
+                              Label="Require Minimum Relevance"
+                              Color="Color.Secondary"
+                              Immediate="true"
+                              Class="mb-1" />
+                    <MudText Typo="Typo.caption" Class="mb-3">
+                        When enabled, if no document process meets the threshold, Flow will respond conversationally instead
+                    </MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        <MudItem xs="12">
+            <MudCard Outlined>
+                <MudCardContent>
+                    <MudText Typo="Typo.h6" Class="mb-3">System Prompts</MudText>
+
+                    <MudTextField @bind-Value="SystemPrompt"
+                                 Label="Flow System Prompt"
+                                 Lines="4"
+                                 Variant="Variant.Outlined"
+                                 HelperText="Custom system prompt for Flow conversations (leave empty to use default)"
+                                 Immediate="true"
+                                 Class="mb-3" />
+
+                    <MudTextField @bind-Value="ConversationalPrompt"
+                                 Label="Conversational Fallback Prompt"
+                                 Lines="3"
+                                 Variant="Variant.Outlined"
+                                 HelperText="Additional prompt for conversational responses when no intent is detected"
+                                 Immediate="true"
+                                 Class="mb-3" />
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@code {
+    private ServiceConfigurationOptions.FlowOptions _options = new();
+    private string _initial = string.Empty;
+    private List<AiModelDeploymentInfo> _aiModelDeployments = new();
+    private List<AiModelDeploymentInfo> _chatModelDeployments = new();
+    public override string Title => "Flow Assistant";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    public override async Task LoadAsync(CancellationToken cancellationToken = default)
+    {
+        // Load both Flow options and AI model deployments
+        var flowTask = ConfigApi.GetFlowOptionsAsync();
+        var deploymentsTask = ConfigApi.GetAiModelDeploymentsAsync();
+
+        await Task.WhenAll(flowTask, deploymentsTask);
+
+        _options = flowTask.Result;
+        _aiModelDeployments = deploymentsTask.Result;
+
+        // Filter to only chat/completion models (exclude embedding models and fix the bug mentioned)
+        _chatModelDeployments = _aiModelDeployments
+            .Where(d => d.AiModel?.ModelType != AiModelType.Embedding)
+            .ToList();
+
+        _initial = System.Text.Json.JsonSerializer.Serialize(_options);
+        SetDirty(false);
+    }
+
+    private void MarkDirty()
+    {
+        var cur = System.Text.Json.JsonSerializer.Serialize(_options);
+        SetDirty(!string.Equals(cur, _initial, StringComparison.Ordinal));
+    }
+
+    // Model deployment selection property
+    private AiModelDeploymentInfo? SelectedDeployment
+    {
+        get => _chatModelDeployments.FirstOrDefault(d => d.DeploymentName == _options.DefaultModelDeployment);
+        set
+        {
+            _options.DefaultModelDeployment = value?.DeploymentName ?? "gpt-4o";
+            MarkDirty();
+        }
+    }
+
+    // Wrapper properties to track changes on Flow-specific fields
+    private bool EnableIntentDetection { get => _options.EnableIntentDetection; set { _options.EnableIntentDetection = value; MarkDirty(); } }
+    private bool EnableConversationalFallback { get => _options.EnableConversationalFallback; set { _options.EnableConversationalFallback = value; MarkDirty(); } }
+    private int ConversationHistoryLimit { get => _options.ConversationHistoryLimit; set { _options.ConversationHistoryLimit = value; MarkDirty(); } }
+    private string SystemPrompt { get => _options.SystemPrompt; set { _options.SystemPrompt = value; MarkDirty(); } }
+    private string ConversationalPrompt { get => _options.ConversationalPrompt; set { _options.ConversationalPrompt = value; MarkDirty(); } }
+    private double MinimumIntentRelevanceThreshold { get => _options.MinimumIntentRelevanceThreshold; set { _options.MinimumIntentRelevanceThreshold = value; MarkDirty(); } }
+    private bool RequireMinimumRelevanceForEngagement { get => _options.RequireMinimumRelevanceForEngagement; set { _options.RequireMinimumRelevanceForEngagement = value; MarkDirty(); } }
+
+    public override async Task SaveAsync(CancellationToken cancellationToken = default)
+    {
+        var items = new Dictionary<string, string>
+        {
+            ["ServiceConfiguration:GreenlightServices:Flow:DefaultModelDeployment"] = _options.DefaultModelDeployment ?? string.Empty,
+            ["ServiceConfiguration:GreenlightServices:Flow:EnableIntentDetection"] = _options.EnableIntentDetection.ToString(),
+            ["ServiceConfiguration:GreenlightServices:Flow:EnableConversationalFallback"] = _options.EnableConversationalFallback.ToString(),
+            ["ServiceConfiguration:GreenlightServices:Flow:ConversationHistoryLimit"] = _options.ConversationHistoryLimit.ToString(),
+            ["ServiceConfiguration:GreenlightServices:Flow:SystemPrompt"] = _options.SystemPrompt ?? string.Empty,
+            ["ServiceConfiguration:GreenlightServices:Flow:ConversationalPrompt"] = _options.ConversationalPrompt ?? string.Empty,
+            ["ServiceConfiguration:GreenlightServices:Flow:MinimumIntentRelevanceThreshold"] = _options.MinimumIntentRelevanceThreshold.ToString("F2"),
+            ["ServiceConfiguration:GreenlightServices:Flow:RequireMinimumRelevanceForEngagement"] = _options.RequireMinimumRelevanceForEngagement.ToString()
+        };
+
+        await ConfigApi.UpdateConfigurationAsync(new Microsoft.Greenlight.Shared.Contracts.DTO.ConfigurationUpdateRequest
+        {
+            ConfigurationItems = items
+        });
+        _initial = System.Text.Json.JsonSerializer.Serialize(_options);
+        SetDirty(false);
+    }
+
+    public override IEnumerable<string> DescribePendingChanges()
+    {
+        var before = System.Text.Json.JsonSerializer.Deserialize<ServiceConfigurationOptions.FlowOptions>(_initial) ?? new();
+        if (_options.DefaultModelDeployment != before.DefaultModelDeployment) yield return $"AI Model: {before.DefaultModelDeployment} → {_options.DefaultModelDeployment}";
+        if (_options.EnableIntentDetection != before.EnableIntentDetection) yield return $"Intent Detection: {before.EnableIntentDetection} → {_options.EnableIntentDetection}";
+        if (_options.EnableConversationalFallback != before.EnableConversationalFallback) yield return $"Conversational Fallback: {before.EnableConversationalFallback} → {_options.EnableConversationalFallback}";
+        if (_options.ConversationHistoryLimit != before.ConversationHistoryLimit) yield return $"History Limit: {before.ConversationHistoryLimit} → {_options.ConversationHistoryLimit}";
+        if (Math.Abs(_options.MinimumIntentRelevanceThreshold - before.MinimumIntentRelevanceThreshold) > 0.001) yield return $"Min Relevance: {before.MinimumIntentRelevanceThreshold:F2} → {_options.MinimumIntentRelevanceThreshold:F2}";
+        if (_options.RequireMinimumRelevanceForEngagement != before.RequireMinimumRelevanceForEngagement) yield return $"Require Min Relevance: {before.RequireMinimumRelevanceForEngagement} → {_options.RequireMinimumRelevanceForEngagement}";
+        if (_options.SystemPrompt != before.SystemPrompt) yield return $"System Prompt: {(string.IsNullOrEmpty(before.SystemPrompt) ? "(default)" : "customized")} → {(string.IsNullOrEmpty(_options.SystemPrompt) ? "(default)" : "customized")}";
+        if (_options.ConversationalPrompt != before.ConversationalPrompt) yield return $"Conversational Prompt: {(string.IsNullOrEmpty(before.ConversationalPrompt) ? "(default)" : "customized")} → {(string.IsNullOrEmpty(_options.ConversationalPrompt) ? "(default)" : "customized")}";
+    }
+}

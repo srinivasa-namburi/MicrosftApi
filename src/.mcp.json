@@ -17,25 +17,25 @@
         "wiki"
       ],
       "env": {}
-    },
-    "playwright": {
-      "type": "stdio",
-      "command": "npx",
-      "args": [
-        "@executeautomation/playwright-mcp-server"
-      ],
-      "env": {}
-    },
-    "serena": {
-      "type": "stdio",
-      "command": "uvx",
-      "args": [
-        "--from",
-        "git\u002Bhttps://github.com/oraios/serena",
-        "serena",
-        "start-mcp-server"
-      ],
-      "env": {}
     }
+    //"playwright": {
+    //  "type": "stdio",
+    //  "command": "npx",
+    //  "args": [
+    //    "@executeautomation/playwright-mcp-server"
+    //  ],
+    //  "env": {}
+    //}
+    //"serena": {
+    //  "type": "stdio",
+    //  "command": "uvx",
+    //  "args": [
+    //    "--from",
+    //    "git\u002Bhttps://github.com/oraios/serena",
+    //    "serena",
+    //    "start-mcp-server"
+    //  ],
+    //  "env": {}
+    //}
   }
 }

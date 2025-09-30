@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <!-- Suppress preview version warnings for .NET SDK -->
+    <NoWarn>$(NoWarn);NETSDK1057</NoWarn>
+  </PropertyGroup>
+</Project>

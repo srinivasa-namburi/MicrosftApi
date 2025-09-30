@@ -57,5 +57,21 @@ namespace Microsoft.Greenlight.Shared.Extensions
 
             return services;
         }
+
+        /// <summary>
+        /// Adds the Flow stream notifier to listen for conversation monitoring events
+        /// </summary>
+        /// <param name="services">The service collection</param>
+        /// <returns>The service collection</returns>
+        public static IServiceCollection AddFlowStreamNotifier(this IServiceCollection services)
+        {
+            // Register the Flow notifier
+            services.TryAddSingleton<FlowWorkStreamNotifier>();
+
+            // Also register as IWorkStreamNotifier so it's discovered by the service
+            services.TryAddEnumerable(ServiceDescriptor.Singleton<IWorkStreamNotifier, FlowWorkStreamNotifier>());
+
+            return services;
+        }
     }
 }

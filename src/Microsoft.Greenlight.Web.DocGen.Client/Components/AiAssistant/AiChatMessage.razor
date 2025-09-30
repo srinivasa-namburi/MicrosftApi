@@ -5,6 +5,7 @@
 @using Microsoft.AspNetCore.SignalR.Client
 @using Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Events
 @using Microsoft.JSInterop
+@using System.Text.Json
 
 @implements IAsyncDisposable
 @inject IFileApiClient FileApiClient
@@ -18,6 +19,7 @@
     [Parameter] public List<ContentReferenceItemInfo> ConversationReferences { get; set; } = new();
     [Parameter] public bool IsContextEditMode { get; set; } = false;
     [Parameter] public EventCallback<string> OnContentSuggestionSelected { get; set; }
+    [Parameter] public EventCallback<(string message, bool isProcessing)> OnStatusMessage { get; set; }
 
     // Direct parameter for dark mode (used when component is in a dialog)
     [Parameter] public bool IsDarkMode { get; set; }
@@ -43,22 +45,34 @@
     private bool _statusProcessingComplete = false;
     private bool _statusPersistent = false;
 
+    // Flow aggregation UI
+    private bool _flowDetailsExpanded = false;
+    private List<FlowAggregationSection> _flowSections = new();
+    private bool _flowExtraDataParsed = false;
+    private bool _supersededMessageExpanded = false;
+    private bool _showSupersededMessages = false;
+    private bool HasSupersededMessages => ChatMessage?.SupersededMessageIds?.Any() == true;
+
     protected override void OnInitialized()
     {
         InitializeOrRestartTimer();
         ExtractReferences();
         RegisterForStatusUpdates();
+        ParseFlowAggregationExtraData();
     }
 
     protected override void OnParametersSet()
     {
         InitializeOrRestartTimer();
         ExtractReferences();
+        ParseFlowAggregationExtraData();
     }
 
     private void RegisterForStatusUpdates()
     {
-        if (HubConnection != null && ChatMessage != null)
+        // Don't register for status updates on Flow aggregation messages
+        // Status should only appear in the global status bar, not on the message itself
+        if (HubConnection != null && ChatMessage != null && ChatMessage.IsFlowAggregation != true)
         {
             // Register for message-specific status updates
             HubConnection.On<ChatMessageStatusNotification>(
@@ -74,6 +88,12 @@
     {
         if (notification.ChatMessageId == ChatMessage.Id)
         {
+            // Forward to parent for global status display
+            if (OnStatusMessage.HasDelegate)
+            {
+                await OnStatusMessage.InvokeAsync((notification.StatusMessage, !notification.ProcessingComplete));
+            }
+
             _statusMessage = notification.StatusMessage;
             _showStatusMessage = true;
             _statusProcessingComplete = notification.ProcessingComplete;
@@ -117,6 +137,42 @@
         InvokeAsync(StateHasChanged);
         _statusTimer?.Dispose();
     }
+
+    private void ParseFlowAggregationExtraData()
+    {
+        if (ChatMessage?.IsFlowAggregation != true)
+        {
+            _flowSections.Clear();
+            _flowExtraDataParsed = false;
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(ChatMessage.ExtraDataJson)) { return; }
+        try
+        {
+            using var doc = JsonDocument.Parse(ChatMessage.ExtraDataJson);
+            var root = doc.RootElement;
+            if (root.TryGetProperty("sections", out var sections) && sections.ValueKind == JsonValueKind.Array)
+            {
+                _flowSections = sections
+                    .EnumerateArray()
+                    .Select(s => new FlowAggregationSection
+                    {
+                        Process = s.TryGetProperty("process", out var p) ? p.GetString() ?? "(unknown)" : "(unknown)",
+                        Text = s.TryGetProperty("text", out var t) ? t.GetString() ?? string.Empty : string.Empty,
+                        Complete = s.TryGetProperty("complete", out var c) && c.GetBoolean()
+                    })
+                    .OrderBy(s => s.Process)
+                    .ToList();
+                _flowExtraDataParsed = true;
+            }
+        }
+        catch { _flowExtraDataParsed = false; }
+    }
+
+    private bool ShowFlowHeader => ChatMessage?.IsFlowAggregation == true;
+    private bool IsSupersededMessage => ChatMessage?.SupersededByMessageId != null;
+    private void ToggleFlowDetails() => _flowDetailsExpanded = !_flowDetailsExpanded;
+    private void ToggleSupersededMessage() => _supersededMessageExpanded = !_supersededMessageExpanded;
 
     private void ExtractReferences()
     {
@@ -316,7 +372,8 @@
         _timer?.Dispose();
         _statusTimer?.Dispose();
 
-        if (HubConnection != null && ChatMessage != null)
+        // Only unsubscribe if we subscribed (non-Flow messages)
+        if (HubConnection != null && ChatMessage != null && ChatMessage.IsFlowAggregation != true)
         {
             await HubConnection.SendAsync("RemoveFromGroup", ChatMessage.Id.ToString());
             HubConnection.Remove("ReceiveChatMessageStatusNotification");
@@ -331,24 +388,99 @@
         public string? FullMatch { get; set; }
         public string? DisplayName { get; set; }
     }
+
+    private sealed class FlowAggregationSection
+    {
+        public string Process { get; set; } = string.Empty;
+        public string Text { get; set; } = string.Empty;
+        public bool Complete { get; set; }
+    }
 }
 
-<MudChat ChatPosition="@(IsCurrentUser ? ChatBubblePosition.End : ChatBubblePosition.Start)" Class="mb-2">
+<MudChat ChatPosition="@(IsCurrentUser ? ChatBubblePosition.End : ChatBubblePosition.Start)"
+         Class="mb-2"
+         Dense="true">
     <MudAvatar Color="@GetAvatarColor()" Size="Size.Small">
         @GetInitials()
     </MudAvatar>
+
+    <MudChatHeader Name="@GetDisplayName()" Time="@FormatDateTime(ChatMessage.CreatedUtc)" />
     
-    <MudChatHeader>
-        <ChildContent>
-            <MudText Typo="Typo.subtitle2">@GetDisplayName()</MudText>
-            <MudText Typo="Typo.caption">@FormatDateTime(ChatMessage.CreatedUtc)</MudText>
-        </ChildContent>
-    </MudChatHeader>
-    
-    <MudChatBubble Variant="Variant.Filled" 
-                   Color="@GetBubbleColor()">
+    <MudChatBubble Variant="@(IsCurrentUser ? Variant.Filled : Variant.Outlined)"
+                   Color="@GetBubbleColor()"
+                   Elevation="@(IsCurrentUser ? 0 : 1)">
         <div>
-            <RenderMultilineText Value="@GetFormattedMessageContent()" />
+            @* Flow aggregation UI *@
+            @if (ShowFlowHeader)
+            {
+                // Show Flow header for aggregation messages
+                <div class="d-flex align-center mb-2">
+                    <MudChip T="string"
+                             Color="@(ChatMessage.IsIntermediate ? Color.Warning : (IsSupersededMessage ? Color.Default : Color.Success))"
+                             Variant="Variant.Filled"
+                             Size="Size.Small"
+                             Class="mr-2">
+                        @(ChatMessage.IsIntermediate ? "Flow Aggregation" : (IsSupersededMessage ? "Previous Aggregation" : "Flow Synthesis"))
+                    </MudChip>
+                    @if (ChatMessage.IsIntermediate)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        @* Don't show status on the message for Flow aggregations - it goes to status bar *@
+                    }
+                    else if (!IsSupersededMessage)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success" Class="mr-1" />
+                        <MudText Typo="Typo.caption" Class="ml-1" Color="Color.Success">Final synthesis</MudText>
+                        @if (HasSupersededMessages)
+                        {
+                            <MudChip T="string"
+                                     Size="Size.Small"
+                                     Icon="@Icons.Material.Filled.History"
+                                     Color="Color.Info"
+                                     Variant="Variant.Text"
+                                     Class="ml-2 cursor-pointer"
+                                     OnClick="() => _showSupersededMessages = !_showSupersededMessages">
+                                @(ChatMessage.SupersededMessageIds.Count) intermediate @(ChatMessage.SupersededMessageIds.Count == 1 ? "step" : "steps")
+                            </MudChip>
+                        }
+                    }
+                    <MudSpacer />
+                    @if (_flowSections.Any())
+                    {
+                        <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="ToggleFlowDetails">
+                            @(_flowDetailsExpanded ? "Hide details" : "Show details")
+                        </MudButton>
+                    }
+                </div>
+            }
+
+            @if (!_flowDetailsExpanded || !_flowSections.Any())
+            {
+                <RenderMultilineText Value="@GetFormattedMessageContent()" />
+            }
+            else
+            {
+                // Show Flow sections when expanded
+                <MudStack Spacing="2">
+                    @foreach (var flowSection in _flowSections)
+                    {
+                        <MudPaper Elevation="1" Outlined="@(!flowSection.Complete)" Class="pa-2">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-1">
+                                @if (flowSection.Complete)
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success" />
+                                }
+                                else
+                                {
+                                    <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                                }
+                                <MudText Typo="Typo.subtitle2">@flowSection.Process</MudText>
+                            </MudStack>
+                            <RenderMultilineText Value="@flowSection.Text" />
+                        </MudPaper>
+                    }
+                </MudStack>
+            }
 
             @if (_messageReferences.Any())
             {
@@ -400,21 +532,7 @@
                 </MudButton>
             }
 
-            @if (_showStatusMessage && !string.IsNullOrEmpty(_statusMessage))
-            {
-                <MudDivider Class="mt-2 mb-1" />
-                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
-                    @if (!_statusProcessingComplete)
-                    {
-                        <MudProgressCircular Size="Size.Small" Indeterminate="true" />
-                    }
-                    else
-                    {
-                        <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" />
-                    }
-                    <MudText Typo="Typo.caption">@_statusMessage</MudText>
-                </MudStack>
-            }
+            @* Status messages are now displayed globally in the parent component *@
         </div>
     </MudChatBubble>
     
@@ -425,61 +543,14 @@
         </MudChatFooter>
     }
     
-    @if (ChatMessage.Source == ChatMessageSource.Assistant && 
-         ChatMessage.State == ChatMessageCreationState.InProgress && 
+    @if (ChatMessage.Source == ChatMessageSource.Assistant &&
+         ChatMessage.State == ChatMessageCreationState.InProgress &&
          _showTypingIndicator)
     {
-        <div class="typing-indicator">
-            <div class="typing-dot"></div>
-            <div class="typing-dot"></div>
-            <div class="typing-dot"></div>
-        </div>
+        <MudChatFooter>
+            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            <MudText Typo="Typo.caption">Assistant is typing...</MudText>
+        </MudChatFooter>
     }
 </MudChat>
 
-<style>
-    .chat-message-attachments {
-        margin-top: 8px;
-    }
-
-    .chat-message-attachments .mud-chip-clickable {
-        cursor: pointer !important;
-        transition: all 0.2s ease;
-    }
-
-    .chat-message-attachments .mud-chip-clickable:hover {
-        transform: scale(1.05);
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-
-    .typing-indicator {
-        display: flex;
-        gap: 4px;
-        padding: 8px;
-    }
-
-    .typing-dot {
-        width: 8px;
-        height: 8px;
-        background-color: var(--mud-palette-text-secondary);
-        border-radius: 50%;
-        animation: typing 1.4s infinite;
-    }
-
-    .typing-dot:nth-child(2) {
-        animation-delay: 0.2s;
-    }
-
-    .typing-dot:nth-child(3) {
-        animation-delay: 0.4s;
-    }
-
-    @@keyframes typing {
-        0%, 60%, 100% {
-            transform: translateY(0);
-        }
-        30% {
-            transform: translateY(-10px);
-        }
-    }
-</style>

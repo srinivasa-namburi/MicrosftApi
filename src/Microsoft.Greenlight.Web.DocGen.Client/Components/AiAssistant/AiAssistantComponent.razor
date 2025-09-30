@@ -16,6 +16,7 @@
 @using Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Events
 @using Microsoft.Greenlight.Web.Shared.Auth
 @using System.Timers
+@using System.Text.Json
 
 @implements IAsyncDisposable
 
@@ -90,7 +91,7 @@
             </div>
         }
 
-        <div @ref="_messagesContainer" class="messages-container">
+        <div @ref="_messagesContainer" class="messages-container" @onscroll="@(async () => await CheckScrollPosition())">
             @if (!ChatMessages.Any())
             {
                 <div class="empty-state">
@@ -110,12 +111,13 @@
             else
             {
                 <div>
-                    @foreach (var chatMessage in ChatMessages.OrderBy(x => x.CreatedUtc))
+                    @foreach (var chatMessage in GetVisibleMessages())
                     {
                         <AiChatMessage ChatMessage="@chatMessage"
                                        CurrentUser="CurrentUser"
                                        ConversationReferences="AllAvailableReferences"
                                        OnContentSuggestionSelected="HandleContentSuggestionSelected"
+                                       OnStatusMessage="HandleStatusMessage"
                                        IsContextEditMode="IsContextEditMode"
                                        IsDarkMode="EffectiveIsDarkMode" />
                     }
@@ -123,24 +125,75 @@
             }
         </div>
 
-        @* Status bar overlay *@
+        @* Flow bindings & references bar *@
+        @if (UseFlow || ConversationReferences.Any() || _pendingAttachedReferences.Any())
+        {
+            <div class="assistant-context-strip">
+                <div class="context-line">
+                    @if (UseFlow && _engagedBindings.Any())
+                    {
+                        <span class="ctx-label">Context:</span>
+                        @foreach (var b in _engagedBindings.OrderBy(x => x))
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined" Class="ctx-chip" DisableRipple="true">@Trunc(b,18)</MudChip>
+                        }
+                    }
+                    @if (ConversationReferences.Any())
+                    {
+                        <span class="ctx-label ml-2">Refs:</span>
+                        @foreach (var r in ConversationReferences.Take(12))
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined" Class="ctx-chip" DisableRipple="true">@Trunc(r.DisplayName ?? "ref",16)</MudChip>
+                        }
+                        @if (ConversationReferences.Count > 12)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Filled" Class="ctx-chip" DisableRipple="true">+@((ConversationReferences.Count - 12))</MudChip>
+                        }
+                    }
+                </div>
+                @if (_pendingAttachedReferences.Any())
+                {
+                    <div class="context-line attachments-line">
+                        <span class="ctx-label">Pending:</span>
+                        @foreach (var p in _pendingAttachedReferences.Take(10))
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Variant="Variant.Outlined" Class="ctx-chip pending-chip" DisableRipple="true">@Trunc(p.DisplayName ?? "file",18)</MudChip>
+                        }
+                        @if (_pendingAttachedReferences.Count > 10)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Variant="Variant.Filled" Class="ctx-chip" DisableRipple="true">+@((_pendingAttachedReferences.Count - 10))</MudChip>
+                        }
+                    </div>
+                }
+            </div>
+        }
+
+        @* Floating scroll-to-bottom button *@
+        @if (_userHasScrolledUp)
+        {
+            <MudFab Color="Color.Primary"
+                    StartIcon="@Icons.Material.Filled.KeyboardArrowDown"
+                    Size="Size.Small"
+                    Class="scroll-to-bottom-fab"
+                    OnClick="ScrollToBottomAndEnableAuto" />
+        }
+
+        @* Global status message area *@
         @if (_showGlobalStatus && !string.IsNullOrEmpty(_globalStatusMessage))
         {
-            <div class="status-bar-overlay">
-                <MudPaper Class="pa-2" Elevation="4">
-                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                        @if (!_globalStatusComplete)
+            <MudPaper Elevation="2" Class="status-message-area">
+                <MudAlert Severity="@(_globalStatusProcessing ? Severity.Info : Severity.Success)"
+                          Dense="true"
+                          NoIcon="false">
+                    <div class="d-flex align-center">
+                        @if (_globalStatusProcessing)
                         {
-                            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
-                        }
-                        else
-                        {
-                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success" />
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
                         }
                         <MudText Typo="Typo.body2">@_globalStatusMessage</MudText>
-                    </MudStack>
-                </MudPaper>
-            </div>
+                    </div>
+                </MudAlert>
+            </MudPaper>
         }
 
         <div class="input-container">
@@ -152,6 +205,7 @@
             {
                 <AiAssistantInputComponent AllReferences="AllAvailableReferences"
                                            OnMessageSubmit="HandleMessageSubmit"
+                                           OnAttachedReferencesChanged="HandleAttachedReferencesChanged"
                                            @ref="_inputComponent"
                                            DisableFileUpload="@IsContextEditMode" />
             }
@@ -165,111 +219,6 @@ else
     </MudAlert>
 }
 
-
-<style>
-    /* Base styles for both modes */
-    .chat-container {
-        display: flex;
-        flex-direction: column;
-        background-color: var(--mud-palette-background);
-        border-radius: 8px;
-        overflow: hidden;
-    }
-
-    .dark-mode {
-        background-color: var(--mud-palette-background-dark);
-    }
-
-    /* Fill container mode - adapts to parent */
-    .fill-container {
-        height: 100%;
-        width: 100%;
-    }
-
-    /* Default mode - fixed size */
-    .chat-container:not(.fill-container) {
-        height: calc(90vh - 120px);
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
-    }
-
-    .messages-container {
-        flex: 1;
-        overflow-y: auto;
-        padding: 1rem;
-        scroll-behavior: smooth;
-        background-color: var(--mud-palette-background-gray);
-        display: flex;
-        flex-direction: column;
-        min-height: 0;  /* Important for proper flex sizing */
-    }
-
-    .dark-mode .messages-container {
-        background-color: var(--mud-palette-background-gray-darken);
-    }
-
-    .messages-list {
-        display: flex;
-        flex-direction: column;
-        width: 100%;
-    }
-
-    .input-container {
-        padding: 0.75rem;
-        border-top: 1px solid var(--mud-palette-lines-default);
-        background-color: var(--mud-palette-surface);
-        flex-shrink: 0;  /* Prevent input area from shrinking */
-    }
-
-    .dark-mode .input-container {
-        background-color: var(--mud-palette-surface-dark);
-        border-color: var(--mud-palette-lines-dark);
-    }
-
-    /* Status bar overlay - positioned above input */
-    .status-bar-overlay {
-        position: absolute;
-        bottom: 70px; /* Positioned just above the input container */
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 1000;
-        max-width: 400px;
-        animation: slideUp 0.3s ease-out;
-    }
-
-    @@keyframes slideUp {
-        from {
-            opacity: 0;
-            transform: translateX(-50%) translateY(20px);
-        }
-        to {
-            opacity: 1;
-            transform: translateX(-50%) translateY(0);
-        }
-    }
-
-    /* Clickable reference chips */
-    .reference-chip-clickable {
-        cursor: pointer !important;
-        transition: all 0.2s ease;
-    }
-
-    .reference-chip-clickable:hover {
-        transform: scale(1.05);
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-
-    /* Compact chips for conversation references bar */
-    .compact-chip {
-        height: 24px !important;
-        font-size: 0.75rem !important;
-    }
-    
-    .compact-chip .mud-chip-content {
-        padding: 0 8px !important;
-    }
-
-    /* Other inherited styles can be maintained from app.css */
-</style>
 
 @code {
     // For use within normal component hierarchy
@@ -319,6 +268,11 @@ else
     /// </summary>
     [Parameter] public EventCallback OnNewMessage { get; set; }
 
+    /// <summary>
+    /// When true, uses Flow orchestration instead of traditional document process conversations
+    /// </summary>
+    [Parameter] public bool UseFlow { get; set; } = false;
+
     // Use either direct or cascading parameter
     private bool EffectiveIsDarkMode => IsDarkMode || CascadingIsDarkMode;
 
@@ -332,17 +286,39 @@ else
     private bool _isLoading = true;
     private bool _initialContextMessageSent = false;
 
+    // Scroll management
+    private bool _userHasScrolledUp = false;
+    private bool _autoScrollEnabled = true;
+    private Timer? _scrollCheckTimer;
+
+    // Global status message management
+    private string? _globalStatusMessage = null;
+    private bool _showGlobalStatus = false;
+    private bool _globalStatusProcessing = false;
+    private Timer? _globalStatusTimer;
+
     private string _originalEditContextContent;
     private ContentChunkTracker _contentChunkTracker;
     private bool _isProcessingContentChunks = false;
 
     private SignalRSubscriptionManager? _subMgr;
 
-    // Global status bar properties
-    private string? _globalStatusMessage = null;
-    private bool _showGlobalStatus = false;
-    private bool _globalStatusComplete = false;
-    private Timer? _globalStatusTimer;
+    private HashSet<string> _engagedBindings = new(StringComparer.OrdinalIgnoreCase);
+    private List<ContentReferenceItemInfo> _pendingAttachedReferences = new();
+
+    private IEnumerable<ChatMessageDTO> GetVisibleMessages()
+    {
+        // For Flow: Hide intermediate messages that have been superseded
+        if (UseFlow)
+        {
+            return ChatMessages
+                .Where(x => !x.IsFlowAggregation || !x.IsIntermediate || x.SupersededByMessageId == null)
+                .OrderBy(x => x.CreatedUtc);
+        }
+
+        // For non-Flow: Show all messages
+        return ChatMessages.OrderBy(x => x.CreatedUtc);
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -398,7 +374,7 @@ else
                 }
 
                 // This also creates the conversation if it doesn't exist
-                ChatMessages = await ChatApiClient.GetChatMessagesAsync(ConversationId.Value, DocumentProcessName);
+                ChatMessages = await ChatApiClient.GetChatMessagesAsync(ConversationId.Value, DocumentProcessName, UseFlow);
 
                 try
                 {
@@ -452,7 +428,7 @@ else
         };
 
         // Send to API but don't wait for response (it won't generate one)
-        await ChatApiClient.SendChatMessageAsync(contextMessage);
+        await ChatApiClient.SendChatMessageAsync(contextMessage, UseFlow);
 
         // Add a visible guidance message for the user - but only if we're not hiding initial display
         if (!HideInitialContentDisplay)
@@ -598,7 +574,15 @@ else
 
     private async Task HubReceiveProcessChatMessageReceivedNotificationHandler(ProcessChatMessage obj)
     {
+        // Skip if message already exists
         if (ChatMessages.Any(x => x.Id == obj.ChatMessageDto.Id))
+        {
+            return;
+        }
+
+        // Skip user's own messages in Flow (they're already added locally)
+        if (UseFlow && obj.ChatMessageDto.Source == ChatMessageSource.User &&
+            obj.ChatMessageDto.UserId == CurrentUser?.ProviderSubjectId)
         {
             return;
         }
@@ -656,42 +640,133 @@ else
         }
     }
 
+    private async Task HubReceiveGlobalStatusNotificationHandler(ChatMessageStatusNotification notification)
+    {
+        // Show global status for any message status updates
+        ShowGlobalStatus(notification.StatusMessage, !notification.ProcessingComplete,
+            notification.ProcessingComplete ? 3000 : null);
+    }
+
     private async Task HubReceiveChatMessageResponseReceivedNotificationHandler(ChatMessageResponseReceived obj)
     {
         if (obj.ChatMessageDto.ConversationId != ConversationId)
             return;
 
-        var existingMessage = ChatMessages.FirstOrDefault(x => x.Id == obj.ChatMessageDto.Id);
-        if (existingMessage != null)
+        // Flow aggregation enrichment: capture process names from ExtraDataJson if present
+        if (UseFlow && obj.ChatMessageDto.IsFlowAggregation && !string.IsNullOrEmpty(obj.ChatMessageDto.ExtraDataJson))
         {
-            existingMessage.State = obj.ChatMessageDto.State;
-            existingMessage.Message = obj.ChatMessageDto.Message;
-
-            // Only set ContentText for non-content-editing mode, since content-editing
-            // mode handles updates through chunks
-            if (!IsContextEditMode)
+            try
             {
-                existingMessage.ContentText = obj.ChatMessageDto.ContentText;
-            }
-        }
-        else
-        {
-            var replyToMessage = ChatMessages.FirstOrDefault(x => x.Id == obj.ChatMessageDto.ReplyToId);
-            if (replyToMessage != null)
-            {
-                var index = ChatMessages.IndexOf(replyToMessage);
-                if (index == ChatMessages.Count - 1)
+                using var doc = System.Text.Json.JsonDocument.Parse(obj.ChatMessageDto.ExtraDataJson);
+                if (doc.RootElement.TryGetProperty("sections", out var sections) && sections.ValueKind == System.Text.Json.JsonValueKind.Array)
                 {
-                    ChatMessages.Add(obj.ChatMessageDto);
+                    foreach (var s in sections.EnumerateArray())
+                    {
+                        var proc = s.GetProperty("process").GetString();
+                        if (!string.IsNullOrWhiteSpace(proc))
+                        {
+                            _engagedBindings.Add(proc);
+                        }
+                    }
+                }
+            }
+            catch { /* ignore parse errors */ }
+        }
+
+        // For Flow aggregation messages, handle superseding relationships
+        if (UseFlow && obj.ChatMessageDto.IsFlowAggregation)
+        {
+            // Check if this is an intermediate message that's superseding a previous one
+            if (obj.ChatMessageDto.IsIntermediate)
+            {
+                // Find any existing aggregation message and update it
+                var existingAggregation = ChatMessages.FirstOrDefault(x =>
+                    x.IsFlowAggregation && x.Source == ChatMessageSource.Assistant);
+
+                if (existingAggregation != null)
+                {
+                    // Update the existing message
+                    existingAggregation.State = obj.ChatMessageDto.State;
+                    existingAggregation.Message = obj.ChatMessageDto.Message;
+                    existingAggregation.IsIntermediate = obj.ChatMessageDto.IsIntermediate;
+                    existingAggregation.ExtraDataJson = obj.ChatMessageDto.ExtraDataJson;
                 }
                 else
                 {
-                    ChatMessages.Insert(index + 1, obj.ChatMessageDto);
+                    // Add new intermediate message
+                    ChatMessages.Add(obj.ChatMessageDto);
                 }
             }
             else
             {
-                ChatMessages.Add(obj.ChatMessageDto);
+                // This is a final synthesis message
+                // Check if this message already exists (prevent duplicates)
+                var existingFinal = ChatMessages.FirstOrDefault(x => x.Id == obj.ChatMessageDto.Id);
+                if (existingFinal != null)
+                {
+                    // Update existing final message
+                    existingFinal.State = obj.ChatMessageDto.State;
+                    existingFinal.Message = obj.ChatMessageDto.Message;
+                    existingFinal.ExtraDataJson = obj.ChatMessageDto.ExtraDataJson;
+                }
+                else
+                {
+                    // Find and mark any intermediate messages as superseded
+                    var intermediateMessages = ChatMessages.Where(x =>
+                        x.IsFlowAggregation && x.IsIntermediate && x.Source == ChatMessageSource.Assistant).ToList();
+
+                    foreach (var intermediate in intermediateMessages)
+                    {
+                        intermediate.SupersededByMessageId = obj.ChatMessageDto.Id;
+                    }
+
+                    // Store reference to superseded messages in the final message's ExtraDataJson
+                    if (intermediateMessages.Any())
+                    {
+                        // Add metadata about superseded messages to the final message
+                        obj.ChatMessageDto.SupersededMessageIds = intermediateMessages.Select(m => m.Id).ToList();
+                    }
+
+                    // Add the final message only if it doesn't exist
+                    ChatMessages.Add(obj.ChatMessageDto);
+                }
+            }
+        }
+        else
+        {
+            // Non-Flow message handling (original logic)
+            var existingMessage = ChatMessages.FirstOrDefault(x => x.Id == obj.ChatMessageDto.Id);
+            if (existingMessage != null)
+            {
+                existingMessage.State = obj.ChatMessageDto.State;
+                existingMessage.Message = obj.ChatMessageDto.Message;
+
+                // Only set ContentText for non-content-editing mode, since content-editing
+                // mode handles updates through chunks
+                if (!IsContextEditMode)
+                {
+                    existingMessage.ContentText = obj.ChatMessageDto.ContentText;
+                }
+            }
+            else
+            {
+                var replyToMessage = ChatMessages.FirstOrDefault(x => x.Id == obj.ChatMessageDto.ReplyToId);
+                if (replyToMessage != null)
+                {
+                    var index = ChatMessages.IndexOf(replyToMessage);
+                    if (index == ChatMessages.Count - 1)
+                    {
+                        ChatMessages.Add(obj.ChatMessageDto);
+                    }
+                    else
+                    {
+                        ChatMessages.Insert(index + 1, obj.ChatMessageDto);
+                    }
+                }
+                else
+                {
+                    ChatMessages.Add(obj.ChatMessageDto);
+                }
             }
         }
 
@@ -717,7 +792,7 @@ else
         {
             try
             {
-                var refreshed = await ChatApiClient.GetChatMessagesAsync(ConversationId!.Value, DocumentProcessName!);
+                var refreshed = await ChatApiClient.GetChatMessagesAsync(ConversationId!.Value, DocumentProcessName!, UseFlow);
                 if (refreshed != null && refreshed.Count >= ChatMessages.Count)
                 {
                     ChatMessages = refreshed;
@@ -797,7 +872,7 @@ else
         // Send to API to update backend context, but don't display in UI
         // No longer adding a local UI message about content updates
         // This keeps the conversation cleaner and lets the assistant's message updates remain visible
-        await ChatApiClient.SendChatMessageAsync(contextUpdateMessage);
+        await ChatApiClient.SendChatMessageAsync(contextUpdateMessage, UseFlow);
     }
 
     private async Task ProcessOtherUserMessage(ChatMessageDTO chatMessageDto)
@@ -827,6 +902,7 @@ else
     {
         if (chatMessageDto.Source == ChatMessageSource.User)
         {
+            // Always add user messages locally for immediate feedback
             ChatMessages.Add(chatMessageDto);
             await _inputComponent?.Clear()!;
             await InvokeAsync(StateHasChanged);
@@ -860,17 +936,21 @@ else
                 // Best-effort: if joining the per-message group fails, continue without crashing the UI
             }
 
-            await ChatApiClient.SendChatMessageAsync(chatMessageDto);
+            await ChatApiClient.SendChatMessageAsync(chatMessageDto, UseFlow);
             await _inputComponent?.Focus()!;
         }
     }
 
-    private async Task ScrollMessagesToBottom()
+        private async Task ScrollMessagesToBottom()
     {
         try
         {
-            await Task.Delay(50); // Small delay to ensure DOM update
-            await JSRuntime.InvokeVoidAsync("scrollToBottom", _messagesContainer);
+            // Only scroll if auto-scroll is enabled
+            if (_autoScrollEnabled)
+            {
+                await Task.Delay(50); // Small delay to ensure DOM update
+                await JSRuntime.InvokeVoidAsync("scrollToBottom", _messagesContainer);
+            }
         }
         catch (Exception ex)
         {
@@ -879,58 +959,169 @@ else
         }
     }
 
-    /// <summary>
-    /// Starts a new conversation by clearing the current state and reinitializing
-    /// </summary>
-    public void StartNewConversation()
+    private async Task ScrollToBottomAndEnableAuto()
     {
-        ConversationId = Guid.NewGuid();
-        ChatMessages.Clear();
-        ConversationReferences.Clear();
-        _inputComponent?.Clear();
-        InvokeAsync(StateHasChanged);
+        _autoScrollEnabled = true;
+        _userHasScrolledUp = false;
+        await ScrollMessagesToBottom();
+        await InvokeAsync(StateHasChanged);
     }
 
-    private async Task HubReceiveGlobalStatusNotificationHandler(ChatMessageStatusNotification notification)
+    private async Task CheckScrollPosition()
     {
-        // Show global status for general processing messages
-        if (!notification.Persistent && !string.IsNullOrWhiteSpace(notification.StatusMessage))
+        try
         {
-            _globalStatusMessage = notification.StatusMessage;
-            _showGlobalStatus = true;
-            _globalStatusComplete = notification.ProcessingComplete;
+            var result = await JSRuntime.InvokeAsync<ScrollInfo>("checkScrollPosition", _messagesContainer);
 
-            // Auto-hide after a delay
-            _globalStatusTimer?.Dispose();
-            _globalStatusTimer = new Timer(notification.ProcessingComplete ? 2000 : 5000); // 2s for complete, 5s for in-progress
-            _globalStatusTimer.Elapsed += (s, e) =>
+            // User has scrolled up if they're more than 100px from the bottom
+            _userHasScrolledUp = result.distanceFromBottom > 100;
+            _autoScrollEnabled = !_userHasScrolledUp;
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            // Ignore errors in scroll position checking
+        }
+    }
+
+    public void ShowGlobalStatus(string message, bool isProcessing = false, int? autoHideMs = null)
+    {
+        _globalStatusMessage = message;
+        _globalStatusProcessing = isProcessing;
+        _showGlobalStatus = true;
+
+        // Clear any existing timer
+        _globalStatusTimer?.Dispose();
+        _globalStatusTimer = null;
+
+        // Set up auto-hide if requested
+        if (autoHideMs.HasValue && autoHideMs.Value > 0)
+        {
+            _globalStatusTimer = new Timer(autoHideMs.Value) { AutoReset = false };
+            _globalStatusTimer.Elapsed += (sender, e) =>
             {
                 _showGlobalStatus = false;
                 InvokeAsync(StateHasChanged);
                 _globalStatusTimer?.Dispose();
             };
-            _globalStatusTimer.AutoReset = false;
             _globalStatusTimer.Start();
-
-            await InvokeAsync(StateHasChanged);
         }
 
-        // If processing for this message completed, leave the message-specific SignalR group
-        if (notification.ProcessingComplete)
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void HideGlobalStatus()
+    {
+        _showGlobalStatus = false;
+        _globalStatusTimer?.Dispose();
+        _globalStatusTimer = null;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleStatusMessage((string message, bool isProcessing) statusInfo)
+    {
+        _globalStatusMessage = statusInfo.message;
+        _globalStatusProcessing = statusInfo.isProcessing;
+        _showGlobalStatus = true;
+
+        // Clear any existing timer
+        _globalStatusTimer?.Dispose();
+        _globalStatusTimer = null;
+
+        // If processing is complete, auto-hide after 5 seconds
+        if (!statusInfo.isProcessing)
         {
-            try
+            _globalStatusTimer = new Timer(5000) { AutoReset = false };
+            _globalStatusTimer.Elapsed += (sender, e) =>
             {
-                if (_subMgr != null)
+                _showGlobalStatus = false;
+                InvokeAsync(StateHasChanged);
+                _globalStatusTimer?.Dispose();
+            };
+            _globalStatusTimer.Start();
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private class ScrollInfo
+    {
+        public double scrollTop { get; set; }
+        public double scrollHeight { get; set; }
+        public double clientHeight { get; set; }
+        public double distanceFromBottom => scrollHeight - scrollTop - clientHeight;
+    }
+
+    /// <summary>
+    /// Starts a new conversation by clearing the current state and reinitializing
+    /// </summary>
+    public async void StartNewConversation()
+    {
+        // Leave the old conversation group if we have one
+        if (_subMgr != null && ConversationId.HasValue)
+        {
+            await _subMgr.TryLeaveGroupAsync(ConversationId.Value.ToString());
+        }
+
+        // Only create a new conversation ID if one isn't already set (e.g., by parent component)
+        if (!ConversationId.HasValue)
+        {
+            ConversationId = Guid.NewGuid();
+        }
+        ChatMessages.Clear();
+        ConversationReferences.Clear();
+        _inputComponent?.Clear();
+
+        // For Flow conversations, join the new conversation group
+        if (UseFlow && ConversationId.HasValue)
+        {
+            // Ensure we have a subscription manager
+            if (_subMgr == null)
+            {
+                if (HubConnection == null)
                 {
-                    await _subMgr.TryLeaveGroupAsync(notification.ChatMessageId.ToString());
+                    HubConnection = await SignalRConnectionService.TryGetOrCreateAsync();
+                }
+
+                if (HubConnection != null)
+                {
+                    _subMgr = new SignalRSubscriptionManager(HubConnection);
+                    await _subMgr.TryEnsureConnectedAsync();
+
+                    // Register handlers
+                    _subMgr.TryRegisterHandlerOnce<ChatMessageResponseReceived>(
+                        "ReceiveChatMessageResponseReceivedNotification",
+                        HubReceiveChatMessageResponseReceivedNotificationHandler);
+
+                    _subMgr.TryRegisterHandlerOnce<ProcessChatMessage>(
+                        "ReceiveProcessChatMessageReceivedNotification",
+                        HubReceiveProcessChatMessageReceivedNotificationHandler);
+
+                    _subMgr.TryRegisterHandlerOnce<ConversationReferencesUpdatedNotification>(
+                        "ReceiveConversationReferencesUpdatedNotification",
+                        HubReceiveConversationReferencesUpdatedNotificationHandler);
+
+                    _subMgr.TryRegisterHandlerOnce<ContentChunkUpdate>(
+                        "ReceiveContentChunkUpdateNotification",
+                        HubReceiveContentChunkUpdateNotificationHandler);
+
+                    _subMgr.TryRegisterHandlerOnce<ChatMessageStatusNotification>(
+                        "ReceiveChatMessageStatusNotification",
+                        HubReceiveGlobalStatusNotificationHandler);
                 }
             }
-            catch
+
+            // Join the new conversation group
+            if (_subMgr != null)
             {
-                // Ignore cleanup failures
+                await _subMgr.TryJoinGroupAsync(ConversationId.Value.ToString());
             }
         }
+
+        InvokeAsync(StateHasChanged);
     }
+
 
     public async ValueTask DisposeAsync()
     {
@@ -947,9 +1138,9 @@ else
         private string _originalContent;
         private string _currentContent;
         private readonly object _lock = new object();
-        private readonly ILogger _logger;
+        private readonly ILogger? _logger;
 
-        public ContentChunkTracker(string initialContent = null, ILogger logger = null)
+        public ContentChunkTracker(string? initialContent = null, ILogger? logger = null)
         {
             _originalContent = initialContent ?? string.Empty;
             _currentContent = initialContent ?? string.Empty;
@@ -1250,4 +1441,13 @@ else
 
         public string GetCurrentContent() => _currentContent;
     }
+
+    private void HandleAttachedReferencesChanged(List<ContentReferenceItemInfo> refs)
+    {
+        _pendingAttachedReferences = refs ?? new();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private static string Trunc(string value, int max)
+        => string.IsNullOrEmpty(value) || value.Length <= max ? value : value.Substring(0, max - 1) + "…";
 }

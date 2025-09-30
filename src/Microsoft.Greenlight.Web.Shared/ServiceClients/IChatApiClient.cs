@@ -7,8 +7,8 @@ namespace Microsoft.Greenlight.Web.Shared.ServiceClients;
 public interface IChatApiClient : IServiceClient
 {
     //IAsyncEnumerable<string> SendChatMessage(ChatMessage chatMessage);
-    Task<string?> SendChatMessageAsync(ChatMessageDTO chatMessageDto);
-    Task<List<ChatMessageDTO>> GetChatMessagesAsync(Guid conversationId, string documentProcessShortName);
+    Task<string?> SendChatMessageAsync(ChatMessageDTO chatMessageDto, bool? useFlow = null);
+    Task<List<ChatMessageDTO>> GetChatMessagesAsync(Guid conversationId, string documentProcessShortName, bool? useFlow = null);
     /// <summary>
     /// Updates the document process for an existing conversation.
     /// </summary>

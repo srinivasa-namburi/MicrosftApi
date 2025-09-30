@@ -1,6 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Greenlight.Web.Shared.Auth;
 using Microsoft.Greenlight.Web.Shared.ServiceClients;
@@ -14,6 +15,12 @@ public abstract class BaseServiceClient<T> where T : IServiceClient
 
     private readonly AuthenticationStateProvider _authStateProvider;
     // Avoid sync-over-async token access; always fetch tokens asynchronously in request methods
+
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
 
     protected BaseServiceClient(HttpClient httpClient, ILogger<T> logger, AuthenticationStateProvider authStateProvider)
     {
@@ -63,7 +70,7 @@ public abstract class BaseServiceClient<T> where T : IServiceClient
         }
         else if (payload != null)
         {
-            requestMessage.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+            requestMessage.Content = new StringContent(JsonSerializer.Serialize(payload, JsonOptions), Encoding.UTF8, "application/json");
         }
         else
         {
@@ -89,7 +96,7 @@ public abstract class BaseServiceClient<T> where T : IServiceClient
             Logger.LogWarning("Sending PUT request to {RequestUri} with empty payload", requestUri);
         }
 
-        requestMessage.Content = new StringContent(JsonSerializer.Serialize(pocoPayload), Encoding.UTF8, "application/json");
+        requestMessage.Content = new StringContent(JsonSerializer.Serialize(pocoPayload, JsonOptions), Encoding.UTF8, "application/json");
 
         Logger.LogInformation("Sending PUT request to {RequestUri}", requestUri);
 

@@ -6,7 +6,9 @@ using Microsoft.Greenlight.Grains.Chat.Contracts.Models;
 using Microsoft.Greenlight.Shared.Contracts.Chat;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Events;
+using Microsoft.Greenlight.Shared.Contracts.Streams;
 using Microsoft.Greenlight.Shared.Enums;
+using Orleans.Streams;
 using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Shared.Models;
 using Microsoft.Greenlight.Shared.Prompts;
@@ -66,6 +68,9 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
             _logger.LogInformation("Processing message {MessageId} for conversation {ConversationId}",
                 userMessageDto.Id, conversationId);
 
+            // Check if this is a Flow-managed conversation
+            var isFlowConversation = await IsFlowConversationAsync(conversationId);
+
             // Result object that will contain extracted references and the generated response
             var result = new ProcessMessageResult
             {
@@ -90,7 +95,7 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
             // Extract references if it's a user message
             if (userMessageDto.Source == ChatMessageSource.User && !string.IsNullOrEmpty(userMessageDto.Message))
             {
-                result.ExtractedReferences = await ExtractReferencesFromChatMessageAsync(userMessageDto);
+                result.ExtractedReferences = await ExtractReferencesFromChatMessageAsync(userMessageDto, isFlowConversation, conversationId, documentProcessName);
             }
 
             if (result.ExtractedReferences.Any())
@@ -128,7 +133,9 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
                 systemPrompt,
                 referenceItemIds,
                 conversationMessages,
-                conversationSummaries);
+                conversationSummaries,
+                isFlowConversation,
+                conversationId);
 
             // Create the assistant message entity
             result.AssistantMessageEntity = _mapper.Map<ChatMessage>(result.AssistantMessageDto);
@@ -147,7 +154,7 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
 
 
 
-    private async Task<List<ContentReferenceItem>> ExtractReferencesFromChatMessageAsync(ChatMessageDTO messageDto)
+    private async Task<List<ContentReferenceItem>> ExtractReferencesFromChatMessageAsync(ChatMessageDTO messageDto, bool isFlowConversation = false, Guid? conversationId = null, string? documentProcessName = null)
     {
         if (messageDto.Source == ChatMessageSource.Assistant)
         {
@@ -177,7 +184,7 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
             return [];
         }
 
-        await SendStatusNotificationAsync(messageDto.Id, "Extracting references from message...", true);
+        await SendStatusNotificationAsync(messageDto.Id, "Extracting references from message...", true, false, isFlowConversation, conversationId, documentProcessName);
         var contentReferences = new List<ContentReferenceItem>();
         var processingTasks = new List<Task<(string MatchKey, ContentReferenceItem? Reference)>>();
 
@@ -203,7 +210,7 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
                 }
 
                 // Process each reference in parallel but with careful error handling
-                processingTasks.Add(ProcessSingleReferenceAsync(messageDto.Id, referenceId, referenceType, matchKey));
+                processingTasks.Add(ProcessSingleReferenceAsync(messageDto.Id, referenceId, referenceType, matchKey, isFlowConversation, conversationId, documentProcessName));
             }
             else
             {
@@ -235,7 +242,7 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
         _logger.LogInformation("Extracted {ReferenceCount} references from message {MessageId}", 
             contentReferences.Count, messageDto.Id);
 
-        await SendStatusNotificationAsync(messageDto.Id, "All references processed", false, true);
+        await SendStatusNotificationAsync(messageDto.Id, "All references processed", false, true, isFlowConversation, conversationId, documentProcessName);
         return contentReferences;
     }
 
@@ -243,7 +250,10 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
         Guid messageId,
         Guid referenceId,
         ContentReferenceType referenceType,
-        string matchKey)
+        string matchKey,
+        bool isFlowConversation = false,
+        Guid? conversationId = null,
+        string? documentProcessName = null)
     {
         try
         {
@@ -253,7 +263,7 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
                 var referenceItem = await _contentReferenceService.GetReferenceByIdAsync(referenceId, referenceType);
                 if (referenceItem != null)
                 {
-                    await SendStatusNotificationAsync(messageId, $"Processing file reference {referenceItem.DisplayName}", true);
+                    await SendStatusNotificationAsync(messageId, $"Processing file reference {referenceItem.DisplayName}", true, false, isFlowConversation, conversationId, documentProcessName);
                 }
             }
 
@@ -266,7 +276,7 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
             {
                 _logger.LogWarning("Timeout occurred while processing reference {ReferenceId} of type {ReferenceType}",
                     referenceId, referenceType);
-                await SendStatusNotificationAsync(messageId, $"Reference processing timed out, continuing without it", false);
+                await SendStatusNotificationAsync(messageId, $"Reference processing timed out, continuing without it", false, false, isFlowConversation, conversationId, documentProcessName);
                 return (matchKey, null);
             }
 
@@ -279,7 +289,7 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
         }
         catch (Exception ex)
         {
-            await SendStatusNotificationAsync(messageId, "Failed processing reference!", false);
+            await SendStatusNotificationAsync(messageId, "Failed processing reference!", false, false, isFlowConversation, conversationId, documentProcessName);
             _logger.LogError(ex, "Error processing reference {Id} of type {Type}", referenceId, referenceType);
         }
 
@@ -292,7 +302,9 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
         string systemPrompt,
         List<Guid> referenceItemIds,
         List<ChatMessage> conversationMessages,
-        List<ConversationSummary> conversationSummaries)
+        List<ConversationSummary> conversationSummaries,
+        bool isFlowConversation = false,
+        Guid? conversationId = null)
     {
         var assistantMessageDto = new ChatMessageDTO
         {
@@ -397,7 +409,7 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
                 await SendReferencesUpdatedNotificationAsync(userMessageDto.ConversationId, referenceItemDtOs);
             }
 
-            await SendStatusNotificationAsync(userMessageDto.Id, "Adjusting reference context and processing references. Might take a while.", true);
+            await SendStatusNotificationAsync(userMessageDto.Id, "Adjusting reference context and processing references. Might take a while.", true, false, isFlowConversation, conversationId, documentProcessName);
 
             // Build context with selected references
             var contextString = await BuildContextWithSelectedReferencesAsync(userMessageDto.Message, referenceItems, 5);
@@ -531,7 +543,7 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
             var updateBlock = "";
             var responseDateSet = false;
 
-            await SendStatusNotificationAsync(userMessageDto.Id, "Responding...", false, true);
+            await SendStatusNotificationAsync(userMessageDto.Id, "Responding...", false, true, isFlowConversation, conversationId, documentProcessName);
 
             using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(7));
 
@@ -550,6 +562,10 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
 
                     assistantMessageDto.Message += updateBlock;
                     await SendResponseReceivedNotificationAsync(userMessageDto.ConversationId, assistantMessageDto, updateBlock);
+
+                    // Publish Flow backend conversation update stream event during streaming
+                    await PublishFlowBackendConversationUpdateAsync(userMessageDto.ConversationId, assistantMessageDto, updateBlock);
+
                     updateBlock = "";
                 }
             }
@@ -564,6 +580,9 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
             // Ensure the UI receives text even if no incremental updates were sent (e.g., total text < threshold)
             var finalBlock = responseDateSet ? updateBlock : assistantMessageDto.Message;
             await SendResponseReceivedNotificationAsync(userMessageDto.ConversationId, assistantMessageDto, finalBlock);
+
+            // Note: SendResponseReceivedNotificationAsync already calls PublishFlowBackendConversationUpdateAsync
+            // so we don't need to call it again here - that was causing duplicate completion notifications
         }
         catch (Exception ex)
         {
@@ -781,8 +800,58 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
         return chatHistoryBuilder.ToString();
     }
 
-    private async Task SendStatusNotificationAsync(Guid messageId, string notificationMessage, bool persistent = false, bool processingComplete = false)
+    private async Task SendStatusNotificationAsync(Guid messageId, string notificationMessage, bool persistent = false, bool processingComplete = false, bool isFlowConversation = false, Guid? conversationId = null, string? documentProcessName = null)
     {
+        // For Flow conversations, route status messages through Orleans streams for intelligent synthesis
+        if (isFlowConversation)
+        {
+            _logger.LogDebug("Routing status notification to Flow for conversation. Message: {Message}", notificationMessage);
+
+            try
+            {
+                // Get Flow session IDs for this conversation
+                var actualConversationId = conversationId ?? messageId; // Use messageId as fallback if conversationId not provided
+                var registry = GrainFactory.GetGrain<IFlowBackendConversationRegistryGrain>(Guid.Empty);
+                var flowSessions = await registry.GetFlowSessionsAsync(actualConversationId);
+
+                if (flowSessions != null && flowSessions.Count > 0)
+                {
+                    var streamProvider = this.GetStreamProvider("StreamProvider");
+                    var actualDocumentProcessName = documentProcessName ?? "chat-processor"; // Use provided or default
+
+                    foreach (var flowSessionId in flowSessions)
+                    {
+                        // Send status update to each Flow session
+                        var statusUpdate = new FlowBackendStatusUpdate(
+                            Guid.NewGuid(),
+                            flowSessionId,
+                            actualConversationId,
+                            messageId,
+                            notificationMessage,
+                            processingComplete,
+                            persistent,
+                            actualDocumentProcessName,
+                            DateTime.UtcNow);
+
+                        var stream = streamProvider.GetStream<FlowBackendStatusUpdate>(
+                            ChatStreamNameSpaces.FlowBackendStatusUpdateNamespace,
+                            flowSessionId);
+
+                        await stream.OnNextAsync(statusUpdate);
+
+                        _logger.LogDebug("Sent status update to Flow session {FlowSessionId}", flowSessionId);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error routing status notification to Flow");
+            }
+
+            return;
+        }
+
+        // For non-Flow conversations, send status notifications normally
         var notification = new ChatMessageStatusNotification(messageId, notificationMessage)
         {
             ProcessingComplete = processingComplete,
@@ -795,12 +864,31 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
         await notifierGrain.NotifyChatMessageStatusAsync(notification);
     }
 
+    private async Task<bool> IsFlowConversationAsync(Guid conversationId)
+    {
+        try
+        {
+            var registry = GrainFactory.GetGrain<IFlowBackendConversationRegistryGrain>(Guid.Empty);
+            var flowSessions = await registry.GetFlowSessionsAsync(conversationId);
+            return flowSessions != null && flowSessions.Count > 0;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error checking if conversation {ConversationId} is Flow-managed", conversationId);
+            return false;
+        }
+    }
+
     private async Task SendResponseReceivedNotificationAsync(Guid conversationId, ChatMessageDTO assistantMessageDto, string updateBlock)
     {
         var notification = new ChatMessageResponseReceived(conversationId, assistantMessageDto, updateBlock);
 
         var notifierGrain = GrainFactory.GetGrain<ISignalRNotifierGrain>(Guid.Empty);
         await notifierGrain.NotifyChatMessageResponseReceivedAsync(notification);
+
+        // Also publish Flow backend conversation updates for real-time Flow orchestration
+        // This handles both streaming updates AND the final complete notification
+        await PublishFlowBackendConversationUpdateAsync(conversationId, assistantMessageDto, updateBlock);
     }
 
     private async Task SendReferencesUpdatedNotificationAsync(Guid conversationId, List<ContentReferenceItemInfo> referenceItems)
@@ -811,5 +899,74 @@ public class ChatMessageProcessorGrain : Grain, IChatMessageProcessorGrain
 
         var notifierGrain = GrainFactory.GetGrain<ISignalRNotifierGrain>(Guid.Empty);
         await notifierGrain.NotifyConversationReferencesUpdatedAsync(notification);
+    }
+
+    /// <summary>
+    /// Publishes Flow backend conversation updates to Orleans streams for real-time Flow orchestration.
+    /// This allows Flow grains to monitor backend conversation progress without polling.
+    /// Stream events are published with a 1-minute expiry to avoid buildup of unprocessed events.
+    /// </summary>
+    private async Task PublishFlowBackendConversationUpdateAsync(Guid conversationId, ChatMessageDTO assistantMessageDto, string updateBlock)
+    {
+        try
+        {
+            // First check if this is a Flow-managed conversation
+            var registry = GrainFactory.GetGrain<IFlowBackendConversationRegistryGrain>(Guid.Empty);
+            var flowSessions = await registry.GetFlowSessionsAsync(conversationId);
+
+            if (flowSessions == null || flowSessions.Count == 0)
+            {
+                // Not a Flow conversation - skip publishing stream events entirely
+                return;
+            }
+
+            _logger.LogInformation("Publishing Flow update for conversation {ConversationId} to {FlowSessionCount} Flow sessions",
+                conversationId, flowSessions.Count);
+
+            var documentProcessName = await GetDocumentProcessNameForConversationAsync(conversationId);
+            var streamProvider = this.GetStreamProvider("StreamProvider");
+
+            foreach (var flowSessionId in flowSessions)
+            {
+                var evt = new FlowBackendConversationUpdate(
+                    CorrelationId: Guid.NewGuid(),
+                    FlowSessionId: flowSessionId,
+                    BackendConversationId: conversationId,
+                    ChatMessageDto: assistantMessageDto,
+                    DocumentProcessName: documentProcessName,
+                    IsComplete: assistantMessageDto.State == ChatMessageCreationState.Complete);
+
+                _logger.LogDebug("Publishing stream event to Flow session {FlowSessionId}, IsComplete: {IsComplete}",
+                    flowSessionId, evt.IsComplete);
+
+                var stream = streamProvider.GetStream<FlowBackendConversationUpdate>(
+                    "FlowBackendConversationUpdate",
+                    flowSessionId);
+
+                await stream.OnNextAsync(evt);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error publishing Flow backend conversation update for conversation {ConversationId}", conversationId);
+        }
+    }
+
+    /// <summary>
+    /// Attempts to retrieve the document process name for a conversation.
+    /// </summary>
+    private async Task<string> GetDocumentProcessNameForConversationAsync(Guid conversationId)
+    {
+        try
+        {
+            var conversationGrain = GrainFactory.GetGrain<IConversationGrain>(conversationId);
+            var conversationState = await conversationGrain.GetStateAsync();
+            return conversationState?.DocumentProcessName ?? "Unknown";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Could not retrieve document process name for conversation {ConversationId}", conversationId);
+            return "Unknown";
+        }
     }
 }

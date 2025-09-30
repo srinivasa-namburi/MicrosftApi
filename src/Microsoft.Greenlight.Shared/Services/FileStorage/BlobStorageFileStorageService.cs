@@ -15,12 +15,9 @@ namespace Microsoft.Greenlight.Shared.Services.FileStorage;
 /// <summary>
 /// File storage service implementation for Azure Blob Storage.
 /// </summary>
-public class BlobStorageFileStorageService : IFileStorageService
+public class BlobStorageFileStorageService : FileStorageServiceBase
 {
     private readonly BlobServiceClient _blobServiceClient;
-    private readonly ILogger<BlobStorageFileStorageService> _logger;
-    private readonly FileStorageSourceInfo _sourceInfo;
-    private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="BlobStorageFileStorageService"/> class.
@@ -34,32 +31,30 @@ public class BlobStorageFileStorageService : IFileStorageService
         ILogger<BlobStorageFileStorageService> logger,
         FileStorageSourceInfo sourceInfo,
         IDbContextFactory<DocGenerationDbContext> dbContextFactory)
+        : base(logger, sourceInfo, dbContextFactory)
     {
         _blobServiceClient = blobServiceClient;
-        _logger = logger;
-        _sourceInfo = sourceInfo;
-        _dbContextFactory = dbContextFactory;
     }
 
     /// <summary>
     /// Gets the provider type this service implements.
     /// </summary>
-    public FileStorageProviderType ProviderType => FileStorageProviderType.BlobStorage;
+    public override FileStorageProviderType ProviderType => FileStorageProviderType.BlobStorage;
 
     /// <summary>
     /// Whether files should be moved after acknowledgment.
     /// </summary>
-    public bool ShouldMoveFiles => _sourceInfo.ShouldMoveFiles;
+    public override bool ShouldMoveFiles => _sourceInfo.ShouldMoveFiles;
 
     /// <summary>
     /// The ID of the FileStorageSource that backs this service.
     /// </summary>
-    public Guid SourceId => _sourceInfo.Id;
+    public override Guid SourceId => _sourceInfo.Id;
 
     /// <summary>
     /// Default auto-import folder for this blob storage source.
     /// </summary>
-    public string DefaultAutoImportFolder => _sourceInfo.AutoImportFolderName ?? "ingest-auto";
+    public override string DefaultAutoImportFolder => _sourceInfo.AutoImportFolderName ?? "ingest-auto";
 
     /// <summary>
     /// Discovers files in the specified folder path.
@@ -68,7 +63,7 @@ public class BlobStorageFileStorageService : IFileStorageService
     /// <param name="filePattern">Optional file pattern filter (e.g., "*.pdf").</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Collection of discovered files.</returns>
-    public async Task<IEnumerable<FileStorageItem>> DiscoverFilesAsync(string folderPath, string? filePattern = null, CancellationToken cancellationToken = default)
+    public override async Task<IEnumerable<FileStorageItem>> DiscoverFilesAsync(string folderPath, string? filePattern = null, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -121,7 +116,7 @@ public class BlobStorageFileStorageService : IFileStorageService
     /// <param name="relativePath">Relative path of the file.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Readable stream for the file.</returns>
-    public async Task<Stream> GetFileStreamAsync(string relativePath, CancellationToken cancellationToken = default)
+    public override async Task<Stream> GetFileStreamAsync(string relativePath, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -145,7 +140,7 @@ public class BlobStorageFileStorageService : IFileStorageService
     /// <param name="fileHash">Optional hash of the file content for change detection.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The FileAcknowledgmentRecord ID that was created or updated.</returns>
-    public async Task<Guid> RegisterFileDiscoveryAsync(string relativePath, string? fileHash = null, CancellationToken cancellationToken = default)
+    public override async Task<Guid> RegisterFileDiscoveryAsync(string relativePath, string? fileHash = null, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -184,7 +179,8 @@ public class BlobStorageFileStorageService : IFileStorageService
                     RelativeFilePath = relativePath,
                     FileStorageSourceInternalUrl = fullPath,
                     FileHash = fileHash,
-                    AcknowledgedDate = DateTime.UtcNow
+                    AcknowledgedDate = DateTime.UtcNow,
+                    DisplayFileName = Path.GetFileName(relativePath)
                 };
                 db.FileAcknowledgmentRecords.Add(acknowledgment);
                 await db.SaveChangesAsync(cancellationToken);
@@ -226,7 +222,7 @@ public class BlobStorageFileStorageService : IFileStorageService
     /// <param name="targetPath">Target path for the acknowledged file.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Final path/URL of the acknowledged file.</returns>
-    public async Task<string> AcknowledgeFileAsync(string relativePath, string targetPath, CancellationToken cancellationToken = default)
+    public override async Task<string> AcknowledgeFileAsync(string relativePath, string targetPath, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -281,7 +277,8 @@ public class BlobStorageFileStorageService : IFileStorageService
                             // Store the FINAL URL after move
                             FileStorageSourceInternalUrl = targetBlobClient.Uri.ToString(),
                             FileHash = fileHash,
-                            AcknowledgedDate = DateTime.UtcNow
+                            AcknowledgedDate = DateTime.UtcNow,
+                            DisplayFileName = Path.GetFileName(relativePath)
                         };
                         db.FileAcknowledgmentRecords.Add(acknowledgment);
                     }
@@ -334,7 +331,8 @@ public class BlobStorageFileStorageService : IFileStorageService
                         RelativeFilePath = relativePath,
                         FileStorageSourceInternalUrl = sourceBlobClient.Uri.ToString(),
                         FileHash = fileHash,
-                        AcknowledgedDate = DateTime.UtcNow
+                        AcknowledgedDate = DateTime.UtcNow,
+                        DisplayFileName = Path.GetFileName(relativePath)
                     };
                     db.FileAcknowledgmentRecords.Add(acknowledgment);
                 }
@@ -362,7 +360,7 @@ public class BlobStorageFileStorageService : IFileStorageService
     /// <param name="relativePath">Relative path of the file.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>True if the file exists, false otherwise.</returns>
-    public async Task<bool> FileExistsAsync(string relativePath, CancellationToken cancellationToken = default)
+    public override async Task<bool> FileExistsAsync(string relativePath, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -384,7 +382,7 @@ public class BlobStorageFileStorageService : IFileStorageService
     /// </summary>
     /// <param name="relativePath">Relative path of the file.</param>
     /// <returns>Full URL for external access.</returns>
-    public string GetFullPath(string relativePath)
+    public override string GetFullPath(string relativePath)
     {
         var containerClient = _blobServiceClient.GetBlobContainerClient(_sourceInfo.ContainerOrPath);
         var blobClient = containerClient.GetBlobClient(relativePath);
@@ -397,7 +395,7 @@ public class BlobStorageFileStorageService : IFileStorageService
     /// <param name="relativePath">Relative path of the file.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Hash of the file content.</returns>
-    public async Task<string?> GetFileHashAsync(string relativePath, CancellationToken cancellationToken = default)
+    public override async Task<string?> GetFileHashAsync(string relativePath, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -419,7 +417,7 @@ public class BlobStorageFileStorageService : IFileStorageService
     /// <param name="folderPath">Optional subfolder within the auto-import folder. Defaults to "ingest-auto".</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The relative path of the uploaded file for future operations.</returns>
-    public async Task<string> UploadFileAsync(string fileName, Stream stream, string? folderPath = null, CancellationToken cancellationToken = default)
+    public override async Task<string> UploadFileAsync(string fileName, Stream stream, string? folderPath = null, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -451,73 +449,30 @@ public class BlobStorageFileStorageService : IFileStorageService
     }
 
     /// <summary>
-    /// Saves file information to the database and returns file access information.
-    /// This method handles ExternalLinkAsset creation and provides access URLs.
+    /// Gets file properties for the specified blob.
     /// </summary>
-    /// <param name="relativePath">The relative path of the uploaded file.</param>
-    /// <param name="originalFileName">The original file name provided by the user.</param>
+    /// <param name="relativePath">Relative path of the file.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>File access information including URLs and metadata.</returns>
-    public async Task<FileUploadResult> SaveFileInfoAsync(string relativePath, string originalFileName, CancellationToken cancellationToken = default)
+    /// <returns>File properties including content type and size.</returns>
+    protected override async Task<FileProperties> GetFilePropertiesAsync(string relativePath, CancellationToken cancellationToken = default)
     {
         try
         {
-            var fullPath = GetFullPath(relativePath);
-            var fileHash = await GetFileHashAsync(relativePath, cancellationToken);
-
-            // Get file properties for additional metadata
             var containerClient = _blobServiceClient.GetBlobContainerClient(_sourceInfo.ContainerOrPath);
             var blobClient = containerClient.GetBlobClient(relativePath);
             var properties = await blobClient.GetPropertiesAsync(cancellationToken: cancellationToken);
 
-            await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-
-            var externalLinkAsset = new ExternalLinkAsset
+            return new FileProperties
             {
-                Id = Guid.NewGuid(),
-                Url = fullPath,
-                FileName = relativePath, // Use full relative path for download, not just original filename
-                FileHash = fileHash,
-                MimeType = properties.Value.ContentType ?? "application/octet-stream",
-                FileSize = properties.Value.ContentLength,
-                Description = $"Uploaded via {_sourceInfo.Name} storage source: {originalFileName}",
-                FileStorageSourceId = _sourceInfo.Id
-            };
-
-            db.ExternalLinkAssets.Add(externalLinkAsset);
-            await db.SaveChangesAsync(cancellationToken);
-
-            // Create a proxied access URL using the ExternalLinkAsset ID
-            var accessUrl = GetProxiedAssetUrl(externalLinkAsset.Id);
-
-            return new FileUploadResult
-            {
-                RelativePath = relativePath,
-                FullPath = fullPath,
-                AccessUrl = accessUrl,
-                ExternalLinkAssetId = externalLinkAsset.Id,
-                FileHash = fileHash,
-                FileSize = properties.Value.ContentLength,
-                ContentType = properties.Value.ContentType
+                ContentType = properties.Value.ContentType,
+                Size = properties.Value.ContentLength
             };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error saving file info for {RelativePath}", relativePath);
+            _logger.LogError(ex, "Error getting file properties for {RelativePath} in container {Container}", relativePath, _sourceInfo.ContainerOrPath);
             throw;
         }
-    }
-
-    /// <summary>
-    /// Gets a proxied URL for an asset using the ExternalLinkAsset ID.
-    /// This method creates URLs that route through the application's file controller.
-    /// </summary>
-    /// <param name="assetId">The ExternalLinkAsset ID.</param>
-    /// <returns>The proxied URL.</returns>
-    private static string GetProxiedAssetUrl(Guid assetId)
-    {
-        // This creates a URL that routes through the FileController's DownloadExternalLinkAsset endpoint
-        return $"/api/file/download/external-asset/{assetId}";
     }
 
     /// <summary>

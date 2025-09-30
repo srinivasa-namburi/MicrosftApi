@@ -32,5 +32,10 @@ public static class SystemIndexes
     /// Vector index for ExternalLinkAsset content references.
     /// </summary>
     public const string ExternalLinkAssetContentReferenceIndex = "system-cr-external-link-assets";
+
+    /// <summary>
+    /// Vector index for Flow document process metadata intent detection.
+    /// </summary>
+    public const string DocumentProcessMetadataIntentIndex = "system-index-documentprocessmetadata";
 }
 

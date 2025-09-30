@@ -1,0 +1,51 @@
+# Ensure consistent text encoding across platforms (preserve existing line endings)
+* text=auto encoding=UTF-8
+
+# Explicitly handle source code files as text with UTF-8 encoding
+*.cs text encoding=UTF-8
+*.js text encoding=UTF-8
+*.ts text encoding=UTF-8
+*.json text encoding=UTF-8
+*.md text encoding=UTF-8
+*.yml text encoding=UTF-8
+*.yaml text encoding=UTF-8
+*.xml text encoding=UTF-8
+*.html text encoding=UTF-8
+*.css text encoding=UTF-8
+*.scss text encoding=UTF-8
+*.razor text encoding=UTF-8
+*.sh text encoding=UTF-8
+*.ps1 text encoding=UTF-8
+
+# Configuration files
+*.config text encoding=UTF-8
+*.conf text encoding=UTF-8
+*.ini text encoding=UTF-8
+*.properties text encoding=UTF-8
+*.sln text encoding=UTF-8
+*.csproj text encoding=UTF-8
+*.slnx text encoding=UTF-8
+
+# Docker files
+Dockerfile* text encoding=UTF-8
+*.dockerignore text encoding=UTF-8
+
+# Git files
+.gitignore text encoding=UTF-8
+.gitattributes text encoding=UTF-8
+
+# Binary files (do not treat as text)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.tar binary
+*.gz binary
+*.7z binary
+*.exe binary
+*.dll binary
+*.so binary
+*.dylib binary

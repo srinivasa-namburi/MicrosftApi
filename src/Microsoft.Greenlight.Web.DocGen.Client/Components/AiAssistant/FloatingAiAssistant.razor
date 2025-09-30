@@ -2,7 +2,6 @@
 
 @implements IAsyncDisposable
 
-@inject IDocumentProcessApiClient DocumentProcessApiClient
 @inject IChatApiClient ChatApiClient
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IJSRuntime JSRuntime
@@ -11,41 +10,37 @@
 @code {
     private bool _isChatOpen = false;
     private bool _isExpanded = false;
-    private string? _selectedProcess;
-    private List<DocumentProcessInfo> _documentProcesses = new();
     private string? _userId;
     private int _unreadNotifications = 0;
-    // private ElementReference _chatBoxRef; // Not needed since we're not referencing the element
     private bool _isResizing = false;
-    private double _chatHeight = 500;  // Increased by 100px
-    private double _chatWidth = 350;   // Increased by 60px
-    private double _expandedHeight = 700;
-    private double _expandedWidth = 600;
+
+    // Increased default sizes
+    private double _chatHeight = 620;   // was 500
+    private double _chatWidth = 420;    // was 350
+    private double _expandedHeight = 840; // was 700
+    private double _expandedWidth = 720;  // was 600
     private bool _isInitialized = false;
     private DotNetObjectReference<FloatingAiAssistant>? _dotNetRef;
     private AiAssistantComponent? _aiAssistantComponent;
     private Guid _conversationId = Guid.NewGuid();
 
-    // Constants for size limits
+    // Size limits
     private const double MIN_HEIGHT = 400;
-    private const double MAX_HEIGHT = 900;
-    private const double MIN_WIDTH = 300;
-    private const double MAX_WIDTH = 700;
+    private const double MAX_HEIGHT = 1100; // allow a bit larger now
+    private const double MIN_WIDTH = 320;
+    private const double MAX_WIDTH = 900;
+
+    // Flow-only mode
+    private const bool UseFlow = true;
+    private const string FlowConversationStorageKeySuffix = "_flow_conversationId";
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            // Get user ID for localStorage key
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
             _userId = authState.User?.FindFirst("sub")?.Value ?? "anonymous";
-
-            // Load document processes
-            _documentProcesses = await DocumentProcessApiClient.GetAllDocumentProcessInfoAsync();
-
-            // Load saved state from localStorage
             await LoadSavedState();
-
             _isInitialized = true;
         }
         catch (Exception ex)
@@ -58,7 +53,6 @@
     {
         if (firstRender)
         {
-            // Set up JavaScript interop for keyboard shortcuts
             _dotNetRef = DotNetObjectReference.Create(this);
             await JSRuntime.InvokeVoidAsync("FloatingChat.initialize", _dotNetRef);
         }
@@ -68,48 +62,25 @@
     {
         try
         {
-            // Load last selected process
-            var lastProcess = await JSRuntime.InvokeAsync<string?>(
-                "localStorage.getItem", 
-                $"floatingChat_{_userId}_lastProcess"
-            );
-
-            if (!string.IsNullOrEmpty(lastProcess) && _documentProcesses.Any(p => p.ShortName == lastProcess))
-            {
-                _selectedProcess = lastProcess;
-            }
-            else if (_documentProcesses.Any())
-            {
-                _selectedProcess = _documentProcesses.First().ShortName;
-            }
-
-            // Load conversation state for the selected process
             var savedConversationId = await JSRuntime.InvokeAsync<string?>(
                 "localStorage.getItem",
-                $"floatingChat_{_userId}_{_selectedProcess}_conversationId"
-            );
-            
+                $"floatingChat_{_userId}{FlowConversationStorageKeySuffix}");
             if (!string.IsNullOrEmpty(savedConversationId) && Guid.TryParse(savedConversationId, out var convId))
             {
                 _conversationId = convId;
             }
-            else if (!string.IsNullOrEmpty(_selectedProcess))
+            else
             {
-                // No saved conversation, create a new one
                 _conversationId = Guid.NewGuid();
                 await JSRuntime.InvokeVoidAsync(
                     "localStorage.setItem",
-                    $"floatingChat_{_userId}_{_selectedProcess}_conversationId",
-                    _conversationId.ToString()
-                );
+                    $"floatingChat_{_userId}{FlowConversationStorageKeySuffix}",
+                    _conversationId.ToString());
             }
 
-            // Load chat dimensions
             var savedDimensions = await JSRuntime.InvokeAsync<string?>(
                 "localStorage.getItem",
-                $"floatingChat_{_userId}_dimensions"
-            );
-
+                $"floatingChat_{_userId}_dimensions");
             if (!string.IsNullOrEmpty(savedDimensions))
             {
                 var parts = savedDimensions.Split(',');
@@ -132,22 +103,10 @@
     {
         try
         {
-            // Save selected process
-            if (!string.IsNullOrEmpty(_selectedProcess))
-            {
-                await JSRuntime.InvokeVoidAsync(
-                    "localStorage.setItem",
-                    $"floatingChat_{_userId}_lastProcess",
-                    _selectedProcess
-                );
-            }
-
-            // Save dimensions
             await JSRuntime.InvokeVoidAsync(
                 "localStorage.setItem",
                 $"floatingChat_{_userId}_dimensions",
-                $"{_chatHeight},{_chatWidth},{_expandedHeight},{_expandedWidth}"
-            );
+                $"{_chatHeight},{_chatWidth},{_expandedHeight},{_expandedWidth}");
         }
         catch (Exception ex)
         {
@@ -161,6 +120,7 @@
         if (_isChatOpen)
         {
             _unreadNotifications = 0;
+            await Task.Delay(120); // let component mount & subscribe
         }
         await InvokeAsync(StateHasChanged);
     }
@@ -172,118 +132,31 @@
         await InvokeAsync(StateHasChanged);
     }
 
-    private async Task OnProcessChanged(string newProcess)
-    {
-        if (_selectedProcess != newProcess)
-        {
-            _selectedProcess = newProcess;
-            await SaveState();
-            
-            // Load or create conversation for new process
-            await LoadOrCreateConversationForProcess();
-
-            // If we have a conversation, notify backend of the selected process for this conversation
-            try
-            {
-                if (_conversationId != Guid.Empty && !string.IsNullOrEmpty(_selectedProcess))
-                {
-                    await ChatApiClient.SetConversationDocumentProcessAsync(
-                        _conversationId,
-                        new Microsoft.Greenlight.Shared.Contracts.Chat.Commands.SetConversationDocumentProcessRequest
-                        {
-                            DocumentProcessName = _selectedProcess,
-                            UpdateSystemPrompt = true
-                        });
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.LogWarning(ex, "Failed to set document process on conversation {ConversationId}", _conversationId);
-            }
-        }
-    }
-
-    private async Task LoadOrCreateConversationForProcess()
-    {
-        try
-        {
-            // Try to load saved conversation for this process
-            var savedConversationId = await JSRuntime.InvokeAsync<string?>(
-                "localStorage.getItem",
-                $"floatingChat_{_userId}_{_selectedProcess}_conversationId"
-            );
-            
-            if (!string.IsNullOrEmpty(savedConversationId) && Guid.TryParse(savedConversationId, out var convId))
-            {
-                _conversationId = convId;
-            }
-            else
-            {
-                // Create new conversation for this process
-                _conversationId = Guid.NewGuid();
-                await JSRuntime.InvokeVoidAsync(
-                    "localStorage.setItem",
-                    $"floatingChat_{_userId}_{_selectedProcess}_conversationId",
-                    _conversationId.ToString()
-                );
-            }
-            
-            // Refresh the AI assistant component
-            await InvokeAsync(StateHasChanged);
-
-            // Ensure server-side conversation reflects current process selection
-            try
-            {
-                if (_conversationId != Guid.Empty && !string.IsNullOrEmpty(_selectedProcess))
-                {
-                    await ChatApiClient.SetConversationDocumentProcessAsync(
-                        _conversationId,
-                        new Microsoft.Greenlight.Shared.Contracts.Chat.Commands.SetConversationDocumentProcessRequest
-                        {
-                            DocumentProcessName = _selectedProcess,
-                            UpdateSystemPrompt = true
-                        });
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.LogWarning(ex, "Failed to set document process on conversation {ConversationId}", _conversationId);
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error loading/creating conversation for process");
-        }
-    }
-
     private async Task StartNewConversation()
     {
         try
         {
-            // Create a new conversation ID
             _conversationId = Guid.NewGuid();
-            
-            // Store it in localStorage for the current process
             await JSRuntime.InvokeVoidAsync(
                 "localStorage.setItem",
-                $"floatingChat_{_userId}_{_selectedProcess}_conversationId",
-                _conversationId.ToString()
-            );
-            
-            // Refresh the AI assistant component
-            _aiAssistantComponent?.StartNewConversation();
+                $"floatingChat_{_userId}{FlowConversationStorageKeySuffix}",
+                _conversationId.ToString());
+
+            // Update the AiAssistantComponent with the new conversation ID before calling StartNewConversation
+            if (_aiAssistantComponent != null)
+            {
+                _aiAssistantComponent.ConversationId = _conversationId;
+                _aiAssistantComponent.StartNewConversation();
+            }
             await InvokeAsync(StateHasChanged);
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error starting new conversation");
+            Logger.LogError(ex, "Error starting new flow conversation");
         }
     }
 
-    private void StartResize()
-    {
-        _isResizing = true;
-    }
+    private void StartResize() => _isResizing = true;
 
     private async Task StopResize()
     {
@@ -298,11 +171,8 @@
     {
         if (_isResizing)
         {
-            // Calculate new dimensions based on mouse position
-            // Using viewport dimensions estimate (we could get actual values via JS if needed)
-            var viewportHeight = 900; // Reasonable default
-            var viewportWidth = 1400; // Reasonable default
-            
+            var viewportHeight = 1200; // updated assumption
+            var viewportWidth = 1700;
             if (_isExpanded)
             {
                 _expandedHeight = Math.Max(MIN_HEIGHT, Math.Min(MAX_HEIGHT, viewportHeight - e.ClientY - 20));
@@ -348,8 +218,7 @@
     {
         var height = _isExpanded ? _expandedHeight : _chatHeight;
         var width = _isExpanded ? _expandedWidth : _chatWidth;
-        
-        return $"height: {height}px; width: {width}px;";
+        return $"height:{height}px;width:{width}px;";
     }
 
     public async ValueTask DisposeAsync()
@@ -365,190 +234,47 @@
 <div class="floating-chat-container" @onmousemove="OnMouseMove" @onmouseup="StopResize">
     @if (!_isChatOpen)
     {
-        <MudBadge Content="@_unreadNotifications" 
-                  Visible="@(_unreadNotifications > 0)" 
-                  Color="Color.Error" 
-                  Overlap="true"
-                  Bottom="false"
-                  Left="false">
-            <MudFab Color="Color.Secondary"
-                    Icon="@Icons.Material.Filled.Chat"
-                    Size="Size.Large"
-                    Class="floating-chat-button"
-                    OnClick="ToggleChat" />
+        <MudBadge Content="@_unreadNotifications" Visible="@(_unreadNotifications > 0)" Color="Color.Error" Overlap="true">
+            <MudFab Class="floating-chat-button" Color="Color.Secondary" Icon="fas fa-brain" Size="Size.Large" OnClick="ToggleChat" AriaLabel="Open AI Assistant" />
         </MudBadge>
     }
 
     @if (_isChatOpen)
     {
-        <MudPaper Class="@($"floating-chat-box {(_isExpanded ? "expanded" : "")}")"
-                  Elevation="8"
-                  Style="@GetChatBoxStyle()">
-            <MudStack Spacing="0" Style="height: 100%;">
-                @* Header with controls *@
-                <MudToolBar Dense="true" Class="chat-header" Style="background: linear-gradient(to right, var(--mud-palette-primary-lighten), var(--mud-palette-primary)); color: white;">
-                    <MudSelect T="string"
-                               Value="@_selectedProcess"
-                               ValueChanged="@OnProcessChanged"
-                               Label="Document Process"
-                               Dense="true"
-                               Margin="Margin.Dense"
-                               Style="max-width: 200px;">
-                        @foreach (var process in _documentProcesses)
-                        {
-                            <MudSelectItem Value="@process.ShortName">
-                                @(!string.IsNullOrEmpty(process.Description) ? process.Description : process.ShortName)
-                            </MudSelectItem>
-                        }
-                    </MudSelect>
+        <MudPaper Class="@( $"floating-chat-box {( _isExpanded ? "expanded" : string.Empty)}" )" Elevation="8" Style="@GetChatBoxStyle()">
+            <MudStack Spacing="0" Class="floating-chat-stack">
+                <MudToolBar Dense="true" Class="floating-chat-header">
+                    <MudIcon Icon="fas fa-brain" Color="Color.Info" Class="mr-1" />
+                    <MudText Typo="Typo.subtitle2" Class="ml-1">AI Assistant (Flow)</MudText>
                     <MudSpacer />
-                    <MudTooltip Text="New Conversation">
-                        <MudIconButton Icon="@Icons.Material.Filled.Add"
-                                       Size="Size.Small"
-                                       Color="Color.Inherit"
-                                       OnClick="StartNewConversation" />
+                    <MudTooltip Text="New Conversation (Flow)">
+                        <MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" Color="Color.Inherit" OnClick="StartNewConversation" />
                     </MudTooltip>
                     <MudTooltip Text="@(_isExpanded ? "Collapse" : "Expand")">
-                        <MudIconButton Icon="@(_isExpanded ? Icons.Material.Filled.FullscreenExit : Icons.Material.Filled.Fullscreen)"
-                                       Size="Size.Small"
-                                       Color="Color.Inherit"
-                                       OnClick="ToggleExpanded" />
+                        <MudIconButton Icon="@(_isExpanded ? Icons.Material.Filled.FullscreenExit : Icons.Material.Filled.Fullscreen)" Size="Size.Small" Color="Color.Inherit" OnClick="ToggleExpanded" />
                     </MudTooltip>
                     <MudTooltip Text="Close (Esc)">
-                        <MudIconButton Icon="@Icons.Material.Filled.Close"
-                                       Size="Size.Small"
-                                       Color="Color.Inherit"
-                                       OnClick="ToggleChat" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" Color="Color.Inherit" OnClick="ToggleChat" />
                     </MudTooltip>
                 </MudToolBar>
-
-                @* Resize handle *@
-                <div class="resize-handle" @onmousedown="StartResize" @onmousedown:preventDefault="true">
+                <div class="floating-chat-resize-handle" @onmousedown="StartResize" @onmousedown:preventDefault="true">
                     <MudIcon Icon="@Icons.Material.Filled.DragHandle" Size="Size.Small" />
                 </div>
-
-                @* Embedded AI Assistant *@
-                <div class="chat-content">
-                    @if (!string.IsNullOrEmpty(_selectedProcess) && _isInitialized)
+                <div class="floating-chat-content">
+                    @if (_isInitialized)
                     {
                         <AiAssistantComponent @ref="_aiAssistantComponent"
                                               ConversationId="@_conversationId"
-                                              DocumentProcessName="@_selectedProcess"
+                                              DocumentProcessName="flow"
+                                              UseFlow="@UseFlow"
                                               IsEmbedded="true"
                                               FillContainer="true"
                                               HideInitialContentDisplay="true"
                                               StartWithCompactUI="true"
                                               OnNewMessage="IncrementNotifications" />
                     }
-                    else if (_isInitialized)
-                    {
-                        <div class="d-flex align-center justify-center" style="height: 100%; padding: 20px;">
-                            <MudText Typo="Typo.body1" Color="Color.Secondary">
-                                Select a document process to start chatting
-                            </MudText>
-                        </div>
-                    }
                 </div>
             </MudStack>
         </MudPaper>
     }
 </div>
-
-<style>
-    .floating-chat-container {
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        z-index: 1300;
-    }
-
-    .floating-chat-button {
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-        transition: transform 0.2s ease;
-    }
-
-    .floating-chat-button:hover {
-        transform: scale(1.05);
-    }
-
-    .floating-chat-box {
-        position: fixed;
-        bottom: 20px;  /* Moved down to bottom of screen */
-        right: 20px;
-        display: flex;
-        flex-direction: column;
-        animation: slideUp 0.3s ease-out;
-        transition: width 0.2s ease, height 0.2s ease;
-        border: 1px solid var(--mud-palette-divider);
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
-    }
-
-    .floating-chat-box.expanded {
-        animation: expandChat 0.3s ease-out;
-    }
-
-    .chat-header {
-        border-bottom: 2px solid var(--mud-palette-divider);
-        min-height: 48px;
-        flex-shrink: 0;
-    }
-
-    .resize-handle {
-        position: absolute;
-        top: 48px;  /* Below the header */
-        left: 0;
-        width: 20px;
-        height: 20px;
-        cursor: nw-resize;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        opacity: 0.3;
-        transition: opacity 0.2s;
-        z-index: 10;
-        background: var(--mud-palette-background);
-        border-radius: 0 0 4px 0;
-    }
-
-    .resize-handle:hover {
-        opacity: 1;
-    }
-
-    .chat-content {
-        flex: 1;
-        overflow-y: auto;
-        padding: 0;
-        min-height: 0;
-        display: flex;
-        flex-direction: column;
-    }
-
-    @@keyframes slideUp {
-        from {
-            transform: translateY(100%);
-            opacity: 0;
-        }
-        to {
-            transform: translateY(0);
-            opacity: 1;
-        }
-    }
-
-    @@keyframes expandChat {
-        from {
-            transform: scale(0.95);
-        }
-        to {
-            transform: scale(1);
-        }
-    }
-
-    @@media (max-width: 600px) {
-        .floating-chat-box {
-            width: calc(100vw - 40px) !important;
-            height: calc(100vh - 100px) !important;
-            right: 20px;
-            bottom: 20px;
-        }
-    }
-</style>

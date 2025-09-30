@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Web.Shared.Auth;
@@ -19,6 +20,12 @@ public abstract class CrossPlatformServiceClientBase<T> where T : IServiceClient
     protected readonly HttpClient HttpClient;
 
     private readonly AuthenticationStateProvider? _authStateProvider;
+
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
 
     protected CrossPlatformServiceClientBase(HttpClient httpClient, ILogger<T> logger)
     {
@@ -80,7 +87,7 @@ public abstract class CrossPlatformServiceClientBase<T> where T : IServiceClient
 
         if (payload != null)
         {
-            requestMessage.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+            requestMessage.Content = new StringContent(JsonSerializer.Serialize(payload, JsonOptions), Encoding.UTF8, "application/json");
         }
         else
         {
@@ -109,7 +116,7 @@ public abstract class CrossPlatformServiceClientBase<T> where T : IServiceClient
             Logger.LogWarning("Sending PUT request to {RequestUri} with empty payload", requestUri);
         }
 
-        requestMessage.Content = new StringContent(JsonSerializer.Serialize(pocoPayload), Encoding.UTF8, "application/json");
+        requestMessage.Content = new StringContent(JsonSerializer.Serialize(pocoPayload, JsonOptions), Encoding.UTF8, "application/json");
 
         Logger.LogInformation("Sending PUT request to {RequestUri}", requestUri);
 

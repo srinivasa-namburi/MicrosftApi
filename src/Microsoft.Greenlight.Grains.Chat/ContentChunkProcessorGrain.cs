@@ -4,8 +4,10 @@ using Microsoft.Greenlight.Grains.ApiSpecific.Contracts;
 using Microsoft.Greenlight.Grains.Chat.Contracts;
 using Microsoft.Greenlight.Shared.Contracts.Chat;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Events;
+using Microsoft.Greenlight.Shared.Contracts.Streams;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Helpers;
+using Orleans.Streams;
 using Microsoft.Greenlight.Shared.Services;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
@@ -451,6 +453,67 @@ namespace Microsoft.Greenlight.Grains.Chat
 
         private async Task SendStatusUpdateAsync(Guid conversationId, Guid messageId, string message, bool isComplete)
         {
+            // Check if this is a Flow-managed conversation
+            bool isFlowConversation = false;
+            try
+            {
+                var registry = GrainFactory.GetGrain<IFlowBackendConversationRegistryGrain>(Guid.Empty);
+                var flowSessions = await registry.GetFlowSessionsAsync(conversationId);
+                isFlowConversation = flowSessions != null && flowSessions.Count > 0;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error checking if conversation {ConversationId} is Flow-managed", conversationId);
+            }
+
+            // For Flow conversations, route status messages through Orleans streams for intelligent synthesis
+            if (isFlowConversation)
+            {
+                _logger.LogDebug("Routing content chunk status to Flow for conversation {ConversationId}. Message: {Message}", conversationId, message);
+
+                try
+                {
+                    var registry = GrainFactory.GetGrain<IFlowBackendConversationRegistryGrain>(Guid.Empty);
+                    var flowSessions = await registry.GetFlowSessionsAsync(conversationId);
+
+                    if (flowSessions != null && flowSessions.Count > 0)
+                    {
+                        var streamProvider = this.GetStreamProvider("StreamProvider");
+                        var documentProcessName = "content-chunk-processor";
+
+                        foreach (var flowSessionId in flowSessions)
+                        {
+                            // Send status update to each Flow session
+                            var statusUpdate = new FlowBackendStatusUpdate(
+                                Guid.NewGuid(),
+                                flowSessionId,
+                                conversationId,
+                                messageId,
+                                message,
+                                isComplete,
+                                !isComplete, // persistent if not complete
+                                documentProcessName,
+                                DateTime.UtcNow);
+
+                            var stream = streamProvider.GetStream<FlowBackendStatusUpdate>(
+                                ChatStreamNameSpaces.FlowBackendStatusUpdateNamespace,
+                                flowSessionId);
+
+                            await stream.OnNextAsync(statusUpdate);
+
+                            _logger.LogDebug("Sent content chunk status to Flow session {FlowSessionId}", flowSessionId);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error routing content chunk status to Flow");
+                }
+
+                return;
+            }
+
+            // For non-Flow conversations, send status notifications normally
             var notification = new ChatMessageStatusNotification(messageId, message)
             {
                 ProcessingComplete = isComplete,

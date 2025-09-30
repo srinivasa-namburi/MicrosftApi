@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 
+using Microsoft.Greenlight.Shared.Configuration; // Added for FeatureFlagsOptions type reference
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Web.Shared.ServiceClients;
 
@@ -21,9 +22,9 @@ public interface INavMenuStateService
     Task<List<DocumentProcessInfo>> GetDocumentProcessesAsync(bool forceRefresh = false);
 
     /// <summary>
-    /// Gets the current feature flags.
+    /// Gets the current feature flags (never null - returns an empty/default instance on failure).
     /// </summary>
-    Task<object?> GetFeatureFlagsAsync(bool forceRefresh = false);
+    Task<ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions> GetFeatureFlagsAsync(bool forceRefresh = false);
 
     /// <summary>
     /// Notifies that document processes have changed and NavMenu should refresh.
@@ -47,7 +48,7 @@ public sealed class NavMenuStateService : INavMenuStateService
 
     // Cache with expiry
     private List<DocumentProcessInfo>? _cachedDocumentProcesses;
-    private object? _cachedFeatureFlags;
+    private ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions? _cachedFeatureFlags;
     private DateTime _lastDocumentProcessRefresh = DateTime.MinValue;
     private DateTime _lastFeatureFlagsRefresh = DateTime.MinValue;
     private readonly TimeSpan _cacheExpiry = TimeSpan.FromMinutes(5);
@@ -87,7 +88,7 @@ public sealed class NavMenuStateService : INavMenuStateService
         return _cachedDocumentProcesses ?? new List<DocumentProcessInfo>();
     }
 
-    public async Task<object?> GetFeatureFlagsAsync(bool forceRefresh = false)
+    public async Task<ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions> GetFeatureFlagsAsync(bool forceRefresh = false)
     {
         if (forceRefresh || 
             _cachedFeatureFlags == null || 
@@ -97,17 +98,18 @@ public sealed class NavMenuStateService : INavMenuStateService
             {
                 _cachedFeatureFlags = await _configurationApiClient.GetFeatureFlagsAsync();
                 _lastFeatureFlagsRefresh = DateTime.UtcNow;
-                _logger.LogDebug("Refreshed feature flags cache");
+                _logger.LogDebug("Refreshed feature flags cache: {@Flags}", _cachedFeatureFlags);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to refresh feature flags");
-                // Return cached data if available
-                return _cachedFeatureFlags;
+                var hadCached = _cachedFeatureFlags != null;
+                _logger.LogError(ex, "Failed to refresh feature flags (hadCached={HadCached})", hadCached);
+                // Always return a non-null object to avoid UI null refs; keep previous cached if available
+                _cachedFeatureFlags ??= new ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions();
             }
         }
 
-        return _cachedFeatureFlags;
+        return _cachedFeatureFlags ?? new ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions();
     }
 
     public async Task NotifyDocumentProcessesChangedAsync()
@@ -118,7 +120,7 @@ public sealed class NavMenuStateService : INavMenuStateService
         _cachedDocumentProcesses = null;
         _lastDocumentProcessRefresh = DateTime.MinValue;
 
-        // Pre-fetch new data
+        // Pre-fetch new data (best effort)
         await GetDocumentProcessesAsync(forceRefresh: true);
 
         // Notify subscribers

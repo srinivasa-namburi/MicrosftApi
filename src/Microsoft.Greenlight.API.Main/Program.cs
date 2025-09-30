@@ -2,6 +2,7 @@ using Azure.Data.Tables;
 using Azure.Storage.Blobs;
 using LazyCache;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -34,8 +35,9 @@ builder.WebHost.ConfigureKestrel(serverOptions =>
 builder.Services.AddSingleton<AzureCredentialHelper>();
 var credentialHelper = new AzureCredentialHelper(builder.Configuration);
 
-// Initialize AdminHelper with configuration
+// Initialize AdminHelper with configuration and validate developer setup
 AdminHelper.Initialize(builder.Configuration);
+AdminHelper.ValidateDeveloperSetup("API Main");
 
 builder.AddGreenlightDbContextAndConfiguration();
 
@@ -56,6 +58,9 @@ builder.RegisterStaticPlugins(serviceConfigurationOptions);
 builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
 
 builder.Services.AddControllers();
+
+// Security services
+builder.Services.AddSingleton<Microsoft.Greenlight.Shared.Services.Security.ISecretHashingService, Microsoft.Greenlight.Shared.Services.Security.SecretHashingService>();
 
 // Configure caching for authorization (LazyCache with hybrid local+remote capabilities)
 builder.Services.AddSingleton<IAppCache, CachingService>();
@@ -151,7 +156,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 });
 
 
-var frontEndUrl = builder.Configuration["services:web-docgen:https:0"];
+var frontEndUrl = AdminHelper.GetWebDocGenServiceUrl();
 
 builder.Services.AddCors(options =>
 {
@@ -162,21 +167,72 @@ builder.Services.AddCors(options =>
         .SetIsOriginAllowed((host) => true));
 });
 
-var useAzureSignalR = builder.Configuration["ServiceConfiguration:GreenlightServices:Scalability:UseAzureSignalR"];
+// SignalR Hosting Strategy:
+// - API self-hosts SignalR with Redis backplane for scale-out
+// - Azure SignalR is deprecated due to reliability issues
+// - Redis provides reliable message delivery and better control
+// This ensures unified endpoint exposure through Application Gateway at /hubs/*
 
-if (builder.Environment.IsDevelopment() ||
-    (useAzureSignalR == null || useAzureSignalR == "false") ||
-    builder.Configuration.GetConnectionString("signalr") == null ||
-    builder.Configuration.GetConnectionString("signalr") == string.Empty)
+var useAzureSignalR = builder.Configuration["ServiceConfiguration:GreenlightServices:Scalability:UseAzureSignalR"];
+var enableAzureSignalR = useAzureSignalR != null && useAzureSignalR.Equals("true", StringComparison.OrdinalIgnoreCase);
+
+if (enableAzureSignalR)
 {
-    builder.Services.AddSignalR(); // Default SignalR
+    Console.WriteLine("WARNING: Azure SignalR is deprecated and should not be used. Falling back to Redis backplane.");
+}
+
+// Always self-host SignalR with Redis backplane for reliability
+var signalRBuilder = builder.Services.AddSignalR(options =>
+{
+    // Configure for Application Gateway and custom domain scenarios
+    options.EnableDetailedErrors = !builder.Environment.IsProduction();
+    options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+    options.ClientTimeoutInterval = TimeSpan.FromSeconds(60);
+    options.MaximumReceiveMessageSize = 102400; // 100KB
+});
+
+// Configure Redis connections
+var redisConnectionString = builder.Configuration.GetConnectionString("redis");
+var redisSignalRConnectionString = builder.Configuration.GetConnectionString("redis-signalr");
+
+// Use redis-signalr for SignalR backplane if available, fallback to main redis
+var signalRRedisConnection = redisSignalRConnectionString ?? redisConnectionString;
+
+if (!string.IsNullOrEmpty(signalRRedisConnection))
+{
+    signalRBuilder.AddStackExchangeRedis(signalRRedisConnection, options =>
+    {
+        options.Configuration.AbortOnConnectFail = false; // Don't crash on Redis connection issues
+    });
+    Console.WriteLine($"SignalR: Self-hosted with Redis backplane (using {(redisSignalRConnectionString != null ? "redis-signalr" : "redis")})");
 }
 else
 {
-    builder.Services.AddSignalR().AddAzureSignalR(options =>
+    Console.WriteLine("SignalR: Self-hosted without Redis backplane (single instance mode)");
+}
+
+// Configure Data Protection using main Redis instance
+if (!string.IsNullOrEmpty(redisConnectionString))
+{
+    // Configure Data Protection to use Redis for key storage
+    // This ensures encryption keys are shared across all API instances
+    builder.Services.AddStackExchangeRedisCache(options =>
     {
-        options.ConnectionString = builder.Configuration.GetConnectionString("signalr");
+        options.Configuration = redisConnectionString;
+        options.InstanceName = "greenlight-api";
     });
+
+    builder.Services.AddDataProtection()
+        .PersistKeysToStackExchangeRedis(
+            StackExchange.Redis.ConnectionMultiplexer.Connect(redisConnectionString),
+            "DataProtection-Keys")
+        .SetApplicationName("greenlight-api");
+
+    Console.WriteLine("DataProtection: Using Redis for key storage");
+}
+else
+{
+    Console.WriteLine("DataProtection: Using local file system (not recommended for production)");
 }
 
 builder.Services.AddHttpContextAccessor();
@@ -305,6 +361,38 @@ builder.UseOrleans(siloBuilder =>
             options.BlobServiceClient = new BlobServiceClient(new Uri(orleansBlobStoreConnectionString!), credentialHelper.GetAzureCredential());
         }
     });
+
+    // Configure clustering using Azure Table Storage - same table as other Orleans services
+    var clusteringConnectionString = builder.Configuration.GetConnectionString("clustering");
+    if (!string.IsNullOrWhiteSpace(clusteringConnectionString))
+    {
+        siloBuilder.UseAzureStorageClustering(options =>
+        {
+            var tuple = AzureStorageHelper.ParseTableEndpointAndCredential(clusteringConnectionString!);
+            var tableEndpoint = tuple.endpoint;
+            var sharedKey = tuple.sharedKeyCredential;
+
+            if (sharedKey != null)
+            {
+                options.TableServiceClient = new TableServiceClient(tableEndpoint, sharedKey);
+            }
+            else if (clusteringConnectionString.Contains('=')
+                     || clusteringConnectionString.StartsWith("UseDevelopmentStorage", StringComparison.OrdinalIgnoreCase))
+            {
+                options.TableServiceClient = new TableServiceClient(clusteringConnectionString);
+            }
+            else if (Uri.TryCreate(clusteringConnectionString, UriKind.Absolute, out var endpointUri))
+            {
+                options.TableServiceClient = new TableServiceClient(endpointUri, credentialHelper.GetAzureCredential());
+            }
+            else
+            {
+                options.TableServiceClient = new TableServiceClient(clusteringConnectionString);
+            }
+
+            options.TableName = "OrleansSiloInstances"; // must match other Orleans services' clustering table name
+        });
+    }
 
     siloBuilder.UseAzureTableReminderService(options =>
     {

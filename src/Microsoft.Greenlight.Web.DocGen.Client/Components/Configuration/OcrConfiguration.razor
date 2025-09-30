@@ -1,0 +1,174 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+@using Microsoft.Greenlight.Shared.Configuration
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Configuration
+@inject IConfigurationApiClient ConfigApi
+@inherits Microsoft.Greenlight.Web.DocGen.Client.Components.Configuration.Infrastructure.ConfigurationSectionBase
+
+<MudPaper Class="pa-4">
+  <MudText Typo="Typo.h6">OCR Options</MudText>
+  <MudDivider Class="mt-2 mb-3" />
+
+  <MudItem xs="12">
+    <MudSwitch T="bool" @bind-Value="AllowExternalDownloads" Color="Color.Primary" Label="Allow External Downloads" Immediate="true" />
+  </MudItem>
+  <MudItem xs="12" md="8">
+    <MudTextField T="string" @bind-Value="ExternalRepoBaseUrl" Label="External Repo Base Url" Variant="Variant.Filled" Immediate="true" />
+  </MudItem>
+
+  <MudDivider Class="my-4" />
+  <MudText Typo="Typo.subtitle1">Default Languages</MudText>
+  <MudText Typo="Typo.body2" Class="mb-2">Choose language codes like 'eng', 'spa', 'chi_sim'.</MudText>
+
+  <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+    <MudTextField T="string" @bind-Value="_languageFilter" Label="Filter languages" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true" />
+    <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="@(()=>RefreshCachedLanguagesAsync())" StartIcon="@Icons.Material.Filled.Refresh">Refresh</MudButton>
+  </MudStack>
+
+  <MudSelect T="string" Label="Select Default Languages" Variant="Variant.Outlined" MultiSelection="true" SelectedValues="@_selectedDefaultLanguages" SelectedValuesChanged="@((IEnumerable<string> values) => OnSelectedDefaultLanguagesChanged(values))" Dense="true" Class="mt-2">
+    @foreach (var lang in AllSelectableLanguages)
+    {
+      if (IsLanguageVisible(lang))
+      {
+        <MudSelectItem Value="@lang.Code">@lang.Label</MudSelectItem>
+      }
+    }
+  </MudSelect>
+
+  <MudDivider Class="my-4" />
+  <MudText Typo="Typo.subtitle1">Download New Language</MudText>
+  <MudText Typo="Typo.body2" Class="mb-2">Provide a Tesseract language code (e.g., 'eng').</MudText>
+  <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+    <MudTextField T="string" @bind-Value="_languageCodeToDownload" Label="Language code" Variant="Variant.Outlined" Immediate="true" />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(()=>DownloadLanguageAsync())" Disabled="string.IsNullOrWhiteSpace(_languageCodeToDownload)" StartIcon="@Icons.Material.Filled.Download">Download</MudButton>
+  </MudStack>
+
+  <MudStack Class="mt-4" Direction="Row" Spacing="2">
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!IsDirty)" OnClick="@(()=>SaveAsync())">Save</MudButton>
+  </MudStack>
+</MudPaper>
+
+@code {
+  private ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions.OcrOptions _options = new();
+  private string _initial = string.Empty;
+  private string _languageFilter = string.Empty;
+  private HashSet<string> _selectedDefaultLanguages = new(StringComparer.OrdinalIgnoreCase);
+  private List<LanguageDisplayInfo> _cachedLanguages = new();
+  private string _languageCodeToDownload = string.Empty;
+
+  public override string Title => "OCR";
+
+  protected override async Task OnInitializedAsync()
+  {
+    await LoadAsync();
+  }
+
+  public override async Task LoadAsync(CancellationToken cancellationToken = default)
+  {
+    _options = await ConfigApi.GetOcrOptionsAsync();
+    _selectedDefaultLanguages = new HashSet<string>(_options.DefaultLanguages ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
+    _cachedLanguages = await ConfigApi.GetCachedOcrLanguagesAsync() ?? new List<LanguageDisplayInfo>();
+    _initial = System.Text.Json.JsonSerializer.Serialize(new Snapshot(_options, _selectedDefaultLanguages));
+    SetDirty(false);
+  }
+
+  private bool AllowExternalDownloads { get => _options.AllowExternalDownloads; set { _options.AllowExternalDownloads = value; MarkDirty(); } }
+  private string? ExternalRepoBaseUrl { get => _options.ExternalRepoBaseUrl; set { _options.ExternalRepoBaseUrl = value; MarkDirty(); } }
+
+  private void MarkDirty()
+  {
+    var cur = System.Text.Json.JsonSerializer.Serialize(new Snapshot(_options, _selectedDefaultLanguages));
+    SetDirty(!string.Equals(cur, _initial, StringComparison.Ordinal));
+  }
+
+  private IEnumerable<LanguageDisplayInfo> AllSelectableLanguages
+  {
+    get
+    {
+      var byCode = new Dictionary<string, LanguageDisplayInfo>(StringComparer.OrdinalIgnoreCase);
+      foreach (var l in _cachedLanguages)
+      {
+        if (!byCode.ContainsKey(l.Code)) byCode[l.Code] = l;
+      }
+      foreach (var code in _selectedDefaultLanguages)
+      {
+        if (!byCode.ContainsKey(code)) byCode[code] = new LanguageDisplayInfo { Code = code, Label = code, EnglishName = string.Empty };
+      }
+      return byCode.Values.OrderBy(v => v.Label);
+    }
+  }
+
+  private bool IsLanguageVisible(LanguageDisplayInfo lang)
+  {
+    if (string.IsNullOrWhiteSpace(_languageFilter)) return true;
+    var f = _languageFilter.Trim();
+    return lang.Code.Contains(f, StringComparison.OrdinalIgnoreCase)
+           || (!string.IsNullOrWhiteSpace(lang.EnglishName) && lang.EnglishName.Contains(f, StringComparison.OrdinalIgnoreCase))
+           || (!string.IsNullOrWhiteSpace(lang.Label) && lang.Label.Contains(f, StringComparison.OrdinalIgnoreCase));
+  }
+
+  private async Task RefreshCachedLanguagesAsync()
+  {
+    _cachedLanguages = await ConfigApi.GetCachedOcrLanguagesAsync() ?? new List<LanguageDisplayInfo>();
+    StateHasChanged();
+  }
+
+  private async Task DownloadLanguageAsync()
+  {
+    var code = _languageCodeToDownload?.Trim();
+    if (string.IsNullOrWhiteSpace(code)) return;
+    await ConfigApi.DownloadOcrLanguageAsync(code);
+    _languageCodeToDownload = string.Empty;
+    await RefreshCachedLanguagesAsync();
+  }
+
+  private Task OnSelectedDefaultLanguagesChanged(IEnumerable<string> values)
+  {
+    _selectedDefaultLanguages = values != null ? new HashSet<string>(values, StringComparer.OrdinalIgnoreCase) : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    MarkDirty();
+    return Task.CompletedTask;
+  }
+
+  public override async Task SaveAsync(CancellationToken cancellationToken = default)
+  {
+    _options.DefaultLanguages = _selectedDefaultLanguages.ToList();
+    var items = new Dictionary<string, string>
+    {
+      ["ServiceConfiguration:GreenlightServices:DocumentIngestion:Ocr:AllowExternalDownloads"] = _options.AllowExternalDownloads.ToString(),
+      ["ServiceConfiguration:GreenlightServices:DocumentIngestion:Ocr:ExternalRepoBaseUrl"] = _options.ExternalRepoBaseUrl ?? string.Empty,
+      ["ServiceConfiguration:GreenlightServices:DocumentIngestion:Ocr:TessdataBlobContainer"] = _options.TessdataBlobContainer ?? string.Empty,
+      ["ServiceConfiguration:GreenlightServices:DocumentIngestion:Ocr:DefaultLanguages"] = string.Join(',', _selectedDefaultLanguages)
+    };
+    await ConfigApi.UpdateConfigurationAsync(new Microsoft.Greenlight.Shared.Contracts.DTO.ConfigurationUpdateRequest
+    {
+      ConfigurationItems = items
+    });
+    _initial = System.Text.Json.JsonSerializer.Serialize(new Snapshot(_options, _selectedDefaultLanguages));
+    SetDirty(false);
+  }
+
+  public override IEnumerable<string> DescribePendingChanges()
+  {
+    var before = System.Text.Json.JsonSerializer.Deserialize<Snapshot>(_initial) ?? new Snapshot(new ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions.OcrOptions(), System.Array.Empty<string>());
+    if (before.Options.AllowExternalDownloads != _options.AllowExternalDownloads) yield return $"AllowExternalDownloads: {before.Options.AllowExternalDownloads} → {_options.AllowExternalDownloads}";
+    if (!string.Equals(before.Options.ExternalRepoBaseUrl, _options.ExternalRepoBaseUrl, StringComparison.Ordinal)) yield return "ExternalRepoBaseUrl changed";
+    if (!before.DefaultLanguages.SetEquals(_selectedDefaultLanguages)) yield return $"DefaultLanguages: {before.DefaultLanguages.Count} → {_selectedDefaultLanguages.Count}";
+  }
+
+  private sealed class Snapshot
+  {
+    public Snapshot() { }
+    public Snapshot(ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions.OcrOptions options, IEnumerable<string> langs)
+    {
+      Options = new ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions.OcrOptions
+      {
+        AllowExternalDownloads = options.AllowExternalDownloads,
+        ExternalRepoBaseUrl = options.ExternalRepoBaseUrl,
+        TessdataBlobContainer = options.TessdataBlobContainer,
+        DefaultLanguages = new List<string>(options.DefaultLanguages ?? new List<string>())
+      };
+      DefaultLanguages = new HashSet<string>(langs ?? Enumerable.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+    }
+    public ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions.OcrOptions Options { get; set; } = new();
+    public HashSet<string> DefaultLanguages { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+  }
+}

@@ -40,6 +40,12 @@ public class FileAcknowledgmentRecord : EntityBase
     public DateTime AcknowledgedDate { get; set; }
 
     /// <summary>
+    /// UI-friendly display filename extracted from the relative path.
+    /// This is the filename that should be shown to users regardless of underlying storage structure.
+    /// </summary>
+    public string? DisplayFileName { get; set; }
+
+    /// <summary>
     /// Many-to-many mapping to ingested documents that have processed this file/version.
     /// </summary>
     public virtual List<IngestedDocumentFileAcknowledgment> IngestedDocumentLinks { get; set; } = [];

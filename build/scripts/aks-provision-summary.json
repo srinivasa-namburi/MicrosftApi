@@ -1,0 +1,14 @@
+{
+    "clusterName": "aks-greenlight-private",
+    "resourceGroup": "rg-greenlight-aks-swedencentral",
+    "location": "swedencentral",
+    "clusterMode": "private",
+    "vnetIntegrated": true,
+    "workloadIdentity": {
+        "clientId": "",
+        "principalId": "",
+        "resourceId": "",
+        "oidcIssuer": "https://swedencentral.oic.prod-aks.azure.com/f34f6f92-ba9e-429d-b284-b3df0dd765d0/aba882a4-4388-42eb-8144-eea43f157d3a/",
+        "federatedSubject": "system:serviceaccount:greenlight-dev:greenlight-app"
+    }
+}

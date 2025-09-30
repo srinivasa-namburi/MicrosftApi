@@ -2,6 +2,7 @@
 using System;
 using System.Threading.Tasks;
 using Orleans;
+using Orleans.Concurrency;
 
 namespace Microsoft.Greenlight.Grains.Ingestion.Contracts
 {
@@ -12,7 +13,9 @@ namespace Microsoft.Greenlight.Grains.Ingestion.Contracts
     {
         /// <summary>
         /// Starts or resumes ingestion for the specified file.
+        /// This method can wait in queue for extended periods (up to 48 hours) when worker slots are fully utilized.
         /// </summary>
+        [ResponseTimeout("2.00:00:00")] // 2 days timeout to handle extreme queue wait times
         Task StartIngestionAsync(Guid documentId);
 
         /// <summary>

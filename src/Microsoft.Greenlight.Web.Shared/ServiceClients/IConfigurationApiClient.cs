@@ -30,6 +30,11 @@ public interface IConfigurationApiClient : IServiceClient
     Task<VectorStoreOptions> GetVectorStoreOptionsAsync();
 
     /// <summary>
+    /// Gets the Flow AI Assistant options.
+    /// </summary>
+    Task<ServiceConfigurationOptions.FlowOptions> GetFlowOptionsAsync();
+
+    /// <summary>
     /// Gets the global options.
     /// </summary>
     Task<ServiceConfigurationOptions.GreenlightServicesOptions.GlobalOptions> GetGlobalOptionsAsync();

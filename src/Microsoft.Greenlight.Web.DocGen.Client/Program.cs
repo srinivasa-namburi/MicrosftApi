@@ -146,6 +146,11 @@ builder.Services.AddHttpClient<IAdminAuthorizationApiClient, AdminAuthorizationA
     client.BaseAddress = serverBaseAddress;
 });
 
+builder.Services.AddHttpClient<IMcpConfigurationApiClient, McpConfigurationApiClient>(client =>
+{
+    client.BaseAddress = serverBaseAddress;
+});
+
 builder.Services.AddHttpClient<IFileStorageSourceApiClient, FileStorageSourceApiClient>(client =>
 {
     client.BaseAddress = serverBaseAddress;

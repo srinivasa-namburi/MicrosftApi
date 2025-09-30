@@ -3,19 +3,22 @@ using Microsoft.Greenlight.Extensions.Plugins;
 using Microsoft.SemanticKernel;
 using Microsoft.Greenlight.Plugins.Default.GeographicalData.Connectors;
 using Microsoft.Greenlight.Plugins.Default.GeographicalData.Models;
-using Microsoft.Greenlight.Shared.Helpers;
+using Microsoft.Greenlight.Shared.Services.FileStorage;
+using Microsoft.Extensions.Logging;
 
 namespace Microsoft.Greenlight.Plugins.Default.GeographicalData;
 
 public class FacilitiesPlugin : IPluginImplementation
 {
     private readonly IMappingConnector _mappingConnector;
-    private readonly AzureFileHelper _fileHelper;
+    private readonly IFileStorageServiceFactory _fileStorageServiceFactory;
+    private readonly ILogger<FacilitiesPlugin> _logger;
 
-    public FacilitiesPlugin(IMappingConnector mappingConnector, AzureFileHelper fileHelper)
+    public FacilitiesPlugin(IMappingConnector mappingConnector, IFileStorageServiceFactory fileStorageServiceFactory, ILogger<FacilitiesPlugin> logger)
     {
         _mappingConnector = mappingConnector;
-        _fileHelper = fileHelper;
+        _fileStorageServiceFactory = fileStorageServiceFactory;
+        _logger = logger;
     }
 
     // This method fetches latitude and longitude for a given address.
@@ -151,12 +154,12 @@ public class FacilitiesPlugin : IPluginImplementation
         
         var mapStream = _mappingConnector.GetMapImageStream(latitude, longitude, ((int)mapZoomLevelEnum), imageWidth, imageHeight);
         var fileName = $"map-{Guid.NewGuid()}.png";
-        var mapLink = await _fileHelper.UploadFileToBlobAsync(mapStream, fileName, "document-assets", true);
-
-        var asset = await _fileHelper.SaveFileInfoAsync(mapLink, "document-assets", fileName);
         
-        var proxiedMapLink = _fileHelper.GetProxiedAssetBlobUrl(asset.Id.ToString());
-        return proxiedMapLink;
+        var fileStorageService = _fileStorageServiceFactory.GetDefaultService();
+        var relativePath = await fileStorageService.UploadFileAsync(fileName, mapStream, "document-assets");
+        var uploadResult = await fileStorageService.SaveFileInfoAsync(relativePath, fileName);
+        
+        return uploadResult.AccessUrl;
     }
 
     public enum MapZoomLevel

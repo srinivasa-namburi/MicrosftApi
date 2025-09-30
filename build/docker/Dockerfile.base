@@ -1,0 +1,63 @@
+# Base image with all NuGet dependencies pre-restored
+# This significantly speeds up individual service builds
+# Build this weekly or when dependencies change
+
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS base-deps
+
+WORKDIR /src
+
+# Copy solution and project files first (for better caching)
+# This layer only rebuilds when project structure changes
+COPY src/*.slnx ./
+COPY src/*.sln ./
+
+# Copy all project files to restore dependencies
+# We use a pattern to get all csproj files while maintaining directory structure
+COPY src/*/*.csproj ./
+RUN for file in *.csproj; do \
+    dir=$(basename "$file" .csproj); \
+    mkdir -p "$dir" && mv "$file" "$dir/"; \
+    done
+
+# Additional nested project files
+COPY src/Extensibility/*/*.csproj ./Extensibility/
+RUN cd Extensibility && \
+    for file in *.csproj; do \
+    dir=$(basename "$file" .csproj); \
+    mkdir -p "$dir" && mv "$file" "$dir/"; \
+    done; \
+    cd ..
+
+# Copy Directory.Build.props and other build configuration
+COPY src/Directory.Build.props ./
+# Only copy these files if they exist (handled by script that builds this image)
+# Note: Directory.Packages.props doesn't exist in this repo
+# Note: NuGet config is named Nuget.ADOArtifacts.config in this repo
+COPY src/Nuget.ADOArtifacts.config ./nuget.config
+
+# Restore all dependencies at once
+# This creates a cache of all NuGet packages needed by any service
+RUN dotnet restore Microsoft.Greenlight.slnx --verbosity minimal
+
+# Also pre-compile common libraries to speed up builds
+COPY src/Microsoft.Greenlight.ServiceDefaults ./Microsoft.Greenlight.ServiceDefaults/
+COPY src/Microsoft.Greenlight.Shared.Contracts ./Microsoft.Greenlight.Shared.Contracts/
+COPY src/Microsoft.Greenlight.Shared.Enums ./Microsoft.Greenlight.Shared.Enums/
+COPY src/Extensibility/Microsoft.Greenlight.Extensions.Core ./Extensibility/Microsoft.Greenlight.Extensions.Core/
+
+# Build shared libraries
+RUN dotnet build Microsoft.Greenlight.ServiceDefaults -c Release --no-restore && \
+    dotnet build Microsoft.Greenlight.Shared.Contracts -c Release --no-restore && \
+    dotnet build Microsoft.Greenlight.Shared.Enums -c Release --no-restore && \
+    dotnet build Extensibility/Microsoft.Greenlight.Extensions.Core -c Release --no-restore
+
+# This base image now has:
+# 1. All NuGet packages cached
+# 2. All project references resolved
+# 3. Common libraries pre-built
+# 4. Build tools and SDK ready
+
+# Label for tracking
+LABEL description="Greenlight base image with pre-restored dependencies"
+LABEL version="1.0"
+LABEL build.date="${BUILD_DATE}"

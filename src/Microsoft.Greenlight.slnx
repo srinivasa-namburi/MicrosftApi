@@ -20,12 +20,16 @@
   <Folder Name="/00. Misc/">
     <File Path="../DEPLOYMENT.md" />
     <File Path=".gitignore" />
+    <File Path="../global.json" />
+    <File Path=".editorconfig" />
     <File Path=".github/copilot-instructions.md" />
     <File Path=".mcp.json" />
   </Folder>
   <Folder Name="/00. Misc/Build/">
     <File Path="../.github/workflows/load-trainingdata.yml" />
+    <File Path="../.github/workflows/modern-deploy.yml" />
     <File Path="../.github/workflows/provision-deploy.yml" />
+    <File Path="../build/azure-pipelines-modern.yml" />
     <File Path="../build/build-ci.yml" />
     <File Path="../build/upstream-to-github.yml" />
     <File Path="deploy/postdeploy.sh" />
@@ -56,11 +60,16 @@
     <Project Path="Microsoft.Greenlight.API.Main/Microsoft.Greenlight.API.Main.csproj">
       <BuildType Solution="Publish|*" Project="Release" />
     </Project>
+    <Project Path="Microsoft.Greenlight.McpServer/Microsoft.Greenlight.McpServer.csproj">
+      <BuildType Solution="Publish|*" Project="Release" />
+    </Project>
     <Project Path="Microsoft.Greenlight.Silo/Microsoft.Greenlight.Silo.csproj">
       <BuildType Solution="Publish|*" Project="Release" />
     </Project>
-    <Project Path="Microsoft.Greenlight.McpServer/Microsoft.Greenlight.McpServer.csproj">
-      <BuildType Solution="Publish|*" Project="Release" />
+  </Folder>
+  <Folder Name="/20. Backends/Tests/">
+    <Project Path="Microsoft.Greenlight.McpServer.Tests/Microsoft.Greenlight.McpServer.Tests.csproj">
+      <BuildType Solution="Publish|*" Project="Debug" />
     </Project>
   </Folder>
   <Folder Name="/30. Orleans Framework/" />
@@ -174,8 +183,5 @@
     <Project Path="Extensibility/Microsoft.Greenlight.Extensions.Plugins/Microsoft.Greenlight.Extensions.Plugins.csproj">
       <BuildType Solution="Publish|*" Project="Debug" />
     </Project>
-  </Folder>
-  <Folder Name="/999. Solution Items/">
-    <File Path=".editorconfig" />
   </Folder>
 </Solution>

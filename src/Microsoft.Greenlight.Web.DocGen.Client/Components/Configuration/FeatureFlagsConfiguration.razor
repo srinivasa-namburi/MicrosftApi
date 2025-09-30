@@ -1,0 +1,82 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+@using Microsoft.Greenlight.Shared.Configuration
+@inject IConfigurationApiClient ConfigApi
+@inherits Microsoft.Greenlight.Web.DocGen.Client.Components.Configuration.Infrastructure.ConfigurationSectionBase
+
+<MudPaper Class="pa-4">
+  <MudText Typo="Typo.h6">Feature Flags</MudText>
+  <MudDivider Class="mt-2 mb-3" />
+
+  <MudStack Spacing="2">
+    <MudSwitch T="bool" @bind-Value="EnableMassDocumentProduction" Label="Enable Mass Document Production" Color="Color.Primary" Immediate="true" />
+    <MudSwitch T="bool" @bind-Value="EnableReviews" Label="Enable Reviews" Color="Color.Primary" Immediate="true" />
+    <MudSwitch T="bool" @bind-Value="EnableReferenceFrontend" Label="Enable Reference Frontend" Color="Color.Primary" Immediate="true" />
+    <MudSwitch T="bool" @bind-Value="EnableContentReferences" Label="Enable Content References" Color="Color.Primary" Immediate="true" />
+    <MudSwitch T="bool" @bind-Value="EnableExternalDataView" Label="Enable External Data View" Color="Color.Primary" Immediate="true" />
+  </MudStack>
+
+  <MudStack Class="mt-2" Direction="Row" Spacing="2">
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!IsDirty)" OnClick="@(()=>SaveAsync())">Save</MudButton>
+  </MudStack>
+</MudPaper>
+
+@code {
+  private ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions _flags = new();
+  private string _initial = string.Empty;
+
+  public override string Title => "Features";
+
+  protected override async Task OnInitializedAsync()
+  {
+    await LoadAsync();
+  }
+
+  public override async Task LoadAsync(CancellationToken cancellationToken = default)
+  {
+    _flags = await ConfigApi.GetFeatureFlagsAsync();
+    _initial = System.Text.Json.JsonSerializer.Serialize(_flags);
+    SetDirty(false);
+    // Ensure UI reflects freshly loaded values even if dirty didn't change
+    await InvokeAsync(StateHasChanged);
+  }
+
+  private void MarkDirty()
+  {
+    var cur = System.Text.Json.JsonSerializer.Serialize(_flags);
+    SetDirty(!string.Equals(cur, _initial, StringComparison.Ordinal));
+  }
+
+  private bool EnableMassDocumentProduction { get => _flags.EnableMassDocumentProduction; set { _flags.EnableMassDocumentProduction = value; MarkDirty(); } }
+  private bool EnableReviews { get => _flags.EnableReviews; set { _flags.EnableReviews = value; MarkDirty(); } }
+  private bool EnableReferenceFrontend { get => _flags.EnableReferenceFrontend; set { _flags.EnableReferenceFrontend = value; MarkDirty(); } }
+  private bool EnableContentReferences { get => _flags.EnableContentReferences; set { _flags.EnableContentReferences = value; MarkDirty(); } }
+  private bool EnableExternalDataView { get => _flags.EnableExternalDataView; set { _flags.EnableExternalDataView = value; MarkDirty(); } }
+
+  public override async Task SaveAsync(CancellationToken cancellationToken = default)
+  {
+    var items = new Dictionary<string, string>
+    {
+      ["ServiceConfiguration:GreenlightServices:FeatureFlags:EnableMassDocumentProduction"] = _flags.EnableMassDocumentProduction.ToString(),
+      ["ServiceConfiguration:GreenlightServices:FeatureFlags:EnableReviews"] = _flags.EnableReviews.ToString(),
+      ["ServiceConfiguration:GreenlightServices:FeatureFlags:EnableReferenceFrontend"] = _flags.EnableReferenceFrontend.ToString(),
+      ["ServiceConfiguration:GreenlightServices:FeatureFlags:EnableContentReferences"] = _flags.EnableContentReferences.ToString(),
+      ["ServiceConfiguration:GreenlightServices:FeatureFlags:EnableExternalDataView"] = _flags.EnableExternalDataView.ToString()
+    };
+    await ConfigApi.UpdateConfigurationAsync(new Microsoft.Greenlight.Shared.Contracts.DTO.ConfigurationUpdateRequest
+    {
+      ConfigurationItems = items
+    });
+    _initial = System.Text.Json.JsonSerializer.Serialize(_flags);
+    SetDirty(false);
+  }
+
+  public override IEnumerable<string> DescribePendingChanges()
+  {
+    var before = System.Text.Json.JsonSerializer.Deserialize<ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions>(_initial) ?? new();
+    if (_flags.EnableMassDocumentProduction != before.EnableMassDocumentProduction) { yield return $"MassDocumentProduction: {before.EnableMassDocumentProduction} → {_flags.EnableMassDocumentProduction}"; }
+    if (_flags.EnableReviews != before.EnableReviews) { yield return $"Reviews: {before.EnableReviews} → {_flags.EnableReviews}"; }
+    if (_flags.EnableReferenceFrontend != before.EnableReferenceFrontend) { yield return $"ReferenceFrontend: {before.EnableReferenceFrontend} → {_flags.EnableReferenceFrontend}"; }
+    if (_flags.EnableContentReferences != before.EnableContentReferences) { yield return $"ContentReferences: {before.EnableContentReferences} → {_flags.EnableContentReferences}"; }
+    if (_flags.EnableExternalDataView != before.EnableExternalDataView) { yield return $"ExternalDataView: {before.EnableExternalDataView} → {_flags.EnableExternalDataView}"; }
+  }
+}

@@ -14,4 +14,5 @@ public interface IFileApiClient : IServiceClient
     string ExtractBlobUrlFromProxiedUrl(string proxiedUrl);
     Task<string> UploadFileToDocumentProcessAsync(string processShortName, string fileName, IBrowserFile file);
     Task<string> UploadFileToDocumentLibraryAsync(string libraryShortName, string fileName, IBrowserFile file);
+    Task<string> ResolveFileAcknowledgmentUrlAsync(Guid acknowledgmentId);
 }

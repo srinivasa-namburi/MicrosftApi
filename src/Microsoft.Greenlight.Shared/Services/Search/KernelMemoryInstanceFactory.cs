@@ -39,6 +39,10 @@ public class KernelMemoryInstanceFactory : IKernelMemoryInstanceFactory
         using var scope = _serviceScopeFactory.CreateScope();
         var scopedServiceProvider = scope.ServiceProvider;
         var kernelMemory = scopedServiceProvider.GetKernelMemoryForAdHocUploads(_serviceConfigurationOptions);
+        if (kernelMemory == null)
+        {
+            throw new InvalidOperationException("Kernel Memory is not available. Please configure OpenAI connection string.");
+        }
         _instanceContainer.KernelMemoryInstances["AdhocUploads"] = kernelMemory;
         return kernelMemory;
     }

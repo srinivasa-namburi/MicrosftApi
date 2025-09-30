@@ -31,6 +31,7 @@ public class FileController : BaseController
     private readonly IFileStorageServiceFactory _fileStorageServiceFactory;
     private readonly ILogger<FileController> _logger;
     private readonly IContentReferenceService _contentReferenceService;
+    private readonly IFileUrlResolverService _fileUrlResolverService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="FileController"/> class.
@@ -48,7 +49,8 @@ public class FileController : BaseController
         IDocumentProcessInfoService documentLibraryProcessService,
         IFileStorageServiceFactory fileStorageServiceFactory,
         ILogger<FileController> logger,
-        IContentReferenceService contentReferenceService)
+        IContentReferenceService contentReferenceService,
+        IFileUrlResolverService fileUrlResolverService)
     {
         _fileHelper = fileHelper;
         _dbContext = dbContext;
@@ -57,6 +59,7 @@ public class FileController : BaseController
         _fileStorageServiceFactory = fileStorageServiceFactory;
         _logger = logger;
         _contentReferenceService = contentReferenceService;
+        _fileUrlResolverService = fileUrlResolverService;
     }
 
     /// <summary>
@@ -90,7 +93,9 @@ public class FileController : BaseController
             ? new MimeTypesDetection().GetFileType(decodedFileUrl)
             : contentTypeOverride;
 
-        var fileName = decodedFileUrl[(decodedFileUrl.LastIndexOf('/') + 1)..];
+        // Try to get DisplayFileName from FileAcknowledgmentRecord first
+        var fileName = await GetDisplayFileNameAsync(decodedFileUrl)
+                       ?? decodedFileUrl[(decodedFileUrl.LastIndexOf('/') + 1)..];
 
         // If inline requested, return FileStreamResult without forcing download header
         if (!string.IsNullOrWhiteSpace(disposition) && disposition.Equals("inline", StringComparison.OrdinalIgnoreCase))
@@ -139,7 +144,10 @@ public class FileController : BaseController
         var contentType = string.IsNullOrWhiteSpace(contentTypeOverride)
             ? new MimeTypesDetection().GetFileType(decodedFileUrl)
             : contentTypeOverride;
-        var fileName = decodedFileUrl[(decodedFileUrl.LastIndexOf('/') + 1)..];
+
+        // Try to get DisplayFileName from FileAcknowledgmentRecord first
+        var fileName = await GetDisplayFileNameAsync(decodedFileUrl)
+                       ?? decodedFileUrl[(decodedFileUrl.LastIndexOf('/') + 1)..];
 
         if (!string.IsNullOrWhiteSpace(disposition) && disposition.Equals("inline", StringComparison.OrdinalIgnoreCase))
         {
@@ -240,6 +248,45 @@ public class FileController : BaseController
         {
             _logger.LogError(ex, "Error downloading external link asset {AssetId} from URL {Url}", assetId, asset.Url);
             return NotFound();
+        }
+    }
+
+    /// <summary>
+    /// Resolves a download URL for a file acknowledgment record.
+    /// Uses the FileUrlResolverService to create or retrieve an ExternalLinkAsset URL.
+    /// </summary>
+    /// <param name="acknowledgmentId">The ID of the file acknowledgment record.</param>
+    /// <returns>The resolved URL for downloading the file.
+    /// Produces Status Codes:
+    ///     200 OK: When completed successfully with the resolved URL
+    ///     404 Not Found: When the acknowledgment record is not found
+    /// </returns>
+    [HttpGet("resolve-url/acknowledgment/{acknowledgmentId}")]
+    [RequiresAnyPermission(PermissionKeys.GenerateDocument, PermissionKeys.Chat)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [Produces("application/json")]
+    public async Task<IActionResult> ResolveFileAcknowledgmentUrl(Guid acknowledgmentId)
+    {
+        try
+        {
+            var acknowledgment = await _dbContext.FileAcknowledgmentRecords
+                .Include(f => f.FileStorageSource)
+                .FirstOrDefaultAsync(f => f.Id == acknowledgmentId);
+
+            if (acknowledgment == null)
+            {
+                return NotFound($"File acknowledgment record {acknowledgmentId} not found");
+            }
+
+            var resolvedUrl = await _fileUrlResolverService.ResolveUrlAsync(acknowledgment);
+            
+            return Ok(new { url = resolvedUrl });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error resolving URL for file acknowledgment {AcknowledgmentId}", acknowledgmentId);
+            return BadRequest($"Failed to resolve URL: {ex.Message}");
         }
     }
 
@@ -954,5 +1001,28 @@ public class FileController : BaseController
         var fileAccessUrl = _fileHelper.GetProxiedAssetBlobUrl(exportedDocumentLink.Id);
 
         return Ok(fileAccessUrl);
+    }
+
+    /// <summary>
+    /// Attempts to retrieve the DisplayFileName from FileAcknowledgmentRecord for the given URL.
+    /// </summary>
+    /// <param name="fileUrl">The file URL to search for in acknowledgment records.</param>
+    /// <returns>The DisplayFileName if found, otherwise null.</returns>
+    private async Task<string?> GetDisplayFileNameAsync(string fileUrl)
+    {
+        try
+        {
+            // Try to find a FileAcknowledgmentRecord that matches this URL
+            var acknowledgment = await _dbContext.FileAcknowledgmentRecords
+                .Where(f => f.FileStorageSourceInternalUrl == fileUrl)
+                .FirstOrDefaultAsync();
+
+            return acknowledgment?.DisplayFileName;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to retrieve DisplayFileName for URL {FileUrl}", fileUrl);
+            return null;
+        }
     }
 }

@@ -1,0 +1,389 @@
+@* File Storage Source Management Component *@
+@using Microsoft.Greenlight.Shared.Contracts.DTO.FileStorage
+@using Microsoft.Greenlight.Shared.Contracts.Authorization
+@using Microsoft.Greenlight.Shared.Enums
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@inject IFileStorageSourceApiClient FileStorageService
+@inject IFileStorageHostApiClient FileStorageHostService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<MudStack Spacing="4">
+    <MudStack Row="true" JustifyContent="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.h6">File Storage Sources</MudText>
+        <PermissionView Permission="@PermissionKeys.AlterSystemConfiguration">
+            <MudButton StartIcon="@Icons.Material.Filled.Add" 
+                      Variant="Variant.Filled" 
+                      Color="Color.Primary"
+                      OnClick="@(() => OpenCreateSourceDialog())">
+                Create Source
+            </MudButton>
+        </PermissionView>
+    </MudStack>
+
+    <!-- Filters -->
+    <MudPaper Class="pa-4" Elevation="1">
+        <MudGrid>
+            <MudItem xs="12" md="4">
+                <MudTextField @bind-Value="searchText" 
+                             Label="Search sources..." 
+                             Variant="Variant.Outlined"
+                             Adornment="Adornment.Start"
+                             AdornmentIcon="@Icons.Material.Filled.Search"
+                             Immediate="true"
+                             OnKeyUp="@(async (e) => await ApplyFilters())" />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudSelect @bind-Value="selectedHostFilter" 
+                          Label="Filter by Host"
+                          Variant="Variant.Outlined"
+                          OnSelectionChanged="@(async (object selection) => await ApplyFilters())">
+                    <MudSelectItem Value="@((Guid?)null)">All Hosts</MudSelectItem>
+                    @foreach (var host in hosts)
+                    {
+                        <MudSelectItem Value="@((Guid?)host.Id)">@host.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudSelect @bind-Value="selectedDataTypeFilter" 
+                          Label="Filter by Data Type"
+                          Variant="Variant.Outlined"
+                          OnSelectionChanged="@(async (object selection) => await ApplyFilters())">
+                    <MudSelectItem Value="@((FileStorageSourceDataType?)null)">All Types</MudSelectItem>
+                    <MudSelectItem Value="@FileStorageSourceDataType.Ingestion">Ingestion</MudSelectItem>
+                    <MudSelectItem Value="@FileStorageSourceDataType.ContentReference">Content Reference</MudSelectItem>
+                    <MudSelectItem Value="@FileStorageSourceDataType.MediaAssets">Media Assets</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudSwitch T="bool" @bind-Value="showInactiveOnly" 
+                          Label="Show Inactive Only" 
+                          Color="Color.Warning"
+                          OnChanged="@(async (bool value) => await ApplyFilters())" />
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <MudDataGrid @ref="sourcesGrid"
+                 T="FileStorageSourceInfo" 
+                 Items="@filteredSources" 
+                 Filterable="false"
+                 SortMode="SortMode.Multiple"
+                 Loading="@loading">
+        <Columns>
+            <PropertyColumn Property="x => x.Name" Title="Name">
+                <CellTemplate>
+                    <MudStack Spacing="1">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            @if (context.Item.IsDefault)
+                            {
+                                <MudChip T="string" Color="Color.Primary" Size="Size.Small" Icon="@Icons.Material.Filled.Star">Default</MudChip>
+                            }
+                            <MudText>@context.Item.Name</MudText>
+                            @if (!context.Item.IsActive)
+                            {
+                                <MudChip T="string" Color="Color.Error" Size="Size.Small">Inactive</MudChip>
+                            }
+                        </MudStack>
+                        <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                            @context.Item.ContainerOrPath
+                        </MudText>
+                    </MudStack>
+                </CellTemplate>
+            </PropertyColumn>
+            
+            <PropertyColumn Property="x => x.FileStorageHost.Name" Title="Host">
+                <CellTemplate>
+                    <MudChip T="string" Color="GetHostColor(context.Item.FileStorageHost)" Size="Size.Small">
+                        @context.Item.FileStorageHost?.Name
+                    </MudChip>
+                </CellTemplate>
+            </PropertyColumn>
+            
+            <TemplateColumn Title="Categories" Sortable="false">
+                <CellTemplate>
+                    <MudStack Row="true" Spacing="1">
+                        @foreach (var category in GetSourceCategories(context.Item))
+                        {
+                            <MudChip T="string" Color="GetCategoryColor(category)" Size="Size.Small">
+                                @GetCategoryDisplayName(category)
+                            </MudChip>
+                        }
+                    </MudStack>
+                </CellTemplate>
+            </TemplateColumn>
+            
+            <PropertyColumn Property="x => x.StorageSourceDataType" Title="Primary Type">
+                <CellTemplate>
+                    <MudChip T="string" Color="GetDataTypeColor(context.Item.StorageSourceDataType)" Size="Size.Small">
+                        @GetDataTypeDisplayName(context.Item.StorageSourceDataType)
+                    </MudChip>
+                </CellTemplate>
+            </PropertyColumn>
+            
+            <PropertyColumn Property="x => x.AutoImportFolderName" Title="Auto Import Folder" />
+            
+            <PropertyColumn Property="x => x.CreatedDate" Title="Created" Format="yyyy-MM-dd" />
+            
+            <TemplateColumn Title="Actions" Sortable="false" Filterable="false">
+                <CellTemplate>
+                    <MudStack Row="true" Spacing="1">
+                        <PermissionView Permission="@PermissionKeys.AlterSystemConfiguration">
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                          Size="Size.Small"
+                                          Color="Color.Primary"
+                                          OnClick="@(() => EditSource(context.Item))" />
+                            
+                            <MudIconButton Icon="@Icons.Material.Filled.Category"
+                                          Size="Size.Small"
+                                          Color="Color.Secondary"
+                                          OnClick="@(() => ManageCategories(context.Item))"
+                                          Title="Manage Categories" />
+                            
+                            @if (CanDeleteSource(context.Item))
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                              Size="Size.Small"
+                                              Color="Color.Error"
+                                              OnClick="@(() => DeleteSource(context.Item))" />
+                            }
+                            else
+                            {
+                                <MudTooltip Text="Cannot delete: Last ingestion/content reference source on default host">
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                  Size="Size.Small"
+                                                  Color="Color.Default"
+                                                  Disabled="true" />
+                                </MudTooltip>
+                            }
+                        </PermissionView>
+                    </MudStack>
+                </CellTemplate>
+            </TemplateColumn>
+        </Columns>
+    </MudDataGrid>
+
+    @if (loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+
+    @if (!filteredSources.Any() && !loading)
+    {
+        <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Filled.Info">
+            No file storage sources found matching the current filters.
+        </MudAlert>
+    }
+</MudStack>
+
+@code {
+    private MudDataGrid<FileStorageSourceInfo> sourcesGrid = null!;
+    private List<FileStorageSourceInfo> sources = new();
+    private List<FileStorageSourceInfo> filteredSources = new();
+    private List<FileStorageHostInfo> hosts = new();
+    private bool loading = true;
+
+    // Filter state
+    private string searchText = string.Empty;
+    private Guid? selectedHostFilter = null;
+    private FileStorageSourceDataType? selectedDataTypeFilter = null;
+    private bool showInactiveOnly = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        loading = true;
+        try
+        {
+            var sourcesTask = FileStorageService.GetAllFileStorageSourcesAsync();
+            var hostsTask = FileStorageHostService.GetAllFileStorageHostsAsync();
+
+            await Task.WhenAll(sourcesTask, hostsTask);
+            
+            sources = (await sourcesTask).ToList();
+            hosts = (await hostsTask).ToList();
+            
+            await ApplyFilters();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load storage sources: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task ApplyFilters()
+    {
+        filteredSources = sources.Where(source => 
+        {
+            // Text search
+            if (!string.IsNullOrWhiteSpace(searchText) && 
+                !source.Name.Contains(searchText, StringComparison.OrdinalIgnoreCase) &&
+                !source.ContainerOrPath.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            // Host filter
+            if (selectedHostFilter.HasValue && source.FileStorageHostId != selectedHostFilter.Value)
+                return false;
+
+            // Data type filter
+            if (selectedDataTypeFilter.HasValue && source.StorageSourceDataType != selectedDataTypeFilter.Value)
+                return false;
+
+            // Inactive filter
+            if (showInactiveOnly && source.IsActive)
+                return false;
+
+            return true;
+        }).ToList();
+
+        StateHasChanged();
+        await Task.CompletedTask;
+    }
+
+    private async Task OpenCreateSourceDialog()
+    {
+        var parameters = new DialogParameters<FileStorageSourceEditDialog>
+        {
+            { x => x.Source, new FileStorageSourceInfo { IsActive = true } },
+            { x => x.Hosts, hosts },
+            { x => x.IsCreate, true }
+        };
+
+        var dialog = await DialogService.ShowAsync<FileStorageSourceEditDialog>("Create Storage Source", parameters);
+        var result = await dialog.Result;
+        
+        if (!result.Canceled)
+        {
+            await LoadData();
+        }
+    }
+
+    private async Task EditSource(FileStorageSourceInfo source)
+    {
+        var parameters = new DialogParameters<FileStorageSourceEditDialog>
+        {
+            { x => x.Source, source },
+            { x => x.Hosts, hosts },
+            { x => x.IsCreate, false }
+        };
+
+        var dialog = await DialogService.ShowAsync<FileStorageSourceEditDialog>("Edit Storage Source", parameters);
+        var result = await dialog.Result;
+        
+        if (!result.Canceled)
+        {
+            await LoadData();
+        }
+    }
+
+    private async Task ManageCategories(FileStorageSourceInfo source)
+    {
+        var parameters = new DialogParameters<FileStorageSourceCategoryDialog>
+        {
+            { x => x.Source, source }
+        };
+
+        var dialog = await DialogService.ShowAsync<FileStorageSourceCategoryDialog>("Manage Categories", parameters);
+        var result = await dialog.Result;
+        
+        if (!result.Canceled)
+        {
+            await LoadData();
+        }
+    }
+
+    private async Task DeleteSource(FileStorageSourceInfo source)
+    {
+        var result = await DialogService.ShowMessageBox(
+            "Delete Storage Source",
+            $"Are you sure you want to delete '{source.Name}'? This action cannot be undone.",
+            yesText: "Delete",
+            cancelText: "Cancel"
+        );
+
+        if (result == true)
+        {
+            try
+            {
+                await FileStorageService.DeleteFileStorageSourceAsync(source.Id);
+                await LoadData();
+                Snackbar.Add("Storage source deleted successfully", Severity.Success);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to delete source: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private bool CanDeleteSource(FileStorageSourceInfo source)
+    {
+        // Don't allow deletion if this is the last ingestion or content reference source on default host
+        var defaultHost = hosts.FirstOrDefault(h => h.IsDefault);
+        if (defaultHost == null || source.FileStorageHostId != defaultHost.Id)
+            return true;
+
+        var defaultHostSources = sources.Where(s => s.FileStorageHostId == defaultHost.Id && s.IsActive).ToList();
+        
+        // Check if this is the last ingestion source
+        var ingestionSources = defaultHostSources.Where(s => 
+            s.StorageSourceDataType == FileStorageSourceDataType.Ingestion ||
+            GetSourceCategories(s).Contains(FileStorageSourceDataType.Ingestion)).ToList();
+        
+        if (ingestionSources.Count == 1 && ingestionSources.Contains(source))
+            return false;
+
+        // Check if this is the last content reference source
+        var contentRefSources = defaultHostSources.Where(s => 
+            s.StorageSourceDataType == FileStorageSourceDataType.ContentReference ||
+            GetSourceCategories(s).Contains(FileStorageSourceDataType.ContentReference)).ToList();
+        
+        if (contentRefSources.Count == 1 && contentRefSources.Contains(source))
+            return false;
+
+        return true;
+    }
+
+    private static List<FileStorageSourceDataType> GetSourceCategories(FileStorageSourceInfo source)
+    {
+        // This would come from the source's Categories navigation property in a real implementation
+        // For now, return the primary data type
+        var categories = new List<FileStorageSourceDataType> { source.StorageSourceDataType };
+        
+        // In real implementation, you'd add:
+        // categories.AddRange(source.Categories?.Select(c => c.DataType) ?? Enumerable.Empty<FileStorageSourceDataType>());
+        
+        return categories.Distinct().ToList();
+    }
+
+    private static Color GetHostColor(FileStorageHostInfo? host) => host?.IsDefault == true ? Color.Primary : Color.Default;
+
+    private static Color GetCategoryColor(FileStorageSourceDataType dataType) => dataType switch
+    {
+        FileStorageSourceDataType.Ingestion => Color.Success,
+        FileStorageSourceDataType.ContentReference => Color.Info,
+        FileStorageSourceDataType.MediaAssets => Color.Warning,
+        _ => Color.Default
+    };
+
+    private static Color GetDataTypeColor(FileStorageSourceDataType dataType) => GetCategoryColor(dataType);
+
+    private static string GetCategoryDisplayName(FileStorageSourceDataType dataType) => dataType switch
+    {
+        FileStorageSourceDataType.Ingestion => "Ingestion",
+        FileStorageSourceDataType.ContentReference => "Content Ref",
+        FileStorageSourceDataType.MediaAssets => "Media",
+        _ => dataType.ToString()
+    };
+
+    private static string GetDataTypeDisplayName(FileStorageSourceDataType dataType) => GetCategoryDisplayName(dataType);
+}

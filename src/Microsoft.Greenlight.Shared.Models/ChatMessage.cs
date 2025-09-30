@@ -66,4 +66,10 @@ public class ChatMessage : EntityBase
     /// Unique ID of the user information of the author of the message.
     /// </summary>
     public Guid? AuthorUserInformationId { get; set; }
+
+    /// <summary>
+    /// User ID from the authentication provider (e.g., Entra provider ID).
+    /// This is a string identifier, not a GUID.
+    /// </summary>
+    public string? UserId { get; set; }
 }

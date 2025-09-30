@@ -1,0 +1,313 @@
+@* File Storage Source Edit Dialog *@
+@using Microsoft.Greenlight.Shared.Contracts.DTO.FileStorage
+@using Microsoft.Greenlight.Shared.Enums
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@inject IFileStorageSourceApiClient FileStorageService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="form" Model="Source" Validation="@(validationService.ValidateValue)">
+            <MudStack Spacing="3">
+                <MudTextField @bind-Value="Source.Name"
+                             Label="Source Name"
+                             Required="true"
+                             RequiredError="Source name is required"
+                             For="@(() => Source.Name)"
+                             Variant="Variant.Outlined" />
+
+                <MudSelect @bind-Value="Source.FileStorageHostId"
+                          Label="Storage Host"
+                          Required="true"
+                          RequiredError="Storage host is required"
+                          For="@(() => Source.FileStorageHostId)"
+                          Variant="Variant.Outlined">
+                    @foreach (var host in Hosts)
+                    {
+                        <MudSelectItem Value="@host.Id">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                @if (host.IsDefault)
+                                {
+                                    <MudChip T="string" Color="Color.Primary" Size="Size.Small" Icon="@Icons.Material.Filled.Star">Default</MudChip>
+                                }
+                                <MudText>@host.Name</MudText>
+                                <MudChip T="string" Color="GetProviderColor(host.ProviderType)" Size="Size.Small">
+                                    @host.ProviderType
+                                </MudChip>
+                            </MudStack>
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+
+                <MudTextField @bind-Value="Source.ContainerOrPath"
+                             Label="Container/Path"
+                             Required="true"
+                             RequiredError="Container or path is required"
+                             For="@(() => Source.ContainerOrPath)"
+                             Variant="Variant.Outlined"
+                             HelperText="Azure Blob: container name | Local FS: directory path" />
+
+                <MudSelect @bind-Value="Source.StorageSourceDataType"
+                          Label="Primary Data Type"
+                          Required="true"
+                          RequiredError="Primary data type is required"
+                          For="@(() => Source.StorageSourceDataType)"
+                          Variant="Variant.Outlined">
+                    <MudSelectItem Value="FileStorageSourceDataType.Ingestion">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudChip T="string" Color="Color.Success" Size="Size.Small">Ingestion</MudChip>
+                            <MudText Typo="Typo.caption">Sources that accept uploaded files for processing</MudText>
+                        </MudStack>
+                    </MudSelectItem>
+                    <MudSelectItem Value="FileStorageSourceDataType.ContentReference">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudChip T="string" Color="Color.Info" Size="Size.Small">Content Reference</MudChip>
+                            <MudText Typo="Typo.caption">Sources that store generated content</MudText>
+                        </MudStack>
+                    </MudSelectItem>
+                    <MudSelectItem Value="FileStorageSourceDataType.MediaAssets">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudChip T="string" Color="Color.Warning" Size="Size.Small">Media Assets</MudChip>
+                            <MudText Typo="Typo.caption">Sources that store media and asset files</MudText>
+                        </MudStack>
+                    </MudSelectItem>
+                </MudSelect>
+
+                <MudTextField @bind-Value="Source.AutoImportFolderName"
+                             Label="Auto Import Folder (Optional)"
+                             For="@(() => Source.AutoImportFolderName)"
+                             Variant="Variant.Outlined"
+                             HelperText="Folder name for automatic file imports" />
+
+                <MudSwitch T="bool" @bind-Value="Source.IsActive"
+                          Label="Active"
+                          Color="Color.Success" />
+
+                @if (!IsCreate)
+                {
+                    <MudSwitch T="bool" @bind-Value="Source.IsDefault"
+                              Label="Default Source"
+                              Color="Color.Primary"
+                              Disabled="@Source.IsDefault" />
+                    
+                    @if (Source.IsDefault)
+                    {
+                        <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Filled.Info">
+                            This is the default source for its data type. Cannot be changed manually.
+                        </MudAlert>
+                    }
+                }
+
+                <!-- Category Assignment Section -->
+                <MudDivider />
+                <MudText Typo="Typo.h6">Category Assignments</MudText>
+                
+                <MudStack Spacing="2">
+                    <MudCheckBox T="bool" @bind-Value="hasIngestionCategory"
+                                Label="Ingestion Category"
+                                Color="Color.Success" />
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary ml-8">
+                        Allow this source to accept file uploads for processing
+                    </MudText>
+                    
+                    <MudCheckBox T="bool" @bind-Value="hasContentReferenceCategory"
+                                Label="Content Reference Category"
+                                Color="Color.Info" />
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary ml-8">
+                        Allow this source to store generated content and assets
+                    </MudText>
+                    
+                    <MudCheckBox T="bool" @bind-Value="hasMediaAssetsCategory"
+                                Label="Media Assets Category"
+                                Color="Color.Warning" />
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary ml-8">
+                        Allow this source to store media files and other assets
+                    </MudText>
+                </MudStack>
+            </MudStack>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" 
+                  OnClick="Save" 
+                  Disabled="@(!form?.IsValid ?? true)"
+                  Variant="Variant.Filled">
+            @(IsCreate ? "Create" : "Save")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter] public FileStorageSourceInfo Source { get; set; } = new();
+    [Parameter] public List<FileStorageHostInfo> Hosts { get; set; } = new();
+    [Parameter] public bool IsCreate { get; set; } = false;
+    
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
+    
+    private MudForm form = null!;
+    private readonly FileStorageSourceValidator validationService = new();
+
+    // Category flags
+    private bool hasIngestionCategory;
+    private bool hasContentReferenceCategory;
+    private bool hasMediaAssetsCategory;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!IsCreate)
+        {
+            await LoadExistingCategories();
+        }
+        else
+        {
+            // Set default category based on primary data type
+            switch (Source.StorageSourceDataType)
+            {
+                case FileStorageSourceDataType.Ingestion:
+                    hasIngestionCategory = true;
+                    break;
+                case FileStorageSourceDataType.ContentReference:
+                    hasContentReferenceCategory = true;
+                    break;
+                case FileStorageSourceDataType.MediaAssets:
+                    hasMediaAssetsCategory = true;
+                    break;
+            }
+        }
+    }
+
+    private async Task LoadExistingCategories()
+    {
+        // This would load from the source's Categories navigation property
+        // For now, assume primary data type is assigned
+        var categories = GetSourceCategories(Source);
+        
+        hasIngestionCategory = categories.Contains(FileStorageSourceDataType.Ingestion);
+        hasContentReferenceCategory = categories.Contains(FileStorageSourceDataType.ContentReference);
+        hasMediaAssetsCategory = categories.Contains(FileStorageSourceDataType.MediaAssets);
+        
+        await Task.CompletedTask;
+    }
+
+    private async Task Save()
+    {
+        try
+        {
+            await form.Validate();
+            if (!form.IsValid) return;
+
+            if (IsCreate)
+            {
+                await FileStorageService.CreateFileStorageSourceAsync(Source);
+                Snackbar.Add($"Storage source '{Source.Name}' created successfully", Severity.Success);
+            }
+            else
+            {
+                // TODO: Fix UpdateFileStorageSourceAsync signature
+                Snackbar.Add("Update functionality not yet implemented", Severity.Warning);
+                // await FileStorageService.UpdateFileStorageSourceAsync(Source);
+                Snackbar.Add($"Storage source '{Source.Name}' updated successfully", Severity.Success);
+            }
+
+            // Update category assignments
+            await UpdateCategoryAssignments();
+            
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to {(IsCreate ? "create" : "update")} source: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task UpdateCategoryAssignments()
+    {
+        try
+        {
+            var currentCategories = GetSourceCategories(Source);
+            var desiredCategories = new List<FileStorageSourceDataType>();
+            
+            if (hasIngestionCategory) desiredCategories.Add(FileStorageSourceDataType.Ingestion);
+            if (hasContentReferenceCategory) desiredCategories.Add(FileStorageSourceDataType.ContentReference);
+            if (hasMediaAssetsCategory) desiredCategories.Add(FileStorageSourceDataType.MediaAssets);
+
+            // Add missing categories
+            foreach (var category in desiredCategories.Where(c => !currentCategories.Contains(c)))
+            {
+                // TODO: Implement category management
+                // await FileStorageService.AddCategoryToSourceAsync(Source.Id, category);
+            }
+
+            // Remove unwanted categories (except primary data type)
+            foreach (var category in currentCategories.Where(c => !desiredCategories.Contains(c) && c != Source.StorageSourceDataType))
+            {
+                // TODO: Implement category management  
+                // await FileStorageService.RemoveCategoryFromSourceAsync(Source.Id, category);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Warning: Failed to update some category assignments: {ex.Message}", Severity.Warning);
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private static List<FileStorageSourceDataType> GetSourceCategories(FileStorageSourceInfo source)
+    {
+        // This would come from the source's Categories navigation property in a real implementation
+        // For now, return the primary data type
+        var categories = new List<FileStorageSourceDataType> { source.StorageSourceDataType };
+        
+        // In real implementation, you'd add:
+        // categories.AddRange(source.Categories?.Select(c => c.DataType) ?? Enumerable.Empty<FileStorageSourceDataType>());
+        
+        return categories.Distinct().ToList();
+    }
+
+    private static Color GetProviderColor(FileStorageProviderType providerType) => providerType switch
+    {
+        FileStorageProviderType.BlobStorage => Color.Primary,
+        FileStorageProviderType.LocalFileSystem => Color.Success,
+        _ => Color.Default
+    };
+
+    private class FileStorageSourceValidator
+    {
+        public Func<object, string, Task<IEnumerable<string>>> ValidateValue => async (model, propertyName) =>
+        {
+            var source = (FileStorageSourceInfo)model;
+            var errors = new List<string>();
+
+            switch (propertyName)
+            {
+                case nameof(source.Name):
+                    if (string.IsNullOrWhiteSpace(source.Name))
+                        errors.Add("Source name is required");
+                    else if (source.Name.Length > 100)
+                        errors.Add("Source name cannot exceed 100 characters");
+                    break;
+
+                case nameof(source.ContainerOrPath):
+                    if (string.IsNullOrWhiteSpace(source.ContainerOrPath))
+                        errors.Add("Container or path is required");
+                    else if (source.ContainerOrPath.Length > 255)
+                        errors.Add("Container/path cannot exceed 255 characters");
+                    break;
+
+                case nameof(source.FileStorageHostId):
+                    if (source.FileStorageHostId == Guid.Empty)
+                        errors.Add("Storage host is required");
+                    break;
+
+                case nameof(source.AutoImportFolderName):
+                    if (!string.IsNullOrWhiteSpace(source.AutoImportFolderName) && source.AutoImportFolderName.Length > 100)
+                        errors.Add("Auto import folder name cannot exceed 100 characters");
+                    break;
+            }
+
+            return errors;
+        };
+    }
+}

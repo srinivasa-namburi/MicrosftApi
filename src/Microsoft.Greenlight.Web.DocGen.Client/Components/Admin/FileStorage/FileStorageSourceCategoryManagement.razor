@@ -1,0 +1,348 @@
+@* File Storage Source Category Management Component *@
+@using Microsoft.Greenlight.Shared.Contracts.DTO.FileStorage
+@using Microsoft.Greenlight.Shared.Contracts.Authorization
+@using Microsoft.Greenlight.Shared.Enums
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@inject IFileStorageSourceApiClient FileStorageService
+@inject IFileStorageHostApiClient FileStorageHostService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<MudStack Spacing="4">
+    <MudText Typo="Typo.h6">Category Management</MudText>
+    <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Filled.Info">
+        <MudText>
+            Assign categories to file storage sources to define their functional roles. 
+            Sources can have multiple categories to participate in different functional areas.
+        </MudText>
+    </MudAlert>
+
+    <!-- Category Overview Cards -->
+    <MudGrid>
+        <MudItem xs="12" md="4">
+            <MudCard Elevation="2" Style="height: 100%;">
+                <MudCardContent>
+                    <MudStack Spacing="2">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.CloudDownload" Color="Color.Success" />
+                            <MudText Typo="Typo.h6" Color="Color.Success">Ingestion Sources</MudText>
+                        </MudStack>
+                        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                            Sources that accept uploaded files for processing and indexing.
+                        </MudText>
+                        <MudText Typo="Typo.h4" Color="Color.Success">
+                            @ingestionSources.Count
+                        </MudText>
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        
+        <MudItem xs="12" md="4">
+            <MudCard Elevation="2" Style="height: 100%;">
+                <MudCardContent>
+                    <MudStack Spacing="2">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.Link" Color="Color.Info" />
+                            <MudText Typo="Typo.h6" Color="Color.Info">Content Reference Sources</MudText>
+                        </MudStack>
+                        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                            Sources that store generated content and assets for reference.
+                        </MudText>
+                        <MudText Typo="Typo.h4" Color="Color.Info">
+                            @contentRefSources.Count
+                        </MudText>
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        
+        <MudItem xs="12" md="4">
+            <MudCard Elevation="2" Style="height: 100%;">
+                <MudCardContent>
+                    <MudStack Spacing="2">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.Image" Color="Color.Warning" />
+                            <MudText Typo="Typo.h6" Color="Color.Warning">Media Asset Sources</MudText>
+                        </MudStack>
+                        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                            Sources that store media files, images, and other assets.
+                        </MudText>
+                        <MudText Typo="Typo.h4" Color="Color.Warning">
+                            @mediaAssetSources.Count
+                        </MudText>
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+
+    <!-- Category Assignment Matrix -->
+    <MudPaper Class="pa-4" Elevation="2">
+        <MudStack Spacing="3">
+            <MudText Typo="Typo.h6">Category Assignments</MudText>
+            
+            <MudDataGrid T="FileStorageSourceCategoryAssignment" 
+                        Items="@categoryAssignments" 
+                        Filterable="true"
+                        SortMode="SortMode.Multiple"
+                        Loading="@loading"
+                        EditMode="DataGridEditMode.Cell"
+                        CommittedItemChanges="@(async (item) => await OnCategoryAssignmentChanged(item))">
+                <Columns>
+                    <PropertyColumn Property="x => x.SourceName" Title="Storage Source" IsEditable="false">
+                        <CellTemplate>
+                            <MudStack Spacing="1">
+                                <MudText>@context.Item.SourceName</MudText>
+                                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                    @context.Item.ContainerOrPath
+                                </MudText>
+                            </MudStack>
+                        </CellTemplate>
+                    </PropertyColumn>
+                    
+                    <PropertyColumn Property="x => x.HostName" Title="Host" IsEditable="false">
+                        <CellTemplate>
+                            <MudChip T="string" Color="@(context.Item.IsDefaultHost ? Color.Primary : Color.Default)" Size="Size.Small">
+                                @context.Item.HostName
+                            </MudChip>
+                        </CellTemplate>
+                    </PropertyColumn>
+                    
+                    <PropertyColumn Property="x => x.HasIngestionCategory" Title="Ingestion">
+                        <CellTemplate>
+                            <PermissionView Permission="@PermissionKeys.AlterSystemConfiguration">
+                                <AuthorizedContent>
+                                    <MudCheckBox @bind-Checked="@context.Item.HasIngestionCategory"
+                                               Disabled="@(!CanToggleIngestionCategory(context.Item))"
+                                               Color="Color.Success"
+                                               OnChanged="@(async (bool value) => await ToggleCategoryAsync(context.Item, FileStorageSourceDataType.Ingestion, value))" />
+                                </AuthorizedContent>
+                                <UnauthorizedContent>
+                                    <MudCheckBox Checked="@context.Item.HasIngestionCategory" Disabled="true" />
+                                </UnauthorizedContent>
+                            </PermissionView>
+                        </CellTemplate>
+                    </PropertyColumn>
+                    
+                    <PropertyColumn Property="x => x.HasContentReferenceCategory" Title="Content Reference">
+                        <CellTemplate>
+                            <PermissionView Permission="@PermissionKeys.AlterSystemConfiguration">
+                                <AuthorizedContent>
+                                    <MudCheckBox @bind-Checked="@context.Item.HasContentReferenceCategory"
+                                               Disabled="@(!CanToggleContentReferenceCategory(context.Item))"
+                                               Color="Color.Info"
+                                               OnChanged="@(async (bool value) => await ToggleCategoryAsync(context.Item, FileStorageSourceDataType.ContentReference, value))" />
+                                </AuthorizedContent>
+                                <UnauthorizedContent>
+                                    <MudCheckBox Checked="@context.Item.HasContentReferenceCategory" Disabled="true" />
+                                </UnauthorizedContent>
+                            </PermissionView>
+                        </CellTemplate>
+                    </PropertyColumn>
+                    
+                    <PropertyColumn Property="x => x.HasMediaAssetsCategory" Title="Media Assets">
+                        <CellTemplate>
+                            <PermissionView Permission="@PermissionKeys.AlterSystemConfiguration">
+                                <AuthorizedContent>
+                                    <MudCheckBox @bind-Checked="@context.Item.HasMediaAssetsCategory"
+                                               Color="Color.Warning"
+                                               OnChanged="@(async (bool value) => await ToggleCategoryAsync(context.Item, FileStorageSourceDataType.MediaAssets, value))" />
+                                </AuthorizedContent>
+                                <UnauthorizedContent>
+                                    <MudCheckBox Checked="@context.Item.HasMediaAssetsCategory" Disabled="true" />
+                                </UnauthorizedContent>
+                            </PermissionView>
+                        </CellTemplate>
+                    </PropertyColumn>
+                    
+                    <PropertyColumn Property="x => x.IsActive" Title="Active" IsEditable="false">
+                        <CellTemplate>
+                            @if (context.Item.IsActive)
+                            {
+                                <MudChip T="string" Color="Color.Success" Size="Size.Small">Active</MudChip>
+                            }
+                            else
+                            {
+                                <MudChip T="string" Color="Color.Error" Size="Size.Small">Inactive</MudChip>
+                            }
+                        </CellTemplate>
+                    </PropertyColumn>
+                </Columns>
+            </MudDataGrid>
+        </MudStack>
+    </MudPaper>
+
+    @if (loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+</MudStack>
+
+@code {
+    private List<FileStorageSourceCategoryAssignment> categoryAssignments = new();
+    private List<FileStorageSourceInfo> sources = new();
+    private List<FileStorageHostInfo> hosts = new();
+    private bool loading = true;
+
+    private List<FileStorageSourceInfo> ingestionSources => sources.Where(s => 
+        s.StorageSourceDataType == FileStorageSourceDataType.Ingestion || 
+        GetSourceCategories(s).Contains(FileStorageSourceDataType.Ingestion)).ToList();
+
+    private List<FileStorageSourceInfo> contentRefSources => sources.Where(s => 
+        s.StorageSourceDataType == FileStorageSourceDataType.ContentReference || 
+        GetSourceCategories(s).Contains(FileStorageSourceDataType.ContentReference)).ToList();
+
+    private List<FileStorageSourceInfo> mediaAssetSources => sources.Where(s => 
+        s.StorageSourceDataType == FileStorageSourceDataType.MediaAssets || 
+        GetSourceCategories(s).Contains(FileStorageSourceDataType.MediaAssets)).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        loading = true;
+        try
+        {
+            var sourceTask = FileStorageService.GetAllFileStorageSourcesAsync();
+            var hostTask = FileStorageHostService.GetAllFileStorageHostsAsync();
+
+            await Task.WhenAll(sourceTask, hostTask);
+            
+            sources = (await sourceTask).ToList();
+            hosts = (await hostTask).ToList();
+            
+            BuildCategoryAssignments();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void BuildCategoryAssignments()
+    {
+        categoryAssignments = sources.Select(source => 
+        {
+            var host = hosts.FirstOrDefault(h => h.Id == source.FileStorageHostId);
+            var categories = GetSourceCategories(source);
+            
+            return new FileStorageSourceCategoryAssignment
+            {
+                SourceId = source.Id,
+                SourceName = source.Name,
+                ContainerOrPath = source.ContainerOrPath,
+                HostName = host?.Name ?? "Unknown",
+                IsDefaultHost = host?.IsDefault ?? false,
+                IsActive = source.IsActive,
+                HasIngestionCategory = categories.Contains(FileStorageSourceDataType.Ingestion),
+                HasContentReferenceCategory = categories.Contains(FileStorageSourceDataType.ContentReference),
+                HasMediaAssetsCategory = categories.Contains(FileStorageSourceDataType.MediaAssets)
+            };
+        }).ToList();
+    }
+
+    private async Task ToggleCategoryAsync(FileStorageSourceCategoryAssignment assignment, FileStorageSourceDataType dataType, bool enable)
+    {
+        try
+        {
+            // TODO: Implement category management API endpoints
+            Snackbar.Add($"Category management not yet implemented", Severity.Warning);
+            await Task.CompletedTask;
+            
+            // if (enable)
+            // {
+            //     await FileStorageService.AddCategoryToSourceAsync(assignment.SourceId, dataType);
+            //     Snackbar.Add($"Added {GetDataTypeDisplayName(dataType)} category to {assignment.SourceName}", Severity.Success);
+            // }
+            // else
+            // {
+            //     await FileStorageService.RemoveCategoryFromSourceAsync(assignment.SourceId, dataType);
+            //     Snackbar.Add($"Removed {GetDataTypeDisplayName(dataType)} category from {assignment.SourceName}", Severity.Success);
+            // }
+            
+            // await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to update category: {ex.Message}", Severity.Error);
+            await LoadData(); // Reload to reset UI state
+        }
+    }
+
+    private bool CanToggleIngestionCategory(FileStorageSourceCategoryAssignment assignment)
+    {
+        if (!assignment.IsDefaultHost) return true;
+        
+        // Don't allow removing ingestion from the last ingestion source on default host
+        if (assignment.HasIngestionCategory)
+        {
+            var defaultHostIngestionCount = categoryAssignments.Count(a => 
+                a.IsDefaultHost && a.IsActive && a.HasIngestionCategory);
+            return defaultHostIngestionCount > 1;
+        }
+        
+        return true;
+    }
+
+    private bool CanToggleContentReferenceCategory(FileStorageSourceCategoryAssignment assignment)
+    {
+        if (!assignment.IsDefaultHost) return true;
+        
+        // Don't allow removing content reference from the last content reference source on default host
+        if (assignment.HasContentReferenceCategory)
+        {
+            var defaultHostContentRefCount = categoryAssignments.Count(a => 
+                a.IsDefaultHost && a.IsActive && a.HasContentReferenceCategory);
+            return defaultHostContentRefCount > 1;
+        }
+        
+        return true;
+    }
+
+    private async Task OnCategoryAssignmentChanged(FileStorageSourceCategoryAssignment changedItem)
+    {
+        // Handle any other cell-level changes if needed
+        await Task.CompletedTask;
+    }
+
+    private static List<FileStorageSourceDataType> GetSourceCategories(FileStorageSourceInfo source)
+    {
+        // This would come from the source's Categories navigation property in a real implementation
+        // For now, return the primary data type
+        var categories = new List<FileStorageSourceDataType> { source.StorageSourceDataType };
+        
+        // In real implementation, you'd add:
+        // categories.AddRange(source.Categories?.Select(c => c.DataType) ?? Enumerable.Empty<FileStorageSourceDataType>());
+        
+        return categories.Distinct().ToList();
+    }
+
+    private static string GetDataTypeDisplayName(FileStorageSourceDataType dataType) => dataType switch
+    {
+        FileStorageSourceDataType.Ingestion => "Ingestion",
+        FileStorageSourceDataType.ContentReference => "Content Reference",
+        FileStorageSourceDataType.MediaAssets => "Media Assets",
+        _ => dataType.ToString()
+    };
+
+    private class FileStorageSourceCategoryAssignment
+    {
+        public Guid SourceId { get; set; }
+        public string SourceName { get; set; } = string.Empty;
+        public string ContainerOrPath { get; set; } = string.Empty;
+        public string HostName { get; set; } = string.Empty;
+        public bool IsDefaultHost { get; set; }
+        public bool IsActive { get; set; }
+        public bool HasIngestionCategory { get; set; }
+        public bool HasContentReferenceCategory { get; set; }
+        public bool HasMediaAssetsCategory { get; set; }
+    }
+}

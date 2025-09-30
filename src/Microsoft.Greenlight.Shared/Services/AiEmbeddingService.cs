@@ -17,7 +17,7 @@ namespace Microsoft.Greenlight.Shared.Services;
 /// </summary>
 public class AiEmbeddingService : IAiEmbeddingService
 {
-    private readonly AzureOpenAIClient _openAIClient;
+    private readonly AzureOpenAIClient? _openAIClient;
     private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
     private readonly ILogger<AiEmbeddingService> _logger;
     private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
@@ -29,7 +29,7 @@ public class AiEmbeddingService : IAiEmbeddingService
     /// </summary>
     public AiEmbeddingService(
         [FromKeyedServices("openai-planner")] 
-        AzureOpenAIClient openAIClient,
+        AzureOpenAIClient? openAIClient,
         IOptionsSnapshot<ServiceConfigurationOptions> serviceConfigurationOptions,
         IDbContextFactory<DocGenerationDbContext> dbContextFactory,
         ILogger<AiEmbeddingService> logger)
@@ -65,6 +65,12 @@ public class AiEmbeddingService : IAiEmbeddingService
 
     private async Task<float[]> GenerateEmbeddingsSafeAsync(string text, string deploymentName, int? dimensions)
     {
+        if (_openAIClient == null)
+        {
+            _logger.LogWarning("OpenAI client not configured - cannot generate embeddings. Returning empty array.");
+            return Array.Empty<float>();
+        }
+
         var prep = PrepareEmbeddingOptions(deploymentName, dimensions);
 
         try
@@ -146,6 +152,14 @@ public class AiEmbeddingService : IAiEmbeddingService
     /// <inheritdoc />
     public async Task<float[]> GenerateEmbeddingsForDocumentProcessAsync(string documentProcessShortName, string text)
     {
+        // Short circuit for system indices - use safe defaults to avoid database lookups
+        if (documentProcessShortName.StartsWith("system-", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogDebug("Using safe defaults for system index '{SystemIndex}' - bypassing database lookup", documentProcessShortName);
+            // Use global embedding deployment with default dimensions (1536 for text-embedding-ada-002)
+            return await GenerateEmbeddingsAsync(text);
+        }
+
         await using var db = await _dbContextFactory.CreateDbContextAsync();
         var dp = await db.DynamicDocumentProcessDefinitions.AsNoTracking()
             .FirstOrDefaultAsync(p => p.ShortName == documentProcessShortName);
@@ -188,6 +202,14 @@ public class AiEmbeddingService : IAiEmbeddingService
     /// <inheritdoc />
     public async Task<float[]> GenerateEmbeddingsForDocumentLibraryAsync(string documentLibraryShortName, string text)
     {
+        // Short circuit for system indices - use safe defaults to avoid database lookups
+        if (documentLibraryShortName.StartsWith("system-", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogDebug("Using safe defaults for system index '{SystemIndex}' - bypassing database lookup", documentLibraryShortName);
+            // Use global embedding deployment with default dimensions (1536 for text-embedding-ada-002)
+            return await GenerateEmbeddingsAsync(text);
+        }
+
         await using var db = await _dbContextFactory.CreateDbContextAsync();
         var lib = await db.DocumentLibraries.AsNoTracking()
             .FirstOrDefaultAsync(l => l.ShortName == documentLibraryShortName);
@@ -252,6 +274,17 @@ public class AiEmbeddingService : IAiEmbeddingService
     /// </summary>
     public async Task<(string DeploymentName, int Dimensions)> ResolveEmbeddingConfigForDocumentProcessAsync(string documentProcessShortName)
     {
+        // Short circuit for system indices - use safe defaults to avoid database lookups
+        if (documentProcessShortName.StartsWith("system-", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogDebug("Using safe defaults for system index '{SystemIndex}' - bypassing database lookup", documentProcessShortName);
+            var defaultDims = _serviceConfigurationOptions.GreenlightServices.VectorStore.VectorSize > 0
+                ? _serviceConfigurationOptions.GreenlightServices.VectorStore.VectorSize
+                : 1536;
+            var defaultDeployment = _serviceConfigurationOptions.OpenAi.EmbeddingModelDeploymentName;
+            return (defaultDeployment, defaultDims);
+        }
+
         await using var db = await _dbContextFactory.CreateDbContextAsync();
         var dp = await db.DynamicDocumentProcessDefinitions.AsNoTracking().FirstOrDefaultAsync(p => p.ShortName == documentProcessShortName);
 
@@ -310,12 +343,20 @@ public class AiEmbeddingService : IAiEmbeddingService
     /// </summary>
     public async Task<(string DeploymentName, int Dimensions)> ResolveEmbeddingConfigForDocumentLibraryAsync(string documentLibraryShortName)
     {
-        await using var db = await _dbContextFactory.CreateDbContextAsync();
-        var lib = await db.DocumentLibraries.AsNoTracking().FirstOrDefaultAsync(l => l.ShortName == documentLibraryShortName);
         var defaultDims = _serviceConfigurationOptions.GreenlightServices.VectorStore.VectorSize > 0
             ? _serviceConfigurationOptions.GreenlightServices.VectorStore.VectorSize
             : 1536;
         var defaultDeployment = _serviceConfigurationOptions.OpenAi.EmbeddingModelDeploymentName;
+
+        // Short circuit for system indices - use safe defaults to avoid database lookups
+        if (documentLibraryShortName.StartsWith("system-", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogDebug("Using safe defaults for system index '{SystemIndex}' - bypassing database lookup", documentLibraryShortName);
+            return (defaultDeployment, defaultDims);
+        }
+
+        await using var db = await _dbContextFactory.CreateDbContextAsync();
+        var lib = await db.DocumentLibraries.AsNoTracking().FirstOrDefaultAsync(l => l.ShortName == documentLibraryShortName);
 
         if (lib == null)
         {

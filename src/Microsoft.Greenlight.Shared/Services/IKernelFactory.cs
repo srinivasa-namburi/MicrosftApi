@@ -83,5 +83,18 @@ namespace Microsoft.Greenlight.Shared.Services
         /// </summary>
         /// <returns></returns>
         Task<Kernel> GetDefaultGenericKernelAsync();
+
+        /// <summary>
+        /// Gets a Semantic Kernel instance specifically configured for Flow orchestration with appropriate plugins and settings.
+        /// </summary>
+        /// <param name="providerSubjectId">Optional user ProviderSubjectId to inject into Kernel.Data for user context.</param>
+        /// <returns>A kernel configured for Flow conversational capabilities.</returns>
+        Task<Kernel> GetFlowKernelAsync(string? providerSubjectId = null);
+
+        /// <summary>
+        /// Gets prompt execution settings optimized for Flow conversational responses.
+        /// </summary>
+        /// <returns>Execution settings for Flow kernel usage.</returns>
+        Task<AzureOpenAIPromptExecutionSettings> GetFlowPromptExecutionSettingsAsync();
     }
 }

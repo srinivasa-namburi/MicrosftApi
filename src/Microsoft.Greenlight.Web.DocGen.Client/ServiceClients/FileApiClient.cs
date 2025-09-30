@@ -122,4 +122,15 @@ public class FileApiClient : WebAssemblyBaseServiceClient<FileApiClient>, IFileA
         var url = $"/api/file/upload/document-library/{encodedLibraryName}/{encodedFileName}";
         return await UploadFileAsync(url, file);
     }
+
+    public async Task<string> ResolveFileAcknowledgmentUrlAsync(Guid acknowledgmentId)
+    {
+        var url = $"/api/file/resolve-url/acknowledgment/{acknowledgmentId}";
+        
+        var response = await SendGetRequestMessage(url);
+        response?.EnsureSuccessStatusCode();
+        
+        var result = await response!.Content.ReadFromJsonAsync<dynamic>();
+        return result?.url?.ToString() ?? throw new InvalidOperationException("No URL returned from resolve endpoint");
+    }
 }

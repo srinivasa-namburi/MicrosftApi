@@ -49,7 +49,7 @@ public class DocumentFileCopyGrain : Grain, IDocumentFileCopyGrain
     /// <returns>A <see cref="FileCopyResult"/> indicating success or failure.</returns>
     public async Task<FileCopyResult> CopyFileAsync(Guid documentId)
     {
-        _logger.LogInformation("[CopyFileAsync] Invoked for documentId={DocumentId}", documentId);
+        _logger.LogDebug("[CopyFileAsync] Invoked for documentId={DocumentId}", documentId);
 
         // Look up entity once to determine source and target
         IngestedDocument? entityToCopy;
@@ -90,7 +90,7 @@ public class DocumentFileCopyGrain : Grain, IDocumentFileCopyGrain
                 entity.IngestionState = IngestionState.FileCopied;
                 entity.ModifiedUtc = DateTime.UtcNow;
                 await db.SaveChangesAsync();
-                _logger.LogInformation("[CopyFileAsync] DiscoveredForConsumer fast-path: set FileCopied for {DocumentId}", documentId);
+                _logger.LogDebug("[CopyFileAsync] DiscoveredForConsumer fast-path: set FileCopied for {DocumentId}", documentId);
                 return FileCopyResult.Ok();
             }
             catch (Exception ex)
@@ -143,7 +143,7 @@ public class DocumentFileCopyGrain : Grain, IDocumentFileCopyGrain
             var uniqueSubfolder = documentId.ToString("N");
             var targetPath = $"{ingestPath}/{todayString}/{uniqueSubfolder}/{entityToCopy.FileName}";
 
-            _logger.LogInformation("Attempting to copy file from {SourcePath} to {TargetPath} using {ServiceType}", 
+            _logger.LogDebug("Attempting to copy file from {SourcePath} to {TargetPath} using {ServiceType}",
                 sourcePath, targetPath, fileStorageService.GetType().Name);
 
             // Check if source file exists
@@ -155,7 +155,7 @@ public class DocumentFileCopyGrain : Grain, IDocumentFileCopyGrain
                 // If FinalBlobUrl is already set, assume previous copy completed successfully
                 if (!string.IsNullOrWhiteSpace(entityToCopy.FinalBlobUrl))
                 {
-                    _logger.LogInformation("FinalBlobUrl already set for {DocumentId}, assuming previous copy completed.", documentId);
+                    _logger.LogDebug("FinalBlobUrl already set for {DocumentId}, assuming previous copy completed.", documentId);
                     return FileCopyResult.Ok();
                 }
 
@@ -172,7 +172,7 @@ public class DocumentFileCopyGrain : Grain, IDocumentFileCopyGrain
                         healEntity.IngestionState = IngestionState.FileCopied;
                         healEntity.ModifiedUtc = DateTime.UtcNow;
                         await dbHeal.SaveChangesAsync();
-                        _logger.LogInformation("Healed DB state to FileCopied for {DocumentId} using existing target.", documentId);
+                        _logger.LogDebug("Healed DB state to FileCopied for {DocumentId} using existing target.", documentId);
                         return FileCopyResult.Ok();
                     }
                 }
@@ -197,7 +197,7 @@ public class DocumentFileCopyGrain : Grain, IDocumentFileCopyGrain
                         entityToUpdate.IngestionState = IngestionState.FileCopied;
                         entityToUpdate.ModifiedUtc = DateTime.UtcNow;
                         await db.SaveChangesAsync();
-                        _logger.LogInformation("Updated IngestedDocument {Id} with existing target URL: {Url}", documentId, targetUrl);
+                        _logger.LogDebug("Updated IngestedDocument {Id} with existing target URL: {Url}", documentId, targetUrl);
                     }
                 }
 
@@ -205,7 +205,7 @@ public class DocumentFileCopyGrain : Grain, IDocumentFileCopyGrain
                 try
                 {
                     await fileStorageService.AcknowledgeFileAsync(sourcePath, targetPath);
-                    _logger.LogInformation("Acknowledged source file {SourcePath} after finding existing target.", sourcePath);
+                    _logger.LogDebug("Acknowledged source file {SourcePath} after finding existing target.", sourcePath);
                 }
                 catch (Exception ackEx)
                 {
@@ -246,7 +246,7 @@ public class DocumentFileCopyGrain : Grain, IDocumentFileCopyGrain
                 entityToUpdate.IngestionState = IngestionState.FileCopied;
                 entityToUpdate.ModifiedUtc = DateTime.UtcNow;
                 await db.SaveChangesAsync();
-                _logger.LogInformation("Updated IngestedDocument {Id} with FinalBlobUrl and FileCopied state. New URL: {NewUrl}",
+                _logger.LogDebug("Updated IngestedDocument {Id} with FinalBlobUrl and FileCopied state. New URL: {NewUrl}",
                     documentId, entityToUpdate.FinalBlobUrl);
             }
 

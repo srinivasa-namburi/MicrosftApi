@@ -19,8 +19,7 @@ public class FileStorageServiceFactory : IFileStorageServiceFactory
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<FileStorageServiceFactory> _logger;
     private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
-    private readonly IDocumentProcessInfoService _documentProcessInfoService;
-    private readonly IDocumentLibraryInfoService _documentLibraryInfoService;
+    private readonly IServiceScopeFactory _serviceScopeFactory;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="FileStorageServiceFactory"/> class.
@@ -28,20 +27,17 @@ public class FileStorageServiceFactory : IFileStorageServiceFactory
     /// <param name="serviceProvider">Service provider for dependency injection.</param>
     /// <param name="logger">Logger instance.</param>
     /// <param name="dbContextFactory">Database context factory.</param>
-    /// <param name="documentProcessInfoService">Document process info service.</param>
-    /// <param name="documentLibraryInfoService">Document library info service.</param>
+    /// <param name="serviceScopeFactory">Service scope factory for resolving scoped services per method call.</param>
     public FileStorageServiceFactory(
         IServiceProvider serviceProvider,
         ILogger<FileStorageServiceFactory> logger,
         IDbContextFactory<DocGenerationDbContext> dbContextFactory,
-        IDocumentProcessInfoService documentProcessInfoService,
-        IDocumentLibraryInfoService documentLibraryInfoService)
+        IServiceScopeFactory serviceScopeFactory)
     {
         _serviceProvider = serviceProvider;
         _logger = logger;
         _dbContextFactory = dbContextFactory;
-        _documentProcessInfoService = documentProcessInfoService;
-        _documentLibraryInfoService = documentLibraryInfoService;
+        _serviceScopeFactory = serviceScopeFactory;
     }
 
     /// <summary>
@@ -118,7 +114,9 @@ public class FileStorageServiceFactory : IFileStorageServiceFactory
             if (isDocumentLibrary)
             {
                 // Get document library and its associated file storage sources
-                var library = await _documentLibraryInfoService.GetDocumentLibraryByShortNameAsync(documentProcessOrLibraryName);
+                using var scope = _serviceScopeFactory.CreateScope();
+                var documentLibraryInfoService = scope.ServiceProvider.GetRequiredService<IDocumentLibraryInfoService>();
+                var library = await documentLibraryInfoService.GetDocumentLibraryByShortNameAsync(documentProcessOrLibraryName);
                 if (library == null)
                 {
                     _logger.LogWarning("Document library {LibraryName} not found", documentProcessOrLibraryName);
@@ -163,7 +161,9 @@ public class FileStorageServiceFactory : IFileStorageServiceFactory
             else
             {
                 // Get document process and its associated file storage sources
-                var process = await _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentProcessOrLibraryName);
+                using var scope = _serviceScopeFactory.CreateScope();
+                var documentProcessInfoService = scope.ServiceProvider.GetRequiredService<IDocumentProcessInfoService>();
+                var process = await documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentProcessOrLibraryName);
                 if (process == null)
                 {
                     _logger.LogWarning("Document process {ProcessName} not found", documentProcessOrLibraryName);
@@ -212,7 +212,8 @@ public class FileStorageServiceFactory : IFileStorageServiceFactory
                 _logger.LogInformation("No file storage sources configured for {Type} {Name}, using backward compatibility mode", 
                     isDocumentLibrary ? "library" : "process", documentProcessOrLibraryName);
                 
-                return new[] { CreateBackwardCompatibilityService(documentProcessOrLibraryName, isDocumentLibrary) };
+                var backwardCompatibilityService = await CreateBackwardCompatibilityServiceAsync(documentProcessOrLibraryName, isDocumentLibrary);
+                return new[] { backwardCompatibilityService };
             }
 
             return sources.Select(CreateService).ToList();
@@ -269,21 +270,24 @@ public class FileStorageServiceFactory : IFileStorageServiceFactory
     /// <param name="documentProcessOrLibraryName">Name of the document process or library.</param>
     /// <param name="isDocumentLibrary">True for document library, false for document process.</param>
     /// <returns>Backward compatibility service instance.</returns>
-    private IFileStorageService CreateBackwardCompatibilityService(string documentProcessOrLibraryName, bool isDocumentLibrary)
+    private async Task<IFileStorageService> CreateBackwardCompatibilityServiceAsync(string documentProcessOrLibraryName, bool isDocumentLibrary)
     {
         // Get the blob storage container name from the existing configuration
         string containerName;
         string autoImportFolder;
 
+        using var scope = _serviceScopeFactory.CreateScope();
         if (isDocumentLibrary)
         {
-            var library = _documentLibraryInfoService.GetDocumentLibraryByShortNameAsync(documentProcessOrLibraryName).Result;
+            var documentLibraryInfoService = scope.ServiceProvider.GetRequiredService<IDocumentLibraryInfoService>();
+            var library = await documentLibraryInfoService.GetDocumentLibraryByShortNameAsync(documentProcessOrLibraryName);
             containerName = library?.BlobStorageContainerName ?? "default-container";
             autoImportFolder = library?.BlobStorageAutoImportFolderName ?? "ingest-auto";
         }
         else
         {
-            var process = _documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentProcessOrLibraryName).Result;
+            var documentProcessInfoService = scope.ServiceProvider.GetRequiredService<IDocumentProcessInfoService>();
+            var process = await documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentProcessOrLibraryName);
             containerName = process?.BlobStorageContainerName ?? "default-container";
             autoImportFolder = process?.BlobStorageAutoImportFolderName ?? "ingest-auto";
         }

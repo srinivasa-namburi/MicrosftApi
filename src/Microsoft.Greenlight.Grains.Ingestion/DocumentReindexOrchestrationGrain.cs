@@ -46,6 +46,10 @@ public class DocumentReindexOrchestrationGrain : Grain, IDocumentReindexOrchestr
     // In-memory activity guard to prevent overlapping runs per grain key
     private volatile bool _isActive = false;
 
+    // Child activity timeout tracking
+    private DateTime? _lastChildActivityTimestamp = null;
+    private const int ChildActivityTimeoutMinutes = 10;
+
     public DocumentReindexOrchestrationGrain(
         [PersistentState("docReindexOrchestration")]
         IPersistentState<DocumentReindexState> state,
@@ -112,6 +116,20 @@ public class DocumentReindexOrchestrationGrain : Grain, IDocumentReindexOrchestr
     /// </summary>
     public Task<bool> IsRunningAsync()
     {
+        if (!_isActive) return Task.FromResult(false);
+
+        // Auto-reset if no child activity for 10+ minutes
+        if (_lastChildActivityTimestamp.HasValue &&
+            DateTime.UtcNow - _lastChildActivityTimestamp.Value > TimeSpan.FromMinutes(ChildActivityTimeoutMinutes))
+        {
+            _logger.LogWarning("Auto-resetting reindex orchestration {OrchestrationId} - no child activity for {Minutes} minutes",
+                this.GetPrimaryKeyString(), ChildActivityTimeoutMinutes);
+            _isActive = false;
+            _processedCount = 0;
+            _failedCount = 0;
+            _lastChildActivityTimestamp = null;
+        }
+
         return Task.FromResult(_isActive);
     }
 
@@ -128,6 +146,16 @@ public class DocumentReindexOrchestrationGrain : Grain, IDocumentReindexOrchestr
             _logger.LogWarning(ex, "Error requesting deactivation for reindex orchestration {OrchestrationId}", this.GetPrimaryKeyString());
         }
         await Task.CompletedTask;
+    }
+
+    public async Task ForceResetAsync()
+    {
+        _logger.LogWarning("Force-resetting reindex orchestration {OrchestrationId} - clearing stuck state", this.GetPrimaryKeyString());
+        _isActive = false;
+        _processedCount = 0;
+        _failedCount = 0;
+        _lastChildActivityTimestamp = null;
+        await Task.Yield(); // Make it truly async
     }
 
     public async Task StartReindexingAsync(
@@ -190,6 +218,7 @@ public class DocumentReindexOrchestrationGrain : Grain, IDocumentReindexOrchestr
 
             // Mark this activation as active only after state init
             _isActive = true;
+            _lastChildActivityTimestamp = DateTime.UtcNow;
         }
         finally
         {
@@ -457,6 +486,9 @@ public class DocumentReindexOrchestrationGrain : Grain, IDocumentReindexOrchestr
 
     public async Task OnReindexCompletedAsync(Guid documentId)
     {
+        // Update activity timestamp
+        _lastChildActivityTimestamp = DateTime.UtcNow;
+
         var newProcessedCount = Interlocked.Increment(ref _processedCount);
         await UpdateDocumentProgressAsync(documentId, true, null);
         await UpdateProgressAndCheckCompletionAsync(newProcessedCount, _failedCount, null);
@@ -464,6 +496,9 @@ public class DocumentReindexOrchestrationGrain : Grain, IDocumentReindexOrchestr
 
     public async Task OnReindexFailedAsync(Guid documentId, string errorMessage, bool acquired)
     {
+        // Update activity timestamp
+        _lastChildActivityTimestamp = DateTime.UtcNow;
+
         var newFailedCount = Interlocked.Increment(ref _failedCount);
         await UpdateDocumentProgressAsync(documentId, false, errorMessage);
         await UpdateProgressAndCheckCompletionAsync(_processedCount, newFailedCount, errorMessage);
@@ -472,12 +507,18 @@ public class DocumentReindexOrchestrationGrain : Grain, IDocumentReindexOrchestr
     // Legacy methods for backward compatibility
     public async Task OnReindexCompletedAsync()
     {
+        // Update activity timestamp
+        _lastChildActivityTimestamp = DateTime.UtcNow;
+
         var newProcessedCount = Interlocked.Increment(ref _processedCount);
         await UpdateProgressAndCheckCompletionAsync(newProcessedCount, _failedCount, null);
     }
 
     public async Task OnReindexFailedAsync(string errorMessage, bool acquired)
     {
+        // Update activity timestamp
+        _lastChildActivityTimestamp = DateTime.UtcNow;
+
         var newFailedCount = Interlocked.Increment(ref _failedCount);
         await UpdateProgressAndCheckCompletionAsync(_processedCount, newFailedCount, errorMessage);
     }

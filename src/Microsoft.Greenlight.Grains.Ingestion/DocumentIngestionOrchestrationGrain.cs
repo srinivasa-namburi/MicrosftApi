@@ -40,6 +40,9 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
     private Guid? _currentRunId = null;
     // In-memory activity flag for this orchestration activation
     private volatile bool _isActive = false;
+    // Last child activity timestamp for timeout detection
+    private DateTime? _lastChildActivityTimestamp = null;
+    private const int ChildActivityTimeoutMinutes = 10;
 
     public DocumentIngestionOrchestrationGrain(
         [PersistentState("docIngestOrchestration")]
@@ -79,6 +82,19 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
 
     public Task<bool> IsRunningAsync()
     {
+        if (!_isActive) return Task.FromResult(false);
+
+        // Auto-reset if no child activity for 10+ minutes
+        if (_lastChildActivityTimestamp.HasValue &&
+            DateTime.UtcNow - _lastChildActivityTimestamp.Value > TimeSpan.FromMinutes(ChildActivityTimeoutMinutes))
+        {
+            _logger.LogWarning("Auto-resetting ingestion orchestration {OrchestrationId} - no child activity for {Minutes} minutes",
+                this.GetPrimaryKeyString(), ChildActivityTimeoutMinutes);
+            _isActive = false;
+            _activeChildCount = 0; // Reset child counter too
+            _lastChildActivityTimestamp = null;
+        }
+
         // Only rely on the in-memory flag for the active orchestration in this activation
         return Task.FromResult(_isActive);
     }
@@ -98,6 +114,16 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
         await Task.CompletedTask;
     }
 
+    public async Task ForceResetAsync()
+    {
+        _logger.LogWarning("Force-resetting ingestion orchestration {OrchestrationId} - clearing stuck state", this.GetPrimaryKeyString());
+        _isActive = false;
+        _activeChildCount = 0;
+        _lastChildActivityTimestamp = null;
+        _currentRunId = null;
+        await Task.Yield(); // Make it truly async
+    }
+
     public async Task StartIngestionAsync(
         Guid fileStorageSourceId,
         List<(string shortName, Guid id, DocumentLibraryType type, bool isDocumentLibrary)> dlDpList,
@@ -112,6 +138,7 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
 
         // Mark orchestration as active for this activation as we are starting now
         _isActive = true;
+        _lastChildActivityTimestamp = DateTime.UtcNow;
 
         // Generate a new RunId for this ingestion run
         _currentRunId = Guid.NewGuid();
@@ -192,7 +219,7 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
                     fileAcknowledgmentIds[relativePath] = acknowledgmentId;
                     hasAnyNewOrChangedFiles = true;
                     
-                    _logger.LogInformation("Registered discovery for new/changed file {RelativePath} with hash {Hash}", 
+                    _logger.LogDebug("Registered discovery for new/changed file {RelativePath} with hash {Hash}",
                         relativePath, fileHash);
                 }
                 else
@@ -235,6 +262,7 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
                         {
                             Id = Guid.NewGuid(),
                             FileName = System.IO.Path.GetFileName(relativePath),
+                            DisplayFileName = System.IO.Path.GetFileName(relativePath),
                             Container = $"FileStorageSource:{fileStorageSourceId}",
                             FolderPath = folderPath,
                             OrchestrationId = orchestrationId,
@@ -321,6 +349,7 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
                             {
                                 Id = Guid.NewGuid(),
                                 FileName = fileName,
+                                DisplayFileName = fileName,
                                 Container = $"FileStorageSource:{fileStorageSourceId}",
                                 FolderPath = folderPath,
                                 OrchestrationId = orchestrationId,
@@ -348,7 +377,7 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
 
                             newFiles++;
                             
-                            _logger.LogInformation("Created IngestedDocument for acknowledged file {FileName} for DL/DP {ShortName} that was missing it",
+                            _logger.LogDebug("Created IngestedDocument for acknowledged file {FileName} for DL/DP {ShortName} that was missing it",
                                 fileName, shortName);
                         }
                     }
@@ -496,6 +525,7 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
 
         // Mark orchestration as active for this activation as we are starting now
         _isActive = true;
+        _lastChildActivityTimestamp = DateTime.UtcNow;
 
         // Generate a new RunId for this ingestion run
         _currentRunId = Guid.NewGuid();
@@ -683,7 +713,7 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
 
                 if (existingDoc == null)
                 {
-                    _logger.LogInformation("New file discovered: Container={Container}, FolderPath={FolderPath}, FileName={RelativeFileName}",
+                    _logger.LogDebug("New file discovered: Container={Container}, FolderPath={FolderPath}, FileName={RelativeFileName}",
                         _state.State.TargetContainerName, folderPath, relativeFileName);
                     
                     // Create IngestedDocument for this specific DP/DL
@@ -730,7 +760,7 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
                             };
                             db.IngestedDocumentFileAcknowledgments.Add(acknowledgmentLink);
                             
-                            _logger.LogInformation("Registered discovery for blob {RelativePath} with hash {Hash}", 
+                            _logger.LogDebug("Registered discovery for blob {RelativePath} with hash {Hash}",
                                 relativePath, currentHash);
                         }
                         else
@@ -752,7 +782,7 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
                     {
                         case IngestionState.Failed:
                             {
-                                _logger.LogInformation("Resetting failed document for re-ingestion: {ExistingDocFileName} in folder {ExistingDocFolderPath}", existingDoc.FileName, existingDoc.FolderPath);
+                                _logger.LogDebug("Resetting failed document for re-ingestion: {ExistingDocFileName} in folder {ExistingDocFolderPath}", existingDoc.FileName, existingDoc.FolderPath);
                                 existingDoc.IngestionState = IngestionState.Discovered;
                                 existingDoc.IngestedDate = DateTime.UtcNow;
                                 existingDoc.OriginalDocumentUrl = fullBlobUrl;
@@ -817,7 +847,7 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
                                                 existingDoc.IsVectorStoreIndexed = true;
                                                 existingDoc.VectorStoreIndexedDate = existingDoc.VectorStoreIndexedDate ?? DateTime.UtcNow;
                                                 await db.SaveChangesAsync();
-                                                _logger.LogInformation("Healed document {File} to canonical vector id in index {Index}", existingDoc.FileName, indexName);
+                                                _logger.LogDebug("Healed document {File} to canonical vector id in index {Index}", existingDoc.FileName, indexName);
                                             }
                                         }
                                         else
@@ -846,7 +876,7 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
 
                                                 scheduledForReindex = true;
                                                 resetFiles++;
-                                                _logger.LogInformation("Scheduled document {File} for id migration to canonical id in index {Index}", existingDoc.FileName, indexName);
+                                                _logger.LogDebug("Scheduled document {File} for id migration to canonical id in index {Index}", existingDoc.FileName, indexName);
                                             }
                                             else
                                             {
@@ -864,7 +894,7 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
 
                                                 scheduledForReindex = true;
                                                 resetFiles++;
-                                                _logger.LogInformation("Scheduled document {File} for re-indexing (missing from vector store index {Index})", existingDoc.FileName, indexName);
+                                                _logger.LogDebug("Scheduled document {File} for re-indexing (missing from vector store index {Index})", existingDoc.FileName, indexName);
                                             }
                                         }
                                     }
@@ -975,6 +1005,9 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
 
     public async Task OnIngestionCompletedAsync()
     {
+        // Update activity timestamp
+        _lastChildActivityTimestamp = DateTime.UtcNow;
+
         // Recalculate processed/failed/total from DB
         await using (var db = await _dbContextFactory.CreateDbContextAsync())
         {
@@ -1012,6 +1045,9 @@ public class DocumentIngestionOrchestrationGrain : Grain, IDocumentIngestionOrch
 
     public async Task OnIngestionFailedAsync(string reason, bool acquired)
     {
+        // Update activity timestamp
+        _lastChildActivityTimestamp = DateTime.UtcNow;
+
         // Recalculate processed/failed/total from DB
         await using (var db = await _dbContextFactory.CreateDbContextAsync())
         {

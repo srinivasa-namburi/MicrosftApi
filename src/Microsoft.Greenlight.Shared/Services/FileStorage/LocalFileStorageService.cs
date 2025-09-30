@@ -181,7 +181,8 @@ public class LocalFileStorageService : IFileStorageService
                     RelativeFilePath = relativePath,
                     FileStorageSourceInternalUrl = fullPath,
                     FileHash = fileHash,
-                    AcknowledgedDate = DateTime.UtcNow
+                    AcknowledgedDate = DateTime.UtcNow,
+                    DisplayFileName = Path.GetFileName(relativePath)
                 };
                 db.FileAcknowledgmentRecords.Add(acknowledgment);
                 await db.SaveChangesAsync(cancellationToken);
@@ -245,7 +246,8 @@ public class LocalFileStorageService : IFileStorageService
                     RelativeFilePath = relativePath,
                     FileStorageSourceInternalUrl = fullPath,
                     FileHash = fileHash,
-                    AcknowledgedDate = DateTime.UtcNow
+                    AcknowledgedDate = DateTime.UtcNow,
+                    DisplayFileName = Path.GetFileName(relativePath)
                 };
 
                 db.FileAcknowledgmentRecords.Add(acknowledgment);
@@ -255,6 +257,7 @@ public class LocalFileStorageService : IFileStorageService
                 existingAcknowledgment.FileStorageSourceInternalUrl = fullPath;
                 existingAcknowledgment.FileHash = fileHash;
                 existingAcknowledgment.AcknowledgedDate = DateTime.UtcNow;
+                existingAcknowledgment.DisplayFileName = Path.GetFileName(relativePath);
             }
 
             await db.SaveChangesAsync(cancellationToken);

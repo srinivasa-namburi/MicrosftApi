@@ -136,6 +136,12 @@ public class ServiceConfigurationOptions
         public VectorStoreOptions VectorStore { get; set; } = new VectorStoreOptions();
 
         /// <summary>
+        /// Flow AI Assistant configuration options.
+        /// Bound under ServiceConfiguration:GreenlightServices:Flow.
+        /// </summary>
+        public FlowOptions Flow { get; set; } = new FlowOptions();
+
+        /// <summary>
         /// Options for reference indexing.
         /// </summary>
         public class ReferenceIndexingOptions
@@ -168,6 +174,11 @@ public class ServiceConfigurationOptions
             /// Number of available document review workers
             /// </summary>
             public int NumberOfReviewWorkers { get; set; } = 1;
+
+            /// <summary>
+            /// Number of available Flow/Chat orchestration workers
+            /// </summary>
+            public int NumberOfFlowChatWorkers { get; set; } = 4;
         }
 
         /// <summary>
@@ -313,6 +324,13 @@ public class ServiceConfigurationOptions
             /// not run on startup and the monthly reminder will not be scheduled.
             /// </summary>
             public bool EnableVectorStoreIdFixJob { get; set; } = false;
+
+            /// <summary>
+            /// Indicates whether the developer setup scripts have been executed.
+            /// This flag is used to prevent the application from starting in development
+            /// mode if the required development configuration has not been properly set up.
+            /// </summary>
+            public bool DeveloperSetupExecuted { get; set; } = false;
         }
     }
 
@@ -406,5 +424,53 @@ public class ServiceConfigurationOptions
         /// The API key for the service.
         /// </summary>
         public string Key { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// Options for Flow AI Assistant configuration.
+    /// </summary>
+    public class FlowOptions
+    {
+        /// <summary>
+        /// The default AI model deployment name used for Flow conversations.
+        /// </summary>
+        public string DefaultModelDeployment { get; set; } = "gpt-4o";
+
+        /// <summary>
+        /// Automatically detect when users need specific document processes.
+        /// </summary>
+        public bool EnableIntentDetection { get; set; } = true;
+
+        /// <summary>
+        /// Respond conversationally when no specific intent is detected.
+        /// </summary>
+        public bool EnableConversationalFallback { get; set; } = true;
+
+        /// <summary>
+        /// Number of previous messages to include in context.
+        /// </summary>
+        public int ConversationHistoryLimit { get; set; } = 10;
+
+        /// <summary>
+        /// Custom system prompt for Flow conversations (empty means use default).
+        /// </summary>
+        public string SystemPrompt { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Additional prompt for conversational responses when no intent is detected.
+        /// </summary>
+        public string ConversationalPrompt { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Minimum relevance score (0.0 to 1.0) required for a document process to be engaged.
+        /// Higher values mean stricter matching. 0.0 means any match is accepted.
+        /// </summary>
+        public double MinimumIntentRelevanceThreshold { get; set; } = 0.3;
+
+        /// <summary>
+        /// If true, when no document processes meet the minimum relevance threshold,
+        /// Flow will fall back to conversational response instead of forcing the best match.
+        /// </summary>
+        public bool RequireMinimumRelevanceForEngagement { get; set; } = true;
     }
 }

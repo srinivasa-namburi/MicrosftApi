@@ -14,18 +14,31 @@ public class ChatApiClient : WebAssemblyBaseServiceClient<ChatApiClient>, IChatA
     {
     }
 
-    public async Task<string?> SendChatMessageAsync(ChatMessageDTO chatMessageDto)
+    public async Task<string?> SendChatMessageAsync(ChatMessageDTO chatMessageDto, bool? useFlow = null)
     {
-        var response = await SendPostRequestMessage($"/api/chat", chatMessageDto);
+        var url = "/api/chat";
+        if (useFlow == true)
+        {
+            url += "?useFlow=true";
+        }
+
+        var response = await SendPostRequestMessage(url, chatMessageDto);
         response?.EnsureSuccessStatusCode();
 
         return response?.StatusCode.ToString();
     }
 
-    public async Task<List<ChatMessageDTO>> GetChatMessagesAsync(Guid conversationId, string documentProcessShortName)
+    public async Task<List<ChatMessageDTO>> GetChatMessagesAsync(Guid conversationId, string documentProcessShortName, bool? useFlow = null)
     {
         var conversationIdString = conversationId.ToString();
-        var response = await SendGetRequestMessage($"/api/chat/{documentProcessShortName}/{conversationIdString}");
+        var url = $"/api/chat/{documentProcessShortName}/{conversationIdString}";
+
+        if (useFlow == true)
+        {
+            url += "?useFlow=true";
+        }
+
+        var response = await SendGetRequestMessage(url);
 
         // If we get a 404, it means that the conversation does not yet have any messages in it (but has been created)
         // and we return an empty list

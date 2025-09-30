@@ -225,7 +225,7 @@ public class ScheduledFileDiscoveryAndImportGrain : Grain, IScheduledFileDiscove
                 var newFileCount = autoImportFiles.Count();
                 if (newFileCount > 0)
                 {
-                    _logger.LogDebug("Found {FileCount} new files in auto-import folder for {SourceName} using {ProviderType}",
+                    _logger.LogTrace("Found {FileCount} new files in auto-import folder for {SourceName} using {ProviderType}",
                         newFileCount, sourceName, fileStorageService.ProviderType);
                     hasNewFiles = true;
                 }
@@ -242,14 +242,14 @@ public class ScheduledFileDiscoveryAndImportGrain : Grain, IScheduledFileDiscove
                 {
                     if (!acks.TryGetValue(file.RelativeFilePath, out var ack))
                     {
-                        _logger.LogDebug("New file discovered (no ack) for {SourceName}: {Path}", sourceName, file.RelativeFilePath);
+                        _logger.LogTrace("New file discovered (no ack) for {SourceName}: {Path}", sourceName, file.RelativeFilePath);
                         hasNewFiles = true;
                         break;
                     }
 
                     if (!string.IsNullOrEmpty(file.ContentHash) && !string.Equals(file.ContentHash, ack.FileHash, StringComparison.Ordinal))
                     {
-                        _logger.LogDebug("File changed (hash diff) for {SourceName}: {Path}", sourceName, file.RelativeFilePath);
+                        _logger.LogTrace("File changed (hash diff) for {SourceName}: {Path}", sourceName, file.RelativeFilePath);
                         hasNewFiles = true;
                         break;
                     }
@@ -265,7 +265,7 @@ public class ScheduledFileDiscoveryAndImportGrain : Grain, IScheduledFileDiscove
 
                         if (string.IsNullOrEmpty(liveHash) || !string.Equals(liveHash, ack.FileHash, StringComparison.Ordinal))
                         {
-                            _logger.LogDebug("File changed (time/hash) for {SourceName}: {Path}", sourceName, file.RelativeFilePath);
+                            _logger.LogTrace("File changed (time/hash) for {SourceName}: {Path}", sourceName, file.RelativeFilePath);
                             hasNewFiles = true;
                             break;
                         }
@@ -341,7 +341,7 @@ public class ScheduledFileDiscoveryAndImportGrain : Grain, IScheduledFileDiscove
 
                         if (missingForSomeAssociation)
                         {
-                            _logger.LogDebug("Found acknowledged file that needs processing for additional DPs/DLs: {SourceName} - {FilePath}", 
+                            _logger.LogTrace("Found acknowledged file that needs processing for additional DPs/DLs: {SourceName} - {FilePath}",
                                 sourceName, ackRecord.RelativeFilePath);
                             hasNewFiles = true;
                             break;

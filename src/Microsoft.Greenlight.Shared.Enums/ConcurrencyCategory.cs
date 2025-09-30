@@ -24,6 +24,11 @@ public enum ConcurrencyCategory
     /// <summary>
     /// Document review concurrency. Backed by NumberOfReviewWorkers.
     /// </summary>
-    Review = 3
+    Review = 3,
+
+    /// <summary>
+    /// Flow chat processing concurrency. Manages concurrent Flow orchestration operations.
+    /// </summary>
+    FlowChat = 4
 }
 

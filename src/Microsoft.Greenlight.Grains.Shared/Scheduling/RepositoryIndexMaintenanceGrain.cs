@@ -25,7 +25,7 @@ public class RepositoryIndexMaintenanceGrain : Grain, IRepositoryIndexMaintenanc
 {
     private readonly IServiceProvider _sp;
     private readonly ILogger<RepositoryIndexMaintenanceGrain> _logger;
-    private readonly SearchIndexClient _searchIndexClient;
+    private readonly SearchIndexClient? _searchIndexClient;
     private readonly AzureFileHelper _fileHelper;
     private readonly IOptionsSnapshot<ServiceConfigurationOptions> _optionsSnapshot;
     private readonly NpgsqlDataSource? _npgsqlDataSource; // Now optional
@@ -39,9 +39,9 @@ public class RepositoryIndexMaintenanceGrain : Grain, IRepositoryIndexMaintenanc
     public RepositoryIndexMaintenanceGrain(
         IServiceProvider sp,
         ILogger<RepositoryIndexMaintenanceGrain> logger,
-        SearchIndexClient searchIndexClient,
         AzureFileHelper fileHelper,
         IOptionsSnapshot<ServiceConfigurationOptions> optionsSnapshot,
+        SearchIndexClient? searchIndexClient = null,
         NpgsqlDataSource? npgsqlDataSource = null, // Now optional
         IDbContextFactory<DocGenerationDbContext>? dbContextFactory = null)
     {
@@ -93,12 +93,20 @@ public class RepositoryIndexMaintenanceGrain : Grain, IRepositoryIndexMaintenanc
         }
         else
         {
-            var indexNames = new HashSet<string>();
-            await foreach (var indexName in _searchIndexClient.GetIndexNamesAsync(CancellationToken.None))
+            if (_searchIndexClient == null)
             {
-                indexNames.Add(indexName);
+                _logger.LogWarning("AI Search is not enabled but UsePostgresMemory is false. No indexes will be discovered.");
+                indexNamesList = [];
             }
-            indexNamesList = indexNames.ToList();
+            else
+            {
+                var indexNames = new HashSet<string>();
+                await foreach (var indexName in _searchIndexClient.GetIndexNamesAsync(CancellationToken.None))
+                {
+                    indexNames.Add(indexName);
+                }
+                indexNamesList = indexNames.ToList();
+            }
         }
 
         await CreateKernelMemoryIndexes(
@@ -500,12 +508,47 @@ public class RepositoryIndexMaintenanceGrain : Grain, IRepositoryIndexMaintenanc
             {
                 status.Status = IndexHealthStatus.SchemaIncompatible;
                 status.StatusMessage = $"Vector dimension mismatch: {ex.Message}";
-                
+
                 // Try to extract actual dimensions from error message
                 var match = System.Text.RegularExpressions.Regex.Match(ex.Message, @"expects a length of (\d+)");
                 if (match.Success && int.TryParse(match.Groups[1].Value, out int actualDims))
                 {
                     status.StatusMessage += $" (expected: {expectedEmbeddingDimensions}, actual: {actualDims})";
+                }
+            }
+            catch (Microsoft.Extensions.VectorData.VectorStoreException vex) when (vex.InnerException is Npgsql.PostgresException pgEx && pgEx.Message.Contains("expected") && pgEx.Message.Contains("dimensions"))
+            {
+                // PostgreSQL dimension mismatch - auto-clear only for system indexes
+                if (indexName.StartsWith("system-", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogWarning("PostgreSQL vector dimension mismatch detected for system index {IndexName}. Expected: {Expected} dimensions. Auto-clearing and recreating collection.", indexName, expectedEmbeddingDimensions);
+
+                    try
+                    {
+                        // Clear the existing collection (system indexes only)
+                        await vectorStoreProvider.ClearCollectionAsync(indexName);
+                        _logger.LogInformation("Cleared incompatible system collection {IndexName}", indexName);
+
+                        // Recreate with correct dimensions
+                        await vectorStoreProvider.EnsureCollectionAsync(indexName, expectedEmbeddingDimensions);
+                        _logger.LogInformation("Recreated system collection {IndexName} with {Dimensions} dimensions", indexName, expectedEmbeddingDimensions);
+
+                        status.Status = IndexHealthStatus.Recreated;
+                        status.StatusMessage = $"System collection recreated due to dimension mismatch (now uses {expectedEmbeddingDimensions} dimensions)";
+                    }
+                    catch (Exception recreateEx)
+                    {
+                        _logger.LogError(recreateEx, "Failed to recreate system collection {IndexName} after dimension mismatch", indexName);
+                        status.Status = IndexHealthStatus.SchemaIncompatible;
+                        status.StatusMessage = $"Dimension mismatch detected but failed to recreate: {recreateEx.Message}";
+                    }
+                }
+                else
+                {
+                    // User index - require manual intervention
+                    _logger.LogWarning("PostgreSQL vector dimension mismatch detected for user index {IndexName}. Expected: {Expected} dimensions. Manual intervention required - user indexes are not auto-cleared.", indexName, expectedEmbeddingDimensions);
+                    status.Status = IndexHealthStatus.SchemaIncompatible;
+                    status.StatusMessage = $"Vector dimension mismatch detected. Manual reindex required for user-created collection (expected: {expectedEmbeddingDimensions} dimensions)";
                 }
             }
             catch (Exception ex)

@@ -12,6 +12,10 @@ public sealed class SkVectorChunkRecord
     public required string DocumentId { get; init; }
     /// <summary>Original file name.</summary>
     public required string FileName { get; init; }
+    /// <summary>UI-friendly display filename for user presentation. Null for non-file-based records.</summary>
+    public string? DisplayFileName { get; init; }
+    /// <summary>Reference to FileAcknowledgmentRecord for file-based records. Null for non-file-based records.</summary>
+    public Guid? FileAcknowledgmentRecordId { get; init; }
     /// <summary>Document reference for dynamic URL resolution (replaces OriginalDocumentUrl).</summary>
     public string? DocumentReference { get; init; }
     /// <summary>Chunk raw text content.</summary>

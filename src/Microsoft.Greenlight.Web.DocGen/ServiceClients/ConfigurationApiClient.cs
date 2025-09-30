@@ -65,6 +65,14 @@ public class ConfigurationApiClient : BaseServiceClient<ConfigurationApiClient>,
         return _serviceConfigurationOptions.CurrentValue.GreenlightServices.VectorStore;
     }
 
+    /// <summary>
+    /// Gets the Flow AI Assistant options from the current configuration (server-side direct access).
+    /// </summary>
+    public async Task<ServiceConfigurationOptions.FlowOptions> GetFlowOptionsAsync()
+    {
+        return _serviceConfigurationOptions.CurrentValue.GreenlightServices.Flow;
+    }
+
     // Document Ingestion and OCR endpoints: forward to API since server-side UI may also leverage the REST flows for consistency
     public async Task<ServiceConfigurationOptions.GreenlightServicesOptions.DocumentIngestionOptions> GetDocumentIngestionOptionsAsync()
     {

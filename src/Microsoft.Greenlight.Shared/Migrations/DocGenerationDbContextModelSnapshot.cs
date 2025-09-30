@@ -220,6 +220,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<Guid?>("SummarizedByConversationSummaryId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("UserId")
+                        .HasColumnType("nvarchar(max)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AuthorUserInformationId");
@@ -343,6 +346,58 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Configurations");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Configuration.McpSecret", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("LastUsedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SecretHash")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("SecretSalt")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("UserOid")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.HasIndex("IsActive", "Name");
+
+                    b.ToTable("McpSecrets", (string)null);
                 });
 
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.ContentNode", b =>
@@ -1433,6 +1488,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("DisplayFileName")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("FileHash")
                         .HasColumnType("nvarchar(max)");
 
@@ -1692,6 +1750,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
 
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("DisplayFileName")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("DocumentLibraryOrProcessName")
                         .HasColumnType("nvarchar(450)");

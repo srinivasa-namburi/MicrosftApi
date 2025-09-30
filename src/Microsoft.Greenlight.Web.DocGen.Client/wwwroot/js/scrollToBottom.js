@@ -59,3 +59,21 @@ window.removeScrollDetection = (id) => {
         window.scrollHandlers[id].cleanup();
     }
 };
+
+// Check scroll position to determine if user has scrolled up
+window.checkScrollPosition = (element) => {
+    if (element) {
+        return {
+            scrollTop: element.scrollTop,
+            scrollHeight: element.scrollHeight,
+            clientHeight: element.clientHeight,
+            distanceFromBottom: element.scrollHeight - element.scrollTop - element.clientHeight
+        };
+    }
+    return {
+        scrollTop: 0,
+        scrollHeight: 0,
+        clientHeight: 0,
+        distanceFromBottom: 0
+    };
+};

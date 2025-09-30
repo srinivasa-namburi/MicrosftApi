@@ -39,8 +39,9 @@ builder.WebHost.ConfigureKestrel(serverOptions =>
 
 builder.AddServiceDefaults();
 
-// Initialize AdminHelper with configuration
+// Initialize AdminHelper with configuration and validate developer setup
 AdminHelper.Initialize(builder.Configuration);
+AdminHelper.ValidateDeveloperSetup("Web DocGen");
 
 // First add the DbContext and configuration provider
 builder.AddGreenlightDbContextAndConfiguration();
@@ -207,17 +208,18 @@ builder.Services.AddSingleton<IUserIdProvider, SignalRCustomUserIdProvider>();
 
 builder.Services.AddMudServices();
 
-var useAzureSignalR = builder.Configuration["ServiceConfiguration:GreenlightServices:Scalability:UseAzureSignalR"];
+// SignalR Configuration Strategy:
+// - Web Frontend NEVER hosts SignalR directly
+// - When ENABLE_AZURE_SIGNALR=true: Web connects to Azure SignalR service 
+// - When ENABLE_AZURE_SIGNALR=false: Web connects to API's self-hosted SignalR
+// This ensures unified endpoint exposure through Application Gateway
 
-if (builder.Environment.IsDevelopment() ||
-    (useAzureSignalR == null || useAzureSignalR == "false") ||
-    builder.Configuration.GetConnectionString("signalr") == null ||
-    builder.Configuration.GetConnectionString("signalr") == string.Empty)
+var useAzureSignalR = builder.Configuration["ServiceConfiguration:GreenlightServices:Scalability:UseAzureSignalR"];
+var enableAzureSignalR = useAzureSignalR != null && useAzureSignalR.Equals("true", StringComparison.OrdinalIgnoreCase);
+
+if (enableAzureSignalR && !string.IsNullOrEmpty(builder.Configuration.GetConnectionString("signalr")))
 {
-    builder.Services.AddSignalR();
-}
-else
-{
+    // Use Azure SignalR service (Web connects as client only)
     builder.Services.AddSignalR().AddAzureSignalR(options =>
     {
         options.ConnectionString = builder.Configuration.GetConnectionString("signalr");
@@ -233,6 +235,12 @@ else
             ];
         };
     });
+}
+else
+{
+    // SignalR is self-hosted on API - Web only acts as client
+    // The Web will connect to API's SignalR hubs via JavaScript client
+    Console.WriteLine("SignalR: Web will connect to API-hosted SignalR endpoints");
 }
 
 builder.Services.AddSingleton<DynamicComponentResolver>();
@@ -284,9 +292,10 @@ app.MapRazorComponents<App>()
     .RequireAuthorization();
 
 // API forwarders and authentication endpoints
-app.MapForwarder("/api/configuration/frontend", "https://api-main/");
+var apiBaseUrl = AdminHelper.GetApiServiceUrl();
+app.MapForwarder("/api/configuration/frontend", apiBaseUrl);
 
-app.MapForwarder("/api/{**catch-all}", "https://api-main/", transformBuilder =>
+app.MapForwarder("/api/{**catch-all}", apiBaseUrl, transformBuilder =>
 {
     transformBuilder.AddRequestTransform(async transformContext =>
     {
@@ -299,7 +308,7 @@ app.MapForwarder("/api/{**catch-all}", "https://api-main/", transformBuilder =>
 }).WithMetadata(new RequestSizeLimitAttribute(1024 * 1024 * 1024))
   .RequireAuthorization();
 
-app.MapForwarder("/hubs/{**catch-all}", "https://api-main/", transformBuilder =>
+app.MapForwarder("/hubs/{**catch-all}", apiBaseUrl, transformBuilder =>
 {
     transformBuilder.AddRequestTransform(async transformContext =>
     {
@@ -313,7 +322,7 @@ app.MapForwarder("/hubs/{**catch-all}", "https://api-main/", transformBuilder =>
 
 app.MapGet("/api-address", () =>
 {
-    var apiAddress = builder.Configuration["services:api-main:https:0"];
+    var apiAddress = AdminHelper.GetApiServiceUrl();
 
     if (string.IsNullOrEmpty(serviceConfigurationOptions.HostNameOverride.Api))
     {
@@ -322,23 +331,15 @@ app.MapGet("/api-address", () =>
             : Results.Ok(apiAddress.TrimEnd('/'));
     }
 
-    // replace the host name with the one from the configuration
-    // keep the port from the original address
-
-    if (string.IsNullOrEmpty(apiAddress))
-    {
-        return Results.NotFound();
-    }
-    var uri = new Uri(apiAddress);
-    var port = uri.Port;
+    // When HostNameOverride is configured, it's typically for production scenarios
+    // with Application Gateway, so we should use HTTPS with standard port
     var hostName = serviceConfigurationOptions.HostNameOverride.Api;
-    var scheme = uri.Scheme;
-    var newUri = new Uri($"{scheme}://{hostName}:{port}");
-    apiAddress = newUri.ToString();
 
-    return string.IsNullOrEmpty(apiAddress)
-        ? Results.NotFound()
-        : Results.Ok(apiAddress.TrimEnd('/'));
+    // For production override scenarios, use HTTPS with default port
+    // This is the expected configuration when using Application Gateway
+    apiAddress = $"https://{hostName}";
+
+    return Results.Ok(apiAddress);
 });
 
 app.MapGet("/configuration/token", async context =>

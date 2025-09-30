@@ -49,4 +49,10 @@ public class FileAcknowledgmentRecordInfo
     /// Date when the file was acknowledged.
     /// </summary>
     public DateTime AcknowledgedDate { get; set; }
+
+    /// <summary>
+    /// UI-friendly display filename that should be shown to users.
+    /// This provides the clean, original filename without path or GUID-based naming.
+    /// </summary>
+    public string? DisplayFileName { get; set; }
 }

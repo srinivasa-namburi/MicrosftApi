@@ -5,62 +5,112 @@
     "ghcr.io/devcontainers/features/azure-cli:1": {},
     "ghcr.io/devcontainers/features/node:1": { "version": "20" },
     "ghcr.io/devcontainers/features/docker-in-docker:2": {},
-    "ghcr.io/devcontainers/features/powershell:1": {}
+    "ghcr.io/devcontainers/features/powershell:1": {},
+    "ghcr.io/devcontainers/features/kubectl-helm-minikube": {
+      "helm": "latest",
+      "minikube": "none"
+    },
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": "false",
+      "installOhMyZsh": "false",
+      "upgradePackages": "false",
+      "username": "automatic",
+      "uid": "automatic",
+      "gid": "automatic"
+    }
   },
   "hostRequirements": {
     "cpus": 8,
-    "memory": "32gb",
-    "storage": "64gb"
+    "memory": "15gb",
+    "storage": "15gb"
   },
+  /* Removed explicit mounts entry; Dev Containers automatically mounts the workspace.
+     The prior custom mount duplicated the default and caused 'Duplicate mount point: /workspaces/aismr'. */
   "containerEnv": {
     "ASPNETCORE_ENVIRONMENT": "Development",
     "DOTNET_ENVIRONMENT": "Development",
-    "ASPIRE_CONTAINER_RUNTIME": "docker"
+    "ASPIRE_CONTAINER_RUNTIME": "docker",
+    // Correct path for toggle (ServiceConfiguration:GreenlightServices:Global:UsePostgresMemory)
+    "ServiceConfiguration__GreenlightServices__Global__UsePostgresMemory": "true",
+    // Aspire parameter (mapped from AddParameter("sqlPassword")) MUST use Parameters__ prefix
+    // Avoid defining a plain sqlPassword var – Aspire resolves Parameters:sqlPassword
+    "Parameters__sqlPassword": "DevPassword123!",
+    // Parameter used for local Postgres (kmvectordb) administrator password
+    "Parameters__postgresPassword": "DevPgPassword123!",
+    // Pass through AI tool API keys from host environment if available
+    "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}",
+    "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}"
   },
-  "onCreateCommand": "dotnet workload update && dotnet workload install aspire && dotnet tool update -g dotnet-ef",
-  "postStartCommand": "dotnet dev-certs https --trust",
-  "forwardPorts": [17209, 5001, 6001, 15010, 21209, 22209],
+  // Workspace seeding moved from onCreateCommand (root context) to postCreateCommand (runs as remoteUser=vscode)
+  // to ensure copied files are owned by the vscode user and not root.
+  // If the script is missing (e.g., alternate checkout), it is skipped gracefully.
+  "postCreateCommand": "if [ -f /workspaces/_host-src/.devcontainer/seed-workspace.sh ]; then TMP_SEED=/tmp/seed-workspace.sh; sed 's/\r$//' /workspaces/_host-src/.devcontainer/seed-workspace.sh > $TMP_SEED; chmod +x $TMP_SEED; bash $TMP_SEED; else echo '[postCreate] seed script not found – skipping copy'; fi",
+  // No manual createdb needed; service will create kmvectordb if absent.
+  // Post start: trust dev certs + cleanup any legacy local data volumes that would block
+  // SQL Server from re-initializing with the current parameterized password.
+  "postStartCommand": "if [ -f /workspaces/aismr/.devcontainer/scripts/post-start.sh ]; then TMP_PS=/tmp/post-start.sh; sed 's/\r$//' /workspaces/aismr/.devcontainer/scripts/post-start.sh > $TMP_PS; chmod +x $TMP_PS; (command -v bash >/dev/null 2>&1 && bash $TMP_PS || sh $TMP_PS); else echo '[postStart] post-start.sh not found – skipping'; fi",
+  // Forward ports for Aspire-launched services (dashboard, web, api, redis, sql, postgres, azurite blob/queue/table)
+  "forwardPorts": [17209, 5001, 6001, 16379, 9001, 9002, 10000, 10001, 10002],
   "portsAttributes": {
     "17209": {
-      "label": "Aspire Dashboard (HTTPS)",
+      "label": "Aspire Dashboard",
       "onAutoForward": "notify"
     },
     "5001": {
-      "label": "Web App (HTTPS)",
+      "label": "Web Frontend",
       "onAutoForward": "notify"
     },
     "6001": {
       "label": "API (HTTPS)",
       "onAutoForward": "notify"
     },
-    "15010": {
-      "label": "Aspire Dashboard (HTTP)",
+    "16379": {
+      "label": "Redis (Caching)",
       "onAutoForward": "silent"
     },
-    "21209": {
-      "label": "Aspire OTLP Endpoint",
+    "9001": {
+      "label": "MS SQL Server (Data Storage)",
       "onAutoForward": "silent"
     },
-    "22209": {
-      "label": "Aspire Resource Service",
+    "9002": {
+      "label": "PostgreSQL (Vector Store)",
       "onAutoForward": "silent"
-    }
+    },
+    "10000": { "label": "Azurite Blob", "onAutoForward": "silent" },
+    "10001": { "label": "Azurite Queue", "onAutoForward": "silent" },
+    "10002": { "label": "Azurite Table", "onAutoForward": "silent" }
   },
   "customizations": {
     "vscode": {
       "extensions": [
         "ms-dotnettools.csdevkit",
+        "ms-dotnettools.csharp",
         "ms-azuretools.vscode-docker",
         "ms-vscode.vscode-json",
         "ms-vscode.azure-account",
+        "teamsdevapp.vscode-ai-foundry",
         "GitHub.copilot",
-        "GitHub.copilot-chat"
+        "GitHub.copilot-chat",
+        "anthropic.claude-code",
+        "openai.chatgpt"
       ],
       "settings": {
         "dotnet.server.useOmnisharp": false,
-        "omnisharp.useModernNet": true
+        "omnisharp.useModernNet": true,
+        "files.eol": "\n",
+        "files.insertFinalNewline": true,
+        "files.trimTrailingWhitespace": true
       }
     }
   },
-  "remoteUser": "vscode"
+  "remoteUser": "vscode",
+  // Use an isolated named volume for the active workspace to avoid line-ending churn & enable clean container-specific artifacts.
+  "workspaceFolder": "/workspaces/aismr",
+  "workspaceMount": "source=greenlight-ws,target=/workspaces/aismr,type=volume",
+  // Mount the host source tree read-only for seeding into the named volume. Optional per-user config dirs
+  // (.claude, .vscode, .config) are NOT mounted to avoid failures / unintended host dir creation; the
+  // post-start script creates local fallbacks instead.
+  "mounts": [
+    "source=${localWorkspaceFolder},target=/workspaces/_host-src,type=bind,consistency=cached,readonly"
+  ]
 }

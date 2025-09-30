@@ -164,4 +164,29 @@ public interface IFileStorageSourceApiClient
     Task<FileStorageSourceInfo> UpdateFileStorageSourceAsync(Guid id, FileStorageSourceInfo sourceInfo);
 
     #endregion
+
+    #region File Acknowledgment Records
+
+    /// <summary>
+    /// Searches file acknowledgment records with filtering and pagination.
+    /// </summary>
+    /// <param name="sourceId">Optional: Filter by storage source ID.</param>
+    /// <param name="searchText">Optional: Search text for file paths.</param>
+    /// <param name="skip">Number of records to skip for pagination.</param>
+    /// <param name="take">Number of records to take (max 100).</param>
+    /// <returns>A paginated list of file acknowledgment record information.</returns>
+    Task<List<FileAcknowledgmentRecordInfo>> SearchFileAcknowledgmentRecordsAsync(
+        Guid? sourceId = null, 
+        string? searchText = null, 
+        int skip = 0, 
+        int take = 50);
+
+    /// <summary>
+    /// Gets file acknowledgment records for a specific storage source.
+    /// </summary>
+    /// <param name="sourceId">The ID of the file storage source.</param>
+    /// <returns>A list of file acknowledgment record information.</returns>
+    Task<List<FileAcknowledgmentRecordInfo>> GetFileAcknowledgmentRecordsBySourceAsync(Guid sourceId);
+
+    #endregion
 }

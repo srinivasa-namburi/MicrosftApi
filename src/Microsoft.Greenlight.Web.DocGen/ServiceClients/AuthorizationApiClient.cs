@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Contracts.DTO.Auth;
 using Microsoft.Greenlight.Shared.Enums;
+using Microsoft.Greenlight.Shared.Helpers;
 using Microsoft.Greenlight.Web.Shared.ServiceClients;
 
 namespace Microsoft.Greenlight.Web.DocGen.ServiceClients;
@@ -73,7 +74,7 @@ internal sealed class AuthorizationApiClient : BaseServiceClient<AuthorizationAp
 
     public Task<string> GetApiAddressAsync()
     {
-        var apiAddress = _configuration["services:api-main:https:0"];
+        var apiAddress = AdminHelper.GetApiServiceUrl();
         return Task.FromResult(apiAddress ?? string.Empty);
     }
 

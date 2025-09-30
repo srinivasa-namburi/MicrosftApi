@@ -1,0 +1,296 @@
+@* File Storage Source Category Dialog *@
+@using Microsoft.Greenlight.Shared.Contracts.DTO.FileStorage
+@using Microsoft.Greenlight.Shared.Enums
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@inject IFileStorageSourceApiClient FileStorageService
+@inject IFileStorageHostApiClient FileStorageHostService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Category" Class="mr-3" />
+            Manage Categories - @Source.Name
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="4">
+            <!-- Source Info Summary -->
+            <MudPaper Class="pa-3" Elevation="1">
+                <MudStack Spacing="2">
+                    <MudText Typo="Typo.subtitle1">Source Information</MudText>
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudText><strong>Host:</strong></MudText>
+                        <MudChip T="string" Color="GetHostColor(Source.FileStorageHost)" Size="Size.Small">
+                            @Source.FileStorageHost?.Name
+                        </MudChip>
+                    </MudStack>
+                    <MudText><strong>Container/Path:</strong> @Source.ContainerOrPath</MudText>
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudText><strong>Primary Type:</strong></MudText>
+                        <MudChip T="string" Color="GetDataTypeColor(Source.StorageSourceDataType)" Size="Size.Small">
+                            @GetDataTypeDisplayName(Source.StorageSourceDataType)
+                        </MudChip>
+                    </MudStack>
+                </MudStack>
+            </MudPaper>
+
+            <!-- Category Management -->
+            <MudText Typo="Typo.h6">Category Assignments</MudText>
+            <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                Sources can participate in multiple functional areas by having multiple categories.
+                The primary data type category cannot be removed.
+            </MudText>
+
+            <MudStack Spacing="3">
+                <!-- Ingestion Category -->
+                <MudPaper Class="pa-3" Elevation="1">
+                    <MudStack Spacing="2">
+                        <MudStack Row="true" JustifyContent="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                <MudIcon Icon="@Icons.Material.Filled.CloudUpload" Color="Color.Success" />
+                                <MudText Typo="Typo.subtitle1" Color="Color.Success">Ingestion</MudText>
+                            </MudStack>
+                            <MudSwitch T="bool" @bind-Value="hasIngestionCategory"
+                                      Color="Color.Success"
+                                      Disabled="@(Source.StorageSourceDataType == FileStorageSourceDataType.Ingestion || !CanToggleIngestionCategory())"
+                                      OnChanged="@(async (bool value) => await ToggleCategoryAsync(FileStorageSourceDataType.Ingestion, value))" />
+                        </MudStack>
+                        <MudText Typo="Typo.body2">
+                            Sources that accept uploaded files for processing and indexing.
+                        </MudText>
+                        @if (Source.StorageSourceDataType == FileStorageSourceDataType.Ingestion)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Success">
+                                <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" /> Primary category - cannot be removed
+                            </MudText>
+                        }
+                        @if (!CanToggleIngestionCategory() && hasIngestionCategory && Source.StorageSourceDataType != FileStorageSourceDataType.Ingestion)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Warning">
+                                <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Small" /> 
+                                Cannot remove - this is the last ingestion source on the default host
+                            </MudText>
+                        }
+                    </MudStack>
+                </MudPaper>
+
+                <!-- Content Reference Category -->
+                <MudPaper Class="pa-3" Elevation="1">
+                    <MudStack Spacing="2">
+                        <MudStack Row="true" JustifyContent="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                <MudIcon Icon="@Icons.Material.Filled.Link" Color="Color.Info" />
+                                <MudText Typo="Typo.subtitle1" Color="Color.Info">Content Reference</MudText>
+                            </MudStack>
+                            <MudSwitch T="bool" @bind-Value="hasContentReferenceCategory"
+                                      Color="Color.Info"
+                                      Disabled="@(Source.StorageSourceDataType == FileStorageSourceDataType.ContentReference || !CanToggleContentReferenceCategory())"
+                                      OnChanged="@(async (bool value) => await ToggleCategoryAsync(FileStorageSourceDataType.ContentReference, value))" />
+                        </MudStack>
+                        <MudText Typo="Typo.body2">
+                            Sources that store generated content and assets for reference by applications.
+                        </MudText>
+                        @if (Source.StorageSourceDataType == FileStorageSourceDataType.ContentReference)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Info">
+                                <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" /> Primary category - cannot be removed
+                            </MudText>
+                        }
+                        @if (!CanToggleContentReferenceCategory() && hasContentReferenceCategory && Source.StorageSourceDataType != FileStorageSourceDataType.ContentReference)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Warning">
+                                <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Small" /> 
+                                Cannot remove - this is the last content reference source on the default host
+                            </MudText>
+                        }
+                    </MudStack>
+                </MudPaper>
+
+                <!-- Media Assets Category -->
+                <MudPaper Class="pa-3" Elevation="1">
+                    <MudStack Spacing="2">
+                        <MudStack Row="true" JustifyContent="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                <MudIcon Icon="@Icons.Material.Filled.Image" Color="Color.Warning" />
+                                <MudText Typo="Typo.subtitle1" Color="Color.Warning">Media Assets</MudText>
+                            </MudStack>
+                            <MudSwitch T="bool" @bind-Value="hasMediaAssetsCategory"
+                                      Color="Color.Warning"
+                                      Disabled="@(Source.StorageSourceDataType == FileStorageSourceDataType.MediaAssets)"
+                                      OnChanged="@(async (bool value) => await ToggleCategoryAsync(FileStorageSourceDataType.MediaAssets, value))" />
+                        </MudStack>
+                        <MudText Typo="Typo.body2">
+                            Sources that store media files, images, and other asset files.
+                        </MudText>
+                        @if (Source.StorageSourceDataType == FileStorageSourceDataType.MediaAssets)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Warning">
+                                <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" /> Primary category - cannot be removed
+                            </MudText>
+                        }
+                    </MudStack>
+                </MudPaper>
+            </MudStack>
+
+            @if (loading)
+            {
+                <MudProgressLinear Indeterminate="true" />
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Close">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter] public FileStorageSourceInfo Source { get; set; } = new();
+    
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
+
+    private bool hasIngestionCategory;
+    private bool hasContentReferenceCategory;
+    private bool hasMediaAssetsCategory;
+    private bool loading = false;
+    private List<FileStorageSourceInfo> allSources = new();
+    private List<FileStorageHostInfo> allHosts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+        LoadCurrentCategories();
+    }
+
+    private async Task LoadData()
+    {
+        loading = true;
+        try
+        {
+            var sourcesTask = FileStorageService.GetAllFileStorageSourcesAsync();
+            var hostsTask = FileStorageHostService.GetAllFileStorageHostsAsync();
+
+            await Task.WhenAll(sourcesTask, hostsTask);
+            
+            allSources = (await sourcesTask).ToList();
+            allHosts = (await hostsTask).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void LoadCurrentCategories()
+    {
+        var categories = GetSourceCategories(Source);
+        
+        hasIngestionCategory = categories.Contains(FileStorageSourceDataType.Ingestion);
+        hasContentReferenceCategory = categories.Contains(FileStorageSourceDataType.ContentReference);
+        hasMediaAssetsCategory = categories.Contains(FileStorageSourceDataType.MediaAssets);
+    }
+
+    private async Task ToggleCategoryAsync(FileStorageSourceDataType dataType, bool enable)
+    {
+        loading = true;
+        try
+        {
+            if (enable)
+            {
+                // TODO: Implement category management
+                Snackbar.Add("Category management not yet implemented", Severity.Warning);
+                return;
+                // await FileStorageService.AddCategoryToSourceAsync(Source.Id, dataType);
+                Snackbar.Add($"Added {GetDataTypeDisplayName(dataType)} category to {Source.Name}", Severity.Success);
+            }
+            else
+            {
+                // TODO: Implement category management
+                Snackbar.Add("Category management not yet implemented", Severity.Warning);
+                return;
+                // await FileStorageService.RemoveCategoryFromSourceAsync(Source.Id, dataType);
+                Snackbar.Add($"Removed {GetDataTypeDisplayName(dataType)} category from {Source.Name}", Severity.Success);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to update category: {ex.Message}", Severity.Error);
+            // Reset the UI state
+            LoadCurrentCategories();
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private bool CanToggleIngestionCategory()
+    {
+        if (!Source.FileStorageHost?.IsDefault ?? true) return true;
+        
+        // Don't allow removing ingestion from the last ingestion source on default host
+        if (hasIngestionCategory && Source.StorageSourceDataType != FileStorageSourceDataType.Ingestion)
+        {
+            var defaultHostIngestionCount = allSources.Count(s => 
+                s.FileStorageHostId == Source.FileStorageHostId && 
+                s.IsActive && 
+                GetSourceCategories(s).Contains(FileStorageSourceDataType.Ingestion));
+            return defaultHostIngestionCount > 1;
+        }
+        
+        return true;
+    }
+
+    private bool CanToggleContentReferenceCategory()
+    {
+        if (!Source.FileStorageHost?.IsDefault ?? true) return true;
+        
+        // Don't allow removing content reference from the last content reference source on default host
+        if (hasContentReferenceCategory && Source.StorageSourceDataType != FileStorageSourceDataType.ContentReference)
+        {
+            var defaultHostContentRefCount = allSources.Count(s => 
+                s.FileStorageHostId == Source.FileStorageHostId && 
+                s.IsActive && 
+                GetSourceCategories(s).Contains(FileStorageSourceDataType.ContentReference));
+            return defaultHostContentRefCount > 1;
+        }
+        
+        return true;
+    }
+
+    private void Close() => MudDialog.Close();
+
+    private static List<FileStorageSourceDataType> GetSourceCategories(FileStorageSourceInfo source)
+    {
+        // This would come from the source's Categories navigation property in a real implementation
+        // For now, return the primary data type
+        var categories = new List<FileStorageSourceDataType> { source.StorageSourceDataType };
+        
+        // In real implementation, you'd add:
+        // categories.AddRange(source.Categories?.Select(c => c.DataType) ?? Enumerable.Empty<FileStorageSourceDataType>());
+        
+        return categories.Distinct().ToList();
+    }
+
+    private static Color GetHostColor(FileStorageHostInfo? host) => host?.IsDefault == true ? Color.Primary : Color.Default;
+
+    private static Color GetDataTypeColor(FileStorageSourceDataType dataType) => dataType switch
+    {
+        FileStorageSourceDataType.Ingestion => Color.Success,
+        FileStorageSourceDataType.ContentReference => Color.Info,
+        FileStorageSourceDataType.MediaAssets => Color.Warning,
+        _ => Color.Default
+    };
+
+    private static string GetDataTypeDisplayName(FileStorageSourceDataType dataType) => dataType switch
+    {
+        FileStorageSourceDataType.Ingestion => "Ingestion",
+        FileStorageSourceDataType.ContentReference => "Content Reference",
+        FileStorageSourceDataType.MediaAssets => "Media Assets",
+        _ => dataType.ToString()
+    };
+}

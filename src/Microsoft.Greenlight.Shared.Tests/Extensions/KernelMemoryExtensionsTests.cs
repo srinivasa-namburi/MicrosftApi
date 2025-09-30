@@ -41,7 +41,7 @@ namespace Microsoft.Greenlight.Shared.Tests.Extensions
         }
 
         [Fact]
-        public void GetKernelMemoryInstanceForDocumentLibrary_WhenConnectionStringIsEmpty_ShouldThrowException()
+        public void GetKernelMemoryInstanceForDocumentLibrary_WhenConnectionStringIsEmpty_ShouldReturnNull()
         {
             // Arrange
             var documentLibraryInfo = new DocumentLibraryInfo { ShortName = "TestLibrary" };
@@ -55,15 +55,15 @@ namespace Microsoft.Greenlight.Shared.Tests.Extensions
 
             var serviceProvider = serviceCollection.BuildServiceProvider();
 
-            // Act & Assert
-            Assert.Throws<InvalidOperationException>(() =>
-            {
-                serviceProvider.GetKernelMemoryInstanceForDocumentLibrary(_serviceConfigurationOptions, documentLibraryInfo);
-            });
+            // Act
+            var result = serviceProvider.GetKernelMemoryInstanceForDocumentLibrary(_serviceConfigurationOptions, documentLibraryInfo);
+
+            // Assert
+            Assert.Null(result);
         }
 
         [Fact]
-        public void GetKernelMemoryInstanceForDocumentLibrary_WhenMissingOpenAIEndpoint_ShouldThrowException()
+        public void GetKernelMemoryInstanceForDocumentLibrary_WhenMissingOpenAIEndpoint_ShouldReturnNull()
         {
             // Arrange
             var documentLibraryInfo = new DocumentLibraryInfo { ShortName = "TestLibrary" };
@@ -84,11 +84,11 @@ namespace Microsoft.Greenlight.Shared.Tests.Extensions
 
             var serviceProvider = serviceCollection.BuildServiceProvider();
 
-            // Act & Assert
-            Assert.Throws<ArgumentException>(() =>
-            {
-                serviceProvider.GetKernelMemoryInstanceForDocumentLibrary(_serviceConfigurationOptions, documentLibraryInfo);
-            });
+            // Act
+            var result = serviceProvider.GetKernelMemoryInstanceForDocumentLibrary(_serviceConfigurationOptions, documentLibraryInfo);
+
+            // Assert
+            Assert.Null(result);
         }
 
         [Fact]

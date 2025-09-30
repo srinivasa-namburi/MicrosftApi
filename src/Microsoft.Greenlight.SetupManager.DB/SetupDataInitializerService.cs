@@ -7,13 +7,14 @@ using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Models.Configuration;
 using Microsoft.Greenlight.Shared.Models.DocumentProcess;
 using Microsoft.Greenlight.Shared.Models.Validation;
-using Microsoft.Greenlight.Shared.Prompts;
 using Microsoft.Greenlight.Shared.Services;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using Npgsql;
 using Microsoft.Greenlight.Shared.Authorization;
+using Microsoft.Data.SqlClient;
+using Microsoft.Greenlight.Shared.Helpers;
 
 namespace Microsoft.Greenlight.SetupManager.DB;
 
@@ -49,7 +50,7 @@ public class SetupDataInitializerService(
     // Fixed IDs for content reference storage entities to ensure idempotency
     private readonly Guid _contentReferenceStorageSourceId = Guid.Parse("7f3e4b9a-2c5d-4e8f-9a1b-3c6d8e9f0a1b", CultureInfo.InvariantCulture);
     private readonly Guid _contentReferenceStorageCategoryId = Guid.Parse("8a4f5c0b-3d6e-5f9a-0b2c-4d7e9f0b2c3d", CultureInfo.InvariantCulture);
-    
+
     // Fixed IDs for ContentReferenceType to FileStorageSource mappings
     private readonly Dictionary<ContentReferenceType, Guid> _contentReferenceTypeMappingIds = new()
     {
@@ -77,6 +78,9 @@ public class SetupDataInitializerService(
 
         // Create kmvectordb and add pg_vector extension if needed
         await CreateKmVectorDbAndPgVectorExtensionAsync(scope.ServiceProvider, cancellationToken);
+
+        // Configure SQL Server database users for workload identity and pipeline access
+        await ConfigureSqlDatabaseUsersAsync(scope.ServiceProvider, cancellationToken);
 
         await SeedAsync(dbContext, cancellationToken);
 
@@ -194,6 +198,92 @@ public class SetupDataInitializerService(
         }
     }
 
+    private async Task ConfigureSqlDatabaseUsersAsync(IServiceProvider serviceProvider, CancellationToken cancellationToken)
+    {
+        using var activity = _activitySource.StartActivity("Configuring SQL Database Users", ActivityKind.Client);
+
+        // Only run SQL user configuration in production environments
+        if (!AdminHelper.IsRunningInProduction())
+        {
+            _logger.LogInformation("Skipping SQL user configuration - not running in production environment");
+            return;
+        }
+
+        var configuration = serviceProvider.GetRequiredService<IConfiguration>();
+        var connectionString = configuration.GetConnectionString("ProjectVicoDB");
+
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            _logger.LogWarning("No connection string found for ProjectVicoDB. Skipping SQL user configuration.");
+            return;
+        }
+
+        try
+        {
+            _logger.LogInformation("Attempting SQL Server connection with workload identity authentication...");
+            _logger.LogInformation("Connection string: {ConnectionStringMasked}",
+                string.Join(";", connectionString.Split(';').Where(p => !p.Contains("Password", StringComparison.OrdinalIgnoreCase))));
+
+            // Log workload identity environment variables for diagnostics
+            _logger.LogInformation("Workload identity environment - AZURE_CLIENT_ID: {ClientId}, AZURE_TENANT_ID: {TenantId}, AZURE_USE_WORKLOAD_IDENTITY: {UseWI}",
+                Environment.GetEnvironmentVariable("AZURE_CLIENT_ID"),
+                Environment.GetEnvironmentVariable("AZURE_TENANT_ID"),
+                Environment.GetEnvironmentVariable("AZURE_USE_WORKLOAD_IDENTITY"));
+
+            await using var sqlConnection = new SqlConnection(connectionString);
+
+            // Set up info message handler before opening connection
+            sqlConnection.InfoMessage += (sender, e) => _logger.LogInformation("SQL: {Message}", e.Message);
+
+            await sqlConnection.OpenAsync(cancellationToken);
+
+            _logger.LogInformation("✅ Connected to SQL Server successfully. Configuring database users...");
+
+            // Get workload identity name from environment
+            var wiIdentityName = Environment.GetEnvironmentVariable("WORKLOAD_IDENTITY_NAME") ?? "uami-aks-cluster";
+
+            var sql = $@"
+-- Ensure workload identity user exists
+IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = '{wiIdentityName}')
+BEGIN
+    CREATE USER [{wiIdentityName}] FROM EXTERNAL PROVIDER;
+    PRINT 'Created workload identity user: {wiIdentityName}';
+END
+ELSE
+    PRINT 'Workload identity user already exists: {wiIdentityName}';
+
+-- Grant database owner permissions to workload identity
+IF NOT IS_ROLEMEMBER('db_owner', '{wiIdentityName}') = 1
+BEGIN
+    ALTER ROLE db_owner ADD MEMBER [{wiIdentityName}];
+    PRINT 'Granted db_owner role to workload identity: {wiIdentityName}';
+END
+ELSE
+    PRINT 'Workload identity already has db_owner role: {wiIdentityName}';
+
+
+PRINT 'SQL Server database user configuration completed successfully';
+";
+
+            await using var command = new SqlCommand(sql, sqlConnection);
+            command.CommandTimeout = 30;
+
+            // Use ExecuteNonQueryAsync instead of ExecuteReaderAsync for DDL commands
+            await command.ExecuteNonQueryAsync(cancellationToken);
+
+            _logger.LogInformation("SQL Server database users configured successfully");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not configure SQL Server database users automatically. This may require manual configuration.");
+            _logger.LogInformation("To configure manually, connect to the database as an admin and run:");
+            var identityName = Environment.GetEnvironmentVariable("WORKLOAD_IDENTITY_NAME") ?? "uami-aks-cluster";
+            _logger.LogInformation("CREATE USER [{IdentityName}] FROM EXTERNAL PROVIDER; ALTER ROLE db_owner ADD MEMBER [{IdentityName}];", identityName, identityName);
+        }
+
+        activity?.Stop();
+    }
+
     private async Task SeedAsync(DocGenerationDbContext dbContext, CancellationToken cancellationToken)
     {
         using var activity =
@@ -223,6 +313,7 @@ public class SetupDataInitializerService(
         await Seed2025_09_02_MigrateLegacyBlobStorageToFileStorageSources(dbContext, cancellationToken);
         await Seed2025_09_04_RebuildAllFileAcknowledgmentRecords(dbContext, cancellationToken);
         await Seed2025_09_08_BackfillFileStorageSourceDataType(dbContext, cancellationToken);
+        await Seed2025_09_15_BackfillDisplayFileName(dbContext, cancellationToken);
 
 
         sw.Stop();
@@ -231,7 +322,7 @@ public class SetupDataInitializerService(
 
         activity!.Stop();
     }
-    
+
     /// <summary>
     /// Creates a document outline item with the specified parameters and appropriate order
     /// </summary>
@@ -670,7 +761,7 @@ public class SetupDataInitializerService(
     private async Task Seed2025_09_02_DefaultFileStorageSource(DocGenerationDbContext dbContext, CancellationToken cancellationToken)
     {
         var existingHostsCount = await dbContext.FileStorageHosts.CountAsync(cancellationToken);
-        
+
         if (existingHostsCount > 0)
         {
             _logger.LogInformation("File storage hosts already exist ({Count} found). Skipping default file storage host/source creation.", existingHostsCount);
@@ -702,11 +793,11 @@ public class SetupDataInitializerService(
 
                     dbContext.FileStorageSources.Add(contentRefSource);
                     await dbContext.SaveChangesAsync(cancellationToken);
-                    
+
                     // Check if category already exists
                     var existingCategory = await dbContext.FileStorageSourceCategories
                         .FirstOrDefaultAsync(c => c.Id == _contentReferenceStorageCategoryId, cancellationToken);
-                    
+
                     if (existingCategory == null)
                     {
                         dbContext.FileStorageSourceCategories.Add(new Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageSourceCategory
@@ -724,7 +815,7 @@ public class SetupDataInitializerService(
                         var mappingId = _contentReferenceTypeMappingIds[typeValue];
                         var existingMapping = await dbContext.ContentReferenceTypeFileStorageSources
                             .FirstOrDefaultAsync(m => m.Id == mappingId, cancellationToken);
-                        
+
                         if (existingMapping == null)
                         {
                             dbContext.ContentReferenceTypeFileStorageSources.Add(new Microsoft.Greenlight.Shared.Models.FileStorage.ContentReferenceTypeFileStorageSource
@@ -824,11 +915,11 @@ public class SetupDataInitializerService(
             };
             dbContext.FileStorageSources.Add(contentRefSource);
             await dbContext.SaveChangesAsync(cancellationToken);
-            
+
             // Check if category already exists
             var existingCategory = await dbContext.FileStorageSourceCategories
                 .FirstOrDefaultAsync(c => c.Id == _contentReferenceStorageCategoryId, cancellationToken);
-            
+
             if (existingCategory == null)
             {
                 dbContext.FileStorageSourceCategories.Add(new Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageSourceCategory
@@ -845,7 +936,7 @@ public class SetupDataInitializerService(
                 var mappingId = _contentReferenceTypeMappingIds[typeValue];
                 var existingMapping = await dbContext.ContentReferenceTypeFileStorageSources
                     .FirstOrDefaultAsync(m => m.Id == mappingId, cancellationToken);
-                
+
                 if (existingMapping == null)
                 {
                     dbContext.ContentReferenceTypeFileStorageSources.Add(new Microsoft.Greenlight.Shared.Models.FileStorage.ContentReferenceTypeFileStorageSource
@@ -867,7 +958,7 @@ public class SetupDataInitializerService(
     private async Task Seed2025_09_02_MigrateFileStorageToHostArchitecture(DocGenerationDbContext dbContext, CancellationToken cancellationToken)
     {
         // This method handles any remaining file storage sources that need host assignment after migration
-        
+
         _logger.LogInformation("Checking for file storage sources that need host assignment after migration");
 
         // Check for any file storage sources that don't have a valid FileStorageHostId assigned
@@ -928,7 +1019,7 @@ public class SetupDataInitializerService(
         foreach (var source in sourcesWithoutHost)
         {
             source.FileStorageHostId = defaultHost.Id;
-            _logger.LogInformation("Assigned source {SourceName} (ID: {SourceId}) to host {HostName}", 
+            _logger.LogInformation("Assigned source {SourceName} (ID: {SourceId}) to host {HostName}",
                 source.Name, source.Id, defaultHost.Name);
         }
 
@@ -955,7 +1046,7 @@ public class SetupDataInitializerService(
 
         // Migrate DocumentProcess entities
         var processesWithLegacyStorage = await dbContext.DynamicDocumentProcessDefinitions
-            .Where(p => !string.IsNullOrEmpty(p.BlobStorageContainerName) && 
+            .Where(p => !string.IsNullOrEmpty(p.BlobStorageContainerName) &&
                        !p.FileStorageSources.Any())
             .ToListAsync(cancellationToken);
 
@@ -965,7 +1056,7 @@ public class SetupDataInitializerService(
         {
             // Check if a FileStorageSource already exists for this container/host combination
             var existingSource = await dbContext.FileStorageSources
-                .FirstOrDefaultAsync(s => s.FileStorageHostId == defaultHost.Id && 
+                .FirstOrDefaultAsync(s => s.FileStorageHostId == defaultHost.Id &&
                                          s.ContainerOrPath == process.BlobStorageContainerName, cancellationToken);
 
             Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageSource fileStorageSource;
@@ -974,7 +1065,7 @@ public class SetupDataInitializerService(
             {
                 // Use existing source
                 fileStorageSource = existingSource;
-                _logger.LogInformation("Using existing FileStorageSource for process: {ProcessName} -> Container: {Container}", 
+                _logger.LogInformation("Using existing FileStorageSource for process: {ProcessName} -> Container: {Container}",
                     process.ShortName, process.BlobStorageContainerName);
             }
             else
@@ -994,13 +1085,13 @@ public class SetupDataInitializerService(
                 };
 
                 dbContext.FileStorageSources.Add(fileStorageSource);
-                _logger.LogInformation("Created FileStorageSource for process: {ProcessName} -> Container: {Container}", 
+                _logger.LogInformation("Created FileStorageSource for process: {ProcessName} -> Container: {Container}",
                     process.ShortName, process.BlobStorageContainerName);
             }
 
             // Check if association already exists
             var existingAssociation = await dbContext.DocumentProcessFileStorageSources
-                .FirstOrDefaultAsync(dpfs => dpfs.DocumentProcessId == process.Id && 
+                .FirstOrDefaultAsync(dpfs => dpfs.DocumentProcessId == process.Id &&
                                             dpfs.FileStorageSourceId == fileStorageSource.Id, cancellationToken);
 
             if (existingAssociation == null)
@@ -1017,19 +1108,19 @@ public class SetupDataInitializerService(
                 };
 
                 dbContext.DocumentProcessFileStorageSources.Add(processAssociation);
-                _logger.LogInformation("Created association for process: {ProcessName} -> Source: {SourceId}", 
+                _logger.LogInformation("Created association for process: {ProcessName} -> Source: {SourceId}",
                     process.ShortName, fileStorageSource.Id);
             }
             else
             {
-                _logger.LogInformation("Association already exists for process: {ProcessName} -> Source: {SourceId}", 
+                _logger.LogInformation("Association already exists for process: {ProcessName} -> Source: {SourceId}",
                     process.ShortName, fileStorageSource.Id);
             }
         }
 
         // Migrate DocumentLibrary entities
         var librariesWithLegacyStorage = await dbContext.DocumentLibraries
-            .Where(l => !string.IsNullOrEmpty(l.BlobStorageContainerName) && 
+            .Where(l => !string.IsNullOrEmpty(l.BlobStorageContainerName) &&
                        !l.FileStorageSources.Any())
             .ToListAsync(cancellationToken);
 
@@ -1039,7 +1130,7 @@ public class SetupDataInitializerService(
         {
             // Check if a FileStorageSource already exists for this container/host combination
             var existingSource = await dbContext.FileStorageSources
-                .FirstOrDefaultAsync(s => s.FileStorageHostId == defaultHost.Id && 
+                .FirstOrDefaultAsync(s => s.FileStorageHostId == defaultHost.Id &&
                                          s.ContainerOrPath == library.BlobStorageContainerName, cancellationToken);
 
             Microsoft.Greenlight.Shared.Models.FileStorage.FileStorageSource fileStorageSource;
@@ -1048,7 +1139,7 @@ public class SetupDataInitializerService(
             {
                 // Use existing source
                 fileStorageSource = existingSource;
-                _logger.LogInformation("Using existing FileStorageSource for library: {LibraryName} -> Container: {Container}", 
+                _logger.LogInformation("Using existing FileStorageSource for library: {LibraryName} -> Container: {Container}",
                     library.ShortName, library.BlobStorageContainerName);
             }
             else
@@ -1068,13 +1159,13 @@ public class SetupDataInitializerService(
                 };
 
                 dbContext.FileStorageSources.Add(fileStorageSource);
-                _logger.LogInformation("Created FileStorageSource for library: {LibraryName} -> Container: {Container}", 
+                _logger.LogInformation("Created FileStorageSource for library: {LibraryName} -> Container: {Container}",
                     library.ShortName, library.BlobStorageContainerName);
             }
 
             // Check if association already exists
             var existingAssociation = await dbContext.DocumentLibraryFileStorageSources
-                .FirstOrDefaultAsync(dlfs => dlfs.DocumentLibraryId == library.Id && 
+                .FirstOrDefaultAsync(dlfs => dlfs.DocumentLibraryId == library.Id &&
                                             dlfs.FileStorageSourceId == fileStorageSource.Id, cancellationToken);
 
             if (existingAssociation == null)
@@ -1091,12 +1182,12 @@ public class SetupDataInitializerService(
                 };
 
                 dbContext.DocumentLibraryFileStorageSources.Add(libraryAssociation);
-                _logger.LogInformation("Created association for library: {LibraryName} -> Source: {SourceId}", 
+                _logger.LogInformation("Created association for library: {LibraryName} -> Source: {SourceId}",
                     library.ShortName, fileStorageSource.Id);
             }
             else
             {
-                _logger.LogInformation("Association already exists for library: {LibraryName} -> Source: {SourceId}", 
+                _logger.LogInformation("Association already exists for library: {LibraryName} -> Source: {SourceId}",
                     library.ShortName, fileStorageSource.Id);
             }
         }
@@ -1104,7 +1195,7 @@ public class SetupDataInitializerService(
         if (processesWithLegacyStorage.Any() || librariesWithLegacyStorage.Any())
         {
             await dbContext.SaveChangesAsync(cancellationToken);
-            _logger.LogInformation("Successfully migrated {ProcessCount} document processes and {LibraryCount} document libraries to FileStorageSource architecture", 
+            _logger.LogInformation("Successfully migrated {ProcessCount} document processes and {LibraryCount} document libraries to FileStorageSource architecture",
                 processesWithLegacyStorage.Count, librariesWithLegacyStorage.Count);
         }
         else
@@ -1119,9 +1210,9 @@ public class SetupDataInitializerService(
         // If we find no corrupted records and we have valid FileAcknowledgmentRecords, skip
         var corruptedRecordsCount = await dbContext.FileAcknowledgmentRecords
             .CountAsync(far => far.RelativeFilePath.Contains("ingest-auto"), cancellationToken);
-            
+
         var totalRecordsCount = await dbContext.FileAcknowledgmentRecords.CountAsync(cancellationToken);
-        
+
         if (corruptedRecordsCount == 0 && totalRecordsCount > 0)
         {
             _logger.LogInformation("No corrupted FileAcknowledgmentRecords found and {TotalCount} valid records exist. Migration already completed.", totalRecordsCount);
@@ -1133,25 +1224,25 @@ public class SetupDataInitializerService(
         // 1. Delete ALL FileAcknowledgmentRecords and their associations
         var acknowledgmentAssociations = await dbContext.IngestedDocumentFileAcknowledgments.ToListAsync(cancellationToken);
         var acknowledgmentRecords = await dbContext.FileAcknowledgmentRecords.ToListAsync(cancellationToken);
-        
-        _logger.LogInformation("Deleting {AssociationCount} acknowledgment associations and {RecordCount} acknowledgment records", 
+
+        _logger.LogInformation("Deleting {AssociationCount} acknowledgment associations and {RecordCount} acknowledgment records",
             acknowledgmentAssociations.Count, acknowledgmentRecords.Count);
-        
+
         dbContext.IngestedDocumentFileAcknowledgments.RemoveRange(acknowledgmentAssociations);
         dbContext.FileAcknowledgmentRecords.RemoveRange(acknowledgmentRecords);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         // 2. Rebuild from IngestedDocuments using correct logic
-        var validIngestionStates = new[] { 
-            IngestionState.FileCopied, 
-            IngestionState.Processing, 
-            IngestionState.Complete 
+        var validIngestionStates = new[] {
+            IngestionState.FileCopied,
+            IngestionState.Processing,
+            IngestionState.Complete
         };
-        
+
         var documentsToMigrate = await dbContext.IngestedDocuments
             .Where(d => !string.IsNullOrEmpty(d.FinalBlobUrl) && validIngestionStates.Contains(d.IngestionState))
             .ToListAsync(cancellationToken);
-            
+
         _logger.LogInformation("Rebuilding FileAcknowledgmentRecords for {DocumentCount} IngestedDocuments", documentsToMigrate.Count);
 
         int processedCount = 0;
@@ -1175,7 +1266,7 @@ public class SetupDataInitializerService(
                             .FirstOrDefaultAsync(s => s.IsDefault && s.IsActive, cancellationToken);
                         if (defaultSource == null)
                         {
-                            _logger.LogWarning("No default FileStorageSource found for document {DocumentId} ({FileName}). Skipping.", 
+                            _logger.LogWarning("No default FileStorageSource found for document {DocumentId} ({FileName}). Skipping.",
                                 document.Id, document.FileName);
                             continue;
                         }
@@ -1189,7 +1280,7 @@ public class SetupDataInitializerService(
 
                     if (string.IsNullOrEmpty(relativeFilePath))
                     {
-                        _logger.LogWarning("Could not determine relative file path for document {DocumentId} ({FileName}). Skipping.", 
+                        _logger.LogWarning("Could not determine relative file path for document {DocumentId} ({FileName}). Skipping.",
                             document.Id, document.FileName);
                         continue;
                     }
@@ -1232,7 +1323,7 @@ public class SetupDataInitializerService(
             try
             {
                 await dbContext.SaveChangesAsync(cancellationToken);
-                _logger.LogInformation("Processed batch: {BatchProcessed}/{TotalCount} documents rebuilt", 
+                _logger.LogInformation("Processed batch: {BatchProcessed}/{TotalCount} documents rebuilt",
                     Math.Min(i + batchSize, totalCount), totalCount);
             }
             catch (Exception ex)
@@ -1256,10 +1347,10 @@ public class SetupDataInitializerService(
                 var fileStorageSource = await dbContext.DocumentLibraryFileStorageSources
                     .Include(dlfs => dlfs.DocumentLibrary)
                     .Include(dlfs => dlfs.FileStorageSource)
-                    .Where(dlfs => dlfs.DocumentLibrary.ShortName == document.DocumentLibraryOrProcessName && 
+                    .Where(dlfs => dlfs.DocumentLibrary.ShortName == document.DocumentLibraryOrProcessName &&
                                    dlfs.IsActive)
                     .Select(dlfs => dlfs.FileStorageSource)
-                    .FirstOrDefaultAsync(fss => (fss.ContainerOrPath == document.Container || 
+                    .FirstOrDefaultAsync(fss => (fss.ContainerOrPath == document.Container ||
                                                 (string.IsNullOrEmpty(fss.ContainerOrPath) && document.Container == "default-container")) &&
                                                fss.IsActive, cancellationToken);
 
@@ -1271,10 +1362,10 @@ public class SetupDataInitializerService(
                 var fileStorageSource = await dbContext.DocumentProcessFileStorageSources
                     .Include(dpfs => dpfs.DocumentProcess)
                     .Include(dpfs => dpfs.FileStorageSource)
-                    .Where(dpfs => dpfs.DocumentProcess.ShortName == document.DocumentLibraryOrProcessName && 
+                    .Where(dpfs => dpfs.DocumentProcess.ShortName == document.DocumentLibraryOrProcessName &&
                                    dpfs.IsActive)
                     .Select(dpfs => dpfs.FileStorageSource)
-                    .FirstOrDefaultAsync(fss => (fss.ContainerOrPath == document.Container || 
+                    .FirstOrDefaultAsync(fss => (fss.ContainerOrPath == document.Container ||
                                                 (string.IsNullOrEmpty(fss.ContainerOrPath) && document.Container == "default-container")) &&
                                                fss.IsActive, cancellationToken);
 
@@ -1306,11 +1397,11 @@ public class SetupDataInitializerService(
             }
 
             var uri = new Uri(finalBlobUrl);
-            
+
             // For blob storage URLs, the format is typically:
             // https://<account>.blob.core.windows.net/<container>/<path>
             // We want to extract everything after the container name as the relative path
-            
+
             var pathSegments = uri.AbsolutePath.TrimStart('/').Split('/', 2);
             if (pathSegments.Length >= 2)
             {
@@ -1329,6 +1420,178 @@ public class SetupDataInitializerService(
         {
             _logger.LogError(ex, "Error extracting relative path from FinalBlobUrl: {Url}", finalBlobUrl);
             return null;
+        }
+    }
+
+    private async Task Seed2025_09_15_BackfillDisplayFileName(DocGenerationDbContext dbContext, CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Starting DisplayFileName backfill for existing records");
+
+        // Count records that need DisplayFileName backfill
+        var acknowledgmentRecordsNeedingBackfill = await dbContext.FileAcknowledgmentRecords
+            .CountAsync(far => far.DisplayFileName == null, cancellationToken);
+
+        var ingestedDocumentsNeedingBackfill = await dbContext.IngestedDocuments
+            .CountAsync(id => id.DisplayFileName == null, cancellationToken);
+
+        if (acknowledgmentRecordsNeedingBackfill == 0 && ingestedDocumentsNeedingBackfill == 0)
+        {
+            _logger.LogInformation("No records found needing DisplayFileName backfill. Migration already completed.");
+            return;
+        }
+
+        _logger.LogInformation("Found {AckCount} FileAcknowledgmentRecords and {DocCount} IngestedDocuments needing DisplayFileName backfill",
+            acknowledgmentRecordsNeedingBackfill, ingestedDocumentsNeedingBackfill);
+
+        int totalUpdated = 0;
+        int batchSize = 500;
+
+        try
+        {
+            // Backfill FileAcknowledgmentRecords
+            if (acknowledgmentRecordsNeedingBackfill > 0)
+            {
+                var acknowledgmentRecords = await dbContext.FileAcknowledgmentRecords
+                    .Where(far => far.DisplayFileName == null)
+                    .ToListAsync(cancellationToken);
+
+                foreach (var record in acknowledgmentRecords)
+                {
+                    try
+                    {
+                        // Extract filename from RelativeFilePath
+                        if (!string.IsNullOrEmpty(record.RelativeFilePath))
+                        {
+                            var fileName = System.IO.Path.GetFileName(record.RelativeFilePath);
+                            if (!string.IsNullOrEmpty(fileName))
+                            {
+                                record.DisplayFileName = fileName;
+                                totalUpdated++;
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to extract DisplayFileName from RelativeFilePath '{Path}' for FileAcknowledgmentRecord {Id}. Skipping.",
+                            record.RelativeFilePath, record.Id);
+                    }
+                }
+
+                // Save FileAcknowledgmentRecords in batches
+                for (int i = 0; i < acknowledgmentRecords.Count; i += batchSize)
+                {
+                    try
+                    {
+                        await dbContext.SaveChangesAsync(cancellationToken);
+                        _logger.LogDebug("Saved batch {BatchStart}-{BatchEnd} of FileAcknowledgmentRecords",
+                            i + 1, Math.Min(i + batchSize, acknowledgmentRecords.Count));
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error saving FileAcknowledgmentRecord batch {BatchStart}-{BatchEnd}",
+                            i + 1, Math.Min(i + batchSize, acknowledgmentRecords.Count));
+                    }
+                }
+
+                _logger.LogInformation("Updated DisplayFileName for {Count} FileAcknowledgmentRecords", acknowledgmentRecords.Count(r => !string.IsNullOrEmpty(r.DisplayFileName)));
+            }
+
+            // Backfill IngestedDocuments
+            if (ingestedDocumentsNeedingBackfill > 0)
+            {
+                var ingestedDocuments = await dbContext.IngestedDocuments
+                    .Where(id => id.DisplayFileName == null)
+                    .ToListAsync(cancellationToken);
+
+                foreach (var document in ingestedDocuments)
+                {
+                    try
+                    {
+                        // Try to extract from FileName first, then from FinalBlobUrl, then from OriginalDocumentUrl
+                        string? displayFileName = null;
+
+                        if (!string.IsNullOrEmpty(document.FileName))
+                        {
+                            displayFileName = System.IO.Path.GetFileName(document.FileName);
+                        }
+                        else if (!string.IsNullOrEmpty(document.FinalBlobUrl))
+                        {
+                            try
+                            {
+                                var uri = new Uri(document.FinalBlobUrl);
+                                var pathSegments = uri.AbsolutePath.TrimStart('/').Split('/');
+                                if (pathSegments.Length > 0)
+                                {
+                                    displayFileName = System.IO.Path.GetFileName(pathSegments[pathSegments.Length - 1]);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogDebug(ex, "Failed to parse FinalBlobUrl '{Url}' for IngestedDocument {Id}",
+                                    document.FinalBlobUrl, document.Id);
+                            }
+                        }
+                        else if (!string.IsNullOrEmpty(document.OriginalDocumentUrl))
+                        {
+                            try
+                            {
+                                var uri = new Uri(document.OriginalDocumentUrl);
+                                var pathSegments = uri.AbsolutePath.TrimStart('/').Split('/');
+                                if (pathSegments.Length > 0)
+                                {
+                                    displayFileName = System.IO.Path.GetFileName(pathSegments[pathSegments.Length - 1]);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogDebug(ex, "Failed to parse OriginalDocumentUrl '{Url}' for IngestedDocument {Id}",
+                                    document.OriginalDocumentUrl, document.Id);
+                            }
+                        }
+
+                        if (!string.IsNullOrEmpty(displayFileName))
+                        {
+                            document.DisplayFileName = displayFileName;
+                            totalUpdated++;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to determine DisplayFileName for IngestedDocument {Id}. Skipping.", document.Id);
+                    }
+                }
+
+                // Save IngestedDocuments in batches
+                for (int i = 0; i < ingestedDocuments.Count; i += batchSize)
+                {
+                    try
+                    {
+                        await dbContext.SaveChangesAsync(cancellationToken);
+                        _logger.LogDebug("Saved batch {BatchStart}-{BatchEnd} of IngestedDocuments",
+                            i + 1, Math.Min(i + batchSize, ingestedDocuments.Count));
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error saving IngestedDocument batch {BatchStart}-{BatchEnd}",
+                            i + 1, Math.Min(i + batchSize, ingestedDocuments.Count));
+                    }
+                }
+
+                _logger.LogInformation("Updated DisplayFileName for {Count} IngestedDocuments", ingestedDocuments.Count(d => !string.IsNullOrEmpty(d.DisplayFileName)));
+            }
+
+            // Final save for any remaining changes
+            if (dbContext.ChangeTracker.HasChanges())
+            {
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+
+            _logger.LogInformation("DisplayFileName backfill completed successfully. Total records updated: {TotalUpdated}", totalUpdated);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during DisplayFileName backfill. Some records may not have been updated.");
+            // Don't rethrow - this is a best-effort migration that should fail gracefully
         }
     }
 }

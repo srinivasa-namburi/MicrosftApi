@@ -3,19 +3,54 @@
 @page "/admin/external-data"
 @using Microsoft.Greenlight.Web.DocGen.Client.Components.FileStorage
 @using Microsoft.Greenlight.Shared.Contracts.Authorization
+@using Microsoft.Greenlight.Shared.Contracts.DTO.FileStorage
+@using Microsoft.Greenlight.Shared.Enums
+@using Microsoft.Greenlight.Web.DocGen.Client.Components.Admin.FileStorage
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
 
 <MudPaper Class="pa-4">
-  <MudText Typo="Typo.h5">External Data</MudText>
-  <MudDivider Class="mt-2 mb-3" />
-
-  <PermissionView Permission="@PermissionKeys.AlterSystemConfiguration">
-    <MudTabs>
-      <MudTabPanel Text="File Storage Sources">
-        <FileStorageSourceListComponent />
-      </MudTabPanel>
-      <MudTabPanel Text="Content Reference Mappings">
-        <ContentReferenceStorageMatrix />
-      </MudTabPanel>
-    </MudTabs>
-  </PermissionView>
+    <MudText Typo="Typo.h4" Class="mb-4">
+        <MudIcon Icon="Icons.Material.Filled.Storage" Class="mr-2" />
+        File Storage Management
+    </MudText>
+    
+    <PermissionView Permission="@PermissionKeys.AlterSystemConfiguration">
+        <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-6">
+            
+            <!-- File Storage Hosts Tab -->
+            <MudTabPanel Text="Storage Hosts" Icon="@Icons.Material.Filled.Hub">
+                <FileStorageHostManagement />
+            </MudTabPanel>
+            
+            <!-- File Storage Sources Tab -->
+            <MudTabPanel Text="Storage Sources" Icon="@Icons.Material.Filled.FolderOpen">
+                <FileStorageSourceManagement />
+            </MudTabPanel>
+            
+            <!-- Category Management Tab -->
+            <MudTabPanel Text="Category Management" Icon="@Icons.Material.Filled.Category">
+                <FileStorageSourceCategoryManagement />
+            </MudTabPanel>
+            
+            <!-- Content Reference Mappings Tab -->
+            <MudTabPanel Text="Content Reference Mappings" Icon="@Icons.Material.Filled.AccountTree">
+                <ContentReferenceStorageMatrix />
+            </MudTabPanel>
+            
+            <!-- File Browser Tab -->
+            <MudTabPanel Text="File Browser" Icon="@Icons.Material.Filled.FolderSpecial">
+                <FileStorageBrowser />
+            </MudTabPanel>
+            
+        </MudTabs>
+    </PermissionView>
+    
+    <PermissionView Permission="@PermissionKeys.AlterSystemConfiguration" ShowUnauthorized="true">
+        <UnauthorizedContent>
+            <MudAlert Severity="Severity.Warning" Icon="@Icons.Material.Filled.Warning">
+                <MudText>You need <strong>System Configuration</strong> permissions to manage file storage settings.</MudText>
+            </MudAlert>
+        </UnauthorizedContent>
+    </PermissionView>
 </MudPaper>

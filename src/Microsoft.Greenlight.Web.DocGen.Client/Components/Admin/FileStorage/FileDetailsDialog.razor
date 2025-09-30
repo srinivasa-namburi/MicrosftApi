@@ -1,0 +1,144 @@
+@* File Details Dialog *@
+@using Microsoft.Greenlight.Shared.Contracts.DTO.FileStorage
+@inject ISnackbar Snackbar
+@inject IJSRuntime JSRuntime
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@GetFileIcon(Path.GetFileName(File.RelativeFilePath))" Class="mr-3" />
+            File Details
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <!-- File Name and Path -->
+            <MudPaper Class="pa-3" Elevation="1">
+                <MudStack Spacing="2">
+                    <MudText Typo="Typo.subtitle1">@Path.GetFileName(File.RelativeFilePath)</MudText>
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                        <MudIcon Icon="@Icons.Material.Filled.Folder" Size="Size.Small" Class="mr-1" />
+                        @Path.GetDirectoryName(File.RelativeFilePath)
+                    </MudText>
+                </MudStack>
+            </MudPaper>
+
+            <!-- File Properties -->
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-3" Elevation="1" Style="height: 100%;">
+                        <MudStack Spacing="2">
+                            <MudText Typo="Typo.subtitle2">Properties</MudText>
+                            <MudStack Spacing="1">
+                                <MudText><strong>Size:</strong> Unknown</MudText>
+                                <MudText><strong>MIME Type:</strong> Unknown</MudText>
+                                <MudText><strong>File Hash:</strong></MudText>
+                                <MudText Typo="Typo.caption" Style="font-family: monospace; word-break: break-all;">
+                                    Not available
+                                </MudText>
+                            </MudStack>
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+                
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-3" Elevation="1" Style="height: 100%;">
+                        <MudStack Spacing="2">
+                            <MudText Typo="Typo.subtitle2">Timestamps</MudText>
+                            <MudStack Spacing="1">
+                                <MudText><strong>Last Modified:</strong></MudText>
+                                <MudText Typo="Typo.body2">Not available</MudText>
+                                <MudText><strong>Discovered At:</strong></MudText>
+                                <MudText Typo="Typo.body2">@File.AcknowledgedDate.ToString("yyyy-MM-dd HH:mm:ss UTC")</MudText>
+                            </MudStack>
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            <!-- Storage Information -->
+            <MudPaper Class="pa-3" Elevation="1">
+                <MudStack Spacing="2">
+                    <MudText Typo="Typo.subtitle2">Storage Information</MudText>
+                    <MudGrid>
+                        <MudItem xs="12" md="6">
+                            <MudStack Spacing="1">
+                                <MudText><strong>Storage Source:</strong></MudText>
+                                <MudChip T="string" Color="Color.Primary" Size="Size.Small">
+                                    @(File.FileStorageSourceName ?? "Unknown")
+                                </MudChip>
+                                <MudText Typo="Typo.caption">Source ID: @File.FileStorageSourceId</MudText>
+                            </MudStack>
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudStack Spacing="1">
+                                <MudText><strong>Storage Host:</strong></MudText>
+                                <MudChip T="string" Color="Color.Default" Size="Size.Small">
+                                    Storage Host
+                                </MudChip>
+                                <MudText Typo="Typo.caption">@File.ProviderType.ToString()</MudText>
+                            </MudStack>
+                        </MudItem>
+                    </MudGrid>
+                </MudStack>
+            </MudPaper>
+
+            <!-- Processing Status -->
+            @* Processing status not available in DTO *@
+            <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Filled.Schedule">
+                This file has been discovered but not yet processed.
+            </MudAlert>
+
+            <!-- Actions -->
+            <MudPaper Class="pa-3" Elevation="1">
+                <MudStack Row="true" Spacing="2">
+                    <MudAlert Severity="Severity.Info">
+                        File access functionality is available through the main application interface.
+                    </MudAlert>
+                </MudStack>
+            </MudPaper>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Close">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter] public FileAcknowledgmentRecordInfo File { get; set; } = new();
+    
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
+
+    private void Close() => MudDialog.Close();
+
+    private static string GetFileIcon(string fileName)
+    {
+        var extension = Path.GetExtension(fileName)?.ToLowerInvariant();
+        return extension switch
+        {
+            ".pdf" => Icons.Material.Filled.PictureAsPdf,
+            ".doc" or ".docx" => Icons.Material.Filled.Description,
+            ".xls" or ".xlsx" => Icons.Material.Filled.TableChart,
+            ".ppt" or ".pptx" => Icons.Material.Filled.Slideshow,
+            ".txt" => Icons.Material.Filled.TextSnippet,
+            ".jpg" or ".jpeg" or ".png" or ".gif" or ".bmp" => Icons.Material.Filled.Image,
+            ".mp4" or ".avi" or ".mov" => Icons.Material.Filled.VideoFile,
+            ".mp3" or ".wav" or ".m4a" => Icons.Material.Filled.AudioFile,
+            ".zip" or ".rar" or ".7z" => Icons.Material.Filled.Archive,
+            _ => Icons.Material.Filled.InsertDriveFile
+        };
+    }
+
+    private static string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+}

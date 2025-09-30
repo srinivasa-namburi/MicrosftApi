@@ -15,8 +15,9 @@ builder.AddServiceDefaults();
 builder.Services.AddSingleton<AzureCredentialHelper>();
 var credentialHelper = new AzureCredentialHelper(builder.Configuration);
 
-// Initialize AdminHelper with configuration
+// Initialize AdminHelper with configuration and validate developer setup
 AdminHelper.Initialize(builder.Configuration);
+AdminHelper.ValidateDeveloperSetup("Silo");
 
 // First add the DbContext and configuration provider
 builder.AddGreenlightDbContextAndConfiguration();

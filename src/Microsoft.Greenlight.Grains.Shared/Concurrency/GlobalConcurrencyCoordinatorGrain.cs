@@ -59,6 +59,10 @@ public class GlobalConcurrencyCoordinatorGrain : Grain, IGlobalConcurrencyCoordi
     {
         var key = this.GetPrimaryKeyString();
         _category = Enum.TryParse<ConcurrencyCategory>(key, ignoreCase: true, out var cat) ? cat : ConcurrencyCategory.Generation;
+
+        // CRITICAL: Log reactivation to help diagnose state loss issues
+        _logger.LogWarning("GlobalConcurrencyCoordinator for {Category} activated/reactivated. Active leases and queue state have been reset. Any existing leases are now orphaned.", _category);
+
         // Timer 1: lease cleanup
         RegisterTimer(_ => CleanupExpiredLeasesAsync(), null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
         // Timer 2: periodic heartbeat push so UI gets updates even when queue/active counts remain unchanged
@@ -66,7 +70,7 @@ public class GlobalConcurrencyCoordinatorGrain : Grain, IGlobalConcurrencyCoordi
         return base.OnActivateAsync(cancellationToken);
     }
 
-    public async Task<ConcurrencyLease> AcquireAsync(string requesterId, int weight = 1, TimeSpan? waitTimeout = null, TimeSpan? leaseTtl = null)
+    public Task<ConcurrencyLease> AcquireAsync(string requesterId, int weight = 1, TimeSpan? waitTimeout = null, TimeSpan? leaseTtl = null)
     {
         if (weight <= 0) { weight = 1; }
         var max = GetMaxConcurrency();
@@ -75,11 +79,24 @@ public class GlobalConcurrencyCoordinatorGrain : Grain, IGlobalConcurrencyCoordi
             throw new InvalidOperationException($"Requested weight {weight} exceeds max {_category} concurrency {max}");
         }
 
+        // CRITICAL: Detect potential state corruption after reactivation
+        // If we have suspiciously low active count but requests are queueing, we may have lost state
+        if (_queue.Count > max && _activeWeight == 0)
+        {
+            _logger.LogError("CRITICAL: Detected potential state loss in {Category} coordinator. Queue={Queue} but ActiveWeight=0. This indicates the coordinator was reactivated and lost track of active leases.",
+                _category, _queue.Count);
+        }
+
         // Fast-path if capacity is available and no queue
-        if (_queue.Count == 0 && _activeWeight + weight <= max)
+        var queueCount = _queue.Count;
+
+        _logger.LogDebug("Checking fast-path for {Category}: queue={QueueCount}, activeWeight={ActiveWeight}, weight={Weight}, max={Max}, canGrant={CanGrant}",
+            _category, queueCount, _activeWeight, weight, max, (queueCount == 0 && _activeWeight + weight <= max));
+
+        if (queueCount == 0 && _activeWeight + weight <= max)
         {
             var lease = GrantLease(requesterId, weight, leaseTtl);
-            _logger.LogDebug("Granted immediate lease {LeaseId} for {Category} to {Requester} (weight={Weight})", lease.LeaseId, _category, requesterId, weight);
+            _logger.LogInformation("Granted immediate lease {LeaseId} for {Category} to {Requester} (weight={Weight})", lease.LeaseId, _category, requesterId, weight);
             
             // Push status update for immediate lease grants
             _ = PushStatusUpdateIfNeededAsync().ContinueWith(t =>
@@ -90,32 +107,28 @@ public class GlobalConcurrencyCoordinatorGrain : Grain, IGlobalConcurrencyCoordi
                 }
             });
             
-            return lease;
+            return Task.FromResult(lease);
         }
 
         // Enqueue and await
         var deadlineUtc = waitTimeout.HasValue ? (DateTime?)DateTime.UtcNow.Add(waitTimeout.Value) : null;
         var pending = new PendingRequest { RequesterId = requesterId, Weight = weight, LeaseTtl = leaseTtl, DeadlineUtc = deadlineUtc };
         _queue.Enqueue(pending);
-        _logger.LogDebug("Enqueued lease request for {Category} by {Requester} (weight={Weight}, queue={Queue})", _category, requesterId, weight, _queue.Count);
+        _logger.LogDebug("Enqueued lease request for {Category} by {Requester} (weight={Weight}, activeWeight={ActiveWeight}, maxConcurrency={MaxConcurrency}, queue={Queue})",
+            _category, requesterId, weight, _activeWeight, GetMaxConcurrency(), _queue.Count);
 
         // Try to drain the queue immediately in case capacity exists
         DrainQueue();
 
-        using var cts = waitTimeout.HasValue ? new CancellationTokenSource(waitTimeout.Value) : null;
-        using (cts)
-        {
-            if (cts != null)
-            {
-                await using var reg = cts.Token.UnsafeRegister(state =>
-                {
-                    var t = (TaskCompletionSource<ConcurrencyLease>)state!;
-                    t.TrySetException(new TimeoutException("Timeout waiting for concurrency lease"));
-                }, pending.Tcs);
-            }
+        // CRITICAL: Do NOT await the TaskCompletionSource here!
+        // Awaiting would block the grain from processing other messages like GetStatusAsync
+        // Even with [Reentrant], Orleans can't handle awaiting a TCS that needs grain re-entry to complete
 
-            return await pending.Tcs.Task.ConfigureAwait(false);
-        }
+        _logger.LogDebug("Request queued for {Category} requester {Requester}, will be processed when capacity available", _category, requesterId);
+
+        // Return the task immediately - the caller will wait, but the grain remains free
+        // DrainQueue (called by timer) will complete the task when capacity is available
+        return pending.Tcs.Task;
     }
 
     public Task<bool> ReleaseAsync(Guid leaseId)
@@ -156,14 +169,30 @@ public class GlobalConcurrencyCoordinatorGrain : Grain, IGlobalConcurrencyCoordi
 
     private int GetMaxConcurrency()
     {
-        return _category switch
+        var max = _category switch
         {
             ConcurrencyCategory.Validation => _config.GreenlightServices.Scalability.NumberOfValidationWorkers,
             ConcurrencyCategory.Generation => _config.GreenlightServices.Scalability.NumberOfGenerationWorkers,
             ConcurrencyCategory.Ingestion => _config.GreenlightServices.Scalability.NumberOfIngestionWorkers,
             ConcurrencyCategory.Review => _config.GreenlightServices.Scalability.NumberOfReviewWorkers,
+            ConcurrencyCategory.FlowChat => _config.GreenlightServices.Scalability.NumberOfFlowChatWorkers,
             _ => 1
         };
+
+        // CRITICAL: Ensure we never return 0 which would block everything
+        if (max <= 0)
+        {
+            _logger.LogError("CRITICAL: MaxConcurrency for {Category} is {Max} (<=0). Defaulting to 1 to prevent total blockage. Check configuration!", _category, max);
+            max = 1;
+        }
+
+        // Log once per activation to help debug configuration issues
+        if (_lastPushTime == DateTime.MinValue)
+        {
+            _logger.LogInformation("GlobalConcurrencyCoordinator for {Category} initialized with MaxConcurrency={Max}", _category, max);
+        }
+
+        return max;
     }
 
     private ConcurrencyLease GrantLease(string requesterId, int weight, TimeSpan? leaseTtl)
@@ -187,7 +216,10 @@ public class GlobalConcurrencyCoordinatorGrain : Grain, IGlobalConcurrencyCoordi
         var max = GetMaxConcurrency();
         var progressed = true;
         var statusChanged = false;
-        
+
+        _logger.LogDebug("DrainQueue for {Category}: activeLeases={ActiveCount}, activeWeight={ActiveWeight}, max={Max}, queueLength={QueueLength}",
+            _category, _active.Count, _activeWeight, max, _queue.Count);
+
         while (progressed)
         {
             progressed = false;
@@ -211,6 +243,8 @@ public class GlobalConcurrencyCoordinatorGrain : Grain, IGlobalConcurrencyCoordi
                 next.Tcs.TrySetResult(lease);
                 progressed = true;
                 statusChanged = true; // Active weight and queue changed
+                _logger.LogDebug("Granted queued lease {LeaseId} for {Category} to {Requester} (weight={Weight}, activeWeight={ActiveWeight}, queue={Queue})",
+                    lease.LeaseId, _category, next.RequesterId, next.Weight, _activeWeight, _queue.Count);
             }
         }
         

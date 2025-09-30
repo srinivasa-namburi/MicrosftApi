@@ -90,4 +90,10 @@ public interface IDocumentReindexOrchestrationGrain : IGrainWithStringKey
     /// Used during cleanup (e.g., library deletion) to avoid stale activations.
     /// </summary>
     Task DeactivateAsync();
+
+    /// <summary>
+    /// Forces a reset of the orchestration's active state, clearing any stuck flags.
+    /// Used for recovery scenarios during scheduler startup.
+    /// </summary>
+    Task ForceResetAsync();
 }

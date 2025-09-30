@@ -222,6 +222,39 @@ public class FileStorageSourceApiClient : CrossPlatformServiceClientBase<FileSto
         response?.EnsureSuccessStatusCode();
     }
 
+    #region File Acknowledgment Records
+
+    /// <inheritdoc />
+    public async Task<List<FileAcknowledgmentRecordInfo>> SearchFileAcknowledgmentRecordsAsync(
+        Guid? sourceId = null, 
+        string? searchText = null, 
+        int skip = 0, 
+        int take = 50)
+    {
+        var queryParams = new List<string>();
+        if (sourceId.HasValue)
+            queryParams.Add($"sourceId={sourceId.Value}");
+        if (!string.IsNullOrWhiteSpace(searchText))
+            queryParams.Add($"searchText={Uri.EscapeDataString(searchText)}");
+        queryParams.Add($"skip={skip}");
+        queryParams.Add($"take={take}");
+        
+        var queryString = queryParams.Any() ? "?" + string.Join("&", queryParams) : string.Empty;
+        var response = await SendGetRequestMessage($"/api/file-storage-sources/acknowledgment-records/search{queryString}", authorize: true);
+        response?.EnsureSuccessStatusCode();
+        return await response?.Content.ReadFromJsonAsync<List<FileAcknowledgmentRecordInfo>>()! ?? new List<FileAcknowledgmentRecordInfo>();
+    }
+
+    /// <inheritdoc />
+    public async Task<List<FileAcknowledgmentRecordInfo>> GetFileAcknowledgmentRecordsBySourceAsync(Guid sourceId)
+    {
+        var response = await SendGetRequestMessage($"/api/file-storage-sources/{sourceId}/acknowledgment-records", authorize: true);
+        response?.EnsureSuccessStatusCode();
+        return await response?.Content.ReadFromJsonAsync<List<FileAcknowledgmentRecordInfo>>()! ?? new List<FileAcknowledgmentRecordInfo>();
+    }
+
+    #endregion
+
     #region Legacy method overloads for backward compatibility
 
     /// <inheritdoc />

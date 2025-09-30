@@ -1,0 +1,62 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+@using Microsoft.Greenlight.Shared.Contracts.Authorization
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Configuration
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@inject IConfigurationApiClient ConfigApi
+@inject ILogger<SystemStatusValidationBannerComponent> Logger
+@inject NavigationManager Nav
+
+<PermissionView Permission="@PermissionKeys.AlterSystemConfiguration">
+    @if (ShouldShowBanner)
+    {
+        <MudPaper Class="pa-3 mb-4 d-flex align-center system-status-validation-banner" Elevation="4" Style="position:relative;">
+            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Style="flex:1;">
+                <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Size="Size.Medium" />
+                <MudText Typo="Typo.subtitle2" Class="mr-2" Color="Color.Warning">Incomplete Configuration Detected</MudText>
+                <MudText Typo="Typo.body2">
+                    Azure OpenAI planner connection string is not configured. Features that require embeddings, chat, or OpenAI services will fail until this is set.
+                    <MudLink Href="/admin/configuration?section=secrets" Class="ml-1">Configure now</MudLink>
+                </MudText>
+            </MudStack>
+            <MudIconButton Icon="@Icons.Material.Filled.Close" Color="Color.Default" Size="Size.Small" AriaLabel="Dismiss" Class="ml-auto" OnClick="() => Dismiss()" />
+        </MudPaper>
+    }
+</PermissionView>
+
+@code {
+    private SecretOverrideInfo? _openAiInfo;
+    private bool _dismissed;
+    private bool _loaded;
+
+    private bool MissingOpenAi => _openAiInfo != null && !_openAiInfo.HasValue;
+    private bool ShouldShowBanner => _loaded && !_dismissed && MissingOpenAi;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Single call on initial layout render
+            _openAiInfo = await ConfigApi.GetSecretOverrideInfoAsync("ConnectionStrings:openai-planner");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Failed to query openai-planner connection string status");
+        }
+        finally
+        {
+            _loaded = true;
+        }
+    }
+
+    private void Dismiss()
+    {
+        _dismissed = true;
+    }
+}
+
+<style>
+    .system-status-validation-banner {
+        border-left: 6px solid var(--mud-palette-warning);
+        background: linear-gradient(90deg, rgba(255,193,7,0.15), rgba(255,193,7,0.05));
+    }
+</style>

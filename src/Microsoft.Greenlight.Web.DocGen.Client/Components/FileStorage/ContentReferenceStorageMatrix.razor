@@ -2,131 +2,290 @@
 
 @using Microsoft.Greenlight.Shared.Enums
 @using Microsoft.Greenlight.Shared.Contracts.DTO.FileStorage
-@using Microsoft.Greenlight.Web.Shared.ServiceClients
 @using Microsoft.Greenlight.Shared.Contracts.Authorization
-@inject IFileStorageSourceApiClient FileStorageSourceApiClient
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@inject IFileStorageSourceApiClient FileStorageService
+@inject ISnackbar Snackbar
 
 @namespace Microsoft.Greenlight.Web.DocGen.Client.Components.FileStorage
 
-<PermissionView Permission="@PermissionKeys.AlterSystemConfiguration">
-  @if (_loading)
-  {
-    <MudProgressLinear Indeterminate="true" />
-  }
-  else
-  {
-    <MudStack Spacing="2">
-      @foreach (var type in _types)
-      {
-        <MudPaper Class="pa-2" Elevation="0">
-          <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-            <MudText Typo="Typo.subtitle1">@type</MudText>
-            <MudStack Row="true" Spacing="1">
-              <MudSelect @bind-Value="_newMappingSourceId[type]" Label="Add source" Dense="true" Style="min-width: 240px;">
-                @foreach (var s in _allSources.Where(s => !_mappings[type].Any(m => m.FileStorageSourceId == s.Id)))
-                {
-                  <MudSelectItem Value="@s.Id">@s.Name (@s.ContainerOrPath)</MudSelectItem>
-                }
-              </MudSelect>
-              <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="() => AddMapping(type)">Add</MudButton>
-            </MudStack>
-          </MudStack>
-          <MudTable Items="_mappings[type]" Dense="true" Hover="true">
-            <HeaderContent>
-              <MudTh>Source</MudTh>
-              <MudTh>Accepts Uploads</MudTh>
-              <MudTh>Priority</MudTh>
-              <MudTh>Active</MudTh>
-              <MudTh></MudTh>
-            </HeaderContent>
-            <RowTemplate>
-              <MudTd>
-                <FileStorageSourceDisplayComponent Source="@context.Source" />
-              </MudTd>
-              <MudTd>
-                <MudSwitch T="bool" Checked="@context.AcceptsUploads" Color="Color.Primary" @onchange="(e) => UpdateMapping(type, context, acceptsUploads: (bool)e.Value!)" />
-              </MudTd>
-              <MudTd>
-                <MudNumericField T="int" Value="@context.Priority" Min="0" Style="width: 100px;" @onchange="(e) => UpdateMapping(type, context, priority: (int)e.Value!)" />
-              </MudTd>
-              <MudTd>
-                <MudSwitch T="bool" Checked="@context.IsActive" Color="Color.Primary" @onchange="(e) => UpdateMapping(type, context, isActive: (bool)e.Value!)" />
-              </MudTd>
-              <MudTd>
-                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="() => RemoveMapping(type, context)" />
-              </MudTd>
-            </RowTemplate>
-          </MudTable>
-        </MudPaper>
-      }
-    </MudStack>
-  }
-</PermissionView>
+<MudStack Spacing="4">
+    <MudText Typo="Typo.h6">Content Reference Storage Mappings</MudText>
+    <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Filled.Info">
+        Configure which storage sources are used for different types of content references. 
+        Each content type can map to multiple sources with configurable priorities.
+    </MudAlert>
+
+    @if (loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else
+    {
+        <MudStack Spacing="3">
+            @foreach (var type in types)
+            {
+                <MudPaper Class="pa-4" Elevation="2">
+                    <MudStack Spacing="3">
+                        <!-- Header -->
+                        <MudStack Row="true" JustifyContent="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                <MudIcon Icon="@GetContentTypeIcon(type)" Color="@GetContentTypeColor(type)" />
+                                <MudText Typo="Typo.h6" Color="@GetContentTypeColor(type)">@GetContentTypeDisplayName(type)</MudText>
+                                <MudChip T="string" Color="@GetContentTypeColor(type)" Size="Size.Small">
+                                    @mappings[type].Count source@(mappings[type].Count == 1 ? "" : "s")
+                                </MudChip>
+                            </MudStack>
+                            
+                            <MudStack Row="true" Spacing="2">
+                                <MudSelect @bind-Value="newMappingSourceId[type]" 
+                                          Label="Add Storage Source"
+                                          Variant="Variant.Outlined"
+                                          Style="min-width: 280px;"
+                                          Clearable="true">
+                                    @foreach (var source in availableSources.Where(s => !mappings[type].Any(m => m.FileStorageSourceId == s.Id)))
+                                    {
+                                        <MudSelectItem Value="@((Guid?)source.Id)">
+                                            <MudStack Spacing="1">
+                                                <MudText>@source.Name</MudText>
+                                                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                                    @source.ContainerOrPath (@source.FileStorageHost?.Name)
+                                                </MudText>
+                                            </MudStack>
+                                        </MudSelectItem>
+                                    }
+                                </MudSelect>
+                                
+                                <MudButton Variant="Variant.Filled" 
+                                          Color="Color.Primary"
+                                          StartIcon="@Icons.Material.Filled.Add"
+                                          OnClick="() => AddMappingAsync(type)"
+                                          Disabled="@(!newMappingSourceId[type].HasValue)">
+                                    Add
+                                </MudButton>
+                            </MudStack>
+                        </MudStack>
+
+                        <!-- Mappings Table -->
+                        @if (mappings[type].Any())
+                        {
+                            <MudDataGrid T="ContentReferenceTypeStorageSourceMappingInfo" 
+                                        Items="@mappings[type]" 
+                                        Dense="true"
+                                        SortMode="SortMode.Multiple"
+                                        EditMode="DataGridEditMode.Cell"
+                                        CommittedItemChanges="@(async (item) => await HandleMappingChangesAsync(item))">
+                                <Columns>
+                                    <PropertyColumn Property="x => x.Source.Name" Title="Storage Source" IsEditable="false">
+                                        <CellTemplate>
+                                            <MudStack Spacing="1">
+                                                <MudText>@context.Item.Source?.Name</MudText>
+                                                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                                    @context.Item.Source?.ContainerOrPath
+                                                </MudText>
+                                                <MudChip Color="@(context.Item.Source?.FileStorageHost?.IsDefault == true ? Color.Primary : Color.Default)" Size="Size.Small">
+                                                    @context.Item.Source?.FileStorageHost?.Name
+                                                </MudChip>
+                                            </MudStack>
+                                        </CellTemplate>
+                                    </PropertyColumn>
+                                    
+                                    <PropertyColumn Property="x => x.AcceptsUploads" Title="Accepts Uploads">
+                                        <CellTemplate>
+                                            <MudSwitch T="bool" @bind-Value="@context.Item.AcceptsUploads"
+                                                      Color="Color.Success"
+                                                      OnChanged="@(async (bool value) => await UpdateMappingAsync(type, context.Item, acceptsUploads: value))" />
+                                        </CellTemplate>
+                                    </PropertyColumn>
+                                    
+                                    <PropertyColumn Property="x => x.Priority" Title="Priority">
+                                        <CellTemplate>
+                                            <MudNumericField @bind-Value="@context.Item.Priority" 
+                                                            Min="0" 
+                                                            Max="999"
+                                                            Style="width: 100px;"
+                                                            OnBlur="@(async () => await UpdateMappingAsync(type, context.Item, priority: context.Item.Priority))" />
+                                        </CellTemplate>
+                                    </PropertyColumn>
+                                    
+                                    <PropertyColumn Property="x => x.IsActive" Title="Active">
+                                        <CellTemplate>
+                                            <MudSwitch T="bool" @bind-Value="@context.Item.IsActive"
+                                                      Color="Color.Primary"
+                                                      OnChanged="@(async (bool value) => await UpdateMappingAsync(type, context.Item, isActive: value))" />
+                                        </CellTemplate>
+                                    </PropertyColumn>
+                                    
+                                    <TemplateColumn Title="Actions" Sortable="false" Filterable="false">
+                                        <CellTemplate>
+                                            <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                          Size="Size.Small"
+                                                          Color="Color.Error"
+                                                          OnClick="@(() => RemoveMappingAsync(type, context.Item))"
+                                                          Title="Remove mapping" />
+                                        </CellTemplate>
+                                    </TemplateColumn>
+                                </Columns>
+                            </MudDataGrid>
+                        }
+                        else
+                        {
+                            <MudAlert Severity="Severity.Info">
+                                No storage sources configured for this content type. Add a source above to get started.
+                            </MudAlert>
+                        }
+                    </MudStack>
+                </MudPaper>
+            }
+        </MudStack>
+    }
+</MudStack>
 
 @code {
-  private bool _loading = true;
-  private List<FileStorageSourceInfo> _allSources = new();
-  private readonly ContentReferenceType[] _types = Enum.GetValues(typeof(ContentReferenceType)).Cast<ContentReferenceType>().ToArray();
-  private readonly Dictionary<ContentReferenceType, List<ContentReferenceTypeStorageSourceMappingInfo>> _mappings = new();
-  private readonly Dictionary<ContentReferenceType, Guid?> _newMappingSourceId = new();
+    private bool loading = true;
+    private List<FileStorageSourceInfo> availableSources = new();
+    private readonly ContentReferenceType[] types = Enum.GetValues(typeof(ContentReferenceType)).Cast<ContentReferenceType>().ToArray();
+    private readonly Dictionary<ContentReferenceType, List<ContentReferenceTypeStorageSourceMappingInfo>> mappings = new();
+    private readonly Dictionary<ContentReferenceType, Guid?> newMappingSourceId = new();
 
-  protected override async Task OnInitializedAsync()
-  {
-    try
+    protected override async Task OnInitializedAsync()
     {
-      _loading = true;
-      _allSources = await FileStorageSourceApiClient.GetAllFileStorageSourcesAsync();
-      foreach (var t in _types)
-      {
-        _mappings[t] = await FileStorageSourceApiClient.GetContentReferenceTypeMappingsAsync(t);
-        _newMappingSourceId[t] = null;
-      }
-    }
-    finally
-    {
-      _loading = false;
-    }
-  }
-
-  private async Task AddMapping(ContentReferenceType type)
-  {
-    if (!_newMappingSourceId[type].HasValue) return;
-    var srcId = _newMappingSourceId[type]!.Value;
-    var created = await FileStorageSourceApiClient.CreateContentReferenceTypeMappingAsync(type, srcId);
-    _mappings[type].Add(created);
-    _newMappingSourceId[type] = null;
-    StateHasChanged();
-  }
-
-  private async Task UpdateMapping(ContentReferenceType type, ContentReferenceTypeStorageSourceMappingInfo m, int? priority = null, bool? isActive = null, bool? acceptsUploads = null)
-  {
-    var newPriority = priority ?? m.Priority;
-    var newIsActive = isActive ?? m.IsActive;
-    var newAcceptsUploads = acceptsUploads ?? m.AcceptsUploads;
-
-    // Client-side protection: ensure only one mapping per type has AcceptsUploads=true
-    if (acceptsUploads.HasValue && acceptsUploads.Value)
-    {
-      // Turn off any other mapping that currently accepts uploads
-      foreach (var other in _mappings[type].Where(x => x.FileStorageSourceId != m.FileStorageSourceId && x.AcceptsUploads).ToList())
-      {
-        var cleared = await FileStorageSourceApiClient.UpdateContentReferenceTypeMappingAsync(type, other.FileStorageSourceId, other.Priority, other.IsActive, false);
-        var oidx = _mappings[type].FindIndex(x => x.FileStorageSourceId == other.FileStorageSourceId);
-        if (oidx >= 0) _mappings[type][oidx] = cleared;
-      }
+        await LoadDataAsync();
     }
 
-    var updated = await FileStorageSourceApiClient.UpdateContentReferenceTypeMappingAsync(type, m.FileStorageSourceId, newPriority, newIsActive, newAcceptsUploads);
-    // replace locally
-    var idx = _mappings[type].FindIndex(x => x.FileStorageSourceId == m.FileStorageSourceId);
-    if (idx >= 0) _mappings[type][idx] = updated;
-    StateHasChanged();
-  }
+    private async Task LoadDataAsync()
+    {
+        loading = true;
+        try
+        {
+            availableSources = (await FileStorageService.GetAllFileStorageSourcesAsync()).ToList();
+            
+            foreach (var type in types)
+            {
+                mappings[type] = (await FileStorageService.GetContentReferenceTypeMappingsAsync(type)).ToList();
+                newMappingSourceId[type] = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
 
-  private async Task RemoveMapping(ContentReferenceType type, ContentReferenceTypeStorageSourceMappingInfo m)
-  {
-    await FileStorageSourceApiClient.DeleteContentReferenceTypeMappingAsync(type, m.FileStorageSourceId);
-    _mappings[type].RemoveAll(x => x.FileStorageSourceId == m.FileStorageSourceId);
-    StateHasChanged();
-  }
+    private async Task AddMappingAsync(ContentReferenceType type)
+    {
+        if (!newMappingSourceId[type].HasValue) return;
+        
+        try
+        {
+            var sourceId = newMappingSourceId[type]!.Value;
+            var created = await FileStorageService.CreateContentReferenceTypeMappingAsync(type, sourceId);
+            mappings[type].Add(created);
+            newMappingSourceId[type] = null;
+            
+            Snackbar.Add($"Added storage source mapping for {GetContentTypeDisplayName(type)}", Severity.Success);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to add mapping: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task UpdateMappingAsync(ContentReferenceType type, ContentReferenceTypeStorageSourceMappingInfo mapping, int? priority = null, bool? isActive = null, bool? acceptsUploads = null)
+    {
+        try
+        {
+            var newPriority = priority ?? mapping.Priority;
+            var newIsActive = isActive ?? mapping.IsActive;
+            var newAcceptsUploads = acceptsUploads ?? mapping.AcceptsUploads;
+
+            // Client-side protection: ensure only one mapping per type has AcceptsUploads=true
+            if (acceptsUploads.HasValue && acceptsUploads.Value)
+            {
+                // Turn off any other mapping that currently accepts uploads
+                var othersWithUploads = mappings[type].Where(x => x.FileStorageSourceId != mapping.FileStorageSourceId && x.AcceptsUploads).ToList();
+                
+                foreach (var other in othersWithUploads)
+                {
+                    var cleared = await FileStorageService.UpdateContentReferenceTypeMappingAsync(type, other.FileStorageSourceId, other.Priority, other.IsActive, false);
+                    var otherIndex = mappings[type].FindIndex(x => x.FileStorageSourceId == other.FileStorageSourceId);
+                    if (otherIndex >= 0) mappings[type][otherIndex] = cleared;
+                }
+                
+                if (othersWithUploads.Any())
+                {
+                    Snackbar.Add($"Disabled upload acceptance on {othersWithUploads.Count} other source(s)", Severity.Info);
+                }
+            }
+
+            var updated = await FileStorageService.UpdateContentReferenceTypeMappingAsync(type, mapping.FileStorageSourceId, newPriority, newIsActive, newAcceptsUploads);
+            
+            // Replace locally
+            var index = mappings[type].FindIndex(x => x.FileStorageSourceId == mapping.FileStorageSourceId);
+            if (index >= 0) mappings[type][index] = updated;
+            
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to update mapping: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task RemoveMappingAsync(ContentReferenceType type, ContentReferenceTypeStorageSourceMappingInfo mapping)
+    {
+        try
+        {
+            await FileStorageService.DeleteContentReferenceTypeMappingAsync(type, mapping.FileStorageSourceId);
+            mappings[type].RemoveAll(x => x.FileStorageSourceId == mapping.FileStorageSourceId);
+            
+            Snackbar.Add($"Removed storage source mapping for {GetContentTypeDisplayName(type)}", Severity.Success);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to remove mapping: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task HandleMappingChangesAsync(ContentReferenceTypeStorageSourceMappingInfo changedItem)
+    {
+        // Handle any additional cell-level changes if needed
+        await Task.CompletedTask;
+    }
+
+    private static string GetContentTypeDisplayName(ContentReferenceType type) => type switch
+    {
+        ContentReferenceType.GeneratedDocument => "Generated Documents",
+        ContentReferenceType.GeneratedSection => "Generated Sections",
+        ContentReferenceType.ReviewItem => "Review Items",
+        ContentReferenceType.ExternalFile => "External Files",
+        ContentReferenceType.ExternalLinkAsset => "External Link Assets",
+        _ => type.ToString()
+    };
+
+    private static string GetContentTypeIcon(ContentReferenceType type) => type switch
+    {
+        ContentReferenceType.GeneratedDocument => Icons.Material.Filled.Description,
+        ContentReferenceType.GeneratedSection => Icons.Material.Filled.TextSnippet,
+        ContentReferenceType.ReviewItem => Icons.Material.Filled.RateReview,
+        ContentReferenceType.ExternalFile => Icons.Material.Filled.InsertDriveFile,
+        ContentReferenceType.ExternalLinkAsset => Icons.Material.Filled.Link,
+        _ => Icons.Material.Filled.Category
+    };
+
+    private static Color GetContentTypeColor(ContentReferenceType type) => type switch
+    {
+        ContentReferenceType.GeneratedDocument => Color.Primary,
+        ContentReferenceType.GeneratedSection => Color.Secondary,
+        ContentReferenceType.ReviewItem => Color.Success,
+        ContentReferenceType.ExternalFile => Color.Warning,
+        ContentReferenceType.ExternalLinkAsset => Color.Info,
+        _ => Color.Default
+    };
 }

@@ -130,16 +130,23 @@ public static class KernelMemoryExtensions
     {
         var azureCredentialHelper = serviceProvider.GetRequiredService<AzureCredentialHelper>();
         var configuration = serviceProvider.GetRequiredService<IConfiguration>();
-        var baseSearchClient = serviceProvider.GetRequiredService<SearchIndexClient>();
+        var baseSearchClient = serviceProvider.GetService<SearchIndexClient>(); // Optional when using Postgres
 
-        // Get OpenAI connection string
-        var openAiConnString = configuration.GetConnectionString("openai-planner") ?? throw new InvalidOperationException("OpenAI connection string not found.");
+        // Get OpenAI connection string - optional for system startup
+        var openAiConnString = configuration.GetConnectionString("openai-planner");
+        if (string.IsNullOrEmpty(openAiConnString))
+        {
+            var logger = serviceProvider.GetService<ILogger<IKernelMemory>>();
+            logger?.LogWarning("OpenAI connection string not configured - Kernel Memory features will be unavailable until configured.");
+            // Return null - callers should handle this gracefully
+            return null!;
+        }
         var kmVectorDbConnectionString = configuration.GetConnectionString("kmvectordb");
 
-        // Extract Endpoint and Key
-        var openAiEndpoint = openAiConnString.Split(";").FirstOrDefault(x => x.Contains("Endpoint="))?.Split("=")[1]
-            ?? throw new ArgumentException("OpenAI endpoint must be provided in the configuration.");
-        var openAiKey = openAiConnString.Split(";").FirstOrDefault(x => x.Contains("Key="))?.Split("=")[1];
+        // Parse OpenAI connection string using helper
+        var connectionInfo = AzureOpenAIConnectionStringParser.Parse(openAiConnString);
+        var openAiEndpoint = connectionInfo.Endpoint;
+        var openAiKey = connectionInfo.Key;
 
         AzureOpenAIConfig.AuthTypes authType;
         string? apiKey = null;
@@ -192,11 +199,15 @@ public static class KernelMemoryExtensions
             openAiChatCompletionConfig.SetCredential(tokenCredential);
         }
 
-        var azureAiSearchConfig = new AzureAISearchConfig()
+        AzureAISearchConfig? azureAiSearchConfig = null;
+        if (baseSearchClient != null)
         {
-            Endpoint = baseSearchClient.Endpoint.AbsoluteUri,
-            Auth = AzureAISearchConfig.AuthTypes.ManualTokenCredential
-        };
+            azureAiSearchConfig = new AzureAISearchConfig()
+            {
+                Endpoint = baseSearchClient.Endpoint.AbsoluteUri,
+                Auth = AzureAISearchConfig.AuthTypes.ManualTokenCredential
+            };
+        }
 
         PostgresConfig? postgresConfig = null;
         if (kmVectorDbConnectionString != null)
@@ -235,7 +246,7 @@ public static class KernelMemoryExtensions
         }
 
 
-        azureAiSearchConfig.SetCredential(azureCredentialHelper.GetAzureCredential());
+        azureAiSearchConfig?.SetCredential(azureCredentialHelper.GetAzureCredential());
 
         // Blob Connection String
         var blobConnection = configuration.GetConnectionString("blob-docing") ?? throw new ArgumentException("Blob Connection String must be provided");
@@ -286,9 +297,13 @@ public static class KernelMemoryExtensions
         {
             kernelMemoryBuilder.WithPostgresMemoryDb(postgresConfig);
         }
-        else
+        else if (azureAiSearchConfig != null)
         {
             kernelMemoryBuilder.WithAzureAISearchMemoryDb(azureAiSearchConfig);
+        }
+        else
+        {
+            throw new InvalidOperationException("Neither Postgres nor Azure AI Search is properly configured for Kernel Memory vector storage.");
         }
 
         // Add Logging

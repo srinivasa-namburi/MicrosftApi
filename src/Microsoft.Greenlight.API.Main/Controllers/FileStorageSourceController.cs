@@ -475,7 +475,11 @@ public class FileStorageSourceController : BaseController
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync();
         
-        var source = await db.FileStorageSources.FirstOrDefaultAsync(s => s.Id == id);
+        var source = await db.FileStorageSources
+            .Include(s => s.FileStorageHost)
+            .Include(s => s.Categories)
+            .FirstOrDefaultAsync(s => s.Id == id);
+            
         if (source == null)
         {
             return NotFound();
@@ -493,10 +497,225 @@ public class FileStorageSourceController : BaseController
             return BadRequest("Cannot delete file storage source because it is currently in use by document processes or libraries.");
         }
 
+        // CRITICAL PROTECTION: Prevent deletion of last ingestion/content reference source on default host
+        if (source.FileStorageHost?.IsDefault == true)
+        {
+            var sourceCategories = source.Categories.Select(c => c.DataType).ToList();
+            
+            // Check if this source has ingestion category
+            if (sourceCategories.Contains(FileStorageSourceDataType.Ingestion))
+            {
+                var otherIngestionSources = await db.FileStorageSources
+                    .Where(s => s.Id != id && s.FileStorageHostId == source.FileStorageHostId && s.IsActive)
+                    .Include(s => s.Categories)
+                    .Where(s => s.Categories.Any(c => c.DataType == FileStorageSourceDataType.Ingestion))
+                    .CountAsync();
+                    
+                if (otherIngestionSources == 0)
+                {
+                    return BadRequest("Cannot delete file storage source because it is the last ingestion source on the default host. At least one ingestion source is required on the default host.");
+                }
+            }
+            
+            // Check if this source has content reference category
+            if (sourceCategories.Contains(FileStorageSourceDataType.ContentReference))
+            {
+                var otherContentRefSources = await db.FileStorageSources
+                    .Where(s => s.Id != id && s.FileStorageHostId == source.FileStorageHostId && s.IsActive)
+                    .Include(s => s.Categories)
+                    .Where(s => s.Categories.Any(c => c.DataType == FileStorageSourceDataType.ContentReference))
+                    .CountAsync();
+                    
+                if (otherContentRefSources == 0)
+                {
+                    return BadRequest("Cannot delete file storage source because it is the last content reference source on the default host. At least one content reference source is required on the default host.");
+                }
+            }
+        }
+
+        // Clean up categories first
+        if (source.Categories.Any())
+        {
+            db.FileStorageSourceCategories.RemoveRange(source.Categories);
+        }
+
         db.FileStorageSources.Remove(source);
         await db.SaveChangesAsync();
 
         return NoContent();
+    }
+
+    /// <summary>
+    /// Adds a category to a file storage source.
+    /// </summary>
+    /// <param name="sourceId">The ID of the file storage source.</param>
+    /// <param name="dataType">The data type category to add.</param>
+    /// <returns>No content if successful.</returns>
+    [HttpPost("{sourceId}/categories/{dataType}")]
+    [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> AddCategoryToSourceAsync(Guid sourceId, FileStorageSourceDataType dataType)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync();
+        
+        var source = await db.FileStorageSources
+            .Include(s => s.Categories)
+            .FirstOrDefaultAsync(s => s.Id == sourceId);
+            
+        if (source == null)
+        {
+            return NotFound("File storage source not found.");
+        }
+
+        // Check if the category already exists
+        var existingCategory = await db.FileStorageSourceCategories
+            .FirstOrDefaultAsync(c => c.FileStorageSourceId == sourceId && c.DataType == dataType);
+            
+        if (existingCategory != null)
+        {
+            return BadRequest("The specified category is already assigned to this source.");
+        }
+
+        var category = new FileStorageSourceCategory
+        {
+            Id = Guid.NewGuid(),
+            FileStorageSourceId = sourceId,
+            DataType = dataType
+        };
+
+        db.FileStorageSourceCategories.Add(category);
+        await db.SaveChangesAsync();
+
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Removes a category from a file storage source.
+    /// </summary>
+    /// <param name="sourceId">The ID of the file storage source.</param>
+    /// <param name="dataType">The data type category to remove.</param>
+    /// <returns>No content if successful.</returns>
+    [HttpDelete("{sourceId}/categories/{dataType}")]
+    [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> RemoveCategoryFromSourceAsync(Guid sourceId, FileStorageSourceDataType dataType)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync();
+        
+        var source = await db.FileStorageSources
+            .Include(s => s.FileStorageHost)
+            .Include(s => s.Categories)
+            .FirstOrDefaultAsync(s => s.Id == sourceId);
+            
+        if (source == null)
+        {
+            return NotFound("File storage source not found.");
+        }
+
+        var category = await db.FileStorageSourceCategories
+            .FirstOrDefaultAsync(c => c.FileStorageSourceId == sourceId && c.DataType == dataType);
+            
+        if (category == null)
+        {
+            return NotFound("The specified category is not assigned to this source.");
+        }
+
+        // CRITICAL PROTECTION: Prevent removal of critical categories from default host sources
+        if (source.FileStorageHost?.IsDefault == true)
+        {
+            // Check if this is the last ingestion source on default host
+            if (dataType == FileStorageSourceDataType.Ingestion)
+            {
+                var otherIngestionSources = await db.FileStorageSources
+                    .Where(s => s.Id != sourceId && s.FileStorageHostId == source.FileStorageHostId && s.IsActive)
+                    .Include(s => s.Categories)
+                    .Where(s => s.Categories.Any(c => c.DataType == FileStorageSourceDataType.Ingestion))
+                    .CountAsync();
+                    
+                if (otherIngestionSources == 0)
+                {
+                    return BadRequest("Cannot remove ingestion category because this is the last ingestion source on the default host. At least one ingestion source is required on the default host.");
+                }
+            }
+            
+            // Check if this is the last content reference source on default host
+            if (dataType == FileStorageSourceDataType.ContentReference)
+            {
+                var otherContentRefSources = await db.FileStorageSources
+                    .Where(s => s.Id != sourceId && s.FileStorageHostId == source.FileStorageHostId && s.IsActive)
+                    .Include(s => s.Categories)
+                    .Where(s => s.Categories.Any(c => c.DataType == FileStorageSourceDataType.ContentReference))
+                    .CountAsync();
+                    
+                if (otherContentRefSources == 0)
+                {
+                    return BadRequest("Cannot remove content reference category because this is the last content reference source on the default host. At least one content reference source is required on the default host.");
+                }
+            }
+        }
+
+        db.FileStorageSourceCategories.Remove(category);
+        await db.SaveChangesAsync();
+
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Gets all categories for a file storage source.
+    /// </summary>
+    /// <param name="sourceId">The ID of the file storage source.</param>
+    /// <returns>A list of data type categories assigned to the source.</returns>
+    [HttpGet("{sourceId}/categories")]
+    [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [Produces("application/json")]
+    public async Task<ActionResult<List<FileStorageSourceDataType>>> GetSourceCategoriesAsync(Guid sourceId)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync();
+        
+        var source = await db.FileStorageSources
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == sourceId);
+            
+        if (source == null)
+        {
+            return NotFound("File storage source not found.");
+        }
+
+        var categories = await db.FileStorageSourceCategories
+            .AsNoTracking()
+            .Where(c => c.FileStorageSourceId == sourceId)
+            .Select(c => c.DataType)
+            .ToListAsync();
+
+        return Ok(categories);
+    }
+
+    /// <summary>
+    /// Gets file acknowledgment records for browsing files across storage sources.
+    /// </summary>
+    /// <returns>A list of file acknowledgment records.</returns>
+    [HttpGet("file-acknowledgments")]
+    [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [Produces("application/json")]
+    public async Task<ActionResult<List<FileAcknowledgmentRecord>>> GetFileAcknowledgmentRecordsAsync()
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync();
+        
+        var records = await db.FileAcknowledgmentRecords
+            .AsNoTracking()
+            .Include(f => f.FileStorageSource)
+                .ThenInclude(s => s.FileStorageHost)
+            .OrderByDescending(f => f.ModifiedUtc)
+            .ToListAsync();
+
+        return Ok(records);
     }
 
     #region Legacy method overloads for backward compatibility
@@ -1076,5 +1295,110 @@ public class FileStorageSourceController : BaseController
         // Remove the orphaned IngestedDocuments
         db.IngestedDocuments.RemoveRange(orphanedDocuments);
         _logger.LogInformation("Removing {Count} orphaned IngestedDocuments", orphanedDocuments.Count);
+    }
+
+    /// <summary>
+    /// Searches file acknowledgment records with filtering.
+    /// </summary>
+    /// <param name="sourceId">Optional: Filter by storage source ID.</param>
+    /// <param name="searchText">Optional: Search text for file paths.</param>
+    /// <param name="skip">Number of records to skip for pagination.</param>
+    /// <param name="take">Number of records to take (max 100).</param>
+    /// <returns>A paginated list of file acknowledgment record information.</returns>
+    [HttpGet("acknowledgment-records/search")]
+    [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [Produces("application/json")]
+    public async Task<ActionResult<List<FileAcknowledgmentRecordInfo>>> SearchFileAcknowledgmentRecordsAsync(
+        [FromQuery] Guid? sourceId = null,
+        [FromQuery] string? searchText = null,
+        [FromQuery] int skip = 0,
+        [FromQuery] int take = 50)
+    {
+        // Limit take to prevent excessive data transfer
+        take = Math.Min(take, 100);
+        
+        await using var db = await _dbContextFactory.CreateDbContextAsync();
+        
+        var query = db.FileAcknowledgmentRecords
+            .Include(r => r.FileStorageSource)
+                .ThenInclude(s => s.FileStorageHost)
+            .AsQueryable();
+
+        // Apply filters
+        if (sourceId.HasValue)
+        {
+            query = query.Where(r => r.FileStorageSourceId == sourceId.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(searchText))
+        {
+            query = query.Where(r => r.RelativeFilePath.Contains(searchText));
+        }
+
+        // Project to DTO with hydrated navigation properties
+        var result = await query
+            .OrderByDescending(r => r.AcknowledgedDate)
+            .Skip(skip)
+            .Take(take)
+            .Select(r => new FileAcknowledgmentRecordInfo
+            {
+                Id = r.Id,
+                FileStorageSourceId = r.FileStorageSourceId,
+                FileStorageSourceName = r.FileStorageSource.Name,
+                ProviderType = r.FileStorageSource.FileStorageHost.ProviderType,
+                RelativeFilePath = r.RelativeFilePath,
+                FileStorageSourceInternalUrl = r.FileStorageSourceInternalUrl,
+                AcknowledgedDate = r.AcknowledgedDate,
+                IngestedDocumentId = null,
+                DisplayFileName = r.DisplayFileName ?? Path.GetFileName(r.RelativeFilePath)
+            })
+            .ToListAsync();
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Gets file acknowledgment records for a specific storage source.
+    /// </summary>
+    /// <param name="sourceId">The ID of the file storage source.</param>
+    /// <returns>A list of file acknowledgment record information.</returns>
+    [HttpGet("sources/{sourceId}/acknowledgment-records")]
+    [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [Produces("application/json")]
+    public async Task<ActionResult<List<FileAcknowledgmentRecordInfo>>> GetFileAcknowledgmentRecordsBySourceAsync(Guid sourceId)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync();
+        
+        var sourceExists = await db.FileStorageSources.AnyAsync(s => s.Id == sourceId);
+        if (!sourceExists)
+        {
+            return NotFound($"File storage source {sourceId} not found");
+        }
+        
+        var result = await db.FileAcknowledgmentRecords
+            .Include(r => r.FileStorageSource)
+                .ThenInclude(s => s.FileStorageHost)
+            .Where(r => r.FileStorageSourceId == sourceId)
+            .OrderByDescending(r => r.AcknowledgedDate)
+            .Take(500) // Limit for performance
+            .Select(r => new FileAcknowledgmentRecordInfo
+            {
+                Id = r.Id,
+                FileStorageSourceId = r.FileStorageSourceId,
+                FileStorageSourceName = r.FileStorageSource != null ? r.FileStorageSource.Name : string.Empty,
+                ProviderType = r.FileStorageSource != null && r.FileStorageSource.FileStorageHost != null 
+                    ? r.FileStorageSource.FileStorageHost.ProviderType 
+                    : FileStorageProviderType.LocalFileSystem,
+                RelativeFilePath = r.RelativeFilePath,
+                FileStorageSourceInternalUrl = r.FileStorageSourceInternalUrl,
+                AcknowledgedDate = r.AcknowledgedDate,
+                IngestedDocumentId = null
+            })
+            .ToListAsync();
+
+        return Ok(result);
     }
 }

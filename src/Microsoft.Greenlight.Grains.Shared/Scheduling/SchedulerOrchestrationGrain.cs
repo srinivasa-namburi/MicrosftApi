@@ -22,6 +22,7 @@ public class SchedulerOrchestrationGrain : Grain, ISchedulerOrchestrationGrain, 
     private const string ScheduledFileDiscoveryAndImportReminder = "ScheduledFileDiscoveryAndImport";
     private const string RepositoryIndexMaintenanceReminder = "RepositoryIndexMaintenance";
     private const string VectorStoreIdFixReminder = "VectorStoreIdFix"; // monthly heavy job
+    private const string DocumentProcessMetadataReindexingReminder = "DocumentProcessMetadataReindexing"; // 30-minute reindexing for Flow intent detection
 
     // Centralized set of valid reminder names
     private static readonly HashSet<string> ValidReminderNames = new()
@@ -30,7 +31,8 @@ public class SchedulerOrchestrationGrain : Grain, ISchedulerOrchestrationGrain, 
         PromptDefinitionsUpdateReminder,
         ScheduledFileDiscoveryAndImportReminder,
         RepositoryIndexMaintenanceReminder,
-        VectorStoreIdFixReminder
+        VectorStoreIdFixReminder,
+        DocumentProcessMetadataReindexingReminder
     };
 
     // Heavy job running flag
@@ -128,6 +130,7 @@ public class SchedulerOrchestrationGrain : Grain, ISchedulerOrchestrationGrain, 
             await ExecutePromptDefinitionsUpdateJobAsync();
             await ExecuteRepositoryIndexMaintenanceJobAsync();
             await ExecuteScheduledFileDiscoveryAndImportJobAsync();
+            await ExecuteDocumentProcessMetadataReindexingJobAsync();
 
             if (_serviceConfigOptions.GreenlightServices.Global.EnableVectorStoreIdFixJob)
             {
@@ -249,6 +252,7 @@ public class SchedulerOrchestrationGrain : Grain, ISchedulerOrchestrationGrain, 
         await RegisterOrUpdateReminderAsync(PromptDefinitionsUpdateReminder, TimeSpan.FromHours(1));
         await RegisterOrUpdateReminderAsync(ScheduledFileDiscoveryAndImportReminder, TimeSpan.FromMinutes(15));
         await RegisterOrUpdateReminderAsync(RepositoryIndexMaintenanceReminder, TimeSpan.FromMinutes(2));
+        await RegisterOrUpdateReminderAsync(DocumentProcessMetadataReindexingReminder, TimeSpan.FromMinutes(30));
 
         if (_serviceConfigOptions.GreenlightServices.Global.EnableVectorStoreIdFixJob)
         {
@@ -426,6 +430,9 @@ public class SchedulerOrchestrationGrain : Grain, ISchedulerOrchestrationGrain, 
                         _logger.LogInformation("Vector Store ID Fix reminder triggered but job is disabled by configuration. Ignoring.");
                     }
                     break;
+                case DocumentProcessMetadataReindexingReminder:
+                    await ExecuteDocumentProcessMetadataReindexingJobAsync();
+                    break;
                 default:
                     _logger.LogWarning("Unrecognized reminder received: {ReminderName}. Ignoring.", reminderName);
                     break;
@@ -472,6 +479,20 @@ public class SchedulerOrchestrationGrain : Grain, ISchedulerOrchestrationGrain, 
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error while cleaning up legacy reminders");
+        }
+    }
+
+    private async Task ExecuteDocumentProcessMetadataReindexingJobAsync()
+    {
+        try
+        {
+            _logger.LogInformation("Executing Document Process Metadata Reindexing job");
+            var grain = GrainFactory.GetGrain<IDocumentProcessMetadataReindexingGrain>(Guid.NewGuid());
+            await grain.ExecuteAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error executing Document Process Metadata Reindexing job");
         }
     }
 }

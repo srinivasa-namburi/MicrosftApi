@@ -1,0 +1,377 @@
+@* File Storage Browser Component *@
+@using Microsoft.Greenlight.Shared.Contracts.DTO.FileStorage
+@using Microsoft.Greenlight.Shared.Contracts.Authorization
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@inject IFileStorageSourceApiClient FileStorageService
+@inject ISnackbar Snackbar
+@inject IJSRuntime JSRuntime
+@inject IDialogService DialogService
+@inject ILogger<FileStorageBrowser> _logger
+@inject IFileApiClient FileApiClient
+
+<MudStack Spacing="4">
+    <MudText Typo="Typo.h6">File Browser</MudText>
+    <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Filled.Info">
+        Browse files across storage sources using file acknowledgment records. 
+        Click file names to open URLs resolved through the file URL resolver service.
+    </MudAlert>
+
+    <!-- Filter Controls -->
+    <MudPaper Class="pa-4" Elevation="1">
+        <MudGrid>
+            <MudItem xs="12" md="4">
+                <MudTextField @bind-Value="searchText" 
+                             Label="Search files..." 
+                             Variant="Variant.Outlined"
+                             Adornment="Adornment.Start"
+                             AdornmentIcon="@Icons.Material.Filled.Search"
+                             Immediate="true"
+                             OnKeyUp="@(async (e) => await ApplyFilters())" />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudSelect @bind-Value="selectedSourceFilter" 
+                          Label="Filter by Source"
+                          Variant="Variant.Outlined"
+                          OnSelectionChanged="@(async (object selection) => await ApplyFilters())">
+                    <MudSelectItem Value="@((Guid?)null)">All Sources</MudSelectItem>
+                    @foreach (var source in sources)
+                    {
+                        <MudSelectItem Value="@((Guid?)source.Id)">@source.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudSelect @bind-Value="selectedExtensionFilter" 
+                          Label="Filter by Type"
+                          Variant="Variant.Outlined"
+                          OnSelectionChanged="@(async (object selection) => await ApplyFilters())">
+                    <MudSelectItem Value="@((string?)null)">All Types</MudSelectItem>
+                    @foreach (var extension in availableExtensions)
+                    {
+                        <MudSelectItem Value="@extension">@extension.ToUpperInvariant()</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudText Typo="Typo.body2">Recent Only</MudText>
+                    <MudSwitch T="bool" @bind-Value="showRecentOnly" 
+                              Color="Color.Primary"
+                              OnChanged="@(async (bool value) => await ApplyFilters())" />
+                </MudStack>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <!-- File Grid -->
+    <MudDataGrid @ref="filesGrid"
+                 T="FileAcknowledgmentRecordInfo" 
+                 Items="@filteredFiles" 
+                 Filterable="false"
+                 SortMode="SortMode.Multiple"
+                 Loading="@loading"
+                 Virtualize="true"
+                 PageSize="100">
+        <Columns>
+            <TemplateColumn Title="File Name">
+                <CellTemplate>
+                    <MudStack Spacing="1">
+                        <MudLink OnClick="@(() => OpenFileAsync(context.Item))"
+                                Color="Color.Primary"
+                                Typo="Typo.body2">
+                            <MudIcon Icon="@GetFileIcon(context.Item.DisplayFileName ?? Path.GetFileName(context.Item.RelativeFilePath))" Size="Size.Small" Class="mr-2" />
+                            @(context.Item.DisplayFileName ?? Path.GetFileName(context.Item.RelativeFilePath))
+                        </MudLink>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                            @Path.GetDirectoryName(context.Item.RelativeFilePath)
+                        </MudText>
+                    </MudStack>
+                </CellTemplate>
+            </TemplateColumn>
+            
+            <TemplateColumn Title="Storage Source">
+                <CellTemplate>
+                    <MudStack Spacing="1">
+                        <MudText>@context.Item.FileStorageSourceName</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                            @GetSourceContainerPath(context.Item.FileStorageSourceId)
+                        </MudText>
+                    </MudStack>
+                </CellTemplate>
+            </TemplateColumn>
+            
+            <TemplateColumn Title="Size">
+                <CellTemplate>
+                    <MudText>Unknown</MudText>
+                </CellTemplate>
+            </TemplateColumn>
+            
+            <TemplateColumn Title="Type">
+                <CellTemplate>
+                    <MudChip T="string" Color="Color.Default" Size="Size.Small">
+                        Unknown
+                    </MudChip>
+                </CellTemplate>
+            </TemplateColumn>
+            
+            <TemplateColumn Title="Last Modified">
+                <CellTemplate>
+                    <MudStack Spacing="1">
+                        <MudText>Not Available</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                            File metadata not included
+                        </MudText>
+                    </MudStack>
+                </CellTemplate>
+            </TemplateColumn>
+            
+            <PropertyColumn Property="x => x.AcknowledgedDate" Title="Discovered" Format="yyyy-MM-dd HH:mm">
+                <CellTemplate>
+                    <MudStack Spacing="1">
+                        <MudText>@context.Item.AcknowledgedDate.ToString("yyyy-MM-dd")</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                            @context.Item.AcknowledgedDate.ToString("HH:mm:ss")
+                        </MudText>
+                    </MudStack>
+                </CellTemplate>
+            </PropertyColumn>
+            
+            <TemplateColumn Title="Actions" Sortable="false" Filterable="false">
+                <CellTemplate>
+                    <MudStack Row="true" Spacing="1">
+                        <MudIconButton Icon="@Icons.Material.Filled.OpenInNew"
+                                      Size="Size.Small"
+                                      Color="Color.Primary"
+                                      OnClick="@(() => OpenFileAsync(context.Item))"
+                                      Title="Open File" />
+                        
+                        <MudIconButton Icon="@Icons.Material.Filled.Info"
+                                      Size="Size.Small"
+                                      Color="Color.Info"
+                                      OnClick="@(() => ShowFileDetails(context.Item))"
+                                      Title="File Details" />
+                    </MudStack>
+                </CellTemplate>
+            </TemplateColumn>
+        </Columns>
+    </MudDataGrid>
+
+    @if (loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+
+    @if (!filteredFiles.Any() && !loading)
+    {
+        <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Filled.Info">
+            No files found matching the current filters.
+        </MudAlert>
+    }
+</MudStack>
+
+@code {
+    private MudDataGrid<FileAcknowledgmentRecordInfo> filesGrid = null!;
+    private List<FileAcknowledgmentRecordInfo> files = new();
+    private List<FileAcknowledgmentRecordInfo> filteredFiles = new();
+    private List<FileStorageSourceInfo> sources = new();
+    private List<string> availableExtensions = new();
+    private bool loading = true;
+
+    // Filter state
+    private string searchText = string.Empty;
+    private Guid? selectedSourceFilter = null;
+    private string? selectedExtensionFilter = null;
+    private bool showRecentOnly = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        loading = true;
+        try
+        {
+            // Only load sources initially, not files
+            sources = (await FileStorageService.GetAllFileStorageSourcesAsync()).ToList();
+            
+            // Don't load files until user searches
+            files = new List<FileAcknowledgmentRecordInfo>();
+            availableExtensions = new List<string>();
+            
+            await ApplyFilters();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task ApplyFilters()
+    {
+        // Only search if user has entered search text or selected a source
+        if (string.IsNullOrWhiteSpace(searchText) && !selectedSourceFilter.HasValue)
+        {
+            filteredFiles = new List<FileAcknowledgmentRecordInfo>();
+            StateHasChanged();
+            return;
+        }
+
+        loading = true;
+        try
+        {
+            // Call search API with filters
+            var results = await FileStorageService.SearchFileAcknowledgmentRecordsAsync(
+                sourceId: selectedSourceFilter,
+                searchText: searchText,
+                skip: 0,
+                take: 100);
+                
+            files = results.ToList();
+            
+            // Hydrate source names from cached sources
+            foreach (var file in files)
+            {
+                var source = sources.FirstOrDefault(s => s.Id == file.FileStorageSourceId);
+                if (source != null)
+                {
+                    file.FileStorageSourceName = source.Name;
+                }
+            }
+            
+            // Apply client-side extension filter if needed
+            filteredFiles = files;
+            if (!string.IsNullOrWhiteSpace(selectedExtensionFilter))
+            {
+                filteredFiles = files.Where(f => 
+                {
+                    var fileExtension = Path.GetExtension(f.RelativeFilePath)?.ToLowerInvariant();
+                    return fileExtension == selectedExtensionFilter;
+                }).ToList();
+            }
+            
+            // Extract available extensions from results
+            availableExtensions = files
+                .Select(f => Path.GetExtension(f.RelativeFilePath)?.ToLowerInvariant())
+                .Where(ext => !string.IsNullOrEmpty(ext))
+                .Distinct()
+                .OrderBy(ext => ext)
+                .ToList()!;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to search files: {ex.Message}", Severity.Error);
+            filteredFiles = new List<FileAcknowledgmentRecordInfo>();
+        }
+        finally
+        {
+            loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OpenFileAsync(FileAcknowledgmentRecordInfo file)
+    {
+        try
+        {
+            // Use the FileUrlResolverService via the proper API client to get the resolved URL
+            var resolvedUrl = await FileApiClient.ResolveFileAcknowledgmentUrlAsync(file.Id);
+            await JSRuntime.InvokeAsync<object>("open", resolvedUrl, "_blank");
+        }
+        catch (HttpRequestException ex) when (ex.Message.Contains("404"))
+        {
+            Snackbar.Add("File acknowledgment record not found", Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to open file {FileId}", file.Id);
+            Snackbar.Add($"Failed to open file: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ShowFileDetails(FileAcknowledgmentRecordInfo file)
+    {
+        var parameters = new DialogParameters<FileDetailsDialog>
+        {
+            { x => x.File, file }
+        };
+
+        var dialog = await DialogService.ShowAsync<FileDetailsDialog>("File Details", parameters);
+        await dialog.Result;
+    }
+
+    private static string GetFileIcon(string fileName)
+    {
+        var extension = Path.GetExtension(fileName)?.ToLowerInvariant();
+        return extension switch
+        {
+            ".pdf" => Icons.Material.Filled.PictureAsPdf,
+            ".doc" or ".docx" => Icons.Material.Filled.Description,
+            ".xls" or ".xlsx" => Icons.Material.Filled.TableChart,
+            ".ppt" or ".pptx" => Icons.Material.Filled.Slideshow,
+            ".txt" => Icons.Material.Filled.TextSnippet,
+            ".jpg" or ".jpeg" or ".png" or ".gif" or ".bmp" => Icons.Material.Filled.Image,
+            ".mp4" or ".avi" or ".mov" => Icons.Material.Filled.VideoFile,
+            ".mp3" or ".wav" or ".m4a" => Icons.Material.Filled.AudioFile,
+            ".zip" or ".rar" or ".7z" => Icons.Material.Filled.Archive,
+            _ => Icons.Material.Filled.InsertDriveFile
+        };
+    }
+
+    private static Color GetMimeTypeColor(string? mimeType)
+    {
+        if (string.IsNullOrEmpty(mimeType)) return Color.Default;
+        
+        return mimeType.Split('/')[0] switch
+        {
+            "image" => Color.Success,
+            "video" => Color.Info,
+            "audio" => Color.Warning,
+            "application" => Color.Primary,
+            "text" => Color.Secondary,
+            _ => Color.Default
+        };
+    }
+
+    private static string GetMimeTypeDisplay(string? mimeType)
+    {
+        if (string.IsNullOrEmpty(mimeType)) return "Unknown";
+        
+        var parts = mimeType.Split('/');
+        if (parts.Length != 2) return mimeType;
+        
+        return parts[0] switch
+        {
+            "image" => "Image",
+            "video" => "Video", 
+            "audio" => "Audio",
+            "application" => parts[1].ToUpperInvariant(),
+            "text" => "Text",
+            _ => parts[1].ToUpperInvariant()
+        };
+    }
+
+    private string GetSourceContainerPath(Guid sourceId)
+    {
+        var source = sources.FirstOrDefault(s => s.Id == sourceId);
+        return source?.ContainerOrPath ?? string.Empty;
+    }
+
+    private static string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+}

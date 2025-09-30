@@ -1,0 +1,295 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+@using MudBlazor
+@using Microsoft.Greenlight.Shared.Configuration
+@using Microsoft.Greenlight.Web.DocGen.Client.ServiceClients
+@inject IConfigurationApiClient ConfigApi
+@inherits Microsoft.Greenlight.Web.DocGen.Client.Components.Configuration.Infrastructure.ConfigurationSectionBase
+
+<MudPaper Class="pa-4">
+  <MudStack Spacing="3">
+    <div>
+      <MudText Typo="Typo.h6" Class="mb-1">Worker Thread Pool Configuration</MudText>
+      <MudText Typo="Typo.body2" Class="mud-text-secondary">Configure the number of concurrent workers for different system operations</MudText>
+    </div>
+
+    <MudDivider />
+
+    <MudGrid Spacing="3">
+      @foreach (var worker in WorkerConfigurations)
+      {
+        <MudItem xs="12" sm="6" md="4">
+          <MudCard Class="pa-4" Style="height: 100%;">
+            <MudStack Spacing="2">
+              <div class="d-flex align-center justify-space-between">
+                <MudIcon Icon="@worker.Icon" Color="@worker.Color" Size="Size.Medium" />
+                <MudChip T="string" Color="@worker.Color" Size="Size.Small" Variant="Variant.Filled">
+                  @GetWorkerValue(worker.PropertyName)
+                </MudChip>
+              </div>
+
+              <div>
+                <MudText Typo="Typo.subtitle1" Class="fw-bold">@worker.DisplayName</MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary" Style="min-height: 40px;">
+                  @worker.Description
+                </MudText>
+              </div>
+
+              <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudButton StartIcon="Icons.Material.Filled.Remove"
+                          Color="Color.Secondary"
+                          Size="Size.Small"
+                          Variant="Variant.Outlined"
+                          OnClick="() => DecrementWorker(worker.PropertyName)"
+                          Disabled="@(GetWorkerValue(worker.PropertyName) <= 1)">
+                </MudButton>
+
+                <MudNumericField T="int"
+                                Value="@GetWorkerValue(worker.PropertyName)"
+                                ValueChanged="@(value => SetWorkerValue(worker.PropertyName, value))"
+                                Min="1"
+                                Max="100"
+                                Immediate="true"
+                                Style="width:100px; text-align: center;"
+                                Variant="Variant.Outlined"
+                                HideSpinButtons="false" />
+
+                <MudButton StartIcon="Icons.Material.Filled.Add"
+                          Color="Color.Secondary"
+                          Size="Size.Small"
+                          Variant="Variant.Outlined"
+                          OnClick="() => IncrementWorker(worker.PropertyName)"
+                          Disabled="@(GetWorkerValue(worker.PropertyName) >= 100)">
+                </MudButton>
+              </MudStack>
+
+              @if (worker.PropertyName == nameof(_opts.NumberOfFlowChatWorkers))
+              {
+                <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">
+                  <MudText Typo="Typo.body2">New: Flow orchestration workers for multi-document processing</MudText>
+                </MudAlert>
+              }
+            </MudStack>
+          </MudCard>
+        </MudItem>
+      }
+    </MudGrid>
+
+    <MudDivider />
+
+    <MudStack Direction="Row" Spacing="2" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+      <div>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+          Total Workers: @(WorkerConfigurations.Sum(w => GetWorkerValue(w.PropertyName)))
+        </MudText>
+      </div>
+
+      <MudStack Direction="Row" Spacing="2">
+        <MudButton Variant="Variant.Outlined"
+                  Color="Color.Secondary"
+                  OnClick="ResetToDefaults"
+                  StartIcon="Icons.Material.Filled.Refresh">
+          Reset to Defaults
+        </MudButton>
+        <MudButton Variant="Variant.Filled"
+                  Color="Color.Primary"
+                  Disabled="@(!IsDirty)"
+                  OnClick="@(()=>SaveAsync())"
+                  StartIcon="Icons.Material.Filled.Save">
+          Save Configuration
+        </MudButton>
+      </MudStack>
+    </MudStack>
+  </MudStack>
+</MudPaper>
+
+@code {
+  private ServiceConfigurationOptions.GreenlightServicesOptions.ScalabilityOptions _opts = new();
+  private string _initial = string.Empty;
+
+  public override string Title => "Scalability";
+
+  protected override async Task OnInitializedAsync()
+  {
+    await LoadAsync();
+  }
+
+  public override async Task LoadAsync(CancellationToken cancellationToken = default)
+  {
+    _opts = await ConfigApi.GetScalabilityOptionsAsync();
+    _initial = System.Text.Json.JsonSerializer.Serialize(_opts);
+    SetDirty(false);
+  }
+
+  private void MarkDirty()
+  {
+    var cur = System.Text.Json.JsonSerializer.Serialize(_opts);
+    SetDirty(!string.Equals(cur, _initial, StringComparison.Ordinal));
+  }
+
+  // Worker configuration metadata
+  private readonly List<WorkerConfig> WorkerConfigurations = new()
+  {
+    new WorkerConfig
+    {
+      PropertyName = nameof(ServiceConfigurationOptions.GreenlightServicesOptions.ScalabilityOptions.NumberOfValidationWorkers),
+      DisplayName = "Validation Workers",
+      Description = "Handle document validation and compliance checking",
+      Icon = Icons.Material.Filled.VerifiedUser,
+      Color = Color.Success,
+      DefaultValue = 1
+    },
+    new WorkerConfig
+    {
+      PropertyName = nameof(ServiceConfigurationOptions.GreenlightServicesOptions.ScalabilityOptions.NumberOfGenerationWorkers),
+      DisplayName = "Generation Workers",
+      Description = "Generate document content using AI models",
+      Icon = Icons.Material.Filled.AutoAwesome,
+      Color = Color.Primary,
+      DefaultValue = 1
+    },
+    new WorkerConfig
+    {
+      PropertyName = nameof(ServiceConfigurationOptions.GreenlightServicesOptions.ScalabilityOptions.NumberOfIngestionWorkers),
+      DisplayName = "Ingestion Workers",
+      Description = "Process and ingest uploaded documents",
+      Icon = Icons.Material.Filled.CloudUpload,
+      Color = Color.Info,
+      DefaultValue = 1
+    },
+    new WorkerConfig
+    {
+      PropertyName = nameof(ServiceConfigurationOptions.GreenlightServicesOptions.ScalabilityOptions.NumberOfReviewWorkers),
+      DisplayName = "Review Workers",
+      Description = "Handle document review and approval workflows",
+      Icon = Icons.Material.Filled.RateReview,
+      Color = Color.Warning,
+      DefaultValue = 1
+    },
+    new WorkerConfig
+    {
+      PropertyName = nameof(ServiceConfigurationOptions.GreenlightServicesOptions.ScalabilityOptions.NumberOfFlowChatWorkers),
+      DisplayName = "Flow/Chat Workers",
+      Description = "Orchestrate multi-document Flow conversations",
+      Icon = Icons.Material.Filled.Hub,
+      Color = Color.Tertiary,
+      DefaultValue = 4
+    }
+  };
+
+  private class WorkerConfig
+  {
+    public string PropertyName { get; init; } = string.Empty;
+    public string DisplayName { get; init; } = string.Empty;
+    public string Description { get; init; } = string.Empty;
+    public string Icon { get; init; } = string.Empty;
+    public Color Color { get; init; }
+    public int DefaultValue { get; init; }
+  }
+
+  private int GetWorkerValue(string propertyName)
+  {
+    return propertyName switch
+    {
+      nameof(_opts.NumberOfValidationWorkers) => _opts.NumberOfValidationWorkers,
+      nameof(_opts.NumberOfGenerationWorkers) => _opts.NumberOfGenerationWorkers,
+      nameof(_opts.NumberOfIngestionWorkers) => _opts.NumberOfIngestionWorkers,
+      nameof(_opts.NumberOfReviewWorkers) => _opts.NumberOfReviewWorkers,
+      nameof(_opts.NumberOfFlowChatWorkers) => _opts.NumberOfFlowChatWorkers,
+      _ => 1
+    };
+  }
+
+  private void SetWorkerValue(string propertyName, int value)
+  {
+    switch (propertyName)
+    {
+      case nameof(_opts.NumberOfValidationWorkers):
+        _opts.NumberOfValidationWorkers = Math.Max(1, Math.Min(100, value));
+        break;
+      case nameof(_opts.NumberOfGenerationWorkers):
+        _opts.NumberOfGenerationWorkers = Math.Max(1, Math.Min(100, value));
+        break;
+      case nameof(_opts.NumberOfIngestionWorkers):
+        _opts.NumberOfIngestionWorkers = Math.Max(1, Math.Min(100, value));
+        break;
+      case nameof(_opts.NumberOfReviewWorkers):
+        _opts.NumberOfReviewWorkers = Math.Max(1, Math.Min(100, value));
+        break;
+      case nameof(_opts.NumberOfFlowChatWorkers):
+        _opts.NumberOfFlowChatWorkers = Math.Max(1, Math.Min(100, value));
+        break;
+    }
+    MarkDirty();
+  }
+
+  private void IncrementWorker(string propertyName)
+  {
+    var current = GetWorkerValue(propertyName);
+    if (current < 100)
+    {
+      SetWorkerValue(propertyName, current + 1);
+    }
+  }
+
+  private void DecrementWorker(string propertyName)
+  {
+    var current = GetWorkerValue(propertyName);
+    if (current > 1)
+    {
+      SetWorkerValue(propertyName, current - 1);
+    }
+  }
+
+  private void ResetToDefaults()
+  {
+    foreach (var worker in WorkerConfigurations)
+    {
+      SetWorkerValue(worker.PropertyName, worker.DefaultValue);
+    }
+  }
+
+  public override async Task SaveAsync(CancellationToken cancellationToken = default)
+  {
+    var items = new Dictionary<string, string>
+    {
+      ["ServiceConfiguration:GreenlightServices:Scalability:NumberOfValidationWorkers"] = _opts.NumberOfValidationWorkers.ToString(),
+      ["ServiceConfiguration:GreenlightServices:Scalability:NumberOfGenerationWorkers"] = _opts.NumberOfGenerationWorkers.ToString(),
+      ["ServiceConfiguration:GreenlightServices:Scalability:NumberOfIngestionWorkers"] = _opts.NumberOfIngestionWorkers.ToString(),
+      ["ServiceConfiguration:GreenlightServices:Scalability:NumberOfReviewWorkers"] = _opts.NumberOfReviewWorkers.ToString(),
+      ["ServiceConfiguration:GreenlightServices:Scalability:NumberOfFlowChatWorkers"] = _opts.NumberOfFlowChatWorkers.ToString(),
+    };
+    await ConfigApi.UpdateConfigurationAsync(new Microsoft.Greenlight.Shared.Contracts.DTO.ConfigurationUpdateRequest
+    {
+      ConfigurationItems = items
+    });
+    _initial = System.Text.Json.JsonSerializer.Serialize(_opts);
+    SetDirty(false);
+  }
+
+  public override IEnumerable<string> DescribePendingChanges()
+  {
+    var before = System.Text.Json.JsonSerializer.Deserialize<ServiceConfigurationOptions.GreenlightServicesOptions.ScalabilityOptions>(_initial) ?? new();
+    foreach (var worker in WorkerConfigurations)
+    {
+      var currentValue = GetWorkerValue(worker.PropertyName);
+      var beforeValue = GetWorkerValueFromOptions(worker.PropertyName, before);
+      if (currentValue != beforeValue)
+      {
+        yield return $"{worker.DisplayName}: {beforeValue} → {currentValue}";
+      }
+    }
+  }
+
+  private int GetWorkerValueFromOptions(string propertyName, ServiceConfigurationOptions.GreenlightServicesOptions.ScalabilityOptions opts)
+  {
+    return propertyName switch
+    {
+      nameof(_opts.NumberOfValidationWorkers) => opts.NumberOfValidationWorkers,
+      nameof(_opts.NumberOfGenerationWorkers) => opts.NumberOfGenerationWorkers,
+      nameof(_opts.NumberOfIngestionWorkers) => opts.NumberOfIngestionWorkers,
+      nameof(_opts.NumberOfReviewWorkers) => opts.NumberOfReviewWorkers,
+      nameof(_opts.NumberOfFlowChatWorkers) => opts.NumberOfFlowChatWorkers,
+      _ => 1
+    };
+  }
+}

@@ -1,0 +1,152 @@
+@* File Storage Host Edit Dialog *@
+@using Microsoft.Greenlight.Shared.Contracts.DTO.FileStorage
+@using Microsoft.Greenlight.Shared.Contracts.Requests.FileStorage
+@using Microsoft.Greenlight.Shared.Enums
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@inject IFileStorageSourceApiClient FileStorageService
+@inject IFileStorageHostApiClient FileStorageHostService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="form" Model="Host" Validation="@(validationService.ValidateValue)">
+            <MudStack Spacing="3">
+                <MudTextField @bind-Value="Host.Name"
+                             Label="Host Name"
+                             Required="true"
+                             RequiredError="Host name is required"
+                             For="@(() => Host.Name)"
+                             Variant="Variant.Outlined" />
+                
+                <MudSelect @bind-Value="Host.ProviderType"
+                          Label="Provider Type"
+                          Required="true"
+                          RequiredError="Provider type is required"
+                          For="@(() => Host.ProviderType)"
+                          Variant="Variant.Outlined">
+                    <MudSelectItem Value="FileStorageProviderType.BlobStorage">Azure Blob Storage</MudSelectItem>
+                    <MudSelectItem Value="FileStorageProviderType.LocalFileSystem">Local File System</MudSelectItem>
+                </MudSelect>
+
+                <MudTextField @bind-Value="Host.ConnectionString"
+                             Label="Connection String"
+                             Required="true"
+                             RequiredError="Connection string is required"
+                             For="@(() => Host.ConnectionString)"
+                             Variant="Variant.Outlined"
+                             Lines="3" />
+
+                <MudSwitch T="bool" @bind-Value="Host.IsActive"
+                          Label="Active"
+                          Color="Color.Success" />
+
+                @if (!IsCreate)
+                {
+                    <MudSwitch T="bool" @bind-Value="Host.IsDefault"
+                              Label="Default Host"
+                              Color="Color.Primary"
+                              Disabled="@Host.IsDefault" />
+                    
+                    @if (Host.IsDefault)
+                    {
+                        <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Filled.Info">
+                            This is the default host used for new storage sources. Cannot be changed.
+                        </MudAlert>
+                    }
+                }
+            </MudStack>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" 
+                  OnClick="Save" 
+                  Disabled="@(!form?.IsValid ?? true)"
+                  Variant="Variant.Filled">
+            @(IsCreate ? "Create" : "Save")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter] public FileStorageHostInfo Host { get; set; } = new();
+    [Parameter] public bool IsCreate { get; set; } = false;
+    
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
+    
+    private MudForm form = null!;
+    private readonly FileStorageHostValidator validationService = new();
+
+    private async Task Save()
+    {
+        try
+        {
+            await form.Validate();
+            if (!form.IsValid) return;
+
+            if (IsCreate)
+            {
+                var createRequest = new CreateFileStorageHostRequest
+                {
+                    Name = Host.Name,
+                    ProviderType = Host.ProviderType,
+                    ConnectionString = Host.ConnectionString,
+                    IsDefault = Host.IsDefault,
+                    IsActive = Host.IsActive,
+                    Description = Host.Description
+                };
+                await FileStorageHostService.CreateFileStorageHostAsync(createRequest);
+                Snackbar.Add($"Storage host '{Host.Name}' created successfully", Severity.Success);
+            }
+            else
+            {
+                var updateRequest = new UpdateFileStorageHostRequest
+                {
+                    Id = Host.Id,
+                    Name = Host.Name,
+                    ProviderType = Host.ProviderType,
+                    ConnectionString = Host.ConnectionString,
+                    IsDefault = Host.IsDefault,
+                    IsActive = Host.IsActive,
+                    Description = Host.Description
+                };
+                await FileStorageHostService.UpdateFileStorageHostAsync(updateRequest);
+                Snackbar.Add($"Storage host '{Host.Name}' updated successfully", Severity.Success);
+            }
+            
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to {(IsCreate ? "create" : "update")} host: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private class FileStorageHostValidator
+    {
+        public Func<object, string, Task<IEnumerable<string>>> ValidateValue => async (model, propertyName) =>
+        {
+            var host = (FileStorageHostInfo)model;
+            var errors = new List<string>();
+
+            switch (propertyName)
+            {
+                case nameof(host.Name):
+                    if (string.IsNullOrWhiteSpace(host.Name))
+                        errors.Add("Host name is required");
+                    else if (host.Name.Length > 100)
+                        errors.Add("Host name cannot exceed 100 characters");
+                    break;
+
+                case nameof(host.ConnectionString):
+                    if (string.IsNullOrWhiteSpace(host.ConnectionString))
+                        errors.Add("Connection string is required");
+                    break;
+            }
+
+            return errors;
+        };
+    }
+}

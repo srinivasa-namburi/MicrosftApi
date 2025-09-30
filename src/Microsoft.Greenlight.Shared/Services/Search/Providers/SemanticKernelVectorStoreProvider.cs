@@ -2,13 +2,16 @@
 
 using System.Linq.Expressions;
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.VectorData;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Services.Search.Abstractions;
+using Microsoft.Greenlight.Shared.Enums;
 using StackExchange.Redis;
 using Microsoft.Greenlight.Shared.Services.Caching;
+using Npgsql;
 
 namespace Microsoft.Greenlight.Shared.Services.Search.Providers;
 
@@ -19,6 +22,7 @@ public sealed class SemanticKernelVectorStoreProvider : ISemanticKernelVectorSto
     private readonly IConnectionMultiplexer? _redis;
     private readonly VectorStore _vectorStore;
     private readonly IAppCache? _appCache;
+    private readonly IConfiguration _configuration;
 
     private const string RedisFileIndexKeyPrefix = "SkFileDocIndex";
     private const string RedisDocPartitionsKeyPrefix = "SkDocPartitions";
@@ -33,12 +37,14 @@ public sealed class SemanticKernelVectorStoreProvider : ISemanticKernelVectorSto
         ILogger<SemanticKernelVectorStoreProvider> logger,
         IOptionsMonitor<ServiceConfigurationOptions> rootOptionsMonitor,
         VectorStore vectorStore,
+        IConfiguration configuration,
         IConnectionMultiplexer? redis = null,
         IAppCache? appCache = null)
     {
         _logger = logger;
         _options = rootOptionsMonitor.CurrentValue.GreenlightServices.VectorStore;
         _vectorStore = vectorStore;
+        _configuration = configuration;
         _redis = redis;
         _appCache = appCache;
     }
@@ -62,6 +68,8 @@ public sealed class SemanticKernelVectorStoreProvider : ISemanticKernelVectorSto
         // Data properties (align with attributes on SkUnifiedRecord)
         def.Properties.Add(new VectorStoreDataProperty("DocumentId", typeof(string)) { IsIndexed = true });
         def.Properties.Add(new VectorStoreDataProperty("FileName", typeof(string)) { IsIndexed = true });
+        def.Properties.Add(new VectorStoreDataProperty("DisplayFileName", typeof(string)) { IsIndexed = true });
+        def.Properties.Add(new VectorStoreDataProperty("FileAcknowledgmentRecordId", typeof(string)) { IsIndexed = true });
         // Store document reference for dynamic URL resolution instead of fixed URL
         def.Properties.Add(new VectorStoreDataProperty("DocumentReference", typeof(string)) { IsIndexed = true, IsFullTextIndexed = false });
         def.Properties.Add(new VectorStoreDataProperty("ChunkText", typeof(string)) { IsIndexed = false, IsFullTextIndexed = false });
@@ -86,6 +94,27 @@ public sealed class SemanticKernelVectorStoreProvider : ISemanticKernelVectorSto
         {
             await collection.EnsureCollectionExistsAsync(cancellationToken).ConfigureAwait(false);
             _logger.LogDebug("Ensured collection {Index} exists with {Dimensions} dimensions", indexName, embeddingDimensions);
+
+            // For PostgreSQL, ensure schema compatibility for new nullable fields
+            if (_options.StoreType == VectorStoreType.PostgreSQL)
+            {
+                await EnsurePostgresSchemaCompatibilityAsync(indexName, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex) when (IsSchemaCompatibilityException(ex))
+        {
+            _logger.LogWarning(ex, "Schema compatibility issue for collection {Index}, attempting fallback: {Error}", indexName, ex.Message);
+
+            // For PostgreSQL, try to handle schema issues gracefully
+            if (_options.StoreType == VectorStoreType.PostgreSQL)
+            {
+                await HandlePostgresSchemaCompatibilityAsync(indexName, embeddingDimensions, ex, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                // For other providers (AI Search), re-throw as they should handle schema changes automatically
+                throw;
+            }
         }
         catch (Exception ex)
         {
@@ -508,11 +537,13 @@ public sealed class SemanticKernelVectorStoreProvider : ISemanticKernelVectorSto
         ChunkId = $"{r.DocumentId}={r.PartitionNumber}",
         DocumentId = r.DocumentId,
         FileName = r.FileName,
+        DisplayFileName = r.DisplayFileName,
+        FileAcknowledgmentRecordId = r.FileAcknowledgmentRecordId?.ToString(),
         DocumentReference = r.DocumentReference,
         ChunkText = r.ChunkText,
         Embedding = r.Embedding,
         PartitionNumber = r.PartitionNumber,
-        IngestedAt = r.IngestedAt.ToUniversalTime(),
+        IngestedAt = r.IngestedAt,
         TagsJson = SkUnifiedRecord.SerializeTags(r.Tags)
     };
 
@@ -520,11 +551,13 @@ public sealed class SemanticKernelVectorStoreProvider : ISemanticKernelVectorSto
     {
         DocumentId = r.DocumentId,
         FileName = r.FileName,
+        DisplayFileName = GetEffectiveDisplayFileName(r.DisplayFileName, r.FileName),
+        FileAcknowledgmentRecordId = string.IsNullOrEmpty(r.FileAcknowledgmentRecordId) ? null : Guid.Parse(r.FileAcknowledgmentRecordId),
         DocumentReference = r.DocumentReference,
         ChunkText = r.ChunkText,
         Embedding = r.Embedding ?? Array.Empty<float>(),
         PartitionNumber = r.PartitionNumber,
-        IngestedAt = r.IngestedAt.ToUniversalTime(),
+        IngestedAt = r.IngestedAt,
         Tags = JsonSerializer.Deserialize<Dictionary<string, List<string?>>>(r.TagsJson) ?? new(StringComparer.OrdinalIgnoreCase)
     };
 
@@ -557,6 +590,212 @@ public sealed class SemanticKernelVectorStoreProvider : ISemanticKernelVectorSto
         }
 
         return ex is ArgumentException || ex is InvalidOperationException;
+    }
+
+    /// <summary>
+    /// Checks if the exception indicates a schema compatibility issue (e.g., missing columns).
+    /// </summary>
+    private static bool IsSchemaCompatibilityException(Exception ex)
+    {
+        return ex switch
+        {
+            PostgresException pgEx when pgEx.SqlState == "42703" => true, // Column doesn't exist
+            VectorStoreException vsEx when vsEx.InnerException is PostgresException pgInner && pgInner.SqlState == "42703" => true,
+            _ => false
+        };
+    }
+
+    /// <summary>
+    /// Ensures PostgreSQL schema compatibility by adding missing nullable columns.
+    /// </summary>
+    private async Task EnsurePostgresSchemaCompatibilityAsync(string indexName, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Get the normalized table name that's actually used
+            var tableName = Normalize(indexName);
+
+            // For system-controlled indexes, be more aggressive about schema updates
+            var isSystemIndex = indexName.StartsWith("system-", StringComparison.OrdinalIgnoreCase);
+
+            var connectionString = GetPostgresConnectionString();
+            if (!string.IsNullOrEmpty(connectionString))
+            {
+                await using var connection = new NpgsqlConnection(connectionString);
+                await connection.OpenAsync(cancellationToken);
+
+                // Check for multiple missing columns at once
+                var missingColumns = await GetMissingColumnsAsync(connection, tableName, cancellationToken);
+
+                if (missingColumns.Count > 0)
+                {
+                    if (isSystemIndex && missingColumns.Count > 1)
+                    {
+                        // For system indexes with multiple missing columns, recreate the entire table
+                        _logger.LogWarning("System index {IndexName} is missing {Count} columns: {Columns}. Recreating table.", indexName, missingColumns.Count, string.Join(", ", missingColumns));
+                        await RecreateTableAsync(connection, tableName, cancellationToken);
+                    }
+                    else
+                    {
+                        // Add missing columns individually
+                        foreach (var column in missingColumns)
+                        {
+                            await AddMissingColumnAsync(connection, tableName, column, cancellationToken);
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not ensure schema compatibility for PostgreSQL table {IndexName}, will proceed with degraded functionality", indexName);
+            // Don't throw - graceful degradation
+        }
+    }
+
+    /// <summary>
+    /// Gets a list of missing columns from the SkUnifiedRecord schema.
+    /// </summary>
+    private async Task<List<string>> GetMissingColumnsAsync(NpgsqlConnection connection, string tableName, CancellationToken cancellationToken)
+    {
+        var requiredColumns = new[] { "DisplayFileName", "FileAcknowledgmentRecordId", "DocumentReference" };
+        var missingColumns = new List<string>();
+
+        foreach (var column in requiredColumns)
+        {
+            var checkSql = """
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = @tableName AND column_name = @columnName
+                );
+                """;
+
+            await using var checkCmd = new NpgsqlCommand(checkSql, connection);
+            checkCmd.Parameters.AddWithValue("tableName", tableName);
+            checkCmd.Parameters.AddWithValue("columnName", column);
+
+            var exists = (bool)(await checkCmd.ExecuteScalarAsync(cancellationToken) ?? false);
+            if (!exists)
+            {
+                missingColumns.Add(column);
+            }
+        }
+
+        return missingColumns;
+    }
+
+    /// <summary>
+    /// Adds a single missing column to the PostgreSQL table.
+    /// </summary>
+    private async Task AddMissingColumnAsync(NpgsqlConnection connection, string tableName, string columnName, CancellationToken cancellationToken)
+    {
+        var alterSql = columnName switch
+        {
+            "DisplayFileName" => $"""ALTER TABLE "{tableName}" ADD COLUMN "DisplayFileName" TEXT NULL;""",
+            "FileAcknowledgmentRecordId" => $"""ALTER TABLE "{tableName}" ADD COLUMN "FileAcknowledgmentRecordId" TEXT NULL;""",
+            "DocumentReference" => $"""ALTER TABLE "{tableName}" ADD COLUMN "DocumentReference" TEXT NULL;""",
+            _ => null
+        };
+
+        if (alterSql != null)
+        {
+            await using var alterCmd = new NpgsqlCommand(alterSql, connection);
+            await alterCmd.ExecuteNonQueryAsync(cancellationToken);
+            _logger.LogInformation("Added {ColumnName} column to PostgreSQL table {TableName}", columnName, tableName);
+        }
+    }
+
+    /// <summary>
+    /// Recreates the PostgreSQL table by dropping and recreating it.
+    /// This is used for system indexes where we control the data entirely.
+    /// </summary>
+    private async Task RecreateTableAsync(NpgsqlConnection connection, string tableName, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Drop the existing table (this will also drop any indexes)
+            var dropSql = $"""DROP TABLE IF EXISTS "{tableName}" CASCADE;""";
+            await using var dropCmd = new NpgsqlCommand(dropSql, connection);
+            await dropCmd.ExecuteNonQueryAsync(cancellationToken);
+
+            _logger.LogInformation("Dropped and will recreate PostgreSQL table {TableName} for schema compatibility", tableName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not recreate PostgreSQL table {TableName}", tableName);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Handles PostgreSQL schema compatibility issues during collection creation.
+    /// </summary>
+    private async Task HandlePostgresSchemaCompatibilityAsync(string indexName, int embeddingDimensions, Exception originalException, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Log the original schema error
+            _logger.LogWarning(originalException, "Attempting to recover from PostgreSQL schema error for {IndexName}", indexName);
+
+            // Try to ensure schema compatibility first
+            await EnsurePostgresSchemaCompatibilityAsync(indexName, cancellationToken);
+
+            // Then try to create the collection again
+            var definition = BuildSkUnifiedDefinition(embeddingDimensions);
+            var collection = GetCollection(indexName, definition);
+            await collection.EnsureCollectionExistsAsync(cancellationToken).ConfigureAwait(false);
+
+            _logger.LogInformation("Successfully recovered from schema error for PostgreSQL table {IndexName}", indexName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Could not recover from PostgreSQL schema error for {IndexName}, original error: {OriginalError}", indexName, originalException.Message);
+            throw; // Re-throw if we can't recover
+        }
+    }
+
+    /// <summary>
+    /// Gets the PostgreSQL connection string from the current configuration.
+    /// </summary>
+    private string? GetPostgresConnectionString()
+    {
+        try
+        {
+            return _configuration.GetConnectionString("kmvectordb");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not retrieve PostgreSQL connection string for schema compatibility checks");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Gets an effective display filename for UI display, falling back to extracting from full filename if DisplayFileName is null.
+    /// This provides backward compatibility with existing records that don't have DisplayFileName populated.
+    /// </summary>
+    private static string? GetEffectiveDisplayFileName(string? displayFileName, string fileName)
+    {
+        if (!string.IsNullOrEmpty(displayFileName))
+        {
+            return displayFileName;
+        }
+
+        // Fallback for older records without DisplayFileName: extract just the filename part
+        if (!string.IsNullOrEmpty(fileName))
+        {
+            try
+            {
+                return Path.GetFileName(fileName);
+            }
+            catch
+            {
+                // If Path.GetFileName fails, return the original fileName
+                return fileName;
+            }
+        }
+
+        return null;
     }
 
     private static string Normalize(string s) => s.Trim().ToLowerInvariant();

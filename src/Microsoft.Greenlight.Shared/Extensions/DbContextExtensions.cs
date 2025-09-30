@@ -44,6 +44,9 @@ public static class DbContextExtensions
                     sqlServerBuilder =>
                     {
                         sqlServerBuilder.MigrationsAssembly(typeof(DocGenerationDbContext).Assembly.FullName);
+
+                        // Note: Retry policies disabled due to conflict with explicit transactions in seeding code
+                        // Authentication issues need to be fixed at the workload identity level, not worked around
                     });
 
             if (!AdminHelper.IsRunningInProduction())
@@ -63,6 +66,9 @@ public static class DbContextExtensions
                 sqlServerBuilder =>
                 {
                     sqlServerBuilder.MigrationsAssembly(typeof(DocGenerationDbContext).Assembly.FullName);
+
+                    // Note: Retry policies disabled due to conflict with explicit transactions in seeding code
+                    // Authentication issues need to be fixed at the workload identity level, not worked around
                 });
 
             if (!AdminHelper.IsRunningInProduction())
@@ -76,6 +82,8 @@ public static class DbContextExtensions
 
         builder.EnrichSqlServerDbContext<DocGenerationDbContext>(settings =>
         {
+            // Note: Retry policies disabled due to conflict with explicit transactions in seeding code
+            // Authentication issues need to be fixed at the workload identity level, not worked around
             settings.DisableRetry = true;
             settings.ConnectionString = connectionString;
         });

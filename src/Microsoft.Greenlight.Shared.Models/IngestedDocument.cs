@@ -14,6 +14,12 @@ public class IngestedDocument : EntityBase
     public required string FileName { get; set; }
 
     /// <summary>
+    /// UI-friendly display filename that should be shown to users.
+    /// This preserves the original filename regardless of any internal storage naming.
+    /// </summary>
+    public string? DisplayFileName { get; set; }
+
+    /// <summary>
     /// File hash of the ingested document.
     /// </summary>
     public string? FileHash { get; set; }

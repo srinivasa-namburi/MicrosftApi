@@ -78,7 +78,7 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
             // Generate document reference for vector store (identifier instead of URL)
             string documentReference = GenerateDocumentReference(entity);
 
-            _logger.LogInformation("Starting document processing for {FileName} (Id: {DocumentId})", fileName, documentId);
+            _logger.LogDebug("Starting document processing for {FileName} (Id: {DocumentId})", fileName, documentId);
 
             // Track vector store processing start
             entity.IngestionState = IngestionState.Processing;
@@ -121,7 +121,7 @@ public class DocumentProcessorGrain : Grain, IDocumentProcessorGrain
                 return DocumentProcessResult.Fail($"Failed to get document stream for document {documentId}");
             }
 
-            _logger.LogInformation("Starting document ingestion for {FileName} with indexName={IndexName}", fileName, indexName);
+            _logger.LogDebug("Starting document ingestion for {FileName} with indexName={IndexName}", fileName, indexName);
 
             // Use the document ingestion service with document reference instead of URL
             DocumentIngestionResult result;

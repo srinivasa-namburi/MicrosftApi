@@ -1,0 +1,208 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+@using MudBlazor
+@using System.Text.Json
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@inject IConfigurationApiClient ConfigApi
+@inject ISnackbar Snackbar
+@inherits Microsoft.Greenlight.Web.DocGen.Client.Components.Configuration.Infrastructure.ConfigurationSectionBase
+
+<MudPaper Class="pa-4">
+  <MudText Typo="Typo.h6">HostName Override Configuration</MudText>
+  <MudDivider Class="mt-2 mb-3" />
+
+  <MudStack Spacing="3">
+    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+      Configure custom domain names for external access. Leave blank to use default endpoints.
+      When using Application Gateway, set ApplicationGatewayUrl for unified access to all services.
+    </MudAlert>
+
+    <MudExpansionPanels Elevation="0" MultiExpansion="true">
+      <!-- Unified Application Gateway Configuration -->
+      <MudExpansionPanel Text="Application Gateway (Recommended)">
+        <MudStack Spacing="2" Class="pa-2">
+          <MudTextField T="string" Value="_model.ApplicationGatewayUrl" ValueChanged="@( (string v) => { _model.ApplicationGatewayUrl = v; SetDirty(true); } )" Immediate="true"
+                       Label="Application Gateway URL"
+                       Placeholder="https://myapp.example.com"
+                       HelperText="Single domain for all services (Web, API, MCP, SignalR)"
+                       Variant="Variant.Outlined" />
+        </MudStack>
+      </MudExpansionPanel>
+
+      <!-- Individual Service Configuration -->
+      <MudExpansionPanel Text="Individual Service URLs">
+        <MudStack Spacing="2" Class="pa-2">
+          <MudTextField T="string" Value="_model.WebApplicationUrl" ValueChanged="@( (string v) => { _model.WebApplicationUrl = v; SetDirty(true); } )" Immediate="true"
+                       Label="Web Application URL"
+                       Placeholder="https://web.myapp.example.com"
+                       HelperText="Custom domain for the web frontend"
+                       Variant="Variant.Outlined" />
+
+          <MudTextField T="string" Value="_model.ApiBaseUrl" ValueChanged="@( (string v) => { _model.ApiBaseUrl = v; SetDirty(true); } )" Immediate="true"
+                       Label="API Base URL"
+                       Placeholder="https://api.myapp.example.com"
+                       HelperText="Custom domain for API endpoints (also used for SignalR when self-hosted)"
+                       Variant="Variant.Outlined" />
+        </MudStack>
+      </MudExpansionPanel>
+
+      <!-- Current Configuration Display -->
+      <MudExpansionPanel Text="Current Configuration">
+        <MudStack Spacing="2" Class="pa-2">
+          <MudAlert Severity="Severity.Normal" Variant="Variant.Text">
+            <MudText Typo="Typo.body2"><strong>Effective Configuration:</strong></MudText>
+            <MudText Typo="Typo.body2">Web: @GetEffectiveUrl("Web")</MudText>
+            <MudText Typo="Typo.body2">API: @GetEffectiveUrl("API")</MudText>
+            <MudText Typo="Typo.body2">SignalR: @GetEffectiveUrl("SignalR")</MudText>
+            <MudText Typo="Typo.body2">MCP: @GetEffectiveUrl("MCP")</MudText>
+          </MudAlert>
+        </MudStack>
+      </MudExpansionPanel>
+    </MudExpansionPanels>
+
+    <MudStack Direction="Row" Spacing="2" Justify="Justify.FlexEnd">
+      <MudButton Variant="Variant.Outlined" 
+                 Color="Color.Secondary" 
+                 OnClick="ResetToDefaults"
+                 StartIcon="Icons.Material.Filled.RestartAlt">
+        Reset to Defaults
+      </MudButton>
+      <MudButton Variant="Variant.Filled" 
+                 Color="Color.Primary" 
+                 OnClick="SaveConfiguration"
+                 StartIcon="Icons.Material.Filled.Save"
+                 Disabled="_isLoading || !IsDirty">
+        @if (_isLoading)
+        {
+          <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true"/>
+          <MudText Class="ms-2">Saving...</MudText>
+        }
+        else
+        {
+          <MudText>Save Configuration</MudText>
+        }
+      </MudButton>
+    </MudStack>
+  </MudStack>
+</MudPaper>
+
+@code {
+  private HostNameOverrideModel _model = new();
+  private bool _isLoading = false;
+
+  protected override async Task OnInitializedAsync()
+  {
+    await LoadCurrentConfiguration();
+  }
+
+  private async Task LoadCurrentConfiguration()
+  {
+    try
+    {
+      // Load current hostname override configuration from the API
+      // This would call an API endpoint to get the current ServiceConfiguration:HostNameOverride settings
+      // For now, initialize with empty values
+      _model = new HostNameOverrideModel();
+    }
+    catch (Exception ex)
+    {
+      Snackbar.Add($"Failed to load hostname configuration: {ex.Message}", Severity.Error);
+    }
+  }
+
+  private async Task SaveConfiguration()
+  {
+    _isLoading = true;
+    try
+    {
+      // Convert to JSON format expected by AppHost
+      var config = new
+      {
+        WebApplicationUrl = string.IsNullOrWhiteSpace(_model.WebApplicationUrl) ? null : _model.WebApplicationUrl,
+        ApiBaseUrl = string.IsNullOrWhiteSpace(_model.ApiBaseUrl) ? null : _model.ApiBaseUrl,
+        ApplicationGatewayUrl = string.IsNullOrWhiteSpace(_model.ApplicationGatewayUrl) ? null : _model.ApplicationGatewayUrl
+      };
+
+      var jsonConfig = JsonSerializer.Serialize(config);
+      
+      // Save to configuration API
+      // This would call an API endpoint to update the ServiceConfiguration:HostNameOverride settings
+      // The API would then trigger a configuration reload without requiring redeployment
+      
+      // Save via configuration API (standard keys under Global:HostNameOverride)
+      var items = new Dictionary<string, string>
+      {
+        ["ServiceConfiguration:GreenlightServices:Global:HostNameOverride:WebApplicationUrl"] = _model.WebApplicationUrl ?? string.Empty,
+        ["ServiceConfiguration:GreenlightServices:Global:HostNameOverride:ApiBaseUrl"] = _model.ApiBaseUrl ?? string.Empty,
+        ["ServiceConfiguration:GreenlightServices:Global:HostNameOverride:ApplicationGatewayUrl"] = _model.ApplicationGatewayUrl ?? string.Empty
+      };
+      await ConfigApi.UpdateConfigurationAsync(new Microsoft.Greenlight.Shared.Contracts.DTO.ConfigurationUpdateRequest
+      {
+        ConfigurationItems = items
+      });
+
+    SetDirty(false);
+  }
+    catch (Exception ex)
+    {
+      Snackbar.Add($"Failed to save hostname configuration: {ex.Message}", Severity.Error);
+    }
+    finally
+    {
+      _isLoading = false;
+    }
+  }
+
+  private async Task ResetToDefaults()
+  {
+    _model = new HostNameOverrideModel();
+    Snackbar.Add("Configuration reset to defaults", Severity.Info);
+  }
+
+  private string GetEffectiveUrl(string service)
+  {
+    // If ApplicationGatewayUrl is set, all services use it
+    if (!string.IsNullOrWhiteSpace(_model.ApplicationGatewayUrl))
+    {
+      return service switch
+      {
+        "Web" => $"{_model.ApplicationGatewayUrl}/",
+        "API" => $"{_model.ApplicationGatewayUrl}/api",
+        "SignalR" => $"{_model.ApplicationGatewayUrl}/hubs",
+        "MCP" => $"{_model.ApplicationGatewayUrl}/mcp",
+        _ => _model.ApplicationGatewayUrl
+      };
+    }
+
+    // Otherwise use individual service URLs or defaults
+    return service switch
+    {
+      "Web" => _model.WebApplicationUrl ?? "[Default Web Endpoint]",
+      "API" => _model.ApiBaseUrl ?? "[Default API Endpoint]",
+      "SignalR" => _model.ApiBaseUrl ?? "[Default API Endpoint (SignalR hosted on API)]",
+      "MCP" => "[Default MCP Endpoint]",
+      _ => "[Unknown]"
+    };
+  }
+
+  public class HostNameOverrideModel
+  {
+    public string? WebApplicationUrl { get; set; }
+    public string? ApiBaseUrl { get; set; }
+    public string? ApplicationGatewayUrl { get; set; }
+  }
+
+  public override async Task SaveAsync(CancellationToken cancellationToken = default)
+  {
+    var items = new Dictionary<string, string>
+    {
+      ["ServiceConfiguration:GreenlightServices:Global:HostNameOverride:WebApplicationUrl"] = _model.WebApplicationUrl ?? string.Empty,
+      ["ServiceConfiguration:GreenlightServices:Global:HostNameOverride:ApiBaseUrl"] = _model.ApiBaseUrl ?? string.Empty,
+      ["ServiceConfiguration:GreenlightServices:Global:HostNameOverride:ApplicationGatewayUrl"] = _model.ApplicationGatewayUrl ?? string.Empty
+    };
+    await ConfigApi.UpdateConfigurationAsync(new Microsoft.Greenlight.Shared.Contracts.DTO.ConfigurationUpdateRequest
+    {
+      ConfigurationItems = items
+    });
+    SetDirty(false);
+  }
+}

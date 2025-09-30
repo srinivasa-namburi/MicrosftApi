@@ -1,0 +1,398 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+@using Microsoft.Greenlight.Web.Shared.ViewModels.MCP
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Configuration
+@using Microsoft.Greenlight.Web.DocGen.Client.ServiceClients
+@inject IMcpConfigurationApiClient Api
+@inject IConfigurationApiClient ConfigApi
+@inject IAdminAuthorizationApiClient AdminAuth
+@inject IDialogService DialogService
+@inject IJSRuntime JSRuntime
+@inherits Microsoft.Greenlight.Web.DocGen.Client.Components.Configuration.Infrastructure.ConfigurationSectionBase
+
+<MudPaper Class="pa-4">
+  <MudText Typo="Typo.h6">MCP Server Configuration</MudText>
+  <MudDivider Class="mt-2 mb-3" />
+
+  <MudStack Spacing="2">
+    <!-- Common settings for the entire MCP server -->
+  <MudPaper Class="pa-3" Elevation="0">
+    <MudText Typo="Typo.subtitle2">Common Settings</MudText>
+      <MudStack Spacing="2" Class="mt-2">
+        <MudAlert Severity="Severity.Info">
+          MCP uses dual authentication: a user bearer token (Entra ID/OIDC) or the fixed API secret header <b>X-MCP-Secret</b>. If both are present, the user token takes precedence.
+          Disabling authentication disables user auth only; API secrets still apply when enabled.
+        </MudAlert>
+
+        @if (_model.Common.DisableAuth && !_model.Common.SecretEnabled)
+        {
+          <MudAlert Severity="Severity.Error">Warning: OIDC is disabled and API secrets are disabled — MCP will allow unauthenticated access.</MudAlert>
+        }
+        else if (_model.Common.SecretEnabled && (_secrets?.Count ?? 0) == 0)
+        {
+          <MudAlert Severity="Severity.Warning">API secrets are enabled, but none exist. Clients will receive 401 until at least one secret is created.</MudAlert>
+        }
+
+        <MudGrid>
+          <MudItem xs="12" md="6">
+            <MudStack Spacing="2">
+              <MudSwitch T="bool" @bind-Checked="_model.Common.DisableAuth" Color="Color.Primary" Label="Disable OIDC (user authentication)" @onchange="_ => MarkDirty()" />
+              <MudSwitch T="bool" @bind-Checked="_model.Common.SecretEnabled" Color="Color.Primary" Label="Enable API secrets" @onchange="_ => MarkDirty()" />
+            </MudStack>
+          </MudItem>
+          <MudItem xs="12" md="6">
+            <MudStack Spacing="1" AlignItems="AlignItems.Start">
+              <MudChip T="string" Color="@(_secretInfo?.HasValue == true ? Color.Success : Color.Default)" Variant="Variant.Filled" Size="Size.Small">
+                @((_secretInfo?.HasValue == true) ? "Legacy Secret: Configured" : "Legacy Secret: Not configured")
+              </MudChip>
+              @if (_secretInfo?.IsOverridden == true)
+              {
+                <MudText Typo="Typo.caption" Color="Color.Info">
+                  <MudIcon Icon="@Icons.Material.Filled.Settings" Size="Size.Small" /> Configuration override active (set @(_secretInfo.LastUpdated?.ToString("u") ?? "unknown"))
+                </MudText>
+              }
+            </MudStack>
+          </MudItem>
+        </MudGrid>
+      </MudStack>
+    </MudPaper>
+
+    <!-- Endpoint-specific settings removed (not supported by server currently) -->
+
+
+  <!-- API Secrets -->
+  <MudPaper Class="pa-3 mt-4" Elevation="0">
+    <MudText Typo="Typo.subtitle2">API Secrets</MudText>
+    <MudText Typo="Typo.body2" Class="mb-2">Generate secure, database-backed secrets for API access. Each secret has a unique name and is bound to a specific user for impersonation. Secrets are hashed and stored securely.</MudText>
+    <MudAlert Severity="Severity.Warning" Class="mb-3">
+      <strong>Important:</strong> Secret values are only displayed <strong>once</strong> immediately after creation. Make sure to copy and save the secret value before closing the dialog, as it cannot be retrieved later.
+    </MudAlert>
+    
+    @if (_secrets?.Count > 0 || !string.IsNullOrWhiteSpace(_newSecretName) || _selectedUser != null)
+    {
+      <MudAlert Severity="Severity.Info" Class="mb-3">
+        <MudText Typo="Typo.body2"><strong>Usage Instructions:</strong></MudText>
+        <MudText Typo="Typo.body2" Class="mt-1">
+          • Include the header <code>X-MCP-Secret: [your-secret-value]</code> in all API requests<br/>
+          • The secret authenticates and automatically impersonates the bound user<br/>
+          • Each secret has a unique name for identification and management<br/>
+          • Secrets can be deactivated by deleting them from this list
+        </MudText>
+      </MudAlert>
+    }
+    <MudStack Direction="Row" Spacing="2" Class="mb-2">
+      <MudTextField T="string" @bind-Value="_newSecretName" Label="Secret name" />
+      <MudAutocomplete T="UserSearchResult"
+                       Label="Bind to user"
+                       Placeholder="Start typing to search for a user..."
+                       ToStringFunc="FormatUser"
+                       SearchFunc="SearchUsers"
+                       Dense="true"
+                       Clearable="true"
+                       AdornmentIcon="@Icons.Material.Filled.Search"
+                       AdornmentColor="Color.Secondary"
+                       ValueChanged="@(u => { _selectedUser = u; _newSecretUserOid = u?.ProviderSubjectId ?? string.Empty; StateHasChanged(); })" />
+      <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="string.IsNullOrWhiteSpace(_newSecretName) || string.IsNullOrWhiteSpace(_newSecretUserOid) || _busy" OnClick="CreateSecret">Create</MudButton>
+    </MudStack>
+
+    <MudTable Items="_secrets" Dense="true" Hover="true">
+      <HeaderContent>
+        <MudTh>Name</MudTh>
+        <MudTh>User OID</MudTh>
+        <MudTh>Active</MudTh>
+        <MudTh>Last Used (UTC)</MudTh>
+        <MudTh></MudTh>
+      </HeaderContent>
+      <RowTemplate>
+        <MudTd>@context.Name</MudTd>
+        <MudTd>@context.UserOid</MudTd>
+        <MudTd>@(context.IsActive ? "Yes" : "No")</MudTd>
+        <MudTd>@(context.LastUsedUtc?.ToString("u") ?? "—")</MudTd>
+        <MudTd Class="text-right">
+          <MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" OnClick="() => DeleteSecret(context)" />
+        </MudTd>
+      </RowTemplate>
+    </MudTable>
+  </MudPaper>
+
+    <!-- Sessions -->
+    <MudPaper Class="pa-3 mt-4" Elevation="0">
+      <MudText Typo="Typo.subtitle2">Active Sessions</MudText>
+      <MudTable Items="_sessions" Dense="true" Class="mt-2">
+        <HeaderContent>
+          <MudTh>Session Id</MudTh>
+          <MudTh>Expires (UTC)</MudTh>
+          <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+          <MudTd>@context.SessionId</MudTd>
+          <MudTd>@context.ExpiresUtc.ToString("u")</MudTd>
+          <MudTd Class="text-right">
+            <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small" OnClick="() => Invalidate(context.SessionId)">Invalidate</MudButton>
+          </MudTd>
+        </RowTemplate>
+      </MudTable>
+    </MudPaper>
+
+    <!-- Actions -->
+  <MudStack Direction="Row" Spacing="2" Class="mt-4">
+      <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="_busy || !IsDirty">Save</MudButton>
+      <MudButton Variant="Variant.Outlined" Color="Color.Default" OnClick="Reload" Disabled="_busy">Reload</MudButton>
+    </MudStack>
+  </MudStack>
+</MudPaper>
+
+@code {
+    private bool _busy;
+    public override string Title => "MCP";
+
+    private McpConfigurationModel _model = new();
+    private List<McpSessionRow> _sessions = new();
+    private SecretOverrideInfo? _secretInfo;
+    private List<Microsoft.Greenlight.Shared.Contracts.DTO.McpSecrets.McpSecretInfo> _secrets = new();
+    private string _newSecretName = string.Empty;
+    private string _newSecretUserOid = string.Empty;
+    private UserSearchResult? _selectedUser;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Reload();
+        _initialSnapshot = System.Text.Json.JsonSerializer.Serialize(_model);
+        SetDirty(false);
+    }
+
+    private async Task Reload()
+    {
+        _busy = true;
+        try
+        {
+            _model = await Api.GetAsync();
+            _sessions = await Api.ListSessionsAsync();
+            _secretInfo = await ConfigApi.GetSecretOverrideInfoAsync("ServiceConfiguration:Mcp:SecretValue");
+            _secrets = await Api.ListSecretsAsync();
+            _initialSnapshot = System.Text.Json.JsonSerializer.Serialize(_model);
+            SetDirty(false);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+
+    private async Task CreateSecret()
+    {
+      // Validate inputs before sending request
+      var name = _newSecretName?.Trim() ?? string.Empty;
+
+      if (string.IsNullOrWhiteSpace(name))
+      {
+        await DialogService.ShowMessageBox("Validation Error", "Secret name is required.");
+        return;
+      }
+
+      if (name.Length > 128)
+      {
+        await DialogService.ShowMessageBox("Validation Error", "Secret name must be 128 characters or less.");
+        return;
+      }
+
+      if (_selectedUser == null || string.IsNullOrWhiteSpace(_selectedUser.ProviderSubjectId))
+      {
+        await DialogService.ShowMessageBox("Validation Error", "Please select a user from the search dropdown. Make sure to click on a user from the search results.");
+        return;
+      }
+
+      var userOid = _selectedUser.ProviderSubjectId.Trim();
+
+      _busy = true;
+      try
+      {
+        var resp = await Api.CreateSecretAsync(new Microsoft.Greenlight.Shared.Contracts.DTO.McpSecrets.CreateMcpSecretRequest
+        {
+          Name = name,
+          UserOid = userOid
+        });
+        _newSecretName = string.Empty;
+        _newSecretUserOid = string.Empty;
+        _selectedUser = null;
+        _secrets = await Api.ListSecretsAsync();
+        
+        // Show custom dialog with copy functionality
+        await ShowSecretCreatedDialog(name, resp.Plaintext);
+      }
+      catch (Exception ex)
+      {
+        var errorMessage = ex.Message;
+        if (ex.Message.Contains("400") || ex.Message.Contains("Bad Request"))
+        {
+          errorMessage = "Invalid request. Please ensure the secret name is unique and you've selected a valid user.";
+        }
+        await DialogService.ShowMessageBox("Error", $"Failed to create secret: {errorMessage}");
+      }
+      finally
+      {
+        _busy = false;
+      }
+    }
+
+    private async Task DeleteSecret(Microsoft.Greenlight.Shared.Contracts.DTO.McpSecrets.McpSecretInfo s)
+    {
+      var parameters = new DialogParameters
+      {
+        { "ContentText", $"Delete secret '{s.Name}'? This cannot be undone." },
+        { "ButtonText", "Delete" },
+        { "DialogColor", Color.Error }
+      };
+      var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+      var dialog = DialogService.Show<ConfirmationDialog>("Delete Secret", parameters, options);
+      var result = await dialog.Result;
+      if (!result.Canceled)
+      {
+        await Api.DeleteSecretAsync(s.Id);
+        _secrets = await Api.ListSecretsAsync();
+      }
+    }
+
+    private async Task Save()
+    {
+        _busy = true;
+        try
+        {
+            await SaveAsync();
+            _sessions = await Api.ListSessionsAsync();
+            _secretInfo = await ConfigApi.GetSecretOverrideInfoAsync("ServiceConfiguration:Mcp:SecretValue");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+
+    private async Task Invalidate(Guid id)
+    {
+        await Api.InvalidateSessionAsync(id);
+        _sessions = await Api.ListSessionsAsync();
+    }
+
+
+
+    private Task<IEnumerable<UserSearchResult>> SearchUsers(string value, CancellationToken _)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Trim().Length < 2)
+        {
+            return Task.FromResult<IEnumerable<UserSearchResult>>(Array.Empty<UserSearchResult>());
+        }
+        return SearchUsersInternal(value.Trim());
+    }
+
+    private async Task<IEnumerable<UserSearchResult>> SearchUsersInternal(string query)
+    {
+        var results = await AdminAuth.SearchUsersAsync(query);
+        return results ?? new List<UserSearchResult>();
+    }
+
+
+    private static string FormatUser(UserSearchResult? u)
+    {
+        if (u == null) { return string.Empty; }
+        var name = string.IsNullOrWhiteSpace(u.FullName) ? u.ProviderSubjectId : u.FullName;
+        var email = string.IsNullOrWhiteSpace(u.Email) ? string.Empty : $" ({u.Email})";
+        return name + email;
+    }
+
+    private async Task ShowSecretCreatedDialog(string secretName, string secretValue)
+    {
+        var truncatedSecret = secretValue.Length > 12 ? secretValue.Substring(0, 12) + "..." : secretValue;
+        
+        var parameters = new DialogParameters
+        {
+            { "SecretName", secretName },
+            { "SecretValue", secretValue },
+            { "TruncatedSecret", truncatedSecret }
+        };
+        
+        var options = new DialogOptions 
+        { 
+            CloseButton = true, 
+            MaxWidth = MaxWidth.Medium, 
+            FullWidth = true,
+            CloseOnEscapeKey = false
+        };
+        
+        var dialog = DialogService.Show<SecretCreatedDialog>("API Secret Created", parameters, options);
+        await dialog.Result;
+    }
+
+    // Standardized dirty tracking and save aggregation
+    private string _initialSnapshot = string.Empty;
+    private void MarkDirty()
+    {
+        var current = System.Text.Json.JsonSerializer.Serialize(_model);
+        SetDirty(!string.Equals(current, _initialSnapshot, StringComparison.Ordinal));
+    }
+
+    public override async Task SaveAsync(CancellationToken cancellationToken = default)
+    {
+        // Detect auth-impacting changes and prompt the user with a concise summary
+        var before = System.Text.Json.JsonSerializer.Deserialize<McpConfigurationModel>(_initialSnapshot) ?? new McpConfigurationModel();
+        var noAuth = _model.Common.DisableAuth && !_model.Common.SecretEnabled; // only true when OIDC disabled and secrets disabled
+        var needsConfirm = noAuth || AuthAffects(before, _model);
+        if (needsConfirm)
+        {
+            var summary = BuildAuthChangeSummary(before, _model, noAuth);
+            var parameters = new DialogParameters
+            {
+                { "ContentText", summary },
+                { "ButtonText", "Apply" },
+                { "CancelText", "Cancel" },
+                { "DialogColor", noAuth ? Color.Error : Color.Warning }
+            };
+            var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+            var dialog = DialogService.Show<ConfirmationDialog>("Confirm MCP Authentication Changes", parameters, options);
+            var result = await dialog.Result;
+            if (result.Canceled)
+            {
+                // Cancel the entire save pipeline (including Save All)
+                throw new OperationCanceledException("User canceled MCP auth-impacting changes");
+            }
+        }
+
+        await Api.UpdateAsync(_model);
+        _initialSnapshot = System.Text.Json.JsonSerializer.Serialize(_model);
+        SetDirty(false);
+    }
+
+    private static bool AuthAffects(McpConfigurationModel before, McpConfigurationModel after)
+    {
+        return before.Common.DisableAuth != after.Common.DisableAuth
+               || before.Common.SecretEnabled != after.Common.SecretEnabled;
+    }
+
+    private static string BuildAuthChangeSummary(McpConfigurationModel before, McpConfigurationModel after, bool noAuth)
+    {
+        var lines = new List<string>();
+        if (noAuth)
+        {
+            lines.Add("CRITICAL WARNING: MCP will run with NO authentication. All endpoints will be accessible without a user token or API secret. This is strongly discouraged outside isolated local development.");
+            lines.Add("");
+        }
+        if (before.Common.DisableAuth != after.Common.DisableAuth)
+        {
+            lines.Add(after.Common.DisableAuth
+                ? "User authentication will be DISABLED for MCP. Access will rely on API secrets or existing sessions."
+                : "User authentication will be ENABLED for MCP. Clients may authenticate via Entra ID (OIDC). Secrets still work when enabled.");
+        }
+        if (before.Common.SecretEnabled != after.Common.SecretEnabled)
+        {
+            lines.Add(after.Common.SecretEnabled
+                ? "API secrets will be ENABLED globally. Clients can use the secret header to access MCP without a user token."
+                : "API secrets will be DISABLED globally. Clients must use user authentication unless endpoint-specific secrets are enabled.");
+        }
+        // Header and endpoint-specific settings are fixed/unsupported and not changeable here
+        lines.Add("Note: If both a user bearer token and an API secret are present, the user token takes precedence.");
+        return string.Join("\n", lines);
+    }
+
+    // modeling classes live in Microsoft.Greenlight.Web.DocGen.Client.Models
+}

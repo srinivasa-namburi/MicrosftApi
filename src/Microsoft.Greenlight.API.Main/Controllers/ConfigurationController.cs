@@ -8,7 +8,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.Greenlight.Shared.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.DTO;
-using Microsoft.Greenlight.Shared.Contracts.DTO.Configuration;
 using Microsoft.Greenlight.Shared.Contracts.Messages;
 using Microsoft.Greenlight.Shared.Contracts.Streams;
 using Microsoft.Greenlight.Shared.Data.Sql;
@@ -47,16 +46,29 @@ public class ConfigurationController : BaseController
     /// </summary>
     private static readonly List<string> AcceptedKeys =
     [
-        "ServiceConfiguration:GreenlightServices:FrontEnd:*",
+        "ServiceConfiguration:GreenlightServices:Frontend:*",
         "ServiceConfiguration:GreenlightServices:FeatureFlags:*",
         "ServiceConfiguration:GreenlightServices:ReferenceIndexing:*",
         "ServiceConfiguration:GreenlightServices:Scalability:*",
-        "ServiceConfiguration:GreenlightServices:VectorStore:*",
-        // Allow OCR options to be managed from UI
         "ServiceConfiguration:GreenlightServices:DocumentIngestion:Ocr:*",
+        "ServiceConfiguration:GreenlightServices:Flow:*",
+
+        "ServiceConfiguration:GreenlightServices:VectorStore:**",
+
         "ServiceConfiguration:OpenAI:*",
-        // Allow secret overrides for specific keys
-        "ServiceConfiguration:AzureMaps:Key"
+        "ServiceConfiguration:AzureMaps:Key",
+        
+        "ConnectionStrings:openai-planner",
+        
+        "ServiceConfiguration:Mcp:DisableAuth",
+        "ServiceConfiguration:Mcp:SecretEnabled",
+        "ServiceConfiguration:Mcp:SecretHeaderName",
+        "ServiceConfiguration:Mcp:Core:SecretEnabled",
+        "ServiceConfiguration:Mcp:Core:SecretHeaderName",
+        "ServiceConfiguration:Mcp:Flow:SecretEnabled",
+        "ServiceConfiguration:Mcp:Flow:SecretHeaderName",
+        "ServiceConfiguration:Mcp:Impersonation:*",
+        "ServiceConfiguration:Mcp:SecretValue"
     ];
 
     /// <summary>
@@ -137,7 +149,11 @@ public class ConfigurationController : BaseController
     [Produces("application/json")]
     public ActionResult<ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions> GetFeatureFlags()
     {
-        var configurationFeatureFlags = _configuration.GetSection("ServiceConfiguration:GreenlightServices:FeatureFlags").Get<ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions>();
+        // Read directly from IConfiguration to reflect persisted values reliably
+        var configurationFeatureFlags = _configuration
+            .GetSection("ServiceConfiguration:GreenlightServices:FeatureFlags")
+            .Get<ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions>()
+            ?? new ServiceConfigurationOptions.GreenlightServicesOptions.FeatureFlagsOptions();
         return Ok(configurationFeatureFlags);
     }
 
@@ -163,7 +179,7 @@ public class ConfigurationController : BaseController
     [Produces("application/json")]
     public ActionResult<ServiceConfigurationOptions.GreenlightServicesOptions.FrontendOptions> GetFrontend()
     {
-        var configurationFrontendOptions = _configuration.GetSection("ServiceConfiguration:GreenlightServices:FrontEnd").Get<ServiceConfigurationOptions.GreenlightServicesOptions.FrontendOptions>();
+        var configurationFrontendOptions = _configuration.GetSection("ServiceConfiguration:GreenlightServices:Frontend").Get<ServiceConfigurationOptions.GreenlightServicesOptions.FrontendOptions>();
         return Ok(configurationFrontendOptions);
     }
 
@@ -192,6 +208,18 @@ public class ConfigurationController : BaseController
         // This ensures that the post-configuration logic that sets StoreType based on UsePostgresMemory is applied
         var vectorStoreOptions = _serviceConfigurationOptionsMonitor.CurrentValue.GreenlightServices.VectorStore;
         return Ok(vectorStoreOptions);
+    }
+
+    /// <summary>
+    /// Gets the Flow AI Assistant options configuration.
+    /// </summary>
+    [HttpGet("flow-options")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [Produces("application/json")]
+    public ActionResult<ServiceConfigurationOptions.FlowOptions> GetFlowOptions()
+    {
+        var flowOptions = _serviceConfigurationOptionsMonitor.CurrentValue.GreenlightServices.Flow;
+        return Ok(flowOptions);
     }
 
     /// <summary>
@@ -573,6 +601,19 @@ public class ConfigurationController : BaseController
         if (!IsAcceptedKey(request.ConfigurationKey))
         {
             return BadRequest($"Configuration key '{request.ConfigurationKey}' is not allowed for secret override.");
+        }
+
+        // Special validation for Azure OpenAI planner connection string
+        if (string.Equals(request.ConfigurationKey, "ConnectionStrings:openai-planner", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                AzureOpenAIConnectionStringParser.Parse(request.SecretValue);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest($"Invalid openai-planner connection string: {ex.Message}");
+            }
         }
 
         try
@@ -1035,7 +1076,7 @@ public class ConfigurationController : BaseController
     }
 
     /// <summary>
-    /// Checks if a given key matches any of the accepted keys with wildcard patterns.
+    /// Checks if a given key matches any of the accepted keys with wildcard patterns (case-insensitive).
     /// </summary>
     /// <param name="key">The key to check.</param>
     /// <returns>True if the key is accepted, otherwise false.</returns>
@@ -1047,7 +1088,7 @@ public class ConfigurationController : BaseController
                 .Replace(@"\*\*", ".*")
                 .Replace(@"\*", @"[^:]*") + "$";
 
-            if (Regex.IsMatch(key, regexPattern))
+            if (Regex.IsMatch(key, regexPattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
             {
                 return true;
             }
@@ -1056,5 +1097,3 @@ public class ConfigurationController : BaseController
         return false;
     }
 }
-
-

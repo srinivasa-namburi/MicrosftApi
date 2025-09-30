@@ -55,6 +55,8 @@ public enum IndexHealthStatus
     Reindexing,
     /// <summary>Index doesn't exist</summary>
     Missing,
+    /// <summary>Index was recreated due to schema incompatibility</summary>
+    Recreated,
     /// <summary>Unable to determine index status</summary>
     Unknown
 }

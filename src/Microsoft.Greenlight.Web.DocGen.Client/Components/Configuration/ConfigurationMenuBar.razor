@@ -1,0 +1,215 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+
+<MudPaper Class="configuration-menu-bar" Elevation="4">
+    <MudGrid AlignItems="Center" Spacing="0">
+        <MudItem xs="11">
+            <MudHidden Breakpoint="Breakpoint.SmAndDown">
+                <div class="menu-items-container">
+                    @foreach (var section in Sections)
+                    {
+                        <MudTooltip Text="@(section.Title)">
+                            <MudButton Variant="@(SelectedSection == section.Id ? Variant.Filled : Variant.Text)"
+                                       Color="@(SelectedSection == section.Id ? Color.Primary : Color.Default)"
+                                       StartIcon="@(section.Icon)"
+                                       Class="menu-item"
+                                       Size="Size.Small"
+                                       OnClick="() => OnSectionChange.InvokeAsync(section.Id)">
+                                <MudHidden Breakpoint="Breakpoint.MdAndDown">
+                                    @(section.ShortTitle)
+                                </MudHidden>
+                            </MudButton>
+                        </MudTooltip>
+                    }
+                </div>
+            </MudHidden>
+            <MudHidden Breakpoint="Breakpoint.MdAndUp">
+                <div class="mobile-menu-container">
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               StartIcon="@(GetSelectedSection()?.Icon)"
+                               EndIcon="@Icons.Material.Filled.ArrowDropDown"
+                               OnClick="ToggleMobileMenu">
+                        @GetSelectedSection()?.Title
+                    </MudButton>
+                    <MudPopover Open="@_mobileMenuOpen" Fixed="true" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter">
+                        <MudList T="ConfigSection" Dense="true">
+                            @foreach (var section in Sections)
+                            {
+                                <MudListItem T="ConfigSection" OnClick="() => SelectMobileSection(section.Id)">
+                                    <div class="d-flex align-center">
+                                        <MudIcon Icon="@(section.Icon)" Class="mr-2" />
+                                        <MudText>@(section.Title)</MudText>
+                                    </div>
+                                </MudListItem>
+                            }
+                        </MudList>
+                    </MudPopover>
+                </div>
+            </MudHidden>
+        </MudItem>
+        <MudItem xs="1" Class="text-right">
+            <MudTooltip Text="Back to dashboard">
+                <MudIconButton Icon="@Icons.Material.Filled.Dashboard"
+                               Color="Color.Default"
+                               Size="Size.Small"
+                               OnClick="OnExpand" />
+            </MudTooltip>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+<style>
+    .configuration-menu-bar {
+        position: sticky;
+        top: 0;
+        z-index: 1100;
+        background: var(--mud-palette-surface);
+        backdrop-filter: blur(10px);
+        padding: 0.5rem 1rem;
+        margin-bottom: 1rem;
+        transition: all 0.3s ease;
+    }
+
+    .menu-items-container {
+        display: flex;
+        gap: 0.25rem;
+        overflow-x: auto;
+        scrollbar-width: thin;
+        padding: 0.25rem 0;
+    }
+
+    .menu-items-container::-webkit-scrollbar {
+        height: 4px;
+    }
+
+    .menu-items-container::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .menu-items-container::-webkit-scrollbar-thumb {
+        background: var(--mud-palette-divider);
+        border-radius: 2px;
+    }
+
+    .menu-item {
+        white-space: nowrap;
+        min-width: fit-content;
+    }
+
+    .mobile-menu-container {
+        padding: 0.25rem 0;
+    }
+</style>
+
+@code {
+    [Parameter] public ConfigSection SelectedSection { get; set; }
+    [Parameter] public EventCallback<ConfigSection> OnSectionChange { get; set; }
+    [Parameter] public EventCallback OnExpand { get; set; }
+
+    private bool _mobileMenuOpen = false;
+
+    private void ToggleMobileMenu()
+    {
+        _mobileMenuOpen = !_mobileMenuOpen;
+    }
+
+    private async Task SelectMobileSection(ConfigSection section)
+    {
+        _mobileMenuOpen = false;
+        await OnSectionChange.InvokeAsync(section);
+    }
+
+    private ConfigurationSectionInfo? GetSelectedSection()
+    {
+        return Sections.FirstOrDefault(s => s.Id == SelectedSection);
+    }
+
+    private readonly List<ConfigurationSectionInfo> Sections = new()
+    {
+        new ConfigurationSectionInfo
+        {
+            Id = ConfigSection.Frontend,
+            Title = "Frontend",
+            ShortTitle = "Frontend",
+            Icon = Icons.Material.Filled.Web
+        },
+        new ConfigurationSectionInfo
+        {
+            Id = ConfigSection.Features,
+            Title = "Features",
+            ShortTitle = "Features",
+            Icon = Icons.Material.Filled.Tune
+        },
+        new ConfigurationSectionInfo
+        {
+            Id = ConfigSection.AiModels,
+            Title = "AI Models",
+            ShortTitle = "AI",
+            Icon = Icons.Material.Filled.SmartToy
+        },
+        new ConfigurationSectionInfo
+        {
+            Id = ConfigSection.Scalability,
+            Title = "Scalability",
+            ShortTitle = "Scale",
+            Icon = Icons.Material.Filled.Speed
+        },
+        new ConfigurationSectionInfo
+        {
+            Id = ConfigSection.VectorStore,
+            Title = "Vector Store",
+            ShortTitle = "Vectors",
+            Icon = Icons.Material.Filled.Hub
+        },
+        new ConfigurationSectionInfo
+        {
+            Id = ConfigSection.Ocr,
+            Title = "OCR",
+            ShortTitle = "OCR",
+            Icon = Icons.Material.Filled.TextFields
+        },
+        new ConfigurationSectionInfo
+        {
+            Id = ConfigSection.Secrets,
+            Title = "Secrets",
+            ShortTitle = "Secrets",
+            Icon = Icons.Material.Filled.VpnKey
+        },
+        new ConfigurationSectionInfo
+        {
+            Id = ConfigSection.FileStorage,
+            Title = "File Storage",
+            ShortTitle = "Storage",
+            Icon = Icons.Material.Filled.Storage
+        },
+        new ConfigurationSectionInfo
+        {
+            Id = ConfigSection.HostNames,
+            Title = "Host Names",
+            ShortTitle = "Hosts",
+            Icon = Icons.Material.Filled.Dns
+        },
+        new ConfigurationSectionInfo
+        {
+            Id = ConfigSection.Mcp,
+            Title = "MCP Server",
+            ShortTitle = "MCP",
+            Icon = Icons.Material.Filled.Settings
+        },
+        new ConfigurationSectionInfo
+        {
+            Id = ConfigSection.Flow,
+            Title = "Flow Assistant",
+            ShortTitle = "Flow",
+            Icon = Icons.Material.Filled.ChatBubble
+        }
+    };
+
+    private class ConfigurationSectionInfo
+    {
+        public ConfigSection Id { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public string ShortTitle { get; set; } = string.Empty;
+        public string Icon { get; set; } = string.Empty;
+    }
+}

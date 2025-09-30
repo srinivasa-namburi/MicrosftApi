@@ -25,32 +25,6 @@
       "stopAtEntry": false
     },
     {
-      "name": "Debug Blazor WebAssembly (WSL/Linux)",
-      "type": "blazorwasm",
-      "request": "attach",
-      "url": "https://localhost:5001",
-      "webRoot": "${workspaceFolder}/src/Microsoft.Greenlight.Web.DocGen.Client",
-      "timeout": 30000,
-      "trace": true
-    },
-    {
-      "name": "Debug Blazor WebAssembly (Windows/macOS)",
-      "type": "blazorwasm",
-      "request": "launch",
-      "url": "https://localhost:5001",
-      "webRoot": "${workspaceFolder}/src/Microsoft.Greenlight.Web.DocGen.Client",
-      "browser": "edge",
-      "timeout": 30000,
-      "trace": true
-    },
-    {
-      "name": "Launch Edge Browser (Manual)",
-      "type": "node",
-      "request": "launch",
-      "program": "${workspaceFolder}/scripts/launch-browser.js",
-      "args": ["https://localhost:5001"]
-    },
-    {
       "name": "Attach to .NET Process",
       "type": "coreclr",
       "request": "attach",

@@ -6,6 +6,10 @@ using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Exporters;
 using Microsoft.Greenlight.Shared.Helpers;
+using Microsoft.Greenlight.Shared.Services.FileStorage;
+using Microsoft.Greenlight.Shared.Contracts.DTO.FileStorage;
+using Microsoft.Extensions.Logging;
+using Microsoft.Greenlight.Shared.Models.FileStorage;
 using Microsoft.Greenlight.Shared.Models;
 using System.Text.RegularExpressions;
 using AutoMapper;
@@ -32,11 +36,13 @@ public partial class DocumentsController : BaseController
     private readonly DocGenerationDbContext _dbContext;
     private readonly IDocumentExporter _wordDocumentExporter;
     private readonly IContentNodeService _contentNodeService;
+    private readonly IFileStorageServiceFactory _fileStorageServiceFactory;
     private readonly AzureFileHelper _fileHelper;
     private readonly IMapper _mapper;
     private readonly IClusterClient _clusterClient;
     private readonly IAppCache _cache;
     private readonly IOptionsMonitor<ServiceConfigurationOptions> _options;
+    private readonly ILogger<DocumentsController> _logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DocumentsController"/> class.
@@ -46,28 +52,34 @@ public partial class DocumentsController : BaseController
     /// <param name="dbContext">The database context for document generation.</param>
     /// <param name="wordDocumentExporter">The document exporter for Word documents.</param>
     /// <param name="contentNodeService">The content node service for retrieving and sorting Content Nodes</param>
-    /// <param name="fileHelper">The Azure file helper for managing files.</param>
+    /// <param name="fileStorageServiceFactory">The file storage service factory for managing files.</param>
+    /// <param name="fileHelper">The Azure file helper for managing files (legacy support).</param>
     /// <param name="mapper">The AutoMapper instance for mapping objects.</param>
     /// <param name="clusterClient"></param>
+    /// <param name="logger">The logger instance for logging operations.</param>
     public DocumentsController(
         DocGenerationDbContext dbContext,
         [FromKeyedServices("IDocumentExporter-Word")]
         IDocumentExporter wordDocumentExporter,
         IContentNodeService contentNodeService,
+        IFileStorageServiceFactory fileStorageServiceFactory,
         AzureFileHelper fileHelper,
         IMapper mapper,
         IClusterClient clusterClient,
         IAppCache cache,
-        IOptionsMonitor<ServiceConfigurationOptions> options)
+        IOptionsMonitor<ServiceConfigurationOptions> options,
+        ILogger<DocumentsController> logger)
     {
         _dbContext = dbContext;
         _wordDocumentExporter = wordDocumentExporter;
         _contentNodeService = contentNodeService;
+        _fileStorageServiceFactory = fileStorageServiceFactory;
         _fileHelper = fileHelper;
         _mapper = mapper;
         _clusterClient = clusterClient;
         _cache = cache;
         _options = options;
+        _logger = logger;
     }
 
     /// <summary>
@@ -340,19 +352,136 @@ public partial class DocumentsController : BaseController
         {
             // The document has already been exported/generated - return the existing link
             blobUri = documentExportedLink.AbsoluteUrl;
+            var assetUrl = _fileHelper.GetProxiedAssetBlobUrl(documentExportedLink.Id);
+            return assetUrl;
         }
         else
         {
-            // The document has not been exported/generated - generate and export it now
+            // The document has not been exported/generated - generate and export it now using modern file storage
             var exportStream = await _wordDocumentExporter.ExportDocumentAsync(document, false);
             var fileNameGuid = Guid.NewGuid();
             var fileName = $"{document.Id}-{fileNameGuid}.docx";
+
+            // Use FileStorageSource-based upload (ExternalLinkAsset) for document-export container
+            try
+            {
+                const string containerName = "document-export";
+                
+                // Step 1: Find existing FileStorageSource by container name (regardless of categories)
+                var documentExportFileStorageSource = await _dbContext.FileStorageSources
+                    .Include(s => s.FileStorageHost)
+                    .Include(s => s.Categories)
+                    .FirstOrDefaultAsync(s => s.IsActive &&
+                                              s.ContainerOrPath == containerName &&
+                                              s.FileStorageHost.IsDefault &&
+                                              s.FileStorageHost.IsActive);
+
+                // Step 2: If not found, create new FileStorageSource
+                if (documentExportFileStorageSource == null)
+                {
+                    var defaultHost = await _dbContext.FileStorageHosts
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(h => h.IsDefault && h.IsActive);
+                        
+                    if (defaultHost != null)
+                    {
+                        var newFileStorageSource = new FileStorageSource
+                        {
+                            Id = Guid.NewGuid(),
+                            Name = $"Document Export Storage - {containerName}",
+                            FileStorageHostId = defaultHost.Id,
+                            ContainerOrPath = containerName,
+                            AutoImportFolderName = "exports", // Different from ingest-auto to avoid confusion
+                            IsDefault = false,
+                            IsActive = true,
+                            ShouldMoveFiles = false, // Don't move files for content reference type
+                            StorageSourceDataType = FileStorageSourceDataType.ContentReference, // Primary data type for backward compatibility
+                            Description = "Auto-created storage source for document exports"
+                        };
+                        
+                        _dbContext.FileStorageSources.Add(newFileStorageSource);
+                        await _dbContext.SaveChangesAsync();
+                        
+                        // Reload with navigation properties after save
+                        documentExportFileStorageSource = await _dbContext.FileStorageSources
+                            .Include(s => s.FileStorageHost)
+                            .Include(s => s.Categories)
+                            .FirstAsync(s => s.Id == newFileStorageSource.Id);
+                        
+                        _logger.LogInformation("Created new FileStorageSource {SourceId} for container {ContainerName}", 
+                            newFileStorageSource.Id, containerName);
+                    }
+                }
+
+                // Step 3: Ensure the source has ContentReference category
+                if (documentExportFileStorageSource != null)
+                {
+                    var hasContentReferenceCategory = documentExportFileStorageSource.Categories
+                        .Any(c => c.DataType == FileStorageSourceDataType.ContentReference);
+                        
+                    if (!hasContentReferenceCategory)
+                    {
+                        // Add ContentReference category to the source
+                        var contentReferenceCategory = new FileStorageSourceCategory
+                        {
+                            Id = Guid.NewGuid(),
+                            FileStorageSourceId = documentExportFileStorageSource.Id,
+                            DataType = FileStorageSourceDataType.ContentReference
+                        };
+                        
+                        _dbContext.FileStorageSourceCategories.Add(contentReferenceCategory);
+                        await _dbContext.SaveChangesAsync();
+                        
+                        _logger.LogInformation("Added ContentReference category to FileStorageSource {SourceId} for container {ContainerName}", 
+                            documentExportFileStorageSource.Id, containerName);
+                    }
+                }
+
+                if (documentExportFileStorageSource != null)
+                {
+                    var fileStorageService = _fileStorageServiceFactory.CreateService(new FileStorageSourceInfo
+                    {
+                        Id = documentExportFileStorageSource.Id,
+                        Name = documentExportFileStorageSource.Name,
+                        FileStorageHostId = documentExportFileStorageSource.FileStorageHostId,
+                        FileStorageHost = new FileStorageHostInfo
+                        {
+                            Id = documentExportFileStorageSource.FileStorageHost.Id,
+                            Name = documentExportFileStorageSource.FileStorageHost.Name,
+                            ProviderType = documentExportFileStorageSource.FileStorageHost.ProviderType,
+                            ConnectionString = documentExportFileStorageSource.FileStorageHost.ConnectionString,
+                            IsDefault = documentExportFileStorageSource.FileStorageHost.IsDefault,
+                            IsActive = documentExportFileStorageSource.FileStorageHost.IsActive,
+                            CreatedDate = documentExportFileStorageSource.FileStorageHost.CreatedUtc,
+                            LastUpdatedDate = documentExportFileStorageSource.FileStorageHost.ModifiedUtc
+                        },
+                        ContainerOrPath = documentExportFileStorageSource.ContainerOrPath,
+                        AutoImportFolderName = documentExportFileStorageSource.AutoImportFolderName,
+                        IsDefault = documentExportFileStorageSource.IsDefault,
+                        IsActive = documentExportFileStorageSource.IsActive,
+                        ShouldMoveFiles = documentExportFileStorageSource.ShouldMoveFiles,
+                        CreatedDate = documentExportFileStorageSource.CreatedUtc,
+                        LastUpdatedDate = documentExportFileStorageSource.ModifiedUtc
+                    });
+
+                    var relativePath = await fileStorageService.UploadFileAsync(fileName, exportStream, "document-export");
+                    var uploadResult = await fileStorageService.SaveFileInfoAsync(relativePath, fileName);
+
+                    return uploadResult.AccessUrl;
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log and fall back to legacy path
+                _logger.LogWarning(ex, "FileStorageSource-based document export failed. Falling back to legacy path for document {DocumentId}", documentId);
+            }
+
+            // Fallback to legacy AzureFileHelper for backward compatibility
             blobUri = await _fileHelper.UploadFileToBlobAsync(exportStream, fileName, "document-export", true);
             documentExportedLink = await _fileHelper.SaveFileInfoAsync(blobUri, "document-export", fileName, Guid.Parse(documentId));
+            var legacyAssetUrl = _fileHelper.GetProxiedAssetBlobUrl(documentExportedLink.Id);
+            return legacyAssetUrl;
         }
-
-        var assetUrl = _fileHelper.GetProxiedAssetBlobUrl(documentExportedLink.Id);
-        return assetUrl;
     }
 
     /// <summary>

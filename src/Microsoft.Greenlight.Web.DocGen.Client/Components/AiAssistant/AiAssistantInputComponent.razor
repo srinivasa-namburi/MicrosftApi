@@ -50,34 +50,10 @@
     </div>
 }
 
-@* Reference chips display *@
-@if (_attachedReferences.Any())
-{
-    <div class="mt-2">
-        <MudPaper Class="pa-2" Elevation="0" Style="background-color: var(--mud-palette-background-gray);">
-            <MudStack Row="false" Spacing="1">
-                <MudText Typo="Typo.caption" Style="font-weight: 500;">Attached References:</MudText>
-                <div class="d-flex flex-wrap gap-2">
-                    @foreach (var reference in _attachedReferences)
-                    {
-                        <MudChip T="string"
-                                 Size="Size.Small"
-                                 Variant="Variant.Outlined"
-                                 Color="@GetReferenceChipColor(reference.ReferenceType)"
-                                 Icon="@GetReferenceIcon(reference.ReferenceType)"
-                                 OnClose="() => RemoveReference(reference)">
-                            @reference.DisplayName
-                        </MudChip>
-                    }
-                </div>
-            </MudStack>
-        </MudPaper>
-    </div>
-}
-
 @code {
     [Parameter] public EventCallback<string> OnMessageSubmit { get; set; }
     [Parameter] public EventCallback<bool> OnInputFocusChanged { get; set; }
+    [Parameter] public EventCallback<List<ContentReferenceItemInfo>> OnAttachedReferencesChanged { get; set; }
     [Parameter] public List<ContentReferenceItemInfo>? AllReferences { get; set; }
     [Parameter] public bool DisableFileUpload { get; set; } = false;
 
@@ -98,10 +74,10 @@
     private string _currentSearchTerm = string.Empty;
     private int _hashTagPosition = -1;
 
-    // New: Attached references list (no more text insertion)
-    private List<ContentReferenceItemInfo> _attachedReferences = new List<ContentReferenceItemInfo>();
+    // Attached references for pending send
+    private readonly List<ContentReferenceItemInfo> _attachedReferences = new();
+    public IReadOnlyList<ContentReferenceItemInfo> AttachedReferences => _attachedReferences;
 
-    // Enum to track component state
     private enum InputState
     {
         Ready,
@@ -113,11 +89,7 @@
     protected override async Task OnInitializedAsync()
     {
         await base.OnInitializedAsync();
-
-        // Create component reference for JS interop
         _componentReference = DotNetObjectReference.Create(this);
-
-        // Load references for selector (lightweight list)
         await LoadReferencesAsync();
     }
 
@@ -125,60 +97,33 @@
     {
         if (firstRender)
         {
-            try {
-                // Register JS interop
+            try
+            {
                 await JSRuntime.InvokeVoidAsync("import", "/js/contentReferenceUtils.js");
-                await Task.Delay(100); // Give a small delay to ensure JS is loaded
+                await Task.Delay(100);
                 await JSRuntime.InvokeVoidAsync("registerInputComponent", _componentReference);
-
-                // Setup keyboard event interception
                 if (_mudChatTextField != null)
                 {
-                    string elementId = await JSRuntime.InvokeAsync<string>("eval",
-                        $"document.querySelector('.chat-input-row .mud-input').id");
+                    string elementId = await JSRuntime.InvokeAsync<string>("eval", "document.querySelector('.chat-input-row .mud-input').id");
                     await JSRuntime.InvokeVoidAsync("setupKeyboardInterceptor", elementId, _componentReference);
                 }
             }
-            catch (Exception ex) {
+            catch (Exception ex)
+            {
                 await Console.Error.WriteLineAsync($"Error in AiAssistantInputComponent.OnAfterRenderAsync: {ex.Message}");
             }
         }
-
-        // Update caret position anchor when reference selector is shown
         if (_showReferenceSelector)
         {
             await UpdateCaretPositionAnchor();
         }
     }
 
-    // JS Interop Methods
-    [JSInvokable]
-    public bool ShouldInterceptKeyEvent(string key)
+    private async Task NotifyAttachedReferencesChanged()
     {
-        return _showReferenceSelector && _referenceSelector != null;
-    }
-
-    [JSInvokable]
-    public bool IsReferenceSelectorVisible()
-    {
-        return _showReferenceSelector;
-    }
-
-    [JSInvokable]
-    public void ProcessKeyboardEvent(string key)
-    {
-        if (_referenceSelector != null)
+        if (OnAttachedReferencesChanged.HasDelegate)
         {
-            _referenceSelector.ProcessKeyPress(key);
-        }
-    }
-
-    [JSInvokable]
-    public async Task SendMessageFromJS()
-    {
-        if (_currentState != InputState.Sending && !string.IsNullOrWhiteSpace(_displayMessage))
-        {
-            await SendMessage();
+            await OnAttachedReferencesChanged.InvokeAsync(_attachedReferences.ToList());
         }
     }
 
@@ -189,75 +134,66 @@
             Snackbar.Add("Error: Uploaded reference is null.", Severity.Error);
             return;
         }
-
-        // Check if reference is already attached
         if (!_attachedReferences.Any(r => r.Id == uploadedReference.Id))
         {
             _attachedReferences.Add(uploadedReference);
-            
-            // Add the file reference to the global reference list if not already there
             if (AllReferences != null && !AllReferences.Any(r => r.Id == uploadedReference.Id))
             {
                 AllReferences.Add(uploadedReference);
             }
-
+            await NotifyAttachedReferencesChanged();
             StateHasChanged();
         }
     }
 
     private async Task HandleMultipleFilesUploaded(List<ContentReferenceItemInfo> uploadedReferences)
     {
-        if (uploadedReferences == null || !uploadedReferences.Any())
-        {
-            return;
-        }
-
+        if (uploadedReferences == null || !uploadedReferences.Any()) { return; }
+        bool changed = false;
         foreach (var reference in uploadedReferences)
         {
-            // Check if reference is already attached
             if (!_attachedReferences.Any(r => r.Id == reference.Id))
             {
                 _attachedReferences.Add(reference);
-                
-                // Add to global reference list if not already there
                 if (AllReferences != null && !AllReferences.Any(r => r.Id == reference.Id))
                 {
                     AllReferences.Add(reference);
                 }
+                changed = true;
             }
         }
-
-        StateHasChanged();
-    }
-
-    private void RemoveReference(ContentReferenceItemInfo reference)
-    {
-        _attachedReferences.Remove(reference);
-        StateHasChanged();
-    }
-
-    private Color GetReferenceChipColor(ContentReferenceType type)
-    {
-        return type switch
+        if (changed)
         {
-            ContentReferenceType.GeneratedDocument => Color.Primary,
-            ContentReferenceType.ExternalFile => Color.Secondary,
-            ContentReferenceType.ReviewItem => Color.Tertiary,
-            _ => Color.Default
-        };
+            await NotifyAttachedReferencesChanged();
+            StateHasChanged();
+        }
     }
 
-    private string GetReferenceIcon(ContentReferenceType type)
+    private async Task RemoveReference(ContentReferenceItemInfo reference)
     {
-        return type switch
+        if (_attachedReferences.Remove(reference))
         {
-            ContentReferenceType.GeneratedDocument => Icons.Material.Filled.Description,
-            ContentReferenceType.ExternalFile => Icons.Material.Filled.AttachFile,
-            ContentReferenceType.ReviewItem => Icons.Material.Filled.RateReview,
-            ContentReferenceType.GeneratedSection => Icons.Material.Filled.Subject,
-            _ => Icons.Material.Filled.Link
-        };
+            await NotifyAttachedReferencesChanged();
+            StateHasChanged();
+        }
     }
+
+    private Color GetReferenceChipColor(ContentReferenceType type) => type switch
+    {
+        ContentReferenceType.GeneratedDocument => Color.Primary,
+        ContentReferenceType.ExternalFile => Color.Secondary,
+        ContentReferenceType.ReviewItem => Color.Tertiary,
+        _ => Color.Default
+    };
+
+    private string GetReferenceIcon(ContentReferenceType type) => type switch
+    {
+        ContentReferenceType.GeneratedDocument => Icons.Material.Filled.Description,
+        ContentReferenceType.ExternalFile => Icons.Material.Filled.AttachFile,
+        ContentReferenceType.ReviewItem => Icons.Material.Filled.RateReview,
+        ContentReferenceType.GeneratedSection => Icons.Material.Filled.Subject,
+        _ => Icons.Material.Filled.Link
+    };
 
     private async Task UpdateCaretPositionAnchor()
     {
@@ -265,13 +201,9 @@
         {
             if (_mudChatTextField != null)
             {
-                // Get the input element ID safely
-                var inputId = await JSRuntime.InvokeAsync<string>("eval", 
-                    "document.querySelector('.mud-input-slot')?.id || ''");
-                
+                var inputId = await JSRuntime.InvokeAsync<string>("eval", "document.querySelector('.mud-input-slot')?.id || ''");
                 if (!string.IsNullOrEmpty(inputId))
                 {
-                    // Position the caret anchor using the element ID instead of passing the reference
                     await JSRuntime.InvokeVoidAsync("positionCaretAnchorById", inputId, "caretAnchor");
                 }
             }
@@ -282,60 +214,30 @@
         }
     }
 
-    public void Dispose()
-    {
-        _componentReference?.Dispose();
-    }
+    public void Dispose() => _componentReference?.Dispose();
 
     private async Task LoadReferencesAsync()
     {
-        if (ContentReferenceApiClient == null)
-            return;
-
+        if (ContentReferenceApiClient == null) { return; }
         if (AllReferences == null)
         {
-            try
-            {
-                AllReferences = await ContentReferenceApiClient.GetAssistantReferenceListAsync(200);
-            }
-            catch (JsonException jsonEx)
-            {
-                Console.Error.WriteLine($"JSON Deserialization error loading references: {jsonEx.Message}");
-                Console.Error.WriteLine($"Path: {jsonEx.Path}, Line: {jsonEx.LineNumber}, Position: {jsonEx.BytePositionInLine}");
-                AllReferences = new List<ContentReferenceItemInfo>();
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"Error loading references: {ex.Message}");
-                Console.Error.WriteLine($"Exception type: {ex.GetType().Name}");
-                Console.Error.WriteLine($"Stack trace: {ex.StackTrace}");
-                AllReferences = new List<ContentReferenceItemInfo>();
-            }
+            try { AllReferences = await ContentReferenceApiClient.GetAssistantReferenceListAsync(200); }
+            catch { AllReferences = new List<ContentReferenceItemInfo>(); }
             StateHasChanged();
         }
-
-        StateHasChanged();
     }
 
     private async Task SendMessage()
     {
-        if (string.IsNullOrWhiteSpace(_displayMessage) || _currentState == InputState.Sending)
-            return;
-
+        if (string.IsNullOrWhiteSpace(_displayMessage) || _currentState == InputState.Sending) { return; }
         try
         {
             _currentState = InputState.Sending;
-
-            // Build the message with references
             string messageToSend = BuildMessageWithReferences(_displayMessage);
             await OnMessageSubmit.InvokeAsync(messageToSend);
-
-            // Clear state
-            _rawMessage = string.Empty;
-            _displayMessage = string.Empty;
-            _previousDisplayMessage = string.Empty;
+            _rawMessage = _displayMessage = _previousDisplayMessage = string.Empty;
             _attachedReferences.Clear();
-
+            await NotifyAttachedReferencesChanged();
             if (_mudChatTextField != null)
             {
                 await _mudChatTextField.Clear();
@@ -351,93 +253,56 @@
 
     private string BuildMessageWithReferences(string message)
     {
-        // If there are no attached references, return the message as-is
-        if (!_attachedReferences.Any())
-        {
-            return message;
-        }
-
-        // Append references to the message in the expected format
-        var messageWithRefs = message;
+        if (!_attachedReferences.Any()) { return message; }
+        var msg = message;
         foreach (var reference in _attachedReferences)
         {
-            messageWithRefs += $" #(Reference:{reference.ReferenceType}:{reference.Id})";
+            msg += $" #(Reference:{reference.ReferenceType}:{reference.Id})";
         }
-
-        return messageWithRefs;
+        return msg;
     }
 
     private async Task OnChatTextKeyDown(KeyboardEventArgs e)
     {
-        if (_currentState == InputState.Sending)
-            return;
-
-        // When '#' is pressed, enable reference suggestions
+        if (_currentState == InputState.Sending) { return; }
         if (e.Key == "#" && _currentState == InputState.Ready)
         {
             _hashTagPosition = _displayMessage.Length;
-            _currentSearchTerm = "";
+            _currentSearchTerm = string.Empty;
             _showReferenceSelector = true;
             _currentState = InputState.SelectingReference;
-
-            // Prevent default behavior for '#' key
             await JSRuntime.InvokeVoidAsync("preventDefaultForKey", e.Key);
-
-            // Force render to show popover, then update position
             StateHasChanged();
-            await Task.Delay(10); // Short delay to ensure DOM is updated
+            await Task.Delay(10);
             await UpdateCaretPositionAnchor();
             return;
         }
-
-        // Handle Enter key
         if (e.Key == "Enter" && !e.ShiftKey)
         {
-            if (_showReferenceSelector)
-            {
-                // If the reference selector is open, let it handle the Enter key
-                return;
-            }
-
-            // Prevent default behavior for Enter key
+            if (_showReferenceSelector) { return; }
             await JSRuntime.InvokeVoidAsync("preventDefaultForKey", e.Key);
-
-            // Otherwise, send the message
             await SendMessage();
         }
     }
 
     private async Task OnChatTextFieldUpdated(string newText)
     {
-        if (_currentState == InputState.ProcessingInput || _currentState == InputState.Sending)
-            return;
-
+        if (_currentState is InputState.ProcessingInput or InputState.Sending) { return; }
         _currentState = InputState.ProcessingInput;
         try
         {
-            // Store previous message for reference tracking
             string oldText = _previousDisplayMessage;
             _previousDisplayMessage = newText;
             _displayMessage = newText;
-
-            // Update reference selection if active
             if (_showReferenceSelector && _hashTagPosition >= 0)
             {
                 UpdateSearchTerm(newText);
                 await UpdateCaretPositionAnchor();
             }
-
-            // Check if we need to send the message
             if (!string.IsNullOrWhiteSpace(newText) && _chatTextLastKeyWasEnter && !_showReferenceSelector)
             {
                 await SendMessage();
                 return;
-            }
-
-            // Check for reference removals by comparing old and new text
-            if (oldText != newText)
-            {
-                await DetectReferenceChanges(oldText, newText);
             }
         }
         finally
@@ -447,13 +312,6 @@
         }
     }
 
-    private async Task DetectReferenceChanges(string oldText, string newText)
-    {
-        // No longer needed since we're not inserting references into text
-        // References are managed separately in _attachedReferences list
-        await Task.CompletedTask;
-    }
-
     private void UpdateSearchTerm(string text)
     {
         if (_hashTagPosition < 0 || _hashTagPosition >= text.Length || text[_hashTagPosition] != '#')
@@ -461,76 +319,44 @@
             CloseReferenceSelector();
             return;
         }
-
         int startPos = _hashTagPosition + 1;
-        if (startPos >= text.Length)
-        {
-            _currentSearchTerm = "";
-            return;
-        }
-
+        if (startPos >= text.Length) { _currentSearchTerm = string.Empty; return; }
         int endPos = text.IndexOf(' ', startPos);
-        if (endPos == -1) endPos = text.Length;
-
-        string searchTerm = text.Substring(startPos, endPos - startPos);
-        if (_currentSearchTerm != searchTerm)
-        {
-            _currentSearchTerm = searchTerm;
-        }
+        if (endPos == -1) { endPos = text.Length; }
+        var searchTerm = text.Substring(startPos, endPos - startPos);
+        if (_currentSearchTerm != searchTerm) { _currentSearchTerm = searchTerm; }
     }
 
-    private void HandleReferenceSelected(ContentReferenceItemInfo reference)
-    {
-        Task.Run(async () => await InsertReference(reference));
-    }
-
-    private void HandleReferenceSelectorClosed()
-    {
-        CloseReferenceSelector();
-    }
+    private void HandleReferenceSelected(ContentReferenceItemInfo reference) => Task.Run(async () => await InsertReference(reference));
+    private void HandleReferenceSelectorClosed() => CloseReferenceSelector();
 
     private async Task InsertReference(ContentReferenceItemInfo reference)
     {
-        if (_hashTagPosition < 0 || _currentState != InputState.SelectingReference)
-            return;
-
+        if (_hashTagPosition < 0 || _currentState != InputState.SelectingReference) { return; }
         await InvokeAsync(async () =>
         {
             _currentState = InputState.ProcessingInput;
             try
             {
-                // Add reference to attached list if not already there
                 if (!_attachedReferences.Any(r => r.Id == reference.Id))
                 {
                     _attachedReferences.Add(reference);
+                    await NotifyAttachedReferencesChanged();
                 }
-
-                // Remove the # and search term from the message
                 string currentDisplayText = _displayMessage;
                 int displayStartPos = _hashTagPosition;
                 int displayEndPos = currentDisplayText.IndexOf(' ', displayStartPos);
-                if (displayEndPos == -1) displayEndPos = currentDisplayText.Length;
-
+                if (displayEndPos == -1) { displayEndPos = currentDisplayText.Length; }
                 string newDisplayText = currentDisplayText.Substring(0, displayStartPos);
-                if (displayEndPos < currentDisplayText.Length)
-                    newDisplayText += currentDisplayText.Substring(displayEndPos);
-
-                // Close reference selector first
+                if (displayEndPos < currentDisplayText.Length) { newDisplayText += currentDisplayText.Substring(displayEndPos); }
                 CloseReferenceSelector();
-
-                // Update the display text
                 _displayMessage = newDisplayText.TrimEnd();
                 _previousDisplayMessage = _displayMessage;
-
-                // Update the text field
                 if (_mudChatTextField != null)
                 {
                     await _mudChatTextField.SetText(_displayMessage);
                 }
-
                 StateHasChanged();
-
-                // Move cursor to end of text
                 await Task.Delay(50);
                 await JSRuntime.InvokeVoidAsync("setCaretPosition", _displayMessage.Length);
             }
@@ -548,36 +374,24 @@
         _hashTagPosition = -1;
         _currentSearchTerm = string.Empty;
         _currentState = InputState.Ready;
-        _chatTextLastKeyWasEnter = false; // Reset this to avoid premature sending
+        _chatTextLastKeyWasEnter = false;
         StateHasChanged();
     }
 
     [JSInvokable]
-    public async Task OnFocusChanged(bool hasFocus)
-    {
-        await OnInputFocusChanged.InvokeAsync(hasFocus);
-    }
+    public async Task OnFocusChanged(bool hasFocus) => await OnInputFocusChanged.InvokeAsync(hasFocus);
 
     public async Task Clear()
     {
-        _rawMessage = string.Empty;
-        _displayMessage = string.Empty;
-        _previousDisplayMessage = string.Empty;
+        _rawMessage = _displayMessage = _previousDisplayMessage = string.Empty;
         _attachedReferences.Clear();
-
-        if (_mudChatTextField != null)
-        {
-            await _mudChatTextField.Clear();
-        }
-
+        await NotifyAttachedReferencesChanged();
+        if (_mudChatTextField != null) { await _mudChatTextField.Clear(); }
         StateHasChanged();
     }
 
     public async Task Focus()
     {
-        if (_mudChatTextField != null)
-        {
-            await _mudChatTextField.FocusAsync();
-        }
+        if (_mudChatTextField != null) { await _mudChatTextField.FocusAsync(); }
     }
 }

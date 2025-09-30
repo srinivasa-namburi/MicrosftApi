@@ -199,6 +199,8 @@ public class SemanticKernelVectorStoreRepository : IDocumentRepository
                 {
                     DocumentId = documentId,
                     FileName = fileName,
+                    DisplayFileName = Path.GetFileName(fileName), // Extract user-friendly filename for display
+                    FileAcknowledgmentRecordId = null, // TODO: Pass through FileAcknowledgmentRecordId when available
                     DocumentReference = documentReference, // Store document reference instead of URL
                     ChunkText = subChunk.Text,
                     Embedding = subChunk.Embedding,
@@ -365,7 +367,7 @@ public class SemanticKernelVectorStoreRepository : IDocumentRepository
             var unified = new VectorStoreAggregatedSourceReferenceItem
             {
                 IndexName = indexName,
-                FileName = g.First().Record.FileName,
+                FileName = g.First().Record.DisplayFileName ?? g.First().Record.FileName,
                 DocumentId = g.Key,
                 Score = g.Max(x => x.Score)
             };
@@ -633,7 +635,7 @@ public class SemanticKernelVectorStoreRepository : IDocumentRepository
     /// <summary>
     /// Truncates text with an ellipsis when longer than a specified maximum.
     /// </summary>
-    private static string Truncate(string text, int max) => text.Length <= max ? text : text.Substring(0, max) + "…";
+    private static string Truncate(string text, int max) => text.Length <= max ? text : text.Substring(0, max) + "ï¿½";
 
     /// <summary>
     /// URL-safe Base64 encode without padding for consistent, AZ Search-friendly identifiers.

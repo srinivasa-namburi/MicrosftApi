@@ -43,22 +43,39 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         /// Sends a chat message directly to the conversation grain.
         /// </summary>
         /// <param name="chatMessageDto">The chat message DTO.</param>
+        /// <param name="useFlow">Optional parameter to route message through Flow orchestration instead of direct conversation grain.</param>
         /// <returns>An <see cref="IActionResult"/> representing the result of the operation.</returns>
         [HttpPost("")]
         [RequiresPermission(PermissionKeys.Chat)]
         [ProducesResponseType(StatusCodes.Status202Accepted)]
         [Consumes("application/json")]
-        public async Task<IActionResult> SendChatMessage([FromBody] ChatMessageDTO chatMessageDto)
+        public async Task<IActionResult> SendChatMessage([FromBody] ChatMessageDTO chatMessageDto, [FromQuery] bool? useFlow = null)
         {
             try
             {
-                // Get the conversation grain
-                var grain = _clusterClient.GetGrain<IConversationGrain>(chatMessageDto.ConversationId);
-                
-                // Process the message asynchronously (fire and forget)
-                // We don't wait for the full response as it will be streamed back via Orleans streams
-                _ = grain.ProcessMessageAsync(chatMessageDto);
-                
+                if (useFlow == true)
+                {
+                    // Route through Flow orchestration grain using new conversation-based approach
+                    var flowGrain = _clusterClient.GetGrain<IFlowOrchestrationGrain>(chatMessageDto.ConversationId);
+
+                    // Initialize the Flow grain if needed (with user info from claims)
+                    var userOid = User.FindFirst("oid")?.Value ?? User.FindFirst("sub")?.Value;
+                    var userName = User.FindFirst("name")?.Value;
+                    await flowGrain.InitializeAsync(userOid ?? "unknown", userName);
+
+                    // Process via Flow conversation (fire and forget) - this will manage its own conversation
+                    _ = flowGrain.ProcessMessageAsync(chatMessageDto);
+                }
+                else
+                {
+                    // Get the conversation grain (traditional approach)
+                    var grain = _clusterClient.GetGrain<IConversationGrain>(chatMessageDto.ConversationId);
+
+                    // Process the message asynchronously (fire and forget)
+                    // We don't wait for the full response as it will be streamed back via Orleans streams
+                    _ = grain.ProcessMessageAsync(chatMessageDto);
+                }
+
                 return Accepted();
             }
             catch (Exception ex)
@@ -72,8 +89,9 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         /// Gets chat messages for a specific conversation. Creates
         /// a new conversation if one does not exist.
         /// </summary>
-        /// <param name="documentProcessName">The name of the document process.</param>
+        /// <param name="documentProcessName">The name of the document process. Use "flow" for Flow orchestration mode.</param>
         /// <param name="conversationId">The ID of the conversation.</param>
+        /// <param name="useFlow">Optional parameter to use Flow orchestration instead of traditional conversation grain.</param>
         /// <returns>An <see cref="ActionResult"/> containing the chat messages.</returns>
         [HttpGet("{documentProcessName}/{conversationId}")]
         [RequiresPermission(PermissionKeys.Chat)]
@@ -81,36 +99,62 @@ namespace Microsoft.Greenlight.API.Main.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [Produces("application/json")]
-        public async Task<ActionResult<List<ChatMessageDTO>>> GetChatMessages(string documentProcessName, Guid conversationId)
+        public async Task<ActionResult<List<ChatMessageDTO>>> GetChatMessages(string documentProcessName, Guid conversationId, [FromQuery] bool? useFlow = null)
         {
             if (conversationId == Guid.Empty || string.IsNullOrEmpty(documentProcessName))
             {
                 return BadRequest("Document Process Name and Conversation ID are both required");
             }
 
-            // Get the conversation grain
-            var grain = _clusterClient.GetGrain<IConversationGrain>(conversationId);
-            
-            // Check if the conversation exists
-            var state = await grain.GetStateAsync();
-            
-            // If the conversation doesn't exist or has no messages, create a new one
-            if (state.Id == Guid.Empty || state.Messages.Count == 0)
+            // Determine if we should use Flow (either via explicit parameter or "flow" document process name)
+            var shouldUseFlow = useFlow == true || string.Equals(documentProcessName, "flow", StringComparison.OrdinalIgnoreCase);
+
+            if (shouldUseFlow)
             {
-                // Get the system prompt
-                var systemPrompt = await _promptInfoService.GetPromptTextByShortCodeAndProcessNameAsync(
-                    PromptNames.ChatSystemPrompt, documentProcessName);
-                
-                // Initialize the conversation
-                await grain.InitializeAsync(documentProcessName, systemPrompt);
-                
-                // Return an empty list with 404 status
-                return NotFound();
+                // Flow mode - get user-facing conversation messages from Flow grain
+                var flowGrain = _clusterClient.GetGrain<IFlowOrchestrationGrain>(conversationId);
+
+                // Initialize Flow session if needed
+                var userOid = User.FindFirst("oid")?.Value ?? User.FindFirst("sub")?.Value;
+                var userName = User.FindFirst("name")?.Value;
+                await flowGrain.InitializeAsync(userOid ?? "unknown", userName);
+
+                // Get the user-facing conversation messages (not backend orchestration)
+                var messages = await flowGrain.GetMessagesAsync();
+
+                if (messages == null || !messages.Any())
+                {
+                    return NotFound();
+                }
+
+                return Ok(messages);
             }
-            
-            // Get the messages
-            var messages = await grain.GetMessagesAsync();
-            return Ok(messages);
+            else
+            {
+                // Traditional conversation grain approach
+                var grain = _clusterClient.GetGrain<IConversationGrain>(conversationId);
+
+                // Check if the conversation exists
+                var state = await grain.GetStateAsync();
+
+                // If the conversation doesn't exist or has no messages, create a new one
+                if (state.Id == Guid.Empty || state.Messages.Count == 0)
+                {
+                    // Get the system prompt
+                    var systemPrompt = await _promptInfoService.GetPromptTextByShortCodeAndProcessNameAsync(
+                        PromptNames.ChatSystemPrompt, documentProcessName);
+
+                    // Initialize the conversation
+                    await grain.InitializeAsync(documentProcessName, systemPrompt);
+
+                    // Return an empty list with 404 status
+                    return NotFound();
+                }
+
+                // Get the messages
+                var messages = await grain.GetMessagesAsync();
+                return Ok(messages);
+            }
         }
 
         /// <summary>

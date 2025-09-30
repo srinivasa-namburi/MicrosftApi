@@ -13,6 +13,8 @@
     <PackageReference Include="ModelContextProtocol.AspNetCore" Version="0.3.0-preview.4" />
     <!-- Logging and minimal hosting are in framework; JwtBearer used directly for optional auth -->
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.5" />
+    <!-- YARP for routing between internal MCP servers -->
+    <PackageReference Include="Yarp.ReverseProxy" Version="2.2.0" />
   </ItemGroup>
 
   <!-- Ensure launch settings are included and used similarly to the API project -->
@@ -28,6 +30,7 @@
     <ProjectReference Include="..\Microsoft.Greenlight.Shared\Microsoft.Greenlight.Shared.csproj" />
     <ProjectReference Include="..\Microsoft.Greenlight.Shared.Configuration\Microsoft.Greenlight.Shared.Configuration.csproj" />
     <ProjectReference Include="..\Microsoft.Greenlight.Shared.Contracts\Microsoft.Greenlight.Shared.Contracts.csproj" />
+    <ProjectReference Include="..\Microsoft.Greenlight.Grains.Chat.Contracts\Microsoft.Greenlight.Grains.Chat.Contracts.csproj" />
     <ProjectReference Include="..\Microsoft.Greenlight.Grains.Document.Contracts\Microsoft.Greenlight.Grains.Document.Contracts.csproj" />
     <ProjectReference Include="..\Microsoft.Greenlight.Grains.Ingestion.Contracts\Microsoft.Greenlight.Grains.Ingestion.Contracts.csproj" />
     <ProjectReference Include="..\Microsoft.Greenlight.Grains.Shared.Contracts\Microsoft.Greenlight.Grains.Shared.Contracts.csproj" />

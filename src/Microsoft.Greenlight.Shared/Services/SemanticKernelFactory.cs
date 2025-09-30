@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 using Azure.AI.OpenAI;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -15,6 +16,8 @@ using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
 using Microsoft.Extensions.AI;
+using Microsoft.Greenlight.Extensions.Plugins.Extensions;
+using Microsoft.Greenlight.Shared.Plugins;
 using System.Globalization;
 
 #pragma warning disable SKEXP0011
@@ -31,7 +34,7 @@ namespace Microsoft.Greenlight.Shared.Services
         private readonly SemanticKernelInstanceContainer _instanceContainer;
         private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
 
-        private readonly AzureOpenAIClient _openAiClient;
+        private readonly AzureOpenAIClient? _openAiClient;
 
         /// <summary>
         /// Creates a new SemanticKernelFactory responsible for producing appropriately configured Semantic Kernel instances
@@ -49,7 +52,7 @@ namespace Microsoft.Greenlight.Shared.Services
                 IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
                 SemanticKernelInstanceContainer instanceContainer,
                 IDbContextFactory<DocGenerationDbContext> dbContextFactory,
-        [FromKeyedServices("openai-planner")] AzureOpenAIClient openAiClient
+        [FromKeyedServices("openai-planner")] AzureOpenAIClient? openAiClient
                 )
         {
             _logger = logger;
@@ -178,6 +181,110 @@ namespace Microsoft.Greenlight.Shared.Services
         public async Task<Kernel> GetDefaultGenericKernelAsync()
         {
             return await GetGenericKernelAsync("gpt-4o");
+        }
+
+        /// <inheritdoc />
+        public async Task<Kernel> GetFlowKernelAsync(string? providerSubjectId = null)
+        {
+            const string flowKernelKey = "flow-kernel";
+
+            // Check if we already have a Flow kernel
+            if (_instanceContainer.GenericKernels.TryGetValue(flowKernelKey, out var existingKernel))
+            {
+                // Return a new instance to avoid sharing state
+                var newInstance = existingKernel.Clone();
+                newInstance.Data.Clear();
+
+                // Set user context if provided
+                if (!string.IsNullOrWhiteSpace(providerSubjectId))
+                {
+                    newInstance.Data[KernelUserContextConstants.ProviderSubjectId] = providerSubjectId;
+                }
+
+                return newInstance;
+            }
+
+            // Create a new Flow-specific kernel
+            var kernel = await CreateFlowKernelAsync();
+            _instanceContainer.GenericKernels[flowKernelKey] = kernel;
+
+            // Set user context on the returned instance
+            if (!string.IsNullOrWhiteSpace(providerSubjectId))
+            {
+                kernel.Data[KernelUserContextConstants.ProviderSubjectId] = providerSubjectId;
+            }
+
+            return kernel;
+        }
+
+        /// <inheritdoc />
+        public async Task<AzureOpenAIPromptExecutionSettings> GetFlowPromptExecutionSettingsAsync()
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var dbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            // Get Flow configuration to determine which model deployment to use
+            var flowOptions = _serviceConfigurationOptions.GreenlightServices.Flow;
+
+            // Find the model deployment by name
+            var aiModelDeployment = await dbContext.AiModelDeployments
+                .Include(x => x.AiModel)
+                .FirstOrDefaultAsync(x => x.DeploymentName == flowOptions.DefaultModelDeployment);
+
+            if (aiModelDeployment?.AiModel == null)
+            {
+                // Fallback to gpt-4o if Flow deployment not found
+                aiModelDeployment = await dbContext.AiModelDeployments
+                    .Include(x => x.AiModel)
+                    .FirstOrDefaultAsync(x => x.DeploymentName == "gpt-4o");
+
+                if (aiModelDeployment?.AiModel == null)
+                {
+                    throw new InvalidOperationException($"Could not find AI model deployment for Flow (tried '{flowOptions.DefaultModelDeployment}' and 'gpt-4o')");
+                }
+            }
+
+            // Use the same logic as document processes but for ChatReplies task type
+            var additionalSettings = GetAdditionalSettingsForTaskType(aiModelDeployment, AiTaskType.ChatReplies);
+
+            var settings = new AzureOpenAIPromptExecutionSettings
+            {
+                Temperature = additionalSettings.Temperature,
+                FrequencyPenalty = additionalSettings.FrequencyPenalty ?? 0.0, // Allow natural repetition in conversation
+                FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(
+                    autoInvoke: true,
+                    options: new FunctionChoiceBehaviorOptions
+                    {
+                        AllowConcurrentInvocation = false,
+                        AllowParallelCalls = false
+                    })
+            };
+
+            // Get max tokens for chat replies task type
+            int maxTokens = GetMaxTokensForTaskType(aiModelDeployment, AiTaskType.ChatReplies);
+            settings.MaxTokens = maxTokens;
+
+            // Handle new completion tokens format for models that require it
+            if (ModelUsesNewMaxCompletionTokens(aiModelDeployment))
+            {
+                settings.SetNewMaxCompletionTokensEnabled = true;
+            }
+
+            // Add reasoning effort for reasoning models
+            if (additionalSettings.ReasoningEffort.HasValue)
+            {
+                string reasoningEffortString = additionalSettings.ReasoningEffort.Value switch
+                {
+                    ChatReasoningEffortLevel.Minimal => "minimal",
+                    ChatReasoningEffortLevel.Low => "low",
+                    ChatReasoningEffortLevel.Medium => "medium",
+                    ChatReasoningEffortLevel.High => "high",
+                    _ => "medium"
+                };
+                settings.ReasoningEffort = reasoningEffortString;
+            }
+
+            return settings;
         }
 
         /// <inheritdoc />
@@ -469,6 +576,16 @@ namespace Microsoft.Greenlight.Shared.Services
             var kernelBuilder = Kernel.CreateBuilder();
             kernelBuilder.Services.AddSingleton(scope.ServiceProvider);
 
+            // Check if OpenAI client is available
+            if (_openAiClient == null)
+            {
+                _logger.LogWarning("OpenAI client not configured - creating kernel without chat completion service for document process: {DocumentProcessName}", documentProcess.ShortName);
+                // Return a kernel without chat completion - the system can still start
+                var limitedKernel = kernelBuilder.Build();
+                await EnrichKernelWithPluginsAsync(documentProcess, limitedKernel);
+                return limitedKernel;
+            }
+
             // Use native SK AzureOpenAI connector to ensure tool-calling auto invocation works with Agents
             string deploymentName = documentProcess.AiModelDeploymentId.HasValue
                 ? (GetAiModelDeploymentName(documentProcess.AiModelDeploymentId.Value) ?? _serviceConfigurationOptions.OpenAi.Gpt4o_Or_Gpt4128KDeploymentName)
@@ -523,6 +640,16 @@ namespace Microsoft.Greenlight.Shared.Services
                 deploymentName = _serviceConfigurationOptions.OpenAi.Gpt4o_Or_Gpt4128KDeploymentName;
             }
 
+            // Check if OpenAI client is available
+            if (_openAiClient == null)
+            {
+                _logger.LogWarning("OpenAI client not configured - creating validation kernel without chat completion service for document process: {DocumentProcessName}", documentProcess.ShortName);
+                // Return a kernel without chat completion - the system can still start
+                var limitedKernel = kernelBuilder.Build();
+                await EnrichKernelWithPluginsAsync(documentProcess, limitedKernel);
+                return limitedKernel;
+            }
+
             var loggerFactory = scope.ServiceProvider.GetService<ILoggerFactory>();
             var validationSkService = new AzureOpenAIChatCompletionService(deploymentName, _openAiClient, modelId: null, loggerFactory: loggerFactory);
             kernelBuilder.Services.AddSingleton<IChatCompletionService>(validationSkService);
@@ -560,6 +687,14 @@ namespace Microsoft.Greenlight.Shared.Services
             kernelBuilder.Services.AddSingleton(scope.ServiceProvider);
 
             // Use AzureOpenAI SK connector for generic kernels as well
+            // Check if OpenAI client is available
+            if (_openAiClient == null)
+            {
+                _logger.LogWarning("OpenAI client not configured - creating generic kernel without chat completion service");
+                // Return a kernel without chat completion - the system can still start
+                return kernelBuilder.Build();
+            }
+
             var loggerFactory = scope.ServiceProvider.GetService<ILoggerFactory>();
             var skChatService = new AzureOpenAIChatCompletionService(modelIdentifier, _openAiClient, modelId: null, loggerFactory: loggerFactory);
             kernelBuilder.Services.AddSingleton<IChatCompletionService>(skChatService);
@@ -569,6 +704,117 @@ namespace Microsoft.Greenlight.Shared.Services
             var built = kernelBuilder.Build();
 #pragma warning restore SKEXP0010
             return built;
+        }
+
+        /// <summary>
+        /// Creates a Semantic Kernel instance specifically configured for Flow orchestration.
+        /// </summary>
+        private async Task<Kernel> CreateFlowKernelAsync()
+        {
+            _logger.LogInformation("Creating new Flow kernel for conversational orchestration");
+
+            using var scope = _serviceProvider.CreateScope();
+
+            // Create kernel builder
+            var kernelBuilder = Kernel.CreateBuilder();
+            kernelBuilder.Services.AddSingleton(scope.ServiceProvider);
+
+            // Use the Flow configuration to determine the deployment
+            var flowOptions = _serviceConfigurationOptions.GreenlightServices.Flow;
+            string deploymentName = !string.IsNullOrWhiteSpace(flowOptions.DefaultModelDeployment)
+                ? flowOptions.DefaultModelDeployment
+                : _serviceConfigurationOptions.OpenAi.Gpt4o_Or_Gpt4128KDeploymentName;
+
+            // Check if OpenAI client is available
+            if (_openAiClient == null)
+            {
+                _logger.LogWarning("OpenAI client not configured - creating flow kernel without chat completion service");
+                // Return a kernel without chat completion - the system can still start
+                var limitedKernel = kernelBuilder.Build();
+                await EnrichFlowKernelWithPluginsAsync(limitedKernel, scope.ServiceProvider);
+                return limitedKernel;
+            }
+
+            var loggerFactory = scope.ServiceProvider.GetService<ILoggerFactory>();
+            var flowChatService = new AzureOpenAIChatCompletionService(deploymentName, _openAiClient, modelId: null, loggerFactory: loggerFactory);
+            kernelBuilder.Services.AddSingleton<IChatCompletionService>(flowChatService);
+
+            var kernel = kernelBuilder.Build();
+
+            // Add Flow-appropriate plugins
+            await EnrichFlowKernelWithPluginsAsync(kernel, scope.ServiceProvider);
+
+            // Add function invocation filters for Flow
+            kernel.FunctionInvocationFilters.Add(
+                scope.ServiceProvider.GetRequiredKeyedService<IFunctionInvocationFilter>("InputOutputTrackingPluginInvocationFilter"));
+
+            kernel.FunctionInvocationFilters.Add(
+                scope.ServiceProvider.GetRequiredKeyedService<IFunctionInvocationFilter>("PluginExecutionLoggingFilter"));
+
+            // Ensure user context is available during function invocations
+            kernel.FunctionInvocationFilters.Add(new Microsoft.Greenlight.Shared.Plugins.ProviderSubjectInjectionFilter());
+
+            return kernel;
+        }
+
+        /// <summary>
+        /// Enriches a Flow kernel with appropriate plugins for conversational orchestration.
+        /// </summary>
+        private async Task EnrichFlowKernelWithPluginsAsync(Kernel kernel, IServiceProvider serviceProvider)
+        {
+            _logger.LogInformation("Enriching Flow kernel with conversational plugins");
+
+            KernelPluginCollection plugins = [];
+
+            // Add only shared/static plugins that are appropriate for general Flow conversations
+            // We'll exclude document-process-specific plugins since Flow operates across processes
+            await AddFlowPluginsToPluginCollectionAsync(plugins, serviceProvider);
+
+            kernel.Plugins.Clear();
+            kernel.Plugins.AddRange(plugins.ToList());
+
+            _logger.LogInformation("Flow kernel plugins enabled: {Plugins}", string.Join(", ", plugins.Select(x => x.Name)));
+        }
+
+        /// <summary>
+        /// Adds Flow-appropriate plugins to the kernel plugin collection.
+        /// </summary>
+        private async Task AddFlowPluginsToPluginCollectionAsync(KernelPluginCollection kernelPlugins, IServiceProvider serviceProvider)
+        {
+            var pluginRegistry = serviceProvider.GetRequiredService<IPluginRegistry>();
+
+            // Get all plugins from the registry
+            var allPlugins = pluginRegistry.AllPlugins;
+
+            // Only add shared/static plugins that are appropriate for general conversation
+            // Exclude document-process-specific plugins (like UniversalDocsPlugin)
+            var flowPlugins = allPlugins.Where(p =>
+                !p.IsDynamic &&
+                !p.Key.Contains("UniversalDocsPlugin") &&
+                !p.Key.Contains("KmDocsPlugin")).ToList();
+
+            foreach (var pluginEntry in flowPlugins)
+            {
+                try
+                {
+                    string? pluginRegistrationKey = pluginEntry.PluginInstance.GetType().GetServiceKeyForPluginType();
+
+                    if (string.IsNullOrEmpty(pluginRegistrationKey))
+                    {
+                        pluginRegistrationKey = pluginEntry.PluginInstance.GetType().ShortDisplayName();
+                    }
+
+                    kernelPlugins.AddFromObject(pluginEntry.PluginInstance, pluginRegistrationKey);
+                    _logger.LogDebug("Added Flow plugin: {PluginKey}", pluginRegistrationKey);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error loading Flow plugin {PluginType}: {Error}",
+                        pluginEntry.PluginInstance.GetType().FullName, ex.Message);
+                }
+            }
+
+            await Task.CompletedTask;
         }
 
         /// <summary>

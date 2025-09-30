@@ -1,0 +1,37 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Configuration
+@using Microsoft.Greenlight.Web.DocGen.Client.Components.Configuration.Infrastructure
+@using Microsoft.Greenlight.Web.DocGen.Client.Components
+
+@inherits ConfigurationSectionBase
+@implements IConfigurationSectionComponent
+
+<MudCard>
+    <MudCardContent>
+        <MudText Typo="Typo.h6">AI Model Management</MudText>
+        <MudDivider Class="mt-2 mb-3" />
+        
+        <AiModelEditorComponent />
+    </MudCardContent>
+</MudCard>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        // AI Model Editor component handles its own state management
+        // This wrapper just provides the configuration section infrastructure
+    }
+
+    public Task<bool> SaveAsync()
+    {
+        // The AiModelEditorComponent handles its own saving
+        // Return true as this component doesn't have separate dirty tracking
+        return Task.FromResult(true);
+    }
+
+    public void ResetDirtyState()
+    {
+        // The AiModelEditorComponent handles its own state
+    }
+}

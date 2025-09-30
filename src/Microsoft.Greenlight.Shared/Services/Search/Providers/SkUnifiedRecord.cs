@@ -23,6 +23,14 @@ internal sealed class SkUnifiedRecord
     [VectorStoreData(IsIndexed = true)]
     public required string FileName { get; init; }
 
+    // UI-friendly display filename for user presentation. Null for non-file-based records.
+    [VectorStoreData(IsIndexed = true)]
+    public string? DisplayFileName { get; init; }
+
+    // Reference to FileAcknowledgmentRecord for file-based records. Null for non-file-based records.
+    [VectorStoreData(IsIndexed = true)]
+    public string? FileAcknowledgmentRecordId { get; init; }
+
     // Document reference for dynamic URL resolution (replaces OriginalDocumentUrl)
     // Stores identifier that can be resolved to proxied URL at search time
     [VectorStoreData(IsIndexed = true)]

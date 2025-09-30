@@ -59,6 +59,37 @@ public static class ProjectExtensions
     {
         return string.IsNullOrEmpty(parentKey) ? childKey : $"{parentKey}__{childKey}";
     }
+
+    /// <summary>
+    /// Configures environment variables for proper Unicode/locale support in containers
+    /// </summary>
+    /// <typeparam name="T">The resource type</typeparam>
+    /// <param name="builder">The resource builder</param>
+    /// <returns>The resource builder for chaining</returns>
+    internal static IResourceBuilder<T> WithUnicodeSupport<T>(this IResourceBuilder<T> builder)
+        where T : class, IResourceWithEnvironment
+    {
+        return builder
+            .WithEnvironment("LANG", "en_US.UTF-8")
+            .WithEnvironment("LANGUAGE", "en_US:en")
+            .WithEnvironment("LC_ALL", "en_US.UTF-8")
+            .WithEnvironment("LC_CTYPE", "en_US.UTF-8");
+    }
+
+    /// <summary>
+    /// Configures .NET-specific environment variables for container environments
+    /// </summary>
+    /// <typeparam name="T">The resource type</typeparam>
+    /// <param name="builder">The resource builder</param>
+    /// <returns>The resource builder for chaining</returns>
+    internal static IResourceBuilder<T> WithDotNetContainerDefaults<T>(this IResourceBuilder<T> builder)
+        where T : class, IResourceWithEnvironment
+    {
+        return builder
+            .WithEnvironment("DOTNET_SYSTEM_GLOBALIZATION_INVARIANT", "false")
+            .WithEnvironment("DOTNET_RUNNING_IN_CONTAINER", "true")
+            .WithUnicodeSupport();
+    }
 }
 
 

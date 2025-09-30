@@ -1,11 +1,9 @@
-using Aspire.Azure.Messaging.ServiceBus;
 using Aspire.Azure.Search.Documents;
 using Aspire.Azure.Storage.Blobs;
 using AutoMapper;
 using Azure.AI.OpenAI;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
-using Azure.Storage;
 using Humanizer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -40,12 +38,9 @@ using Microsoft.Greenlight.Shared.Services.Search.Extensions;
 using Microsoft.Greenlight.Shared.Services.Search.Providers;
 using Microsoft.Greenlight.Shared.Services.FileStorage;
 using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.ChatCompletion; // legacy SK chat service still used in some factories
-using Microsoft.SemanticKernel.Connectors.AzureOpenAI; // legacy SK connectors
-using Microsoft.SemanticKernel.Embeddings; // legacy SK embeddings (to be removed later)
-using Microsoft.Extensions.AI;
-using Microsoft.Extensions.VectorData;
-using Azure;
+// legacy SK chat service still used in some factories
+// legacy SK connectors
+// legacy SK embeddings (to be removed later)
 using Azure.Identity;
 using Azure.Search.Documents;
 using Azure.Search.Documents.Indexes;
@@ -53,15 +48,13 @@ using Microsoft.Extensions.Azure;
 using Azure.Core.Extensions;
 using Npgsql;
 using Orleans.Configuration;
-using Orleans.Persistence;
 using Orleans.Serialization;
 using StackExchange.Redis;
 using StackExchange.Redis.Configuration;
 using System.ClientModel;
 using System.Reflection;
-using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Greenlight.Shared.Services.Caching;
-using System.Net;
+using Microsoft.Greenlight.Shared.Helpers;
 
 namespace Microsoft.Greenlight.Shared.Extensions;
 #pragma warning disable SKEXP0011
@@ -147,25 +140,30 @@ public static class BuilderExtensions
         builder.Services.TryAddSingleton<IAppCache, AppCache>();
 
         // Common services and dependencies
-        builder.AddAzureSearchClient("aiSearch",
-            configureSettings: delegate (AzureSearchSettings settings)
-            {
-                settings.Credential = credentialHelper.GetAzureCredential();
-            },
-            configureClientBuilder: delegate (IAzureClientBuilder<SearchIndexClient, SearchClientOptions> clientBuilder)
-            {
-                // Configure audience for Azure Government if using Azure Government authority
-                var azureInstance = builder.Configuration["AzureAd:Instance"];
-                if (!string.IsNullOrEmpty(azureInstance) &&
-                    azureInstance.Contains(AzureAuthorityHosts.AzureGovernment.ToString(), StringComparison.OrdinalIgnoreCase))
+        
+        // Only add Azure AI Search client when not using Postgres for vector storage
+        if (!serviceConfigurationOptions.GreenlightServices.Global.UsePostgresMemory)
+        {
+            builder.AddAzureSearchClient("aiSearch",
+                configureSettings: delegate (AzureSearchSettings settings)
                 {
-                    // Set Azure Government audience for Azure AI Search
-                    clientBuilder.ConfigureOptions(options =>
+                    settings.Credential = credentialHelper.GetAzureCredential();
+                },
+                configureClientBuilder: delegate (IAzureClientBuilder<SearchIndexClient, SearchClientOptions> clientBuilder)
+                {
+                    // Configure audience for Azure Government if using Azure Government authority
+                    var azureInstance = builder.Configuration["AzureAd:Instance"];
+                    if (!string.IsNullOrEmpty(azureInstance) &&
+                        azureInstance.Contains(AzureAuthorityHosts.AzureGovernment.ToString(), StringComparison.OrdinalIgnoreCase))
                     {
-                        options.Audience = SearchAudience.AzureGovernment;
-                    });
-                }
-            });
+                        // Set Azure Government audience for Azure AI Search
+                        clientBuilder.ConfigureOptions(options =>
+                        {
+                            options.Audience = SearchAudience.AzureGovernment;
+                        });
+                    }
+                });
+        }
 
         builder.AddKeyedAzureBlobClient("blob-docing", configureSettings: delegate (AzureStorageBlobsSettings settings)
         {
@@ -205,32 +203,50 @@ public static class BuilderExtensions
         });
 
 
-        builder.Services.AddKeyedSingleton<AzureOpenAIClient>("openai-planner", (sp, obj) =>
+        // Register Azure OpenAI Client - optional for system startup
+        // If connection string is missing, the system will start without AI features
+        builder.Services.AddKeyedSingleton<AzureOpenAIClient?>("openai-planner", (sp, obj) =>
             {
-                // Here's the connection string format. Parse this for endpoint and key
-                // Endpoint=https://pvico-oai-swedencentral.openai.azure.com/;Key=sdfsdfsdfsdfsdfsdfsdf
-
                 var connectionString = builder.Configuration.GetConnectionString("openai-planner");
-                var endpoint = connectionString!.Split(';')[0].Split('=')[1];
-                var key = connectionString!.Split(';')[1].Split('=')[1];
+                if (string.IsNullOrEmpty(connectionString))
+                {
+                    var logger = sp.GetRequiredService<ILogger<AzureOpenAIClient>>();
+                    logger.LogWarning("OpenAI connection string (openai-planner) is not configured. AI features will be unavailable until configured via the Configuration UI.");
+                    return null;
+                }
 
-                // If the connection string doesn't contain a Key, use credentialHelper.GetAzureCredential() method.
-                // Otherwise, use the key with an ApiKeyCredential.
-                return string.IsNullOrEmpty(key)
-                    ? new AzureOpenAIClient(new Uri(endpoint), credentialHelper.GetAzureCredential(), new AzureOpenAIClientOptions()
-                    {
-                        NetworkTimeout = 30.Minutes()
-                    })
-                    : new AzureOpenAIClient(new Uri(endpoint), new ApiKeyCredential(key), new AzureOpenAIClientOptions()
-                    {
-                        NetworkTimeout = 30.Minutes()
-                    });
+                try
+                {
+                    var connectionInfo = AzureOpenAIConnectionStringParser.Parse(connectionString);
+
+                    // Create client with appropriate authentication
+                    return string.IsNullOrEmpty(connectionInfo.Key)
+                        ? new AzureOpenAIClient(new Uri(connectionInfo.Endpoint), credentialHelper.GetAzureCredential(), new AzureOpenAIClientOptions()
+                        {
+                            NetworkTimeout = 30.Minutes()
+                        })
+                        : new AzureOpenAIClient(new Uri(connectionInfo.Endpoint), new ApiKeyCredential(connectionInfo.Key), new AzureOpenAIClientOptions()
+                        {
+                            NetworkTimeout = 30.Minutes()
+                        });
+                }
+                catch (Exception ex)
+                {
+                    var logger = sp.GetRequiredService<ILogger<AzureOpenAIClient>>();
+                    logger.LogError(ex, "Failed to create Azure OpenAI client. AI features will be unavailable.");
+                    return null;
+                }
             });
 
         builder.Services.AddTransient<DynamicDocumentProcessServiceFactory>();
 
         builder.Services.AddTransient<AzureFileHelper>();
-        builder.Services.AddSingleton<SearchClientFactory>();
+        
+        // Only add SearchClientFactory when not using Postgres for vector storage
+        if (!serviceConfigurationOptions.GreenlightServices.Global.UsePostgresMemory)
+        {
+            builder.Services.AddSingleton<SearchClientFactory>();
+        }
 
         // File storage services
         builder.Services.AddTransient<IFileStorageServiceFactory, FileStorageServiceFactory>();
@@ -358,6 +374,7 @@ public static class BuilderExtensions
     {
         services.AddConfigurationStreamNotifier();
         services.AddPluginStreamNotifier();
+        services.AddFlowStreamNotifier();
         services.StartOrleansStreamSubscriberService();
 
         services.AddHostedService<DatabaseConfigurationRefreshService>();
@@ -377,6 +394,16 @@ public static class BuilderExtensions
         string redisConnectionStringName, AzureCredentialHelper credentialHelper,
         ServiceConfigurationOptions serviceConfigurationOptions)
     {
+        // Simplified Redis client configuration for containerized Redis instances
+        // We now use two internal Redis containers:
+        // - "redis": Main instance for caching, Orleans, data protection
+        // - "redis-signalr": Dedicated instance for SignalR backplane
+        // Both use password authentication configured in the connection string
+
+        builder.AddRedisClient(redisConnectionStringName);
+        builder.AddRedisDistributedCache(redisConnectionStringName);
+
+        /* LEGACY AZURE REDIS CONFIGURATION - Kept for reference if we need to revert
         if (AdminHelper.IsRunningInProduction())
         {
             var azureOptionsProvider = new AzureOptionsProvider();
@@ -402,6 +429,7 @@ public static class BuilderExtensions
             builder.AddRedisClient(redisConnectionStringName);
             builder.AddRedisDistributedCache(redisConnectionStringName);
         }
+        */
 
         return builder;
     }
@@ -554,6 +582,38 @@ public static class BuilderExtensions
                 }
                 options.TableName = "OrleansReminders";
             });
+
+            // Configure clustering using Azure Table Storage - critical for silo discovery
+            var clusteringConnectionString = builder.Configuration.GetConnectionString("clustering");
+            if (!string.IsNullOrWhiteSpace(clusteringConnectionString))
+            {
+                siloBuilder.UseAzureStorageClustering(options =>
+                {
+                    var tuple = AzureStorageHelper.ParseTableEndpointAndCredential(clusteringConnectionString!);
+                    var tableEndpoint = tuple.endpoint;
+                    var sharedKey = tuple.sharedKeyCredential;
+
+                    if (sharedKey != null)
+                    {
+                        options.TableServiceClient = new TableServiceClient(tableEndpoint, sharedKey);
+                    }
+                    else if (clusteringConnectionString.Contains('=')
+                             || clusteringConnectionString.StartsWith("UseDevelopmentStorage", StringComparison.OrdinalIgnoreCase))
+                    {
+                        options.TableServiceClient = new TableServiceClient(clusteringConnectionString);
+                    }
+                    else if (Uri.TryCreate(clusteringConnectionString, UriKind.Absolute, out var endpointUri))
+                    {
+                        options.TableServiceClient = new TableServiceClient(endpointUri, credentialHelper.GetAzureCredential());
+                    }
+                    else
+                    {
+                        options.TableServiceClient = new TableServiceClient(clusteringConnectionString);
+                    }
+
+                    options.TableName = "OrleansSiloInstances"; // must match client clustering table name
+                });
+            }
 
             bool DetectSerializableAssemblies(Type arg)
             {

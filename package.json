@@ -11,7 +11,7 @@
     "install-deps-ci": "pwsh scripts/install-dependencies.ps1 -CI",
     "start": "pwsh scripts/manage-solution.ps1 -Action start",
     "start:watch": "pwsh scripts/manage-solution.ps1 -Action start -Watch",
-    "stop": "pwsh scripts/manage-solution.ps1 -Action stop", 
+    "stop": "pwsh scripts/manage-solution.ps1 -Action stop",
     "restart": "pwsh scripts/manage-solution.ps1 -Action restart",
     "status": "pwsh scripts/manage-solution.ps1 -Action status",
     "test": "npx playwright test --config=playwright/playwright.config.js",
@@ -32,5 +32,8 @@
   "type": "commonjs",
   "devDependencies": {
     "@playwright/test": "^1.55.0"
+  },
+  "dependencies": {
+    "@openai/codex": "^0.34.0"
   }
 }

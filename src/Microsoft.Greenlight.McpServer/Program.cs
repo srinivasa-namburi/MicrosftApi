@@ -1,201 +1,221 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.Greenlight.McpServer.Auth;
+using Microsoft.Greenlight.McpServer.Endpoints;
+using Microsoft.Greenlight.McpServer.Middleware;
+using Microsoft.Greenlight.McpServer.Options;
+using Microsoft.Greenlight.McpServer.Servers;
+using Microsoft.Greenlight.McpServer.Services;
+using Microsoft.Greenlight.ServiceDefaults;
 using Microsoft.Greenlight.Shared.Configuration;
+using Microsoft.Greenlight.Shared.DocumentProcess.Shared;
 using Microsoft.Greenlight.Shared.Extensions;
 using Microsoft.Greenlight.Shared.Helpers;
+using Microsoft.Greenlight.Shared.Services.Security;
 using Microsoft.IdentityModel.Tokens;
-using Microsoft.Greenlight.Shared.Management;
-using Microsoft.Greenlight.Shared.Management.Configuration;
-using Microsoft.Greenlight.Shared.Notifiers;
-using Microsoft.Greenlight.Web.Shared.ServiceClients;
-using Microsoft.AspNetCore.Components.Authorization;
-using Microsoft.Greenlight.McpServer.Auth;
-using Microsoft.Greenlight.ServiceDefaults;
-using Microsoft.Greenlight.Shared.DocumentProcess.Shared; // ensure document process extension methods are available
+using Yarp.ReverseProxy.Configuration;
 
-var builder = WebApplication.CreateBuilder(args);
+// ------------ Business MCP Server (port 6008) ------------
+var businessMcpApp = BusinessMcpServer.CreateServer(args, port: 6008);
 
+// ------------ Flow MCP Server (port 6007) ------------
+var flowMcpApp = FlowMcpServer.CreateServer(args, port: 6007);
 
-builder.AddServiceDefaults();
-
-// Basic logging
-builder.Logging.AddConsole();
-
-// Load shared configuration and DB
-var credentialHelper = new AzureCredentialHelper(builder.Configuration);
-builder.Services.AddSingleton(credentialHelper);
-// Initialize AdminHelper so shared services can determine environment correctly
-AdminHelper.Initialize(builder.Configuration);
-
-// Access HttpContext for tools to inspect user claims
-builder.Services.AddHttpContextAccessor();
-
-builder.AddGreenlightDbContextAndConfiguration();
-
-// Add core Greenlight services and Orleans client to reach grains
-var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName)
-    .Get<ServiceConfigurationOptions>()!;
-builder.AddGreenlightServices(credentialHelper, serviceConfigurationOptions);
-builder.AddGreenlightOrleansClient(credentialHelper);
-
-// IMPORTANT: Register plugins and document process services (provides IKernelFactory, IAiEmbeddingService, etc.)
-builder.RegisterStaticPlugins(serviceConfigurationOptions);
-builder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
-
-// Resolve API base address from Aspire-provided variables (services:api-main:https:0/http:0)
-static Uri ResolveApiBaseUri(IConfiguration config, ServiceConfigurationOptions options)
+// ------------ YARP Proxy Frontend (port 6005 or configured) ------------
+var proxyBuilder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
-    // Prefer https, fallback to http
-    var apiAddress = config["services:api-main:https:0"] ?? config["services:api-main:http:0"]; 
+    Args = args,
+    ApplicationName = typeof(Program).Assembly.FullName,
+    EnvironmentName = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? Environments.Development
+});
 
-    if (!string.IsNullOrWhiteSpace(apiAddress))
+// Configure Kestrel for the proxy
+var proxyPort = proxyBuilder.Configuration.GetValue<int?>("Mcp:HttpPort") ?? 6005;
+var existingUrls = proxyBuilder.Configuration["ASPNETCORE_URLS"];
+
+if (string.IsNullOrWhiteSpace(existingUrls))
+{
+    proxyBuilder.WebHost.UseUrls($"http://localhost:{proxyPort}");
+}
+else
+{
+    // If URLs are already configured, add our HTTP port if not present
+    var httpUrl = $"http://localhost:{proxyPort}";
+    if (!existingUrls.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Any(u => string.Equals(u, httpUrl, StringComparison.OrdinalIgnoreCase)))
     {
-        // Optionally override host while preserving port and scheme
-        if (!string.IsNullOrWhiteSpace(options?.HostNameOverride?.Api))
-        {
-            var original = new Uri(apiAddress);
-            var uriBuilder = new UriBuilder(original)
-            {
-                Host = options.HostNameOverride.Api
-            };
-            apiAddress = uriBuilder.Uri.ToString();
-        }
-
-        return new Uri(apiAddress.TrimEnd('/'));
+        proxyBuilder.WebHost.UseUrls($"{existingUrls};{httpUrl}");
     }
-
-    // Fallback to service discovery scheme if explicit address not available
-    return new Uri("https://api-main");
 }
 
-var apiBaseUri = ResolveApiBaseUri(builder.Configuration, serviceConfigurationOptions);
-
-// Register HttpClient for API access
-builder.Services.AddHttpClient("api-main", client =>
+proxyBuilder.WebHost.ConfigureKestrel(serverOptions =>
 {
-    client.BaseAddress = apiBaseUri;
+    serverOptions.Limits.KeepAliveTimeout = TimeSpan.FromMinutes(10);
+    serverOptions.Limits.RequestHeadersTimeout = TimeSpan.FromMinutes(10);
 });
 
-// Provide AuthenticationStateProvider based on current HttpContext for server-side token access
-builder.Services.AddScoped<AuthenticationStateProvider, HttpContextAuthenticationStateProvider>();
+// Add service defaults and minimal services for the proxy
+proxyBuilder.AddServiceDefaults();
+proxyBuilder.Logging.AddConsole();
 
-// Register shared DocumentGenerationApiClient (uses AuthenticationStateProvider to retrieve token)
-builder.Services.AddTransient<IDocumentGenerationApiClient>(sp =>
-{
-    var httpFactory = sp.GetRequiredService<IHttpClientFactory>();
-    var httpClient = httpFactory.CreateClient("api-main");
-    var logger = sp.GetRequiredService<ILogger<DocumentGenerationApiClient>>();
-    var authStateProvider = sp.GetRequiredService<AuthenticationStateProvider>();
-    return new DocumentGenerationApiClient(httpClient, logger, authStateProvider);
-});
+// Setup credential helper and admin helper
+var credentialHelper = new AzureCredentialHelper(proxyBuilder.Configuration);
+proxyBuilder.Services.AddSingleton(credentialHelper);
+AdminHelper.Initialize(proxyBuilder.Configuration);
+AdminHelper.ValidateDeveloperSetup("MCP Server Proxy");
 
-// Subscribe to configuration updates via Orleans streams using client-side notifier
-builder.Services.AddSingleton<IWorkStreamNotifier, ConfigurationWorkStreamNotifier>();
-builder.Services.AddHostedService<OrleansStreamSubscriberService>();
+// Add HTTP context accessor for auth
+proxyBuilder.Services.AddHttpContextAccessor();
 
-// Minimal hosted services for local config refresh and graceful shutdown
-builder.Services.AddHostedService<DatabaseConfigurationRefreshService>();
-builder.Services.AddHostedService<ShutdownCleanupService>();
+// Add database context for session management
+proxyBuilder.AddGreenlightDbContextAndConfiguration();
 
-// Optional: JWT auth via JwtBearer (if AzureAd section exists)
-var azureAdSection = builder.Configuration.GetSection("AzureAd");
-// Allow temporarily disabling auth for local/manual testing via configuration
-// Set either Mcp:DisableAuth=true or DisableAuth=true (e.g., env var Mcp__DisableAuth=true)
-var disableAuth = builder.Configuration.GetValue<bool?>("Mcp:DisableAuth")
-    ?? builder.Configuration.GetValue<bool?>("DisableAuth")
-    ?? false;
+// Get service configuration for Greenlight services
+var serviceConfigurationOptions = proxyBuilder.Configuration
+    .GetSection(ServiceConfigurationOptions.PropertyName)
+    .Get<ServiceConfigurationOptions>()!;
 
-var authEnabled = !disableAuth && azureAdSection.Exists() && !string.IsNullOrEmpty(azureAdSection["TenantId"]);
+// Add core Greenlight services (includes IAppCache)
+proxyBuilder.AddGreenlightServices(credentialHelper, serviceConfigurationOptions);
+
+// Add Orleans client for grain access
+proxyBuilder.AddGreenlightOrleansClient(credentialHelper);
+
+// Register plugins and document processes (provides IKernelFactory, IAiEmbeddingService, etc.)
+proxyBuilder.RegisterStaticPlugins(serviceConfigurationOptions);
+proxyBuilder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
+
+// Add hashing service for secret validation
+proxyBuilder.Services.AddSingleton<ISecretHashingService, SecretHashingService>();
+
+// Session management (shared across all endpoints)
+proxyBuilder.Services.AddSingleton<IMcpSessionManager, McpSessionManager>();
+
+// Content relinker service for proxy URLs
+proxyBuilder.Services.AddSingleton<IContentRelinkerService, ContentRelinkerService>();
+
+// Bind MCP options
+proxyBuilder.Services.Configure<McpOptions>(
+    proxyBuilder.Configuration.GetSection("ServiceConfiguration:Mcp"));
+
+// Configure authentication for the proxy
+var disableAuth = proxyBuilder.Configuration.GetValue<bool>("ServiceConfiguration:Mcp:DisableAuth");
+var authEnabled = !disableAuth;
+
 if (authEnabled)
 {
-    builder.Services.AddAuthentication(options =>
-        {
-            options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-            options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-        })
+    var azureAdSection = proxyBuilder.Configuration.GetSection("AzureAd");
+    proxyBuilder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         .AddJwtBearer(options =>
         {
-            // Expected AzureAd config keys: Instance, TenantId, Audience (or ClientId)
             var instance = azureAdSection["Instance"] ?? "https://login.microsoftonline.com/";
             var tenantId = azureAdSection["TenantId"]!;
             var authority = $"{instance.TrimEnd('/')}/{tenantId}/v2.0";
-            options.Authority = authority;
-
-            // Accept tokens issued for this API (audience). Prefer Audience, fallback to ClientId
             var audience = azureAdSection["Audience"] ?? azureAdSection["ClientId"];
-            if (!string.IsNullOrWhiteSpace(audience))
+
+            options.Authority = authority;
+            options.Audience = audience;
+            options.TokenValidationParameters = new TokenValidationParameters
             {
-                options.TokenValidationParameters = new TokenValidationParameters
+                ValidateIssuer = true,
+                ValidAudience = audience,
+                ValidateAudience = true,
+                ValidateIssuerSigningKey = true,
+                ValidateLifetime = true,
+            };
+        });
+    proxyBuilder.Services.AddAuthorization();
+}
+
+// Configure YARP reverse proxy
+proxyBuilder.Services.AddReverseProxy()
+    .LoadFromMemory(
+        routes: new[]
+        {
+            new RouteConfig
+            {
+                RouteId = "flow-route",
+                ClusterId = "flow-cluster",
+                Match = new RouteMatch
                 {
-                    ValidateIssuer = true,
-                    ValidAudience = audience,
-                    ValidateAudience = true,
-                    ValidateIssuerSigningKey = true,
-                    ValidateLifetime = true,
-                };
+                    Path = "/flow/{**catch-all}"
+                },
+                Transforms = new[]
+                {
+                    new Dictionary<string, string> { ["PathRemovePrefix"] = "/flow" }
+                }
+            },
+            new RouteConfig
+            {
+                RouteId = "mcp-route",
+                ClusterId = "mcp-cluster",
+                Match = new RouteMatch
+                {
+                    Path = "/mcp/{**catch-all}"
+                }
+            }
+        },
+        clusters: new[]
+        {
+            new ClusterConfig
+            {
+                ClusterId = "flow-cluster",
+                Destinations = new Dictionary<string, DestinationConfig>
+                {
+                    ["flow1"] = new DestinationConfig { Address = "http://localhost:6007" }
+                }
+            },
+            new ClusterConfig
+            {
+                ClusterId = "mcp-cluster",
+                Destinations = new Dictionary<string, DestinationConfig>
+                {
+                    ["mcp1"] = new DestinationConfig { Address = "http://localhost:6008" }
+                }
             }
         });
-    builder.Services.AddAuthorization();
-}
 
-// Dev-only: also expose HTTP endpoint (for MCP Inspector and tools which don't trust local dev certs)
-try
-{
-    if (!AdminHelper.IsRunningInProduction())
-    {
-        var devHttpPort = builder.Configuration.GetValue<int?>("Mcp:HttpPort") ?? 6005;
-        var existingUrls = builder.Configuration["ASPNETCORE_URLS"]; // may be set by launchSettings
-        var httpUrl = $"http://localhost:{devHttpPort}";
-        if (string.IsNullOrWhiteSpace(existingUrls))
-        {
-            builder.WebHost.UseUrls(httpUrl);
-        }
-        else if (!existingUrls.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                               .Any(u => string.Equals(u, httpUrl, StringComparison.OrdinalIgnoreCase)))
-        {
-            builder.WebHost.UseUrls($"{existingUrls};{httpUrl}");
-        }
-    }
-}
-catch
-{
-    // Best-effort only; ignore if UseUrls cannot be applied
-}
-
-// MCP server over HTTP (SSE) with tools in current assembly
-builder.Services
-    .AddMcpServer()
-    .WithHttpTransport()
-    .WithToolsFromAssembly();
-
-var app = builder.Build();
+// Build the proxy application
+var proxyApp = proxyBuilder.Build();
 
 if (disableAuth)
 {
-    app.Logger.LogWarning("MCP auth is DISABLED via configuration (Mcp:DisableAuth/DisableAuth). Do NOT use this in production.");
+    proxyApp.Logger.LogWarning("MCP auth is DISABLED via configuration (ServiceConfiguration:Mcp:DisableAuth). Do NOT use this in production.");
 }
 
+// Configure middleware pipeline for the proxy
 if (authEnabled)
 {
-    app.UseAuthentication();
-    app.UseAuthorization();
+    proxyApp.UseAuthentication();
+    proxyApp.UseAuthorization();
 }
 
-// Map MCP endpoints under "/mcp" to avoid root conflicts and align with common tooling expectations
-var mcpGroup = app.MapGroup("/mcp");
-var mcpEndpoint = mcpGroup.MapMcp();
+// Enable secret-based auth for MCP routes
+proxyApp.UseMiddleware<McpSecretAuthenticationMiddleware>();
+
+// Session resolution middleware for /mcp and /flow routes
+proxyApp.UseWhen(ctx =>
+    ctx.Request.Path.StartsWithSegments("/mcp", StringComparison.OrdinalIgnoreCase) ||
+    ctx.Request.Path.StartsWithSegments("/flow", StringComparison.OrdinalIgnoreCase), branch =>
+{
+    branch.UseMiddleware<McpSessionResolutionMiddleware>();
+});
+
+// Map YARP proxy endpoints
+proxyApp.MapReverseProxy();
+
+// Map session management endpoints directly on the proxy (not proxied)
+var sessionGroup = proxyApp.MapGroup("/mcp");
+sessionGroup.MapMcpSessionEndpoints();
+
+// OAuth metadata endpoint
 if (authEnabled)
 {
-    mcpEndpoint.RequireAuthorization();
-
-    var tenantId = azureAdSection["TenantId"]!;
-
-    // Get Authority host from credential helper to handle sovereign clouds
+    var tenantId = proxyBuilder.Configuration.GetSection("AzureAd")["TenantId"]!;
     var authorityHost = new Uri(credentialHelper.DiscoveredAuthorityHost);
     var issuer = authorityHost.AbsoluteUri.TrimEnd('/') + $"/{tenantId}";
 
-    // Expose standard OAuth 2.0 Authorization Server Metadata endpoint
-    app.MapGet("/.well-known/oauth-authorization-server", () => Results.Json(new
+    proxyApp.MapGet("/.well-known/oauth-authorization-server", () => Results.Json(new
     {
         issuer,
         authorization_endpoint = $"{issuer}/oauth2/v2.0/authorize",
@@ -207,15 +227,53 @@ if (authEnabled)
     }));
 }
 
-// Back-compat convenience redirects: root to /mcp and /sse to /mcp/sse (preserve method e.g., POST -> 307)
-var rootRedirect = app.Map("/", (HttpContext ctx) => Results.Redirect("/mcp", permanent: false, preserveMethod: true))
+// Back-compat convenience redirects
+var rootRedirect = proxyApp.Map("/", (HttpContext ctx) =>
+    Results.Redirect("/mcp", permanent: false, preserveMethod: true))
     .ExcludeFromDescription();
-var sseRedirect = app.Map("/sse", (HttpContext ctx) => Results.Redirect("/mcp/sse", permanent: false, preserveMethod: true))
+var sseRedirect = proxyApp.Map("/sse", (HttpContext ctx) =>
+    Results.Redirect("/mcp/sse", permanent: false, preserveMethod: true))
     .ExcludeFromDescription();
+
 if (authEnabled)
 {
     rootRedirect.RequireAuthorization();
     sseRedirect.RequireAuthorization();
 }
 
-app.Run();
+// ------------ Run all three servers in parallel ------------
+using var cts = new CancellationTokenSource();
+
+// Handle shutdown gracefully
+Console.CancelKeyPress += (sender, e) =>
+{
+    e.Cancel = true;
+    cts.Cancel();
+};
+
+var runTasks = new[]
+{
+    businessMcpApp.RunAsync(cts.Token),
+    flowMcpApp.RunAsync(cts.Token),
+    proxyApp.RunAsync(cts.Token)
+};
+
+proxyApp.Logger.LogInformation("Starting MCP servers:");
+proxyApp.Logger.LogInformation("  - Proxy (YARP) on port {ProxyPort}", proxyPort);
+proxyApp.Logger.LogInformation("  - Business MCP on port 6008 (internal)");
+proxyApp.Logger.LogInformation("  - Flow MCP on port 6007 (internal)");
+
+try
+{
+    await Task.WhenAll(runTasks);
+}
+catch (TaskCanceledException)
+{
+    // Normal shutdown
+    proxyApp.Logger.LogInformation("MCP servers shutting down...");
+}
+catch (Exception ex)
+{
+    proxyApp.Logger.LogError(ex, "Error running MCP servers");
+    throw;
+}

@@ -1,0 +1,186 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+@using MudBlazor
+@using Microsoft.Greenlight.Shared.Configuration
+@using Microsoft.Greenlight.Web.DocGen.Client.ServiceClients
+@inject IConfigurationApiClient ConfigApi
+@inherits Microsoft.Greenlight.Web.DocGen.Client.Components.Configuration.Infrastructure.ConfigurationSectionBase
+
+<MudPaper Class="pa-4">
+  <MudText Typo="Typo.h6">Vector Store Options</MudText>
+  <MudDivider Class="mt-2 mb-3" />
+
+  <MudGrid>
+    <MudItem xs="12" md="3"><MudNumericField T="int" @bind-Value="ChunkSize" Label="Chunk Size" Min="100" Max="8000" Immediate="true" /></MudItem>
+    <MudItem xs="12" md="3"><MudNumericField T="int" @bind-Value="ChunkOverlap" Label="Chunk Overlap" Min="0" Max="4000" Immediate="true" /></MudItem>
+    <MudItem xs="12" md="3"><MudNumericField T="int" @bind-Value="MaxSearchResults" Label="Max Search Results" Min="1" Max="100" Immediate="true" /></MudItem>
+    <MudItem xs="12" md="3"><MudNumericField T="int" @bind-Value="DocumentChunkCacheTtlMinutes" Label="Doc Chunk Cache TTL (min)" Min="0" Max="10080" Immediate="true" /></MudItem>
+    <MudItem xs="12" md="3"><MudNumericField T="int" @bind-Value="VectorSize" Label="Vector Size" Min="64" Max="8192" Immediate="true" /></MudItem>
+    <MudItem xs="12" md="3"><MudNumericField T="double?" @bind-Value="ScoreCutoff" Label="Score Cutoff (0..1)" Min="0" Max="1" Immediate="true" /></MudItem>
+    <MudItem xs="12" md="3"><MudNumericField T="int" @bind-Value="MinResultsBeforeCutoff" Label="Min Results Before Cutoff" Min="0" Max="100" Immediate="true" /></MudItem>
+    <MudItem xs="12" md="3"><MudNumericField T="double" @bind-Value="HybridVectorWeight" Label="Hybrid Vector Weight (0..1)" Min="0" Max="1" Immediate="true" /></MudItem>
+    <MudItem xs="12" md="3"><MudNumericField T="int" @bind-Value="MaxChunkTextLength" Label="Max Chunk Text Length" Min="256" Max="65536" Immediate="true" /></MudItem>
+    <MudItem xs="12" md="3"><MudSwitch T="bool" @bind-Checked="EnableHybridScoring" Label="Enable Hybrid Scoring" Color="Color.Primary" Immediate="true" /></MudItem>
+    <MudItem xs="12" md="3"><MudSwitch T="bool" @bind-Checked="EnableFileNameDocIdCacheIndex" Label="FileName→DocId Cache Index" Color="Color.Primary" Immediate="true" /></MudItem>
+    <MudItem xs="12" md="3"><MudSwitch T="bool" @bind-Checked="EnableWarmup" Label="Enable Warmup" Color="Color.Primary" Immediate="true" /></MudItem>
+    <MudItem xs="12" md="3"><MudSwitch T="bool" @bind-Checked="EnableEmbeddingDimensionVerification" Label="Verify Embedding Dimension" Color="Color.Primary" Immediate="true" /></MudItem>
+  </MudGrid>
+
+  <MudDivider Class="mt-4 mb-3" />
+  <MudText Typo="Typo.subtitle1">Content Reference Embeddings</MudText>
+  <MudGrid>
+    <MudItem xs="12" md="6">
+      <MudText Typo="Typo.subtitle2" Class="mb-2">Generated Document</MudText>
+      <MudTextField T="string" @bind-Value="_options.ContentReferences.GeneratedDocument.EmbeddingModelDeploymentName" Label="Embedding Model Deployment" Variant="Variant.Filled" Immediate="true" @onchange="_ => MarkDirty()" />
+      <MudSelect T="int?" @bind-Value="_options.ContentReferences.GeneratedDocument.EmbeddingDimensionsOverride" Label="Embedding Dimensions Override" Variant="Variant.Filled" @onchange="_ => MarkDirty()">
+        <MudSelectItem T="int?" Value="@(default(int?))">Use deployment default</MudSelectItem>
+        <MudSelectItem T="int?" Value="256">256</MudSelectItem>
+        <MudSelectItem T="int?" Value="512">512</MudSelectItem>
+        <MudSelectItem T="int?" Value="1024">1024</MudSelectItem>
+        <MudSelectItem T="int?" Value="1536">1536</MudSelectItem>
+        <MudSelectItem T="int?" Value="3072">3072</MudSelectItem>
+      </MudSelect>
+    </MudItem>
+    <MudItem xs="12" md="6">
+      <MudText Typo="Typo.subtitle2" Class="mb-2">Generated Section</MudText>
+      <MudTextField T="string" @bind-Value="_options.ContentReferences.GeneratedSection.EmbeddingModelDeploymentName" Label="Embedding Model Deployment" Variant="Variant.Filled" Immediate="true" @onchange="_ => MarkDirty()" />
+      <MudSelect T="int?" @bind-Value="_options.ContentReferences.GeneratedSection.EmbeddingDimensionsOverride" Label="Embedding Dimensions Override" Variant="Variant.Filled" @onchange="_ => MarkDirty()">
+        <MudSelectItem T="int?" Value="@(default(int?))">Use deployment default</MudSelectItem>
+        <MudSelectItem T="int?" Value="256">256</MudSelectItem>
+        <MudSelectItem T="int?" Value="512">512</MudSelectItem>
+        <MudSelectItem T="int?" Value="1024">1024</MudSelectItem>
+        <MudSelectItem T="int?" Value="1536">1536</MudSelectItem>
+        <MudSelectItem T="int?" Value="3072">3072</MudSelectItem>
+      </MudSelect>
+    </MudItem>
+    <MudItem xs="12" md="6">
+      <MudText Typo="Typo.subtitle2" Class="mb-2">Review Item</MudText>
+      <MudTextField T="string" @bind-Value="_options.ContentReferences.ReviewItem.EmbeddingModelDeploymentName" Label="Embedding Model Deployment" Variant="Variant.Filled" Immediate="true" @onchange="_ => MarkDirty()" />
+      <MudSelect T="int?" @bind-Value="_options.ContentReferences.ReviewItem.EmbeddingDimensionsOverride" Label="Embedding Dimensions Override" Variant="Variant.Filled" @onchange="_ => MarkDirty()">
+        <MudSelectItem T="int?" Value="@(default(int?))">Use deployment default</MudSelectItem>
+        <MudSelectItem T="int?" Value="256">256</MudSelectItem>
+        <MudSelectItem T="int?" Value="512">512</MudSelectItem>
+        <MudSelectItem T="int?" Value="1024">1024</MudSelectItem>
+        <MudSelectItem T="int?" Value="1536">1536</MudSelectItem>
+        <MudSelectItem T="int?" Value="3072">3072</MudSelectItem>
+      </MudSelect>
+    </MudItem>
+    <MudItem xs="12" md="6">
+      <MudText Typo="Typo.subtitle2" Class="mb-2">External File</MudText>
+      <MudTextField T="string" @bind-Value="_options.ContentReferences.ExternalFile.EmbeddingModelDeploymentName" Label="Embedding Model Deployment" Variant="Variant.Filled" Immediate="true" @onchange="_ => MarkDirty()" />
+      <MudSelect T="int?" @bind-Value="_options.ContentReferences.ExternalFile.EmbeddingDimensionsOverride" Label="Embedding Dimensions Override" Variant="Variant.Filled" @onchange="_ => MarkDirty()">
+        <MudSelectItem T="int?" Value="@(default(int?))">Use deployment default</MudSelectItem>
+        <MudSelectItem T="int?" Value="256">256</MudSelectItem>
+        <MudSelectItem T="int?" Value="512">512</MudSelectItem>
+        <MudSelectItem T="int?" Value="1024">1024</MudSelectItem>
+        <MudSelectItem T="int?" Value="1536">1536</MudSelectItem>
+        <MudSelectItem T="int?" Value="3072">3072</MudSelectItem>
+      </MudSelect>
+    </MudItem>
+    <MudItem xs="12" md="6">
+      <MudText Typo="Typo.subtitle2" Class="mb-2">External Link Asset</MudText>
+      <MudTextField T="string" @bind-Value="_options.ContentReferences.ExternalLinkAsset.EmbeddingModelDeploymentName" Label="Embedding Model Deployment" Variant="Variant.Filled" Immediate="true" @onchange="_ => MarkDirty()" />
+      <MudSelect T="int?" @bind-Value="_options.ContentReferences.ExternalLinkAsset.EmbeddingDimensionsOverride" Label="Embedding Dimensions Override" Variant="Variant.Filled" @onchange="_ => MarkDirty()">
+        <MudSelectItem T="int?" Value="@(default(int?))">Use deployment default</MudSelectItem>
+        <MudSelectItem T="int?" Value="256">256</MudSelectItem>
+        <MudSelectItem T="int?" Value="512">512</MudSelectItem>
+        <MudSelectItem T="int?" Value="1024">1024</MudSelectItem>
+        <MudSelectItem T="int?" Value="1536">1536</MudSelectItem>
+        <MudSelectItem T="int?" Value="3072">3072</MudSelectItem>
+      </MudSelect>
+    </MudItem>
+  </MudGrid>
+
+  <MudStack Class="mt-4" Direction="Row" Spacing="2">
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!IsDirty)" OnClick="@(()=>SaveAsync())">Save</MudButton>
+  </MudStack>
+</MudPaper>
+
+@code {
+  private VectorStoreOptions _options = new();
+  private string _initial = string.Empty;
+  public override string Title => "Vector Store";
+
+  protected override async Task OnInitializedAsync()
+  {
+    await LoadAsync();
+  }
+
+  public override async Task LoadAsync(CancellationToken cancellationToken = default)
+  {
+    _options = await ConfigApi.GetVectorStoreOptionsAsync();
+    _initial = System.Text.Json.JsonSerializer.Serialize(_options);
+    SetDirty(false);
+  }
+
+  private void MarkDirty()
+  {
+    var cur = System.Text.Json.JsonSerializer.Serialize(_options);
+    SetDirty(!string.Equals(cur, _initial, StringComparison.Ordinal));
+  }
+
+  // Wrapper properties to track changes on basic fields
+  private int ChunkSize { get => _options.ChunkSize; set { _options.ChunkSize = value; MarkDirty(); } }
+  private int ChunkOverlap { get => _options.ChunkOverlap; set { _options.ChunkOverlap = value; MarkDirty(); } }
+  private int MaxSearchResults { get => _options.MaxSearchResults; set { _options.MaxSearchResults = value; MarkDirty(); } }
+  private int DocumentChunkCacheTtlMinutes { get => _options.DocumentChunkCacheTtlMinutes; set { _options.DocumentChunkCacheTtlMinutes = value; MarkDirty(); } }
+  private int VectorSize { get => _options.VectorSize; set { _options.VectorSize = value; MarkDirty(); } }
+  private bool EnableFileNameDocIdCacheIndex { get => _options.EnableFileNameDocIdCacheIndex; set { _options.EnableFileNameDocIdCacheIndex = value; MarkDirty(); } }
+  private double? ScoreCutoff { get => _options.ScoreCutoff; set { _options.ScoreCutoff = value; MarkDirty(); } }
+  private int MinResultsBeforeCutoff { get => _options.MinResultsBeforeCutoff; set { _options.MinResultsBeforeCutoff = value; MarkDirty(); } }
+  private bool EnableHybridScoring { get => _options.EnableHybridScoring; set { _options.EnableHybridScoring = value; MarkDirty(); } }
+  private double HybridVectorWeight { get => _options.HybridVectorWeight; set { _options.HybridVectorWeight = value; MarkDirty(); } }
+  private int MaxChunkTextLength { get => _options.MaxChunkTextLength; set { _options.MaxChunkTextLength = value; MarkDirty(); } }
+  private bool EnableWarmup { get => _options.EnableWarmup; set { _options.EnableWarmup = value; MarkDirty(); } }
+  private bool EnableEmbeddingDimensionVerification { get => _options.EnableEmbeddingDimensionVerification; set { _options.EnableEmbeddingDimensionVerification = value; MarkDirty(); } }
+
+  public override async Task SaveAsync(CancellationToken cancellationToken = default)
+  {
+    var items = new Dictionary<string, string>
+    {
+      ["ServiceConfiguration:GreenlightServices:VectorStore:ChunkSize"] = _options.ChunkSize.ToString(),
+      ["ServiceConfiguration:GreenlightServices:VectorStore:ChunkOverlap"] = _options.ChunkOverlap.ToString(),
+      ["ServiceConfiguration:GreenlightServices:VectorStore:MaxSearchResults"] = _options.MaxSearchResults.ToString(),
+      ["ServiceConfiguration:GreenlightServices:VectorStore:MinRelevanceScore"] = _options.MinRelevanceScore.ToString(System.Globalization.CultureInfo.InvariantCulture),
+      ["ServiceConfiguration:GreenlightServices:VectorStore:DocumentChunkCacheTtlMinutes"] = _options.DocumentChunkCacheTtlMinutes.ToString(),
+      ["ServiceConfiguration:GreenlightServices:VectorStore:VectorSize"] = _options.VectorSize.ToString(),
+      ["ServiceConfiguration:GreenlightServices:VectorStore:EnableFileNameDocIdCacheIndex"] = _options.EnableFileNameDocIdCacheIndex.ToString(),
+      ["ServiceConfiguration:GreenlightServices:VectorStore:ScoreCutoff"] = _options.ScoreCutoff?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
+      ["ServiceConfiguration:GreenlightServices:VectorStore:MinResultsBeforeCutoff"] = _options.MinResultsBeforeCutoff.ToString(),
+      ["ServiceConfiguration:GreenlightServices:VectorStore:EnableHybridScoring"] = _options.EnableHybridScoring.ToString(),
+      ["ServiceConfiguration:GreenlightServices:VectorStore:HybridVectorWeight"] = _options.HybridVectorWeight.ToString(System.Globalization.CultureInfo.InvariantCulture),
+      ["ServiceConfiguration:GreenlightServices:VectorStore:MaxChunkTextLength"] = _options.MaxChunkTextLength.ToString(),
+      ["ServiceConfiguration:GreenlightServices:VectorStore:EnableWarmup"] = _options.EnableWarmup.ToString(),
+      ["ServiceConfiguration:GreenlightServices:VectorStore:EnableEmbeddingDimensionVerification"] = _options.EnableEmbeddingDimensionVerification.ToString(),
+
+      ["ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:GeneratedDocument:EmbeddingModelDeploymentName"] = _options.ContentReferences.GeneratedDocument.EmbeddingModelDeploymentName ?? string.Empty,
+      ["ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:GeneratedDocument:EmbeddingDimensionsOverride"] = _options.ContentReferences.GeneratedDocument.EmbeddingDimensionsOverride?.ToString() ?? string.Empty,
+      ["ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:GeneratedSection:EmbeddingModelDeploymentName"] = _options.ContentReferences.GeneratedSection.EmbeddingModelDeploymentName ?? string.Empty,
+      ["ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:GeneratedSection:EmbeddingDimensionsOverride"] = _options.ContentReferences.GeneratedSection.EmbeddingDimensionsOverride?.ToString() ?? string.Empty,
+      ["ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:ReviewItem:EmbeddingModelDeploymentName"] = _options.ContentReferences.ReviewItem.EmbeddingModelDeploymentName ?? string.Empty,
+      ["ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:ReviewItem:EmbeddingDimensionsOverride"] = _options.ContentReferences.ReviewItem.EmbeddingDimensionsOverride?.ToString() ?? string.Empty,
+      ["ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:ExternalFile:EmbeddingModelDeploymentName"] = _options.ContentReferences.ExternalFile.EmbeddingModelDeploymentName ?? string.Empty,
+      ["ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:ExternalFile:EmbeddingDimensionsOverride"] = _options.ContentReferences.ExternalFile.EmbeddingDimensionsOverride?.ToString() ?? string.Empty,
+      ["ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:ExternalLinkAsset:EmbeddingModelDeploymentName"] = _options.ContentReferences.ExternalLinkAsset.EmbeddingModelDeploymentName ?? string.Empty,
+      ["ServiceConfiguration:GreenlightServices:VectorStore:ContentReferences:ExternalLinkAsset:EmbeddingDimensionsOverride"] = _options.ContentReferences.ExternalLinkAsset.EmbeddingDimensionsOverride?.ToString() ?? string.Empty,
+    };
+    await ConfigApi.UpdateConfigurationAsync(new Microsoft.Greenlight.Shared.Contracts.DTO.ConfigurationUpdateRequest
+    {
+      ConfigurationItems = items
+    });
+    _initial = System.Text.Json.JsonSerializer.Serialize(_options);
+    SetDirty(false);
+  }
+
+  public override IEnumerable<string> DescribePendingChanges()
+  {
+    var before = System.Text.Json.JsonSerializer.Deserialize<VectorStoreOptions>(_initial) ?? new();
+    if (_options.ChunkSize != before.ChunkSize) yield return $"ChunkSize: {before.ChunkSize} → {_options.ChunkSize}";
+    if (_options.ChunkOverlap != before.ChunkOverlap) yield return $"ChunkOverlap: {before.ChunkOverlap} → {_options.ChunkOverlap}";
+    if (_options.MaxSearchResults != before.MaxSearchResults) yield return $"MaxSearchResults: {before.MaxSearchResults} → {_options.MaxSearchResults}";
+    if (_options.VectorSize != before.VectorSize) yield return $"VectorSize: {before.VectorSize} → {_options.VectorSize}";
+    if (_options.EnableHybridScoring != before.EnableHybridScoring) yield return $"HybridScoring: {before.EnableHybridScoring} → {_options.EnableHybridScoring}";
+    if (_options.HybridVectorWeight != before.HybridVectorWeight) yield return $"HybridVectorWeight: {before.HybridVectorWeight} → {_options.HybridVectorWeight}";
+    if (_options.MaxChunkTextLength != before.MaxChunkTextLength) yield return $"MaxChunkTextLength: {before.MaxChunkTextLength} → {_options.MaxChunkTextLength}";
+  }
+}
+

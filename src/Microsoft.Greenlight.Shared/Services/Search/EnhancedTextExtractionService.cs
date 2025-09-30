@@ -49,6 +49,7 @@ public class EnhancedTextExtractionService : ITextExtractionService
             case ".txt":
             case ".md":
             case ".csv":
+            case ".metadata":
                 return await ExtractPlainTextAsync(fileStream);
 
             case ".html":
@@ -79,7 +80,7 @@ public class EnhancedTextExtractionService : ITextExtractionService
         var extension = Path.GetExtension(fileName).ToLowerInvariant();
         return extension switch
         {
-            ".txt" or ".md" or ".csv" or ".html" or ".htm" or ".pdf" or ".docx" or ".xlsx" or ".pptx" => true,
+            ".txt" or ".md" or ".csv" or ".metadata" or ".html" or ".htm" or ".pdf" or ".docx" or ".xlsx" or ".pptx" => true,
             _ => false
         };
     }

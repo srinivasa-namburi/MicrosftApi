@@ -1,0 +1,170 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+@using Microsoft.Greenlight.Web.DocGen.Client.Components.Authorization
+
+<MudGrid Spacing="3" Class="@($"configuration-card-grid {(IsAnimating ? "animating" : "")}")">
+    @foreach (var section in Sections)
+    {
+        <MudItem xs="12" sm="6" md="4" lg="3">
+            <MudCard Class="@($"configuration-card {(IsAnimating ? "transitioning" : "")}")" 
+                     @onclick="() => HandleCardClick(section.Id)">
+                <MudCardContent Class="d-flex flex-column align-center text-center pa-6">
+                    <MudIcon Icon="@(section.Icon)" Size="Size.Large" Color="Color.Primary" Class="mb-3" />
+                    <MudText Typo="Typo.h6" Class="mb-2">@(section.Title)</MudText>
+                    <MudText Typo="Typo.body2" Class="card-description">
+                        @(section.Description)
+                    </MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    }
+</MudGrid>
+
+<style>
+    .configuration-card-grid {
+        padding: 1rem;
+        transition: opacity 0.4s ease;
+    }
+
+    .configuration-card-grid.animating {
+        opacity: 0;
+        transform: translateY(-50px);
+    }
+
+    .configuration-card {
+        cursor: pointer;
+        transition: all 0.3s ease;
+        height: 100%;
+        min-height: 200px;
+        transform-origin: center top;
+    }
+
+    .configuration-card:hover:not(.transitioning) {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    }
+
+    .configuration-card.transitioning {
+        animation: slideUp 0.4s ease-in-out forwards;
+    }
+
+    .card-description {
+        transition: opacity 0.3s ease;
+    }
+
+    .configuration-card.transitioning .card-description {
+        opacity: 0;
+    }
+
+    @@keyframes slideUp {
+        0% {
+            transform: scale(1) translateY(0);
+            opacity: 1;
+        }
+        100% {
+            transform: scale(0.2) translateY(-100%);
+            opacity: 0;
+        }
+    }
+</style>
+
+@code {
+    [Parameter] public EventCallback<ConfigSection> OnCardSelected { get; set; }
+    [Parameter] public bool IsAnimating { get; set; }
+
+    private async Task HandleCardClick(ConfigSection section)
+    {
+        if (!IsAnimating)
+        {
+            await OnCardSelected.InvokeAsync(section);
+        }
+    }
+
+    private readonly List<ConfigurationSectionInfo> Sections = new()
+    {
+        new ConfigurationSectionInfo
+        {
+            Id = ConfigSection.Frontend,
+            Title = "Frontend",
+            Description = "Site branding and UI settings",
+            Icon = Icons.Material.Filled.Web
+        },
+        new ConfigurationSectionInfo
+        {
+            Id = ConfigSection.Features,
+            Title = "Features",
+            Description = "Feature flags and toggles",
+            Icon = Icons.Material.Filled.Tune
+        },
+        new ConfigurationSectionInfo
+        {
+            Id = ConfigSection.AiModels,
+            Title = "AI Models",
+            Description = "Model configurations and endpoints",
+            Icon = Icons.Material.Filled.SmartToy
+        },
+        new ConfigurationSectionInfo
+        {
+            Id = ConfigSection.Scalability,
+            Title = "Scalability",
+            Description = "Worker counts and performance",
+            Icon = Icons.Material.Filled.Speed
+        },
+        new ConfigurationSectionInfo
+        {
+            Id = ConfigSection.VectorStore,
+            Title = "Vector Store",
+            Description = "Embedding and search settings",
+            Icon = Icons.Material.Filled.Hub
+        },
+        new ConfigurationSectionInfo
+        {
+            Id = ConfigSection.Ocr,
+            Title = "OCR",
+            Description = "Text extraction settings",
+            Icon = Icons.Material.Filled.TextFields
+        },
+        new ConfigurationSectionInfo
+        {
+            Id = ConfigSection.Secrets,
+            Title = "Secrets",
+            Description = "API keys and credentials",
+            Icon = Icons.Material.Filled.VpnKey
+        },
+        new ConfigurationSectionInfo
+        {
+            Id = ConfigSection.FileStorage,
+            Title = "File Storage",
+            Description = "Storage config and providers",
+            Icon = Icons.Material.Filled.Storage
+        },
+        new ConfigurationSectionInfo
+        {
+            Id = ConfigSection.HostNames,
+            Title = "Host Names",
+            Description = "Domain and URL configuration",
+            Icon = Icons.Material.Filled.Dns
+        },
+        new ConfigurationSectionInfo
+        {
+            Id = ConfigSection.Mcp,
+            Title = "MCP Server",
+            Description = "Model Context Protocol config",
+            Icon = Icons.Material.Filled.Settings
+        },
+        new ConfigurationSectionInfo
+        {
+            Id = ConfigSection.Flow,
+            Title = "Flow Assistant",
+            Description = "Flow AI Assistant configuration",
+            Icon = Icons.Material.Filled.ChatBubble
+        }
+    };
+
+    private class ConfigurationSectionInfo
+    {
+        public ConfigSection Id { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public string Icon { get; set; } = string.Empty;
+    }
+}

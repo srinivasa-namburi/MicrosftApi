@@ -72,10 +72,17 @@ namespace Microsoft.Greenlight.Grains.Ingestion
             // Acquire global ingestion lease (weight=1) to enforce cluster-wide concurrency
             var coordinator = GrainFactory.GetGrain<IGlobalConcurrencyCoordinatorGrain>(ConcurrencyCategory.Ingestion.ToString());
             var requesterId = $"Ingest:{_entity.Id}";
+
+            _logger.LogDebug("[StartIngestionAsync] Attempting to acquire ingestion lease for documentId={DocumentId}, fileName={FileName}",
+                _entity.Id, _entity.FileName);
+
             try
             {
                 _lease = await coordinator.AcquireAsync(requesterId, weight: 1, waitTimeout: TimeSpan.FromHours(8), leaseTtl: TimeSpan.FromMinutes(90));
                 _isInProcess = true;
+
+                _logger.LogDebug("[StartIngestionAsync] Successfully acquired ingestion lease {LeaseId} for documentId={DocumentId}, fileName={FileName}",
+                    _lease.LeaseId, _entity.Id, _entity.FileName);
             }
             catch (TimeoutException tex)
             {
@@ -102,8 +109,12 @@ namespace Microsoft.Greenlight.Grains.Ingestion
                     _entity.IngestionState = IngestionState.FileCopying;
                     await UpdateEntityStateAsync();
                     var fileCopyGrain = GrainFactory.GetGrain<IDocumentFileCopyGrain>(_entity.Id);
-                    _logger.LogInformation("[StartIngestionAsync] Calling CopyFileAsync for documentId={DocumentId}, container={Container}, folderPath={FolderPath}", _entity.Id, _entity.Container, _entity.FolderPath);
+                    _logger.LogDebug("[StartIngestionAsync] Calling CopyFileAsync for documentId={DocumentId}, fileName={FileName}, container={Container}, folderPath={FolderPath}",
+                        _entity.Id, _entity.FileName, _entity.Container, _entity.FolderPath);
                     var copyResult = await fileCopyGrain.CopyFileAsync(_entity.Id);
+
+                    _logger.LogDebug("[StartIngestionAsync] CopyFileAsync completed with Success={Success} for documentId={DocumentId}, fileName={FileName}",
+                        copyResult.Success, _entity.Id, _entity.FileName);
                     if (copyResult.Success)
                     {
                         await OnFileCopyCompletedAsync();
@@ -118,7 +129,7 @@ namespace Microsoft.Greenlight.Grains.Ingestion
                 {
                     // We are probably recovering from a previous state, so just transition to Processing since the file has already been copied
 
-                    _logger.LogInformation("[StartIngestionAsync] File already copied, transitioning to Processing state for documentId={DocumentId}", _entity.Id);
+                    _logger.LogDebug("[StartIngestionAsync] File already copied, transitioning to Processing state for documentId={DocumentId}", _entity.Id);
                     await OnFileCopyCompletedAsync();
 
                 }
@@ -150,7 +161,7 @@ namespace Microsoft.Greenlight.Grains.Ingestion
             _entity.IngestionState = IngestionState.Processing;
             await UpdateEntityStateAsync();
             
-            _logger.LogInformation("[OnFileCopyCompletedAsync] Starting document processing for documentId={DocumentId}, fileName={FileName}", 
+            _logger.LogDebug("[OnFileCopyCompletedAsync] Starting document processing for documentId={DocumentId}, fileName={FileName}",
                 _entity.Id, _entity.FileName);
 
             try
@@ -185,7 +196,7 @@ namespace Microsoft.Greenlight.Grains.Ingestion
                 // Handle the result
                 if (processResult.Success)
                 {
-                    _logger.LogInformation("[OnFileCopyCompletedAsync] Document processing succeeded for documentId={DocumentId}, fileName={FileName}", 
+                    _logger.LogDebug("[OnFileCopyCompletedAsync] Document processing succeeded for documentId={DocumentId}, fileName={FileName}",
                         _entity.Id, _entity.FileName);
                     await OnProcessingCompletedAsync();
                 }
@@ -342,7 +353,16 @@ namespace Microsoft.Greenlight.Grains.Ingestion
             {
                 var coordinator = GrainFactory.GetGrain<IGlobalConcurrencyCoordinatorGrain>(ConcurrencyCategory.Ingestion.ToString());
                 var released = await coordinator.ReleaseAsync(_lease.LeaseId);
-                _logger.LogDebug("Released ingestion lease {LeaseId} for document {DocumentId}: {Released}", _lease.LeaseId, _entity?.Id, released);
+
+                if (released)
+                {
+                    _logger.LogDebug("Released ingestion lease {LeaseId} for document {DocumentId}", _lease.LeaseId, _entity?.Id);
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to release lease {LeaseId} for document {DocumentId} - coordinator may have been reactivated, lease was already orphaned",
+                        _lease.LeaseId, _entity?.Id);
+                }
             }
             catch (Exception ex)
             {

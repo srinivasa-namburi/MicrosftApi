@@ -17,7 +17,7 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference;
 /// </summary>
 public class UploadedDocumentReferenceGenerationService : IContentReferenceGenerationService<ExportedDocumentLink>
 {
-    private readonly DocGenerationDbContext _dbContext;
+    private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
     private readonly ILogger<UploadedDocumentReferenceGenerationService> _logger;
     private readonly IAiEmbeddingService _aiEmbeddingService;
     private readonly Helpers.AzureFileHelper _fileHelper;
@@ -27,13 +27,13 @@ public class UploadedDocumentReferenceGenerationService : IContentReferenceGener
     /// Initializes a new instance of the uploaded document reference generation service.
     /// </summary>
     public UploadedDocumentReferenceGenerationService(
-        DocGenerationDbContext dbContext,
+        IDbContextFactory<DocGenerationDbContext> dbContextFactory,
         ILogger<UploadedDocumentReferenceGenerationService> logger,
         IAiEmbeddingService aiEmbeddingService,
         Helpers.AzureFileHelper fileHelper,
         ITextExtractionService textExtractionService)
     {
-        _dbContext = dbContext;
+        _dbContextFactory = dbContextFactory;
         _logger = logger;
         _aiEmbeddingService = aiEmbeddingService;
         _fileHelper = fileHelper;
@@ -69,7 +69,8 @@ public class UploadedDocumentReferenceGenerationService : IContentReferenceGener
     {
         try
         {
-            var uploadedFile = await _dbContext.ExportedDocumentLinks
+            await using var db = await _dbContextFactory.CreateDbContextAsync();
+            var uploadedFile = await db.ExportedDocumentLinks
                 .Where(x => x.Type == FileDocumentType.TemporaryReferenceFile || x.Type == FileDocumentType.Review)
                 .AsNoTracking()
                 .FirstOrDefaultAsync(f => f.Id == uploadedFileId);
@@ -99,7 +100,7 @@ public class UploadedDocumentReferenceGenerationService : IContentReferenceGener
             // Build the text content from the search results
             if (fileContent.Length > 0)
             {
-                StringBuilder contentBuilder = new StringBuilder();
+                StringBuilder contentBuilder = new();
                 contentBuilder.AppendLine($"ExternalFile: {uploadedFile.FileName}");
                 contentBuilder.AppendLine("------------------------------------");
                 contentBuilder.AppendLine(fileContent);
@@ -107,12 +108,12 @@ public class UploadedDocumentReferenceGenerationService : IContentReferenceGener
                 return contentBuilder.ToString();
             }
 
-            // Fallback if we can't extract text or for non-document assets
+            // Fallback summary if extraction failed
             return $"ExternalFile: {uploadedFile.FileName}\n" +
                    $"Type: {uploadedFile.MimeType}\n" +
                    $"Created: {uploadedFile.Created}\n" +
                    $"Document ID: {uploadedFile.Id}\n" +
-                   $"Error : Unable to process this file";
+                   "Error : Unable to process this file";
         }
         catch (Exception ex)
         {
