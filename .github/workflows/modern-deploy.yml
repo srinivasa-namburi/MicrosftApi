@@ -9,8 +9,9 @@ on:
         default: 'dev'
 
 jobs:
-  publish:
+  deploy:
     runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -20,6 +21,8 @@ jobs:
         run: |
           # Install GA version of Aspire CLI
           curl -sSL https://aspire.dev/install.sh | bash
+          # Add aspire to PATH for current shell
+          export PATH="$HOME/.aspire/bin:$PATH"
           # Verify installation
           aspire --version
       - name: Build
@@ -30,25 +33,10 @@ jobs:
           export PATH="$HOME/.aspire/bin:$PATH"
           # Set execute permissions for scripts
           chmod +x build/scripts/*.sh
+          chmod +x build/scripts/pipeline-internal/*.sh
           build/scripts/pipeline-internal/build-modern-aspire-publish.sh out/publish
           # Post-publish fixes now handles all patching
           build/scripts/pipeline-internal/build-modern-post-publish-fixes.sh out/publish publish
-      - name: Upload publish artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: publish
-          path: out/publish
-
-  deploy:
-    needs: publish
-    runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: publish
-          path: publish
       - name: Azure login
         uses: azure/login@v2
         with:
@@ -63,9 +51,6 @@ jobs:
             ACR_NAME="${AZURE_CONTAINER_REGISTRY_NAME:-${ACR_NAME:-acr$(echo $AZURE_RESOURCE_GROUP | tr -d '-')}}"
             echo "[GitHub] Building and pushing images to ACR: $ACR_NAME"
 
-            # Make scripts executable
-            chmod +x $(pwd)/build/scripts/pipeline-internal/build-modern-build-push-images*.sh
-
             # Export variables for the script
             export AZURE_RESOURCE_GROUP="$AZURE_RESOURCE_GROUP"
             export AKS_CLUSTER_NAME="${AKS_CLUSTER_NAME:-aks-$AZURE_RESOURCE_GROUP}"
@@ -73,14 +58,14 @@ jobs:
             export BUILD_BUILDNUMBER="${GITHUB_RUN_NUMBER}-${GITHUB_SHA:0:7}"
 
             # Use optimized build with cached base image (1-2 min builds)
-            if [ -f "$(pwd)/build/scripts/pipeline-internal/build-modern-build-push-images-optimized.sh" ]; then
+            if [ -f "build/scripts/pipeline-internal/build-modern-build-push-images-optimized.sh" ]; then
               echo "[GitHub] Using optimized build with cached base image (fastest)"
-              $(pwd)/build/scripts/pipeline-internal/build-modern-build-push-images-optimized.sh \
+              build/scripts/pipeline-internal/build-modern-build-push-images-optimized.sh \
                 "$ACR_NAME" \
                 "$(pwd)"
-            elif [ -f "$(pwd)/build/scripts/pipeline-internal/build-modern-build-push-images-parallel.sh" ]; then
+            elif [ -f "build/scripts/pipeline-internal/build-modern-build-push-images-parallel.sh" ]; then
               echo "[GitHub] Using parallel build script (fast fallback)"
-              $(pwd)/build/scripts/pipeline-internal/build-modern-build-push-images-parallel.sh \
+              build/scripts/pipeline-internal/build-modern-build-push-images-parallel.sh \
                 "$ACR_NAME" \
                 "$(pwd)"
             else
@@ -107,8 +92,8 @@ jobs:
             rm -f azure-outputs.env
 
             # Set up paths
-            SCRIPTS_DIR="$(pwd)/build/scripts/pipeline-internal"
-            PUB_DIR="$(pwd)/publish"
+            SCRIPTS_DIR="build/scripts/pipeline-internal"
+            PUB_DIR="out/publish"
 
             # Make scripts executable
             chmod +x "$SCRIPTS_DIR"/*.sh
@@ -168,7 +153,7 @@ jobs:
             kubectl cluster-info
 
             # Get ACR endpoint if available
-            ACR_NAME="${ACR_NAME:-acr$AZURE_RESOURCE_GROUP}"
+            ACR_NAME="${AZURE_CONTAINER_REGISTRY_NAME:-${ACR_NAME:-acr$(echo $AZURE_RESOURCE_GROUP | tr -d '-')}}"
             ACR_LOGIN_SERVER=$(az acr show --name "$ACR_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query loginServer -o tsv 2>/dev/null || echo "")
             if [ -n "$ACR_LOGIN_SERVER" ]; then
               echo "AZURE_CONTAINER_REGISTRY_ENDPOINT=$ACR_LOGIN_SERVER" >> $GITHUB_ENV
@@ -181,11 +166,12 @@ jobs:
           AKS_RESOURCE_GROUP: ${{ vars.AKS_RESOURCE_GROUP }}
           AKS_CLUSTER_NAME: ${{ vars.AKS_CLUSTER_NAME }}
           ACR_NAME: ${{ vars.ACR_NAME }}
+          AZURE_CONTAINER_REGISTRY_NAME: ${{ vars.AZURE_CONTAINER_REGISTRY_NAME }}
       - name: Deploy to AKS with Helm
         run: |
           # Set up paths
-          SCRIPTS_DIR="$(pwd)/build/scripts/pipeline-internal"
-          PUB_DIR="$(pwd)/publish"
+          SCRIPTS_DIR="build/scripts/pipeline-internal"
+          PUB_DIR="out/publish"
 
           # Load Azure deployment outputs
           echo "[GitHub] Loading Azure deployment outputs..."
@@ -233,4 +219,62 @@ jobs:
           WORKLOAD_IDENTITY_SERVICE_ACCOUNT: ${{ vars.WORKLOAD_IDENTITY_SERVICE_ACCOUNT }}
           AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
           # Azure outputs are loaded from azure-outputs.env file directly
+      - name: Expose endpoints and setup Front Door
+        uses: azure/CLI@v2
+        with:
+          inlineScript: |
+            set -euo pipefail
 
+            SCRIPTS_DIR="build/scripts/pipeline-internal"
+            chmod +x "$SCRIPTS_DIR"/*.sh
+
+            # Ensure we have cluster context
+            AKS_RG="${AKS_RESOURCE_GROUP:-$AZURE_RESOURCE_GROUP}"
+            AKS_NAME="${AKS_CLUSTER_NAME:-aks-$AZURE_RESOURCE_GROUP}"
+            az aks get-credentials --resource-group "$AKS_RG" --name "$AKS_NAME" --overwrite-existing
+
+            # Expose services based on deployment model
+            DEPLOYMENT_MODEL="${DEPLOYMENT_MODEL:-public}"
+            echo "[GitHub] Configuring service endpoints for $DEPLOYMENT_MODEL deployment..."
+
+            DISABLE_EXPOSEDENDPOINTS="${DISABLE_EXPOSEDENDPOINTS:-false}" \
+              "$SCRIPTS_DIR/build-modern-expose-endpoints.sh" "${AKS_NAMESPACE}" "$DEPLOYMENT_MODEL"
+
+            # Setup Azure Front Door only for public and hybrid modes
+            if [[ "$DEPLOYMENT_MODEL" == "public" ]] || [[ "$DEPLOYMENT_MODEL" == "hybrid" ]]; then
+              echo "[GitHub] Creating Azure Front Door for $DEPLOYMENT_MODEL deployment..."
+              DISABLE_EXPOSEDENDPOINTS="${DISABLE_EXPOSEDENDPOINTS:-false}" \
+                "$SCRIPTS_DIR/build-modern-afd-setup.sh" "$AZURE_RESOURCE_GROUP" "$AZURE_LOCATION" "greenlight-${ENVIRONMENT}" "${AKS_NAMESPACE}"
+            else
+              echo "[GitHub] Skipping Azure Front Door setup for private deployment"
+            fi
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+          AKS_RESOURCE_GROUP: ${{ vars.AKS_RESOURCE_GROUP }}
+          AKS_CLUSTER_NAME: ${{ vars.AKS_CLUSTER_NAME }}
+          AKS_NAMESPACE: ${{ vars.AKS_NAMESPACE }}
+          DEPLOYMENT_MODEL: ${{ vars.DEPLOYMENT_MODEL }}
+          DISABLE_EXPOSEDENDPOINTS: ${{ vars.DISABLE_EXPOSEDENDPOINTS }}
+          ENVIRONMENT: ${{ github.event.inputs.environment }}
+      - name: Run DB SetupManager job
+        uses: azure/CLI@v2
+        with:
+          inlineScript: |
+            set -euo pipefail
+
+            SCRIPTS_DIR="build/scripts/pipeline-internal"
+            chmod +x "$SCRIPTS_DIR"/*.sh
+
+            # Ensure we have cluster context
+            AKS_RG="${AKS_RESOURCE_GROUP:-$AZURE_RESOURCE_GROUP}"
+            AKS_NAME="${AKS_CLUSTER_NAME:-aks-$AZURE_RESOURCE_GROUP}"
+            az aks get-credentials --resource-group "$AKS_RG" --name "$AKS_NAME" --overwrite-existing
+
+            # Run job from inside cluster context with longer backoff for workload identity token propagation
+            "$SCRIPTS_DIR/build-modern-run-db-setup-job.sh" "${AKS_NAMESPACE}" 120
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AKS_RESOURCE_GROUP: ${{ vars.AKS_RESOURCE_GROUP }}
+          AKS_CLUSTER_NAME: ${{ vars.AKS_CLUSTER_NAME }}
+          AKS_NAMESPACE: ${{ vars.AKS_NAMESPACE }}
