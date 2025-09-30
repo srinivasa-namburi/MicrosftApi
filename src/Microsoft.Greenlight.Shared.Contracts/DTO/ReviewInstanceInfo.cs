@@ -18,9 +18,9 @@ public record ReviewInstanceInfo
     public Guid ReviewDefinitionId { get; set; }
 
     /// <summary>
-    /// Unique identifier of the exported link.
+    /// Unique identifier of the external link asset (file being reviewed).
     /// </summary>
-    public Guid ExportedLinkId { get; set; }
+    public Guid ExternalLinkAssetId { get; set; }
 
     /// <summary>
     /// State of the review definition when it was submitted.

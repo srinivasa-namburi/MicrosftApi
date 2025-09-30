@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using Microsoft.Greenlight.Shared.Enums;
+using Microsoft.Greenlight.Shared.Models.FileStorage;
 
 namespace Microsoft.Greenlight.Shared.Models.Review;
 
@@ -20,15 +21,15 @@ public class ReviewInstance : EntityBase
     public ReviewDefinition? ReviewDefinition { get; set; }
 
     /// <summary>
-    /// Unique identifier of the exported document link.
+    /// Unique identifier of the external link asset (file being reviewed).
     /// </summary>
-    public required Guid ExportedLinkId { get; set; }
+    public required Guid ExternalLinkAssetId { get; set; }
 
     /// <summary>
-    /// Exported document link associated with this instance.
+    /// External link asset associated with this instance.
     /// </summary>
     [JsonIgnore]
-    public ExportedDocumentLink? ExportedDocumentLink { get; set; }
+    public ExternalLinkAsset? ExternalLinkAsset { get; set; }
 
     /// <summary>
     /// Short name of the document process associated with this review instance.

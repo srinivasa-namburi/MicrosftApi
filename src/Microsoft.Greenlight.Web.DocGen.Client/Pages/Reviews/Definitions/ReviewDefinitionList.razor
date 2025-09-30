@@ -114,10 +114,9 @@
                                         </div>
                                     </MudItem>
                                     <MudItem xs="2" Class="d-flex justify-end">
-                                        @if (instance.ExportedLinkId != Guid.Empty && _fileInfoDict.ContainsKey(instance.ExportedLinkId))
+                                        @if (instance.ExternalLinkAssetId != Guid.Empty)
                                         {
-                                            var toolTipText = _fileInfoDict[instance.ExportedLinkId]?.FileName ?? "Download Document";
-                                            <MudTooltip Text="@toolTipText">
+                                            <MudTooltip Text="Download Document">
                                                 <MudIconButton Icon="@Icons.Material.Filled.DownloadForOffline"
                                                                Color="Color.Primary"
                                                                Size="Size.Small"
@@ -139,7 +138,6 @@
     private HashSet<ReviewDefinitionInfo> _selectedReviews = [];
     private List<ReviewInstanceInfo>? _recentReviewInstances;
     private Dictionary<Guid, ReviewDefinitionInfo> _reviewDefinitionDict = new();
-    private Dictionary<Guid, ExportedDocumentLinkInfo> _fileInfoDict = new();
     private List<ContentReferenceItemInfo> _cachedReferences = new();
 
     protected override async Task OnInitializedAsync()
@@ -165,38 +163,11 @@
         {
             // Get the 5 most recent review instances
             _recentReviewInstances = await ReviewApiClient.GetRecentReviewInstances(5);
-
-            // Load file info for all exported document links
-            await LoadFileInfo();
         }
         catch (Exception ex)
         {
             Snackbar.Add($"Error loading recent reviews: {ex.Message}", Severity.Error);
             _recentReviewInstances = new List<ReviewInstanceInfo>();
-        }
-    }
-
-    private async Task LoadFileInfo()
-    {
-        if (_recentReviewInstances == null) return;
-
-        foreach (var instance in _recentReviewInstances)
-        {
-            if (instance.ExportedLinkId != Guid.Empty && !_fileInfoDict.ContainsKey(instance.ExportedLinkId))
-            {
-                try
-                {
-                    var fileInfo = await FileApiClient.GetFileInfoById(instance.ExportedLinkId);
-                    if (fileInfo != null)
-                    {
-                        _fileInfoDict[instance.ExportedLinkId] = fileInfo;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.Error.WriteLine($"Error loading file info for {instance.ExportedLinkId}: {ex.Message}");
-                }
-            }
         }
     }
 

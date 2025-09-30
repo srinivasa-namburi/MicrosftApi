@@ -48,7 +48,7 @@ namespace Microsoft.Greenlight.Grains.Review
                 await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
                 var reviewInstance = await dbContext.ReviewInstances
-                    .Include(x => x.ExportedDocumentLink)
+                    .Include(x => x.ExternalLinkAsset)
                     .Include(x => x.ReviewDefinition)
                         .ThenInclude(x => x!.ReviewQuestions)
                     .Include(x => x.ReviewDefinition!.DocumentProcessDefinitionConnections
@@ -93,25 +93,12 @@ namespace Microsoft.Greenlight.Grains.Review
 
                 var totalNumberOfQuestions = reviewInstance.ReviewDefinition!.ReviewQuestions.Count;
 
-                // Determine file name for display from EDL (legacy) or ExternalLinkAsset (new path)
-                string? displayFileName = reviewInstance.ExportedDocumentLink?.FileName;
+                // Get file name and hash from ExternalLinkAsset
+                string? displayFileName = reviewInstance.ExternalLinkAsset?.FileName;
+                string? fileHash = reviewInstance.ExternalLinkAsset?.FileHash;
 
                 try
                 {
-                    // If we have an EDL, optionally compute a hash (legacy path). For ExternalLinkAsset path, skip.
-                    string? fileHash = null;
-                    if (reviewInstance.ExportedDocumentLink != null)
-                    {
-                        var fileBlobStream = await _fileHelper.GetFileAsStreamFromFullBlobUrlAsync(reviewInstance.ExportedDocumentLink.AbsoluteUrl);
-                        if (fileBlobStream != null)
-                        {
-                            using var sha256 = SHA256.Create();
-                            fileBlobStream.Position = 0;
-                            var hashBytes = await sha256.ComputeHashAsync(fileBlobStream);
-                            fileHash = BitConverter.ToString(hashBytes).Replace("-", "").ToLowerInvariant();
-                        }
-                    }
-
                     // Use ContentReferenceService to create the review reference (handles deduplication, RAG text, etc.)
                     var contentReference = await _contentReferenceService.CreateReviewReferenceAsync(
                         reviewInstanceId,
@@ -136,7 +123,7 @@ namespace Microsoft.Greenlight.Grains.Review
                 // Return success with document info
                 return GenericResult<ReviewDocumentIngestionResult>.Success(new ReviewDocumentIngestionResult
                 {
-                    ExportedDocumentLinkId = reviewInstance.ExportedDocumentLink?.Id,
+                    ExportedDocumentLinkId = reviewInstance.ExternalLinkAsset?.Id,
                     TotalNumberOfQuestions = totalNumberOfQuestions,
                     DocumentProcessShortName = trackedReviewInstance.DocumentProcessShortName ?? string.Empty,
                     ContentType = ReviewContentType.ExternalFile

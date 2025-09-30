@@ -69,7 +69,7 @@ namespace Microsoft.Greenlight.Grains.Review
                 // First, check if the review has a document to ingest
                 await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
                 var reviewInstance = await dbContext.ReviewInstances
-                    .Include(x => x.ExportedDocumentLink)
+                    .Include(x => x.ExternalLinkAsset)
                     .AsNoTracking()
                     .FirstOrDefaultAsync(x => x.Id == this.GetPrimaryKey());
 
@@ -82,7 +82,7 @@ namespace Microsoft.Greenlight.Grains.Review
                 // If still not set, attempt to infer StartedByProviderSubjectId from stored Author/Owner if available in DB (future enhancement)
 
                 // Document ingestion step is only necessary if the review has a document
-                if (reviewInstance.ExportedDocumentLink != null)
+                if (reviewInstance.ExternalLinkAsset != null)
                 {
                     _state.State.Status = ReviewExecutionStatus.Ingesting;
                     await SafeWriteStateAsync();

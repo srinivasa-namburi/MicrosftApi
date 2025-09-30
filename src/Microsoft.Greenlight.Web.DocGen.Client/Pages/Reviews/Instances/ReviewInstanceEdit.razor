@@ -582,8 +582,7 @@
                 if (ReviewInstance != null && uploadedReference.ContentReferenceSourceId.HasValue)
                 {
                     // Use the ContentReferenceSourceId which points to the ExternalLinkAsset
-                    // This maintains compatibility with the existing ExportedLinkId field
-                    ReviewInstance.ExportedLinkId = uploadedReference.ContentReferenceSourceId.Value;
+                    ReviewInstance.ExternalLinkAssetId = uploadedReference.ContentReferenceSourceId.Value;
                 }
                 else if (ReviewInstance == null)
                 {

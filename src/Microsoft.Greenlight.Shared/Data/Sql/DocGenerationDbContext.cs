@@ -530,18 +530,18 @@ public class DocGenerationDbContext : DbContext
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<ReviewInstance>()
-            .HasOne(x => x.ExportedDocumentLink)
+            .HasOne(x => x.ExternalLinkAsset)
             .WithMany()
-            .HasForeignKey(x => x.ExportedLinkId)
-            .IsRequired(true)
-            .OnDelete(DeleteBehavior.Cascade);
+            .HasForeignKey(x => x.ExternalLinkAssetId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<ReviewInstance>()
             .HasIndex(nameof(ReviewInstance.ReviewDefinitionId))
             .IsUnique(false);
 
         modelBuilder.Entity<ReviewInstance>()
-            .HasIndex(nameof(ReviewInstance.ExportedLinkId))
+            .HasIndex(nameof(ReviewInstance.ExternalLinkAssetId))
             .IsUnique(false);
 
         modelBuilder.Entity<ReviewInstance>()

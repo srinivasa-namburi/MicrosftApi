@@ -140,7 +140,7 @@ public class ReviewInstanceController : BaseController
     /// Produces Status Codes:
     ///     200 Ok: When completed sucessfully
     ///     400 Bad Request: When the review defintion id on the review instance is not found,
-    ///     or the export link id on the review instance is not found
+    ///     or the external link asset id on the review instance is not found
     /// </returns>
     [HttpPost]
     [RequiresPermission(PermissionKeys.ExecuteReviews)]
@@ -157,22 +157,18 @@ public class ReviewInstanceController : BaseController
             reviewInstanceInfo.Id = Guid.NewGuid();
         }
 
-        // validate that the review definition and exported link exist
+        // validate that the review definition and external link asset exist
         var reviewDefinition = await _dbContext.ReviewDefinitions.FindAsync(reviewInstanceInfo.ReviewDefinitionId);
         if (reviewDefinition == null)
         {
             return BadRequest("ReviewId is invalid");
         }
 
-        // Accept either legacy ExportedDocumentLink ID or a newer ExternalLinkAsset ID (from ContentReference upload)
-        var exportedDocumentLink = await _dbContext.ExportedDocumentLinks.FindAsync(reviewInstanceInfo.ExportedLinkId);
-        if (exportedDocumentLink == null)
+        // Validate that the external link asset exists
+        var externalLinkAsset = await _dbContext.ExternalLinkAssets.FindAsync(reviewInstanceInfo.ExternalLinkAssetId);
+        if (externalLinkAsset == null)
         {
-            var externalLinkAsset = await _dbContext.ExternalLinkAssets.FindAsync(reviewInstanceInfo.ExportedLinkId);
-            if (externalLinkAsset == null)
-            {
-                return BadRequest("ExportedLinkId is invalid");
-            }
+            return BadRequest("ExternalLinkAssetId is invalid");
         }
 
         // Map into a domain model

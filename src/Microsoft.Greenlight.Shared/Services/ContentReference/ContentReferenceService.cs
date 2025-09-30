@@ -8,6 +8,7 @@ using Microsoft.Greenlight.Shared.Contracts.DTO;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Models;
+using Microsoft.Greenlight.Shared.Models.FileStorage;
 using Microsoft.Greenlight.Shared.Models.Review;
 using Microsoft.Greenlight.Shared.Services.Caching;
 using Microsoft.Greenlight.Shared.Configuration;
@@ -263,13 +264,13 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                         await using (var db = await _dbContextFactory.CreateDbContextAsync())
                         {
                             var reviewInstance = await db.Set<ReviewInstance>().FirstOrDefaultAsync(r => r.Id == reference.ContentReferenceSourceId.Value);
-                            if (reviewInstance?.ExportedLinkId != Guid.Empty)
+                            if (reviewInstance?.ExternalLinkAssetId != Guid.Empty)
                             {
-                                var exportedDocLink = await db.ExportedDocumentLinks.FindAsync(reviewInstance.ExportedLinkId);
-                                if (exportedDocLink != null)
+                                var externalLinkAsset = await db.ExternalLinkAssets.FindAsync(reviewInstance.ExternalLinkAssetId);
+                                if (externalLinkAsset != null)
                                 {
-                                    ragText = await _generationServiceFactory.GetGenerationService<ExportedDocumentLink>(ContentReferenceType.ExternalFile)?
-                                        .GenerateContentTextForRagAsync(exportedDocLink.Id);
+                                    ragText = await _generationServiceFactory.GetGenerationService<ExternalLinkAsset>(ContentReferenceType.ExternalLinkAsset)?
+                                        .GenerateContentTextForRagAsync(externalLinkAsset.Id);
                                 }
                             }
                         }
@@ -379,16 +380,16 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
             if (reference.ReferenceType == ContentReferenceType.ReviewItem && string.IsNullOrEmpty(reference.RagText) && reference.ContentReferenceSourceId != null)
             {
                 var reviewInstance = await db.Set<ReviewInstance>().FirstOrDefaultAsync(r => r.Id == reference.ContentReferenceSourceId.Value);
-                if (reviewInstance?.ExportedLinkId != Guid.Empty)
+                if (reviewInstance?.ExternalLinkAssetId != Guid.Empty)
                 {
-                    var exportedDocLink = await db.ExportedDocumentLinks.FindAsync(reviewInstance.ExportedLinkId);
-                    if (exportedDocLink != null)
+                    var externalLinkAsset = await db.ExternalLinkAssets.FindAsync(reviewInstance.ExternalLinkAssetId);
+                    if (externalLinkAsset != null)
                     {
                         try
                         {
-                            await EnsureFileAcknowledgmentForExternalFileAsync(db, reference, exportedDocLink);
-                            var fileService = _generationServiceFactory.GetGenerationService<ExportedDocumentLink>(ContentReferenceType.ExternalFile);
-                            var ragText = await fileService?.GenerateContentTextForRagAsync(exportedDocLink.Id);
+                            await EnsureFileAcknowledgmentForExternalLinkAssetAsync(db, reference, externalLinkAsset);
+                            var fileService = _generationServiceFactory.GetGenerationService<ExternalLinkAsset>(ContentReferenceType.ExternalLinkAsset);
+                            var ragText = await fileService?.GenerateContentTextForRagAsync(externalLinkAsset.Id);
                             if (!string.IsNullOrEmpty(ragText)) { reference.RagText = ragText; }
                         }
                         catch (Exception ex)
@@ -413,6 +414,83 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
 
             await db.SaveChangesAsync();
             return reference;
+        }
+
+        private async Task EnsureFileAcknowledgmentForExternalLinkAssetAsync(DocGenerationDbContext db, ContentReferenceItem reference, ExternalLinkAsset externalLinkAsset)
+        {
+            // External Link Assets already have an associated FileStorageSource
+            if (!externalLinkAsset.FileStorageSourceId.HasValue)
+            {
+                _logger.LogWarning("ExternalLinkAsset {AssetId} does not have a FileStorageSourceId", externalLinkAsset.Id);
+                return;
+            }
+
+            var fileSource = await db.FileStorageSources
+                .Include(s => s.FileStorageHost)
+                .FirstOrDefaultAsync(s => s.Id == externalLinkAsset.FileStorageSourceId.Value);
+
+            if (fileSource == null)
+            {
+                _logger.LogWarning("FileStorageSource {SourceId} not found for ExternalLinkAsset {AssetId}",
+                    externalLinkAsset.FileStorageSourceId.Value, externalLinkAsset.Id);
+                return;
+            }
+
+            // Get the FileStorageService for this source
+            var fileStorageService = await _fileStorageServiceFactory.GetServiceBySourceIdAsync(fileSource.Id);
+            if (fileStorageService == null)
+            {
+                _logger.LogWarning("FileStorageService not found for source {SourceId}, cannot acknowledge file", fileSource.Id);
+                return;
+            }
+
+            // Check if we already have an acknowledgment for this file
+            var existingAck = await db.FileAcknowledgmentRecords
+                .Include(a => a.FileStorageSource)
+                .FirstOrDefaultAsync(a => a.FileStorageSourceId == fileSource.Id &&
+                                          ((!string.IsNullOrEmpty(externalLinkAsset.FileHash) && a.FileHash == externalLinkAsset.FileHash) ||
+                                           a.FileStorageSourceInternalUrl == externalLinkAsset.Url));
+
+            Guid? acknowledgmentId = existingAck?.Id;
+
+            if (existingAck == null)
+            {
+                // Register file discovery (no movement for content references)
+                var relativePath = externalLinkAsset.FileName;
+                try
+                {
+                    acknowledgmentId = await fileStorageService.RegisterFileDiscoveryAsync(relativePath, externalLinkAsset.FileHash);
+
+                    // Reload the acknowledgment record that was created by the service
+                    existingAck = await db.FileAcknowledgmentRecords
+                        .Include(a => a.FileStorageSource)
+                        .FirstOrDefaultAsync(a => a.Id == acknowledgmentId);
+
+                    _logger.LogDebug("Registered discovery for content reference file {FileName} with hash {Hash}",
+                        relativePath, externalLinkAsset.FileHash);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to register discovery for file {FileName} through FileStorageService", relativePath);
+                    return;
+                }
+            }
+
+            var joinExists = await db.Set<Shared.Models.FileStorage.ContentReferenceFileAcknowledgment>()
+                .AnyAsync(j => j.ContentReferenceItemId == reference.Id && j.FileAcknowledgmentRecordId == existingAck.Id);
+
+            if (!joinExists)
+            {
+                db.Add(new Shared.Models.FileStorage.ContentReferenceFileAcknowledgment
+                {
+                    ContentReferenceItemId = reference.Id,
+                    FileAcknowledgmentRecordId = existingAck.Id
+                });
+                await db.SaveChangesAsync();
+            }
+
+            try { _ = await _fileUrlResolver.ResolveUrlAsync(existingAck); }
+            catch (Exception ex) { _logger.LogWarning(ex, "Failed to eagerly resolve URL for file acknowledgment {AckId}", acknowledgmentId); }
         }
 
         private async Task EnsureFileAcknowledgmentForExternalFileAsync(DocGenerationDbContext db, ContentReferenceItem reference, ExportedDocumentLink exportedDocLink)

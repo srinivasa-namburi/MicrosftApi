@@ -49,24 +49,24 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
         {
             try
             {
-                // Ensure the exported document link is loaded
-                if (source.ExportedDocumentLink == null)
+                // Ensure the external link asset is loaded
+                if (source.ExternalLinkAsset == null)
                 {
                     source = await _dbContext.ReviewInstances
-                        .Include(r => r.ExportedDocumentLink)
+                        .Include(r => r.ExternalLinkAsset)
                         .FirstOrDefaultAsync(r => r.Id == source.Id) ?? source;
                 }
 
                 var references = new List<ContentReferenceItemInfo>();
 
-                if (source.ExportedDocumentLink != null)
+                if (source.ExternalLinkAsset != null)
                 {
                     // Create a reference for the review document
                     references.Add(new ContentReferenceItemInfo
                     {
                         Id = Guid.NewGuid(),
                         ContentReferenceSourceId = source.Id,
-                        DisplayName = $"Review Document - {source.ExportedDocumentLink.FileName}",
+                        DisplayName = $"Review Document - {source.ExternalLinkAsset.FileName}",
                         Description = $"Document for review {source.Id}",
                         ReferenceType = ContentReferenceType.ReviewItem,
                         CreatedDate = DateTime.UtcNow
@@ -87,9 +87,11 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
         {
             try
             {
-                // Get the review instance with its exported document (legacy) or asset (new)
+                // Get the review instance with its external link asset
                 var reviewInstance = await _dbContext.ReviewInstances
-                    .Include(r => r.ExportedDocumentLink)
+                    .Include(r => r.ExternalLinkAsset)
+                        .ThenInclude(a => a!.FileStorageSource)
+                        .ThenInclude(s => s!.FileStorageHost)
                     .FirstOrDefaultAsync(r => r.Id == reviewId);
 
                 if (reviewInstance == null)
@@ -98,54 +100,44 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                     return null;
                 }
 
-                // Get the document content via FileStorageSource-based service when possible
+                // Get the document content via FileStorageSource-based service
                 try
                 {
                     Stream? fileStream = null;
                     string logicalFileName = "review-document";
-                    if (reviewInstance.ExportedDocumentLink != null)
+
+                    var asset = reviewInstance.ExternalLinkAsset;
+                    if (asset != null)
                     {
-                        // Legacy path: EDL
-                        fileStream = await _fileHelper.GetFileAsStreamFromFullBlobUrlAsync(reviewInstance.ExportedDocumentLink.AbsoluteUrl);
-                        logicalFileName = reviewInstance.ExportedDocumentLink.FileName;
-                    }
-                    else
-                    {
-                        // New path: ExternalLinkAsset stored into ExportedLinkId field for compatibility
-                        var asset = await _dbContext.ExternalLinkAssets.FirstOrDefaultAsync(a => a.Id == reviewInstance.ExportedLinkId);
-                        if (asset != null && asset.FileStorageSourceId.HasValue)
+                        logicalFileName = Path.GetFileName(asset.FileName);
+
+                        if (asset.FileStorageSourceId.HasValue && asset.FileStorageSource != null)
                         {
                             // Use storage service for this source
-                            var source = await _dbContext.FileStorageSources.Include(s => s.FileStorageHost)
-                                .FirstOrDefaultAsync(s => s.Id == asset.FileStorageSourceId.Value);
-                            if (source != null)
+                            var sourceInfo = new Contracts.DTO.FileStorage.FileStorageSourceInfo
                             {
-                                var sourceInfo = new Contracts.DTO.FileStorage.FileStorageSourceInfo
+                                Id = asset.FileStorageSource.Id,
+                                Name = asset.FileStorageSource.Name,
+                                ContainerOrPath = asset.FileStorageSource.ContainerOrPath,
+                                AutoImportFolderName = asset.FileStorageSource.AutoImportFolderName,
+                                IsDefault = asset.FileStorageSource.IsDefault,
+                                IsActive = asset.FileStorageSource.IsActive,
+                                ShouldMoveFiles = asset.FileStorageSource.ShouldMoveFiles,
+                                Description = asset.FileStorageSource.Description,
+                                StorageSourceDataType = asset.FileStorageSource.StorageSourceDataType,
+                                FileStorageHost = new Contracts.DTO.FileStorage.FileStorageHostInfo
                                 {
-                                    Id = source.Id,
-                                    Name = source.Name,
-                                    ContainerOrPath = source.ContainerOrPath,
-                                    AutoImportFolderName = source.AutoImportFolderName,
-                                    IsDefault = source.IsDefault,
-                                    IsActive = source.IsActive,
-                                    ShouldMoveFiles = source.ShouldMoveFiles,
-                                    Description = source.Description,
-                                    StorageSourceDataType = source.StorageSourceDataType,
-                                    FileStorageHost = new Contracts.DTO.FileStorage.FileStorageHostInfo
-                                    {
-                                        Id = source.FileStorageHost.Id,
-                                        Name = source.FileStorageHost.Name,
-                                        ProviderType = source.FileStorageHost.ProviderType,
-                                        ConnectionString = source.FileStorageHost.ConnectionString,
-                                        IsDefault = source.FileStorageHost.IsDefault,
-                                        IsActive = source.FileStorageHost.IsActive,
-                                        Description = source.FileStorageHost.Description
-                                    }
-                                };
-                                var storageService = _fileStorageServiceFactory.CreateService(sourceInfo);
-                                fileStream = await storageService.GetFileStreamAsync(asset.FileName);
-                                logicalFileName = Path.GetFileName(asset.FileName);
-                            }
+                                    Id = asset.FileStorageSource.FileStorageHost.Id,
+                                    Name = asset.FileStorageSource.FileStorageHost.Name,
+                                    ProviderType = asset.FileStorageSource.FileStorageHost.ProviderType,
+                                    ConnectionString = asset.FileStorageSource.FileStorageHost.ConnectionString,
+                                    IsDefault = asset.FileStorageSource.FileStorageHost.IsDefault,
+                                    IsActive = asset.FileStorageSource.FileStorageHost.IsActive,
+                                    Description = asset.FileStorageSource.FileStorageHost.Description
+                                }
+                            };
+                            var storageService = _fileStorageServiceFactory.CreateService(sourceInfo);
+                            fileStream = await storageService.GetFileStreamAsync(asset.FileName);
                         }
                     }
 
@@ -161,7 +153,7 @@ namespace Microsoft.Greenlight.Shared.Services.ContentReference
                     if (string.IsNullOrEmpty(documentText))
                     {
                         _logger.LogWarning("No text extracted from document for review {ReviewId}", reviewId);
-                        return $"Review Document: {reviewInstance.ExportedDocumentLink.FileName}\n" +
+                        return $"Review Document: {logicalFileName}\n" +
                                $"Error: Unable to extract text from document";
                     }
 

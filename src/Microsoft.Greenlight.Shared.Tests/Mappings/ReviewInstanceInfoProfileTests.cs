@@ -25,7 +25,7 @@ namespace Microsoft.Greenlight.Shared.Tests.Mappings
             var reviewInstance = new ReviewInstance
             {
                 ReviewDefinitionId = Guid.NewGuid(),
-                ExportedLinkId = Guid.NewGuid(),
+                ExternalLinkAssetId = Guid.NewGuid(),
                 ReviewDefinition = new ReviewDefinition
                 {
                     Title = "Test Review",
