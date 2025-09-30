@@ -17,14 +17,18 @@
                 <MudText Typo="Typo.h6">File Storage Sources</MudText>
                 <PermissionView Permission="@GetRequiredPermission()">
                     <MudStack Row="true" Spacing="1">
-                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ShowAddSourceDialog" StartIcon="@Icons.Material.Filled.Add">
-                            Add Source
-                        </MudButton>
+                        <MudTooltip Text="@GetAddSourceTooltip()" Disabled="@IsEntitySaved()">
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ShowAddSourceDialog" StartIcon="@Icons.Material.Filled.Add" Disabled="@(!IsEntitySaved())">
+                                Add Source
+                            </MudButton>
+                        </MudTooltip>
                         @if (ShowAssociations && (DocumentProcessId.HasValue || DocumentLibraryId.HasValue))
                         {
-                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="ShowLinkExistingDialog" StartIcon="@Icons.Material.Filled.Link">
-                                Link Existing
-                            </MudButton>
+                            <MudTooltip Text="@GetLinkExistingTooltip()" Disabled="@IsEntitySaved()">
+                                <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="ShowLinkExistingDialog" StartIcon="@Icons.Material.Filled.Link" Disabled="@(!IsEntitySaved())">
+                                    Link Existing
+                                </MudButton>
+                            </MudTooltip>
                         }
                     </MudStack>
                 </PermissionView>
@@ -63,7 +67,7 @@
         else if (!HasAnySources())
         {
             <MudAlert Severity="Severity.Warning" Class="mb-2">
-                @if (ShowBackwardCompatibility && !string.IsNullOrEmpty(LegacyContainerName))
+                @if (ShowBackwardCompatibility && !string.IsNullOrEmpty(LegacyContainerName) && IsEntitySaved())
                 {
                     <div>
                         <MudText Typo="Typo.body1"><strong>Legacy Configuration Detected</strong></MudText>
@@ -74,6 +78,10 @@
                             </MudButton>
                         </PermissionView>
                     </div>
+                }
+                else if (!IsEntitySaved())
+                {
+                    <span>File storage source will be created automatically when you save this entity.</span>
                 }
                 else
                 {
@@ -117,12 +125,12 @@
             }
         }
 
-        @if (ShowBackwardCompatibility && !string.IsNullOrEmpty(LegacyContainerName) && HasAnySources())
+        @if (ShowBackwardCompatibility && !string.IsNullOrEmpty(LegacyContainerName) && HasAnySources() && IsEntitySaved())
         {
             <MudDivider Class="my-2" />
             <MudAlert Severity="Severity.Info" Dense="true">
                 <MudText Typo="Typo.caption">
-                    <strong>Note:</strong> Legacy blob storage configuration (@LegacyContainerName) is still present. 
+                    <strong>Note:</strong> Legacy blob storage configuration (@LegacyContainerName) is still present.
                     The system will use the file storage sources above instead.
                 </MudText>
             </MudAlert>
@@ -138,6 +146,7 @@
     [Parameter] public bool ShowBackwardCompatibility { get; set; } = true;
     [Parameter] public bool ShowAssociations { get; set; } = true;
     [Parameter] public EventCallback OnSourcesChanged { get; set; }
+    [Parameter] public EventCallback OnMigrateLegacy { get; set; }
 
     private List<FileStorageSourceInfo> _sources = new();
     private List<DocumentProcessFileStorageSourceInfo> _processAssociations = new();
@@ -156,20 +165,30 @@
 
         try
         {
-            if (ShowAssociations && DocumentProcessId.HasValue)
+            // Check if we have a SAVED entity (ID must be non-empty)
+            if (ShowAssociations && DocumentProcessId.HasValue && DocumentProcessId.Value != Guid.Empty)
             {
                 _processAssociations = await FileStorageSourceApiClient.GetFileStorageSourceAssociationsByProcessIdAsync(DocumentProcessId.Value);
                 _sources.Clear();
                 _libraryAssociations.Clear();
             }
-            else if (ShowAssociations && DocumentLibraryId.HasValue)
+            else if (ShowAssociations && DocumentLibraryId.HasValue && DocumentLibraryId.Value != Guid.Empty)
             {
                 _libraryAssociations = await FileStorageSourceApiClient.GetFileStorageSourceAssociationsByLibraryIdAsync(DocumentLibraryId.Value);
                 _sources.Clear();
                 _processAssociations.Clear();
             }
+            else if (ShowAssociations)
+            {
+                // For unsaved entities in association mode, don't load anything
+                // Sources will be created automatically on save
+                _sources.Clear();
+                _processAssociations.Clear();
+                _libraryAssociations.Clear();
+            }
             else
             {
+                // Global view - show all sources
                 _sources = await FileStorageSourceApiClient.GetAllFileStorageSourcesAsync();
                 _processAssociations.Clear();
                 _libraryAssociations.Clear();
@@ -191,9 +210,13 @@
 
     private bool HasAnySources() => _sources.Any() || _processAssociations.Any() || _libraryAssociations.Any();
 
-    private bool GetShowDeleteButton() => 
-        (_sources.Count > 1) || 
-        (_processAssociations.Count > 1) || 
+    private bool IsEntitySaved() =>
+        (DocumentLibraryId.HasValue && DocumentLibraryId.Value != Guid.Empty) ||
+        (DocumentProcessId.HasValue && DocumentProcessId.Value != Guid.Empty);
+
+    private bool GetShowDeleteButton() =>
+        (_sources.Count > 1) ||
+        (_processAssociations.Count > 1) ||
         (_libraryAssociations.Count > 1);
 
     private async Task ShowAddSourceDialog()
@@ -448,44 +471,37 @@
             return;
         }
 
-        var newSource = new CreateFileStorageSourceRequest
+        // If parent provides migration handler, use that (it has access to proper default host logic)
+        if (OnMigrateLegacy.HasDelegate)
         {
-            Name = $"Migrated - {LegacyContainerName}",
-            FileStorageHostId = Guid.Empty, // Placeholder - requires user to set real host later
-            ContainerOrPath = LegacyContainerName,
-            AutoImportFolderName = LegacyAutoImportFolder ?? "ingest-auto",
-            IsDefault = false,
-            IsActive = true,
-            ShouldMoveFiles = true
-        };
-
-        try
-        {
-            var createdSource = await FileStorageSourceApiClient.CreateFileStorageSourceAsync(newSource);
-
-            if (DocumentProcessId.HasValue)
-            {
-                await FileStorageSourceApiClient.AssociateSourceWithProcessAsync(DocumentProcessId.Value, createdSource.Id);
-            }
-            else if (DocumentLibraryId.HasValue)
-            {
-                await FileStorageSourceApiClient.AssociateSourceWithLibraryAsync(DocumentLibraryId.Value, createdSource.Id);
-            }
-
-            Snackbar.Add("Legacy configuration migrated successfully.", Severity.Success);
+            await OnMigrateLegacy.InvokeAsync();
             await LoadSourcesAsync();
             await OnSourcesChanged.InvokeAsync();
+            return;
         }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Error migrating legacy configuration: {ex.Message}", Severity.Error);
-        }
+
+        // Fallback to local migration (should not be used anymore)
+        Snackbar.Add("Migration not configured. Please configure OnMigrateLegacy callback.", Severity.Warning);
     }
 
     private string GetRequiredPermission()
     {
-        return DocumentProcessId.HasValue || DocumentLibraryId.HasValue 
+        return DocumentProcessId.HasValue || DocumentLibraryId.HasValue
             ? Microsoft.Greenlight.Shared.Contracts.Authorization.PermissionKeys.AlterDocumentProcessesAndLibraries
             : Microsoft.Greenlight.Shared.Contracts.Authorization.PermissionKeys.AlterSystemConfiguration;
+    }
+
+    private string GetAddSourceTooltip()
+    {
+        return IsEntitySaved()
+            ? "Create a new file storage source"
+            : "Save this entity first to manually configure file storage";
+    }
+
+    private string GetLinkExistingTooltip()
+    {
+        return IsEntitySaved()
+            ? "Link an existing file storage source"
+            : "Save this entity first to link existing file storage sources";
     }
 }

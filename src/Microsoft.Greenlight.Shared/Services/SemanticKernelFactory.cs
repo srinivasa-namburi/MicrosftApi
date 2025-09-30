@@ -29,9 +29,8 @@ namespace Microsoft.Greenlight.Shared.Services
     public class SemanticKernelFactory : IKernelFactory
     {
         private readonly ILogger<SemanticKernelFactory> _logger;
-        private readonly IServiceProvider _serviceProvider;
+        private readonly IServiceScopeFactory _serviceScopeFactory;
         private readonly ServiceConfigurationOptions _serviceConfigurationOptions;
-        private readonly SemanticKernelInstanceContainer _instanceContainer;
         private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
 
         private readonly AzureOpenAIClient? _openAiClient;
@@ -41,24 +40,21 @@ namespace Microsoft.Greenlight.Shared.Services
         /// per document process / validation scenario as well as generic kernels.
         /// </summary>
         /// <param name="logger">Logger.</param>
-        /// <param name="serviceProvider">Root service provider.</param>
+        /// <param name="serviceScopeFactory">Service scope factory for creating scopes when needed.</param>
         /// <param name="serviceConfigurationOptions">Application service configuration.</param>
-        /// <param name="instanceContainer">Kernel instance cache container.</param>
         /// <param name="dbContextFactory">DbContext factory for retrieving model deployment metadata.</param>
         /// <param name="openAiClient">Azure OpenAI client (keyed) used for chat &amp; embedding services.</param>
         public SemanticKernelFactory(
                 ILogger<SemanticKernelFactory> logger,
-                IServiceProvider serviceProvider,
+                IServiceScopeFactory serviceScopeFactory,
                 IOptions<ServiceConfigurationOptions> serviceConfigurationOptions,
-                SemanticKernelInstanceContainer instanceContainer,
                 IDbContextFactory<DocGenerationDbContext> dbContextFactory,
         [FromKeyedServices("openai-planner")] AzureOpenAIClient? openAiClient
                 )
         {
             _logger = logger;
-            _serviceProvider = serviceProvider;
+            _serviceScopeFactory = serviceScopeFactory;
             _serviceConfigurationOptions = serviceConfigurationOptions.Value;
-            _instanceContainer = instanceContainer;
             _dbContextFactory = dbContextFactory;
             _openAiClient = openAiClient;
         }
@@ -66,7 +62,7 @@ namespace Microsoft.Greenlight.Shared.Services
         /// <inheritdoc />
         public async Task<Kernel> GetKernelForDocumentProcessAsync(string documentProcessName)
         {
-            using var scope = _serviceProvider.CreateScope();
+            using var scope = _serviceScopeFactory.CreateScope();
             var documentProcessInfoService = scope.ServiceProvider.GetRequiredService<IDocumentProcessInfoService>();
 
             // Get document process info and create a new kernel
@@ -93,21 +89,8 @@ namespace Microsoft.Greenlight.Shared.Services
         /// <inheritdoc />
         public async Task<Kernel> GetKernelForDocumentProcessAsync(DocumentProcessInfo documentProcess)
         {
-            // Check if we already have a kernel for this document process
-            if (_instanceContainer.StandardKernels.TryGetValue(documentProcess.ShortName, out var existingKernel))
-            {
-                // Return a new instance of the existing kernel to avoid sharing state, but keeping configuration
-                var newInstanceOfExistingKernel = existingKernel.Clone();
-                newInstanceOfExistingKernel.Data.Clear();
-
-                // We always reset the plugin collection for the kernel through EnrichKernelWithPluginsAsync
-                await EnrichKernelWithPluginsAsync(documentProcess, newInstanceOfExistingKernel);
-                return newInstanceOfExistingKernel;
-            }
-
-            // Create a new kernel for this document process
+            // Always create a fresh kernel - no caching since we were cloning and re-enriching on every call anyway
             var kernel = await CreateKernelForDocumentProcessAsync(documentProcess);
-            _instanceContainer.StandardKernels[documentProcess.ShortName] = kernel;
             return kernel;
         }
 
@@ -125,7 +108,7 @@ namespace Microsoft.Greenlight.Shared.Services
         /// <inheritdoc />
         public async Task<Kernel> GetValidationKernelForDocumentProcessAsync(string documentProcessName)
         {
-            using var scope = _serviceProvider.CreateScope();
+            using var scope = _serviceScopeFactory.CreateScope();
             var documentProcessInfoService = scope.ServiceProvider.GetRequiredService<IDocumentProcessInfoService>();
 
             // Get document process info and create a new validation kernel
@@ -141,39 +124,16 @@ namespace Microsoft.Greenlight.Shared.Services
         /// <inheritdoc />
         public async Task<Kernel> GetValidationKernelForDocumentProcessAsync(DocumentProcessInfo documentProcess)
         {
-            // Check if we already have a validation kernel for this document process
-            if (_instanceContainer.ValidationKernels.TryGetValue(documentProcess.ShortName, out var existingKernel))
-            {
-                // Return a new instance of the existing kernel to avoid sharing state, but keeping configuration
-                var newInstanceOfExistingKernel = existingKernel.Clone();
-                newInstanceOfExistingKernel.Data.Clear();
-
-                // We always reset the plugin collection for the kernel through EnrichKernelWithPluginsAsync
-                await EnrichKernelWithPluginsAsync(documentProcess, newInstanceOfExistingKernel);
-                return newInstanceOfExistingKernel;
-            }
-
-            // Create a new validation kernel for this document process
+            // Always create a fresh validation kernel - no caching
             var kernel = await CreateValidationKernelForDocumentProcessAsync(documentProcess);
-            _instanceContainer.ValidationKernels[documentProcess.ShortName] = kernel;
             return kernel;
         }
 
         /// <inheritdoc />
         public Task<Kernel> GetGenericKernelAsync(string modelIdentifier)
         {
-            // Check if we already have a generic kernel for this model
-            if (_instanceContainer.GenericKernels.TryGetValue(modelIdentifier, out var existingKernel))
-            {
-                // Return a new instance of the existing kernel to avoid sharing state, but keeping configuration
-                var newInstanceOfExistingKernel = existingKernel.Clone();
-                newInstanceOfExistingKernel.Data.Clear();
-                return Task.FromResult(newInstanceOfExistingKernel);
-            }
-
-            // Create a new generic kernel with the specified model
+            // Always create a fresh generic kernel - no caching
             var kernel = CreateGenericKernel(modelIdentifier);
-            _instanceContainer.GenericKernels[modelIdentifier] = kernel;
             return Task.FromResult(kernel);
         }
 
@@ -186,29 +146,10 @@ namespace Microsoft.Greenlight.Shared.Services
         /// <inheritdoc />
         public async Task<Kernel> GetFlowKernelAsync(string? providerSubjectId = null)
         {
-            const string flowKernelKey = "flow-kernel";
-
-            // Check if we already have a Flow kernel
-            if (_instanceContainer.GenericKernels.TryGetValue(flowKernelKey, out var existingKernel))
-            {
-                // Return a new instance to avoid sharing state
-                var newInstance = existingKernel.Clone();
-                newInstance.Data.Clear();
-
-                // Set user context if provided
-                if (!string.IsNullOrWhiteSpace(providerSubjectId))
-                {
-                    newInstance.Data[KernelUserContextConstants.ProviderSubjectId] = providerSubjectId;
-                }
-
-                return newInstance;
-            }
-
-            // Create a new Flow-specific kernel
+            // Always create a fresh Flow kernel - no caching
             var kernel = await CreateFlowKernelAsync();
-            _instanceContainer.GenericKernels[flowKernelKey] = kernel;
 
-            // Set user context on the returned instance
+            // Set user context if provided
             if (!string.IsNullOrWhiteSpace(providerSubjectId))
             {
                 kernel.Data[KernelUserContextConstants.ProviderSubjectId] = providerSubjectId;
@@ -220,7 +161,7 @@ namespace Microsoft.Greenlight.Shared.Services
         /// <inheritdoc />
         public async Task<AzureOpenAIPromptExecutionSettings> GetFlowPromptExecutionSettingsAsync()
         {
-            using var scope = _serviceProvider.CreateScope();
+            using var scope = _serviceScopeFactory.CreateScope();
             var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
             // Get Flow configuration to determine which model deployment to use
@@ -291,7 +232,7 @@ namespace Microsoft.Greenlight.Shared.Services
         public async Task<AzureOpenAIPromptExecutionSettings> GetPromptExecutionSettingsForDocumentProcessAsync(
             string documentProcessName, AiTaskType aiTaskType)
         {
-            using var scope = _serviceProvider.CreateScope();
+            using var scope = _serviceScopeFactory.CreateScope();
             var documentProcessInfoService = scope.ServiceProvider.GetRequiredService<IDocumentProcessInfoService>();
 
             var documentProcess = await documentProcessInfoService.GetDocumentProcessInfoByShortNameAsync(documentProcessName);
@@ -307,7 +248,7 @@ namespace Microsoft.Greenlight.Shared.Services
         public async Task<AzureOpenAIPromptExecutionSettings> GetPromptExecutionSettingsForDocumentProcessAsync(
             DocumentProcessInfo documentProcess, AiTaskType aiTaskType)
         {
-            using var scope = _serviceProvider.CreateScope();
+            using var scope = _serviceScopeFactory.CreateScope();
             var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
             Guid? aiModelDeploymentId;
@@ -570,11 +511,11 @@ namespace Microsoft.Greenlight.Shared.Services
         {
             _logger.LogInformation("Creating new kernel for document process: {DocumentProcessName}", documentProcess.ShortName);
 
-            using var scope = _serviceProvider.CreateScope();
+            using var scope = _serviceScopeFactory.CreateScope();
 
             // Create kernel with document process-specific completion service via shared factory
             var kernelBuilder = Kernel.CreateBuilder();
-            kernelBuilder.Services.AddSingleton(scope.ServiceProvider);
+            // DON'T add scope.ServiceProvider to the kernel - plugins resolve dependencies correctly without it
 
             // Check if OpenAI client is available
             if (_openAiClient == null)
@@ -582,7 +523,7 @@ namespace Microsoft.Greenlight.Shared.Services
                 _logger.LogWarning("OpenAI client not configured - creating kernel without chat completion service for document process: {DocumentProcessName}", documentProcess.ShortName);
                 // Return a kernel without chat completion - the system can still start
                 var limitedKernel = kernelBuilder.Build();
-                await EnrichKernelWithPluginsAsync(documentProcess, limitedKernel);
+                await EnrichKernelWithPluginsAsync(documentProcess, limitedKernel, scope.ServiceProvider);
                 return limitedKernel;
             }
 
@@ -599,7 +540,7 @@ namespace Microsoft.Greenlight.Shared.Services
             var kernel = kernelBuilder.Build();
 
             // Add required plugins to the kernel
-            await EnrichKernelWithPluginsAsync(documentProcess, kernel);
+            await EnrichKernelWithPluginsAsync(documentProcess, kernel, scope.ServiceProvider);
 
             // Add function invocation filter(s)
             kernel.FunctionInvocationFilters.Add(
@@ -621,10 +562,10 @@ namespace Microsoft.Greenlight.Shared.Services
         {
             _logger.LogInformation("Creating new validation kernel for document process: {DocumentProcessName}", documentProcess.ShortName);
 
-            using var scope = _serviceProvider.CreateScope();
+            using var scope = _serviceScopeFactory.CreateScope();
             // Create kernel with document process-specific completion service
             var kernelBuilder = Kernel.CreateBuilder();
-            kernelBuilder.Services.AddSingleton(scope.ServiceProvider);
+            // DON'T add scope.ServiceProvider to the kernel - plugins resolve dependencies correctly without it
 
             string deploymentName;
             if (documentProcess.AiModelDeploymentForValidationId.HasValue)
@@ -646,7 +587,7 @@ namespace Microsoft.Greenlight.Shared.Services
                 _logger.LogWarning("OpenAI client not configured - creating validation kernel without chat completion service for document process: {DocumentProcessName}", documentProcess.ShortName);
                 // Return a kernel without chat completion - the system can still start
                 var limitedKernel = kernelBuilder.Build();
-                await EnrichKernelWithPluginsAsync(documentProcess, limitedKernel);
+                await EnrichKernelWithPluginsAsync(documentProcess, limitedKernel, scope.ServiceProvider);
                 return limitedKernel;
             }
 
@@ -658,16 +599,16 @@ namespace Microsoft.Greenlight.Shared.Services
             var kernel = kernelBuilder.Build();
 
             // Add required plugins to the kernel
-            await EnrichKernelWithPluginsAsync(documentProcess, kernel);
+            await EnrichKernelWithPluginsAsync(documentProcess, kernel, scope.ServiceProvider);
 
             return kernel;
         }
 
-        private async Task EnrichKernelWithPluginsAsync(DocumentProcessInfo documentProcess, Kernel kernel)
+        private async Task EnrichKernelWithPluginsAsync(DocumentProcessInfo documentProcess, Kernel kernel, IServiceProvider serviceProvider)
         {
             _logger.LogInformation("Enriching Semantic Kernel with Plugins for Document Process {dpName}", documentProcess.ShortName);
             KernelPluginCollection plugins = [];
-            await plugins.AddSharedAndDocumentProcessPluginsToPluginCollectionAsync(_serviceProvider, documentProcess);
+            await plugins.AddSharedAndDocumentProcessPluginsToPluginCollectionAsync(serviceProvider, documentProcess);
             kernel.Plugins.Clear();
             kernel.Plugins.AddRange(plugins.ToList());
             _logger.LogInformation("Plugins enabled for this Kernel:");
@@ -681,10 +622,10 @@ namespace Microsoft.Greenlight.Shared.Services
         {
             _logger.LogInformation("Creating new generic kernel with model: {ModelIdentifier}", modelIdentifier);
 
-            using var scope = _serviceProvider.CreateScope();
+            using var scope = _serviceScopeFactory.CreateScope();
             // Create kernel builder
             var kernelBuilder = Kernel.CreateBuilder();
-            kernelBuilder.Services.AddSingleton(scope.ServiceProvider);
+            // DON'T add scope.ServiceProvider to the kernel - not needed for generic kernels
 
             // Use AzureOpenAI SK connector for generic kernels as well
             // Check if OpenAI client is available
@@ -713,11 +654,11 @@ namespace Microsoft.Greenlight.Shared.Services
         {
             _logger.LogInformation("Creating new Flow kernel for conversational orchestration");
 
-            using var scope = _serviceProvider.CreateScope();
+            using var scope = _serviceScopeFactory.CreateScope();
 
             // Create kernel builder
             var kernelBuilder = Kernel.CreateBuilder();
-            kernelBuilder.Services.AddSingleton(scope.ServiceProvider);
+            // DON'T add scope.ServiceProvider to the kernel - plugins resolve dependencies correctly without it
 
             // Use the Flow configuration to determine the deployment
             var flowOptions = _serviceConfigurationOptions.GreenlightServices.Flow;

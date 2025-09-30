@@ -57,44 +57,67 @@ public class FileStorageServiceFactory : IFileStorageServiceFactory
     }
 
     /// <summary>
-    /// Gets the default file storage service (first configured source).
+    /// Gets the default file storage service for content references (ExternalLinkAssets, document assets, etc.).
+    /// This is used by plugins and other components that generate assets like map images.
     /// </summary>
-    /// <returns>Default file storage service instance.</returns>
+    /// <returns>File storage service for content reference storage.</returns>
     public IFileStorageService GetDefaultService()
     {
-        // Create a default blob storage service for backward compatibility
-        var defaultBlobServiceClient = _serviceProvider.GetRequiredKeyedService<BlobServiceClient>("blob-docing");
-        var logger = _serviceProvider.GetRequiredService<ILogger<BlobStorageFileStorageService>>();
-        var dbContextFactory = _serviceProvider.GetRequiredService<IDbContextFactory<DocGenerationDbContext>>();
+        // Query the database for the content reference FileStorageSource
+        // ExternalLinkAssets (like map images) should use the content reference storage, not ingestion storage
+        using var scope = _serviceScopeFactory.CreateScope();
+        using var db = _dbContextFactory.CreateDbContext();
 
-        var defaultHostInfo = new FileStorageHostInfo
+        // Look for the content reference storage source
+        // This is seeded with a known GUID: 7f3e4b9a-2c5d-4e8f-9a1b-3c6d8e9f0a1b
+        var contentRefSource = db.FileStorageSources
+            .Include(s => s.FileStorageHost)
+            .FirstOrDefault(s => s.StorageSourceDataType == FileStorageSourceDataType.ContentReference && s.IsActive);
+
+        if (contentRefSource == null)
         {
-            Id = Guid.Empty,
-            Name = "Default Blob Storage Host",
-            ProviderType = FileStorageProviderType.BlobStorage,
-            ConnectionString = "default",
-            IsDefault = true,
-            IsActive = true,
-            CreatedDate = DateTime.UtcNow,
-            LastUpdatedDate = DateTime.UtcNow
+            // Fallback: try to find by the known seeded GUID
+            var knownContentRefSourceId = Guid.Parse("7f3e4b9a-2c5d-4e8f-9a1b-3c6d8e9f0a1b");
+            contentRefSource = db.FileStorageSources
+                .Include(s => s.FileStorageHost)
+                .FirstOrDefault(s => s.Id == knownContentRefSourceId);
+        }
+
+        if (contentRefSource == null)
+        {
+            throw new InvalidOperationException(
+                "No content reference FileStorageSource found in database. Please ensure the database has been seeded properly with the content reference storage source (ID: 7f3e4b9a-2c5d-4e8f-9a1b-3c6d8e9f0a1b).");
+        }
+
+        var sourceInfo = new FileStorageSourceInfo
+        {
+            Id = contentRefSource.Id,
+            Name = contentRefSource.Name,
+            FileStorageHostId = contentRefSource.FileStorageHostId,
+            FileStorageHost = new FileStorageHostInfo
+            {
+                Id = contentRefSource.FileStorageHost.Id,
+                Name = contentRefSource.FileStorageHost.Name,
+                ProviderType = contentRefSource.FileStorageHost.ProviderType,
+                ConnectionString = contentRefSource.FileStorageHost.ConnectionString,
+                IsDefault = contentRefSource.FileStorageHost.IsDefault,
+                IsActive = contentRefSource.FileStorageHost.IsActive,
+                AuthenticationKey = contentRefSource.FileStorageHost.AuthenticationKey,
+                Description = contentRefSource.FileStorageHost.Description,
+                CreatedDate = contentRefSource.FileStorageHost.CreatedUtc,
+                LastUpdatedDate = contentRefSource.FileStorageHost.ModifiedUtc
+            },
+            ContainerOrPath = contentRefSource.ContainerOrPath,
+            AutoImportFolderName = contentRefSource.AutoImportFolderName,
+            IsDefault = contentRefSource.IsDefault,
+            IsActive = contentRefSource.IsActive,
+            ShouldMoveFiles = contentRefSource.ShouldMoveFiles,
+            Description = contentRefSource.Description,
+            CreatedDate = contentRefSource.CreatedUtc,
+            LastUpdatedDate = contentRefSource.ModifiedUtc
         };
 
-        var defaultSourceInfo = new FileStorageSourceInfo
-        {
-            Id = Guid.Empty,
-            Name = "Default Blob Storage",
-            FileStorageHostId = Guid.Empty,
-            FileStorageHost = defaultHostInfo,
-            ContainerOrPath = "default-container",
-            AutoImportFolderName = "ingest-auto",
-            IsDefault = true,
-            IsActive = true,
-            ShouldMoveFiles = true, // Default blob storage uses move behavior for backward compatibility
-            CreatedDate = DateTime.UtcNow,
-            LastUpdatedDate = DateTime.UtcNow
-        };
-
-        return new BlobStorageFileStorageService(defaultBlobServiceClient, logger, defaultSourceInfo, dbContextFactory);
+        return CreateService(sourceInfo);
     }
 
     /// <summary>
@@ -233,6 +256,7 @@ public class FileStorageServiceFactory : IFileStorageServiceFactory
     /// <returns>Blob storage service instance.</returns>
     private IFileStorageService CreateBlobStorageService(FileStorageSourceInfo sourceInfo)
     {
+        using var scope = _serviceScopeFactory.CreateScope();
         BlobServiceClient blobServiceClient;
 
         var connectionString = sourceInfo.FileStorageHost?.ConnectionString ?? sourceInfo.ConnectionString;
@@ -240,7 +264,7 @@ public class FileStorageServiceFactory : IFileStorageServiceFactory
         // If connection string is "default" or empty, use the default keyed service
         if (string.IsNullOrEmpty(connectionString) || connectionString == "default")
         {
-            blobServiceClient = _serviceProvider.GetRequiredKeyedService<BlobServiceClient>("blob-docing");
+            blobServiceClient = scope.ServiceProvider.GetRequiredKeyedService<BlobServiceClient>("blob-docing");
         }
         else
         {
@@ -248,8 +272,8 @@ public class FileStorageServiceFactory : IFileStorageServiceFactory
             blobServiceClient = new BlobServiceClient(connectionString);
         }
 
-        var logger = _serviceProvider.GetRequiredService<ILogger<BlobStorageFileStorageService>>();
-        var dbContextFactory = _serviceProvider.GetRequiredService<IDbContextFactory<DocGenerationDbContext>>();
+        var logger = scope.ServiceProvider.GetRequiredService<ILogger<BlobStorageFileStorageService>>();
+        var dbContextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<DocGenerationDbContext>>();
         return new BlobStorageFileStorageService(blobServiceClient, logger, sourceInfo, dbContextFactory);
     }
 
@@ -260,7 +284,8 @@ public class FileStorageServiceFactory : IFileStorageServiceFactory
     /// <returns>Local file system service instance.</returns>
     private IFileStorageService CreateLocalFileSystemService(FileStorageSourceInfo sourceInfo)
     {
-        var logger = _serviceProvider.GetRequiredService<ILogger<LocalFileStorageService>>();
+        using var scope = _serviceScopeFactory.CreateScope();
+        var logger = scope.ServiceProvider.GetRequiredService<ILogger<LocalFileStorageService>>();
         return new LocalFileStorageService(logger, sourceInfo, _dbContextFactory);
     }
 

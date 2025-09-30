@@ -119,14 +119,11 @@ public class FacilitiesPlugin : IPluginImplementation
             radius, maxResults, categorySearchTerm);
     }
 
-    // This method generates an image of a map with given latitude and longitude. The image is stored in blob storage and a link to the image is returned.
+    // This method generates an image of a map with given latitude and longitude. The image is stored in blob storage and a structured response containing the image URL is returned.
     [KernelFunction("GetMapImageLinkForLatLongAsync")]
-    [Description("Gets the relative url path of a map image based on latitude and longitude. " +
-                 "Do not add a host, http or https protocols or anything else to the path. Use as returned. " +
-                 "The path should look like this: '/api/file/download/asset/<filename>'. " +
-                 "There is no extension on the filename. " +
-                 "Dont add anything before this path.")]
-    public async Task<string> GetMapImageLinkForLatLongAsync(
+    [Description("Generates a map image based on latitude and longitude coordinates and returns a structured response with the image URL path. " +
+                 "The ImageUrlPath property contains the exact path to use in HTML or markdown - do not modify it.")]
+    public async Task<MapImageResponse> GetMapImageLinkForLatLongAsync(
 
         [Description("The latitude of the location to search for facilities. Must be a float. Decimal from -90 to 90 degrees.")]
         double latitude,
@@ -151,15 +148,23 @@ public class FacilitiesPlugin : IPluginImplementation
         {
             throw new ArgumentException($"Invalid map zoom level: {mapZoomLevelString}. Valid values are: Close, Normal, Far.");
         }
-        
+
         var mapStream = _mappingConnector.GetMapImageStream(latitude, longitude, ((int)mapZoomLevelEnum), imageWidth, imageHeight);
         var fileName = $"map-{Guid.NewGuid()}.png";
-        
+
         var fileStorageService = _fileStorageServiceFactory.GetDefaultService();
         var relativePath = await fileStorageService.UploadFileAsync(fileName, mapStream, "document-assets");
         var uploadResult = await fileStorageService.SaveFileInfoAsync(relativePath, fileName);
-        
-        return uploadResult.AccessUrl;
+
+        return new MapImageResponse
+        {
+            ImageUrlPath = uploadResult.AccessUrl,
+            Latitude = latitude,
+            Longitude = longitude,
+            ZoomLevel = mapZoomLevelString,
+            ImageWidth = imageWidth,
+            ImageHeight = imageHeight
+        };
     }
 
     public enum MapZoomLevel

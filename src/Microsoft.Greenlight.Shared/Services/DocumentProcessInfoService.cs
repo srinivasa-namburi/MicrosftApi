@@ -197,6 +197,9 @@ namespace Microsoft.Greenlight.Shared.Services
             // Create missing prompt implementations
             await CreateMissingPromptImplementations(dynamicDocumentProcess.Id, dbContext);
 
+            // Automatically create FileStorageSource association for new document processes
+            await CreateDefaultFileStorageSourceAssociationForProcessAsync(dbContext, dynamicDocumentProcess.Id, dynamicDocumentProcess.BlobStorageContainerName, dynamicDocumentProcess.BlobStorageAutoImportFolderName);
+
             // Check if the document process was created successfully
             var createdDocumentProcess = await dbContext.DynamicDocumentProcessDefinitions
                 .Include(x => x.DocumentOutline)
@@ -400,6 +403,72 @@ namespace Microsoft.Greenlight.Shared.Services
             if (string.IsNullOrWhiteSpace(documentProcessInfo.ShortName))
             {
                 throw new ArgumentException("Short Name must contain valid characters.");
+            }
+        }
+
+        /// <summary>
+        /// Creates a default FileStorageSource association for a newly created Document Process.
+        /// This ensures uploads can be routed to the correct storage location.
+        /// </summary>
+        private async Task CreateDefaultFileStorageSourceAssociationForProcessAsync(
+            DocGenerationDbContext dbContext,
+            Guid processId,
+            string containerName,
+            string? autoImportFolder)
+        {
+            // Get the default file storage host
+            var defaultHost = await dbContext.FileStorageHosts
+                .FirstOrDefaultAsync(h => h.IsDefault && h.IsActive);
+
+            if (defaultHost == null)
+            {
+                // No default host available - skip FileStorageSource creation
+                return;
+            }
+
+            var effectiveAutoFolder = string.IsNullOrWhiteSpace(autoImportFolder) ? "ingest-auto" : autoImportFolder;
+
+            // Check if a FileStorageSource already exists for this container
+            var existingSource = await dbContext.FileStorageSources
+                .FirstOrDefaultAsync(s => s.FileStorageHostId == defaultHost.Id && s.ContainerOrPath == containerName);
+
+            if (existingSource == null)
+            {
+                // Create new FileStorageSource
+                existingSource = new Shared.Models.FileStorage.FileStorageSource
+                {
+                    Id = Guid.NewGuid(),
+                    Name = $"Auto-created Storage - {containerName}",
+                    FileStorageHostId = defaultHost.Id,
+                    ContainerOrPath = containerName,
+                    AutoImportFolderName = effectiveAutoFolder,
+                    IsDefault = false,
+                    IsActive = true,
+                    ShouldMoveFiles = true,
+                    Description = $"Automatically created for document process container: {containerName}"
+                };
+                dbContext.FileStorageSources.Add(existingSource);
+                await dbContext.SaveChangesAsync();
+            }
+
+            // Check if association already exists
+            var existsAssociation = await dbContext.DocumentProcessFileStorageSources
+                .AnyAsync(a => a.DocumentProcessId == processId && a.FileStorageSourceId == existingSource.Id);
+
+            if (!existsAssociation)
+            {
+                // Create association with AcceptsUploads=true
+                var assoc = new Shared.Models.FileStorage.DocumentProcessFileStorageSource
+                {
+                    Id = Guid.NewGuid(),
+                    DocumentProcessId = processId,
+                    FileStorageSourceId = existingSource.Id,
+                    Priority = 1,
+                    IsActive = true,
+                    AcceptsUploads = true
+                };
+                dbContext.DocumentProcessFileStorageSources.Add(assoc);
+                await dbContext.SaveChangesAsync();
             }
         }
     }

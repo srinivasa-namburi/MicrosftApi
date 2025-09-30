@@ -68,8 +68,7 @@ public static class DocumentProcessExtensions
         // Add the Search Options Factory
         builder.Services.AddTransient<IConsolidatedSearchOptionsFactory, ConsolidatedSearchOptionsFactory>();
 
-        // Add the Semantic Kernel Factory with a singleton instance container
-        builder.Services.AddSingleton<SemanticKernelInstanceContainer>();
+        // Add the Semantic Kernel Factory
         builder.Services.AddTransient<IKernelFactory, SemanticKernelFactory>();
 
         // Add the Embeddings Generation & Chat Completion Service Factories

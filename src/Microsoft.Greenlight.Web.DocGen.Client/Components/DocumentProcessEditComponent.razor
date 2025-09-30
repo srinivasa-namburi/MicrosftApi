@@ -93,7 +93,7 @@ else
                     <MudItem xs="12">
                         <MudSelect T="AiModelDeploymentInfo" @bind-Value="SelectedDeployment" Label="AI Model Deployment"
                                    ToStringFunc="@(d => d.DeploymentName)">
-                            @foreach (var deployment in _aiModelDeployments)
+                            @foreach (var deployment in _aiModelDeployments.Where(d => d.AiModel?.ModelType != AiModelType.Embedding))
                             {
                                 <MudSelectItem Value="@deployment">
                                     @deployment.DeploymentName
@@ -105,7 +105,7 @@ else
                     <MudItem xs="12">
                         <MudSelect T="AiModelDeploymentInfo" @bind-Value="SelectedValidationDeployment" Label="AI Model Deployment for Validation"
                                    ToStringFunc="@(d => d.DeploymentName)">
-                            @foreach (var deployment in _aiModelDeployments)
+                            @foreach (var deployment in _aiModelDeployments.Where(d => d.AiModel?.ModelType != AiModelType.Embedding))
                             {
                                 <MudSelectItem Value="@deployment">
                                     @deployment.DeploymentName
@@ -133,7 +133,8 @@ else
                                     <FileStorageSourceListComponent DocumentProcessId="@ProcessId"
                                                                     LegacyContainerName="@_process.BlobStorageContainerName"
                                                                     LegacyAutoImportFolder="@_process.BlobStorageAutoImportFolderName"
-                                                                    ShowBackwardCompatibility="true" />
+                                                                    ShowBackwardCompatibility="true"
+                                                                    OnMigrateLegacy="HandleMigrateLegacyStorage" />
                                 </ChildContent>
                                 <NotAuthorized>
                                     <MudAlert Severity="Severity.Info">
@@ -893,6 +894,15 @@ else
                 return;
             }
 
+            // For new processes, check if a FileStorageSource already exists with this container name
+            if (!_isEditMode)
+            {
+                if (!await ValidateContainerNameIsUniqueAsync(_process.BlobStorageContainerName))
+                {
+                    return;
+                }
+            }
+
             if (_isEditMode && _process != null)
             {
                 // Handle validation pipeline
@@ -934,21 +944,13 @@ else
             }
             else
             {
+                // Create new document process
+                // Note: The backend service automatically creates a FileStorageSource association during creation (DocumentProcessInfoService.cs:201)
                 var createdProcess = await DocumentProcessApiClient.CreateDynamicDocumentProcessDefinitionAsync(_process);
                 if (createdProcess != null)
                 {
                     _process = createdProcess;
                     _isEditMode = true;
-
-                    // Ensure a default FileStorageSource exists on the default host and is associated
-                    try
-                    {
-                        await EnsureDefaultFileStorageSourceForProcessAsync(_process.Id, _process.BlobStorageContainerName ?? $"blob-{_process.ShortName.ToLower().Replace('.', '-')}" , "ingest-auto");
-                    }
-                    catch (Exception ex)
-                    {
-                        SnackBar.Add($"Created process, but failed to provision default storage source: {ex.Message}", Severity.Warning);
-                    }
 
                     // Save validation pipeline if there are steps
                     if (_validationSteps.Any())
@@ -985,6 +987,29 @@ else
         {
             _isSaving = false;
             StateHasChanged();
+        }
+    }
+
+    private async Task HandleMigrateLegacyStorage()
+    {
+        if (!_isEditMode || ProcessId == null || string.IsNullOrEmpty(_process.BlobStorageContainerName))
+        {
+            return;
+        }
+
+        try
+        {
+            await EnsureDefaultFileStorageSourceForProcessAsync(
+                ProcessId.Value,
+                _process.BlobStorageContainerName,
+                _process.BlobStorageAutoImportFolderName ?? "ingest-auto");
+
+            SnackBar.Add("Legacy storage configuration migrated successfully.", Severity.Success);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            SnackBar.Add($"Failed to migrate legacy storage: {ex.Message}", Severity.Error);
         }
     }
 
@@ -1295,6 +1320,43 @@ else
             {
                 SnackBar.Add($"Failed to delete process: {ex.Message}", Severity.Error);
             }
+        }
+    }
+
+    private async Task<bool> ValidateContainerNameIsUniqueAsync(string containerName)
+    {
+        if (string.IsNullOrWhiteSpace(containerName))
+        {
+            return true; // Will be caught by other validation
+        }
+
+        try
+        {
+            var hosts = await FileStorageHostApiClient.GetAllFileStorageHostsAsync();
+            var defaultHost = hosts.FirstOrDefault(h => h.IsDefault && h.IsActive);
+            if (defaultHost == null)
+            {
+                // No default host - can't check, but backend will handle this
+                return true;
+            }
+
+            var allSources = await FileStorageSourceApiClient.GetAllFileStorageSourcesAsync();
+            var existing = allSources.FirstOrDefault(s =>
+                s.FileStorageHostId == defaultHost.Id &&
+                string.Equals(s.ContainerOrPath, containerName, StringComparison.OrdinalIgnoreCase));
+
+            if (existing != null)
+            {
+                SnackBar.Add($"A file storage source already exists with container name '{containerName}' on the default host. Please choose a different short name.", Severity.Error);
+                return false;
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            SnackBar.Add($"Failed to validate container name: {ex.Message}", Severity.Warning);
+            return true; // Allow save to proceed, backend will handle validation
         }
     }
 

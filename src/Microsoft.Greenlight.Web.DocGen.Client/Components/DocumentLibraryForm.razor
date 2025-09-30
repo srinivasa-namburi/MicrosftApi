@@ -77,7 +77,8 @@
                             <FileStorageSourceListComponent DocumentLibraryId="@DocumentLibraryInfo.Id"
                                                             LegacyContainerName="@DocumentLibraryInfo.BlobStorageContainerName"
                                                             LegacyAutoImportFolder="@DocumentLibraryInfo.BlobStorageAutoImportFolderName"
-                                                            ShowBackwardCompatibility="true" />
+                                                            ShowBackwardCompatibility="true"
+                                                            OnMigrateLegacy="HandleMigrateLegacyStorage" />
                         </ChildContent>
                         <NotAuthorized>
                             <MudAlert Severity="Severity.Info">
@@ -546,7 +547,7 @@
     {
         _isSaving = true;
         StateHasChanged();
-        
+
         try
         {
             await form.Validate();
@@ -572,23 +573,34 @@
             DocumentLibraryInfo.EmbeddingDimensionsOverride = null;
         }
 
+        // For new libraries, check if a FileStorageSource already exists with this container name
+        if (DocumentLibraryInfo.Id == Guid.Empty)
+        {
+            if (!await ValidateContainerNameIsUniqueAsync(DocumentLibraryInfo.BlobStorageContainerName))
+            {
+                return;
+            }
+        }
+
         if (DocumentLibraryInfo.Id == Guid.Empty)
         {
             // Create new document library
+            // Note: The backend service automatically creates a FileStorageSource association during creation (DocumentLibraryInfoService.cs:116)
             var createdLibrary = await DocumentLibraryApiClient.CreateDocumentLibraryAsync(DocumentLibraryInfo);
-            Snackbar.Add("Document Library saved", Severity.Success);
+            Snackbar.Add("Document Library created successfully.", Severity.Success);
             DocumentLibraryInfo = createdLibrary;
-            // Ensure a default FileStorageSource exists on the default host and is associated
-            try
-            {
-                await EnsureDefaultFileStorageSourceForLibraryAsync(DocumentLibraryInfo.Id, DocumentLibraryInfo.BlobStorageContainerName, DocumentLibraryInfo.BlobStorageAutoImportFolderName ?? "ingest-auto");
-            }
-            catch (Exception ex)
-            {
-                Snackbar.Add($"Created library, but failed to provision default storage source: {ex.Message}", Severity.Warning);
-            }
+
+            // Load associated data for edit mode
+            await LoadAssociatedDocumentProcesses();
+            await LoadAvailableDocumentProcesses();
+            await RefreshReindexStatusesAsync();
+            await InitializeSignalRAsync();
+
+            // Reset baseline for embedding config tracking
+            _initialEmbeddingModelDeploymentId = DocumentLibraryInfo.EmbeddingModelDeploymentId;
+            _initialEmbeddingDimensionsOverride = DocumentLibraryInfo.EmbeddingDimensionsOverride;
+
             await OnSaved.InvokeAsync(createdLibrary);
-            NavigationManager.NavigateTo($"/document-library/{DocumentLibraryInfo.Id}");
         }
         else
         {
@@ -619,6 +631,29 @@
         {
             _isSaving = false;
             StateHasChanged();
+        }
+    }
+
+    private async Task HandleMigrateLegacyStorage()
+    {
+        if (!IsEditMode || string.IsNullOrEmpty(DocumentLibraryInfo.BlobStorageContainerName))
+        {
+            return;
+        }
+
+        try
+        {
+            await EnsureDefaultFileStorageSourceForLibraryAsync(
+                DocumentLibraryInfo.Id,
+                DocumentLibraryInfo.BlobStorageContainerName,
+                DocumentLibraryInfo.BlobStorageAutoImportFolderName ?? "ingest-auto");
+
+            Snackbar.Add("Legacy storage configuration migrated successfully.", Severity.Success);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to migrate legacy storage: {ex.Message}", Severity.Error);
         }
     }
 
@@ -800,6 +835,43 @@
             {
                 Snackbar.Add($"Failed to delete library: {ex.Message}", Severity.Error);
             }
+        }
+    }
+
+    private async Task<bool> ValidateContainerNameIsUniqueAsync(string containerName)
+    {
+        if (string.IsNullOrWhiteSpace(containerName))
+        {
+            return true; // Will be caught by other validation
+        }
+
+        try
+        {
+            var hosts = await FileStorageHostApiClient.GetAllFileStorageHostsAsync();
+            var defaultHost = hosts.FirstOrDefault(h => h.IsDefault && h.IsActive);
+            if (defaultHost == null)
+            {
+                // No default host - can't check, but backend will handle this
+                return true;
+            }
+
+            var allSources = await FileStorageSourceApiClient.GetAllFileStorageSourcesAsync();
+            var existing = allSources.FirstOrDefault(s =>
+                s.FileStorageHostId == defaultHost.Id &&
+                string.Equals(s.ContainerOrPath, containerName, StringComparison.OrdinalIgnoreCase));
+
+            if (existing != null)
+            {
+                Snackbar.Add($"A file storage source already exists with container name '{containerName}' on the default host. Please choose a different short name.", Severity.Error);
+                return false;
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to validate container name: {ex.Message}", Severity.Warning);
+            return true; // Allow save to proceed, backend will handle validation
         }
     }
 

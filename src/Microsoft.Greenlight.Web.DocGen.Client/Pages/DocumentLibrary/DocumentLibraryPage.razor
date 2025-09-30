@@ -42,6 +42,13 @@
 
     private void OnSaved(DocumentLibraryInfo savedLibrary)
     {
-        NavigationManager.NavigateTo("/document-libraries");
+        // For new libraries, update the URL to include the ID and stay on the page
+        // This matches DocumentProcessEditComponent behavior and allows immediate configuration
+        if (IsNew)
+        {
+            DocumentLibraryInfo = savedLibrary;
+            NavigationManager.NavigateTo($"/document-library/{savedLibrary.Id}", forceLoad: false);
+        }
+        // For updates, stay on the page (no navigation needed)
     }
 }

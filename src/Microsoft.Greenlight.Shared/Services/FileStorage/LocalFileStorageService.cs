@@ -337,9 +337,8 @@ public class LocalFileStorageService : IFileStorageService
             // Use the specified folder path or default to the auto-import folder
             var targetFolder = folderPath ?? DefaultAutoImportFolder;
 
-            // Generate a unique file name to avoid conflicts
-            var uniqueFileName = Guid.NewGuid() + Path.GetExtension(fileName);
-            var relativePath = Path.Combine(targetFolder, uniqueFileName).Replace('\\', '/');
+            // Preserve the original filename - folder structure already provides uniqueness via GUID-based paths in DocumentFileCopyGrain
+            var relativePath = Path.Combine(targetFolder, fileName).Replace('\\', '/');
             var fullPath = Path.Combine(BaseRootPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
 
             // Ensure the target directory exists
@@ -349,8 +348,8 @@ public class LocalFileStorageService : IFileStorageService
                 Directory.CreateDirectory(directory);
             }
 
-            _logger.LogDebug("Uploading file {FileName} as {UniqueFileName} to local path {FullPath}",
-                fileName, uniqueFileName, fullPath);
+            _logger.LogDebug("Uploading file {FileName} to local path {FullPath}",
+                fileName, fullPath);
 
             // Copy the stream to the target file
             using var fileStream = new FileStream(fullPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 4096, useAsync: true);

@@ -962,6 +962,11 @@ public class FileController : BaseController
             // Upload the file to the storage service
             var relativePath = await fileStorageService.UploadFileAsync(fileName, stream, folderPath);
 
+            // Register the file discovery to create FileAcknowledgmentRecord with correct DisplayFileName
+            // This ensures uploaded files are tracked the same way as discovered files
+            var fileHash = await fileStorageService.GetFileHashAsync(relativePath);
+            await fileStorageService.RegisterFileDiscoveryAsync(relativePath, fileHash);
+
             // Save file information to database and get access URLs
             var uploadResult = await fileStorageService.SaveFileInfoAsync(relativePath, fileName);
 

@@ -107,10 +107,13 @@ namespace Microsoft.Greenlight.Shared.Services
         public async Task<DocumentLibraryInfo> CreateDocumentLibraryAsync(DocumentLibraryInfo documentLibraryInfo)
         {
             using var dbContext = await _dbContextFactory.CreateDbContextAsync();
-            
+
             var library = _mapper.Map<DocumentLibrary>(documentLibraryInfo);
             dbContext.DocumentLibraries.Add(library);
             await dbContext.SaveChangesAsync();
+
+            // Automatically create FileStorageSource association for new libraries
+            await CreateDefaultFileStorageSourceAssociationAsync(dbContext, library.Id, library.BlobStorageContainerName, library.BlobStorageAutoImportFolderName);
 
             return _mapper.Map<DocumentLibraryInfo>(library);
         }
@@ -241,6 +244,72 @@ namespace Microsoft.Greenlight.Shared.Services
 
             // SaveChanges is not called here, so we can do it in a transaction
             // (it's called in the UpdateDocumentLibraryAsync method)
+        }
+
+        /// <summary>
+        /// Creates a default FileStorageSource association for a newly created Document Library.
+        /// This ensures uploads can be routed to the correct storage location.
+        /// </summary>
+        private async Task CreateDefaultFileStorageSourceAssociationAsync(
+            DocGenerationDbContext dbContext,
+            Guid libraryId,
+            string containerName,
+            string? autoImportFolder)
+        {
+            // Get the default file storage host
+            var defaultHost = await dbContext.FileStorageHosts
+                .FirstOrDefaultAsync(h => h.IsDefault && h.IsActive);
+
+            if (defaultHost == null)
+            {
+                // No default host available - skip FileStorageSource creation
+                return;
+            }
+
+            var effectiveAutoFolder = string.IsNullOrWhiteSpace(autoImportFolder) ? "ingest-auto" : autoImportFolder;
+
+            // Check if a FileStorageSource already exists for this container
+            var existingSource = await dbContext.FileStorageSources
+                .FirstOrDefaultAsync(s => s.FileStorageHostId == defaultHost.Id && s.ContainerOrPath == containerName);
+
+            if (existingSource == null)
+            {
+                // Create new FileStorageSource
+                existingSource = new Shared.Models.FileStorage.FileStorageSource
+                {
+                    Id = Guid.NewGuid(),
+                    Name = $"Auto-created Storage - {containerName}",
+                    FileStorageHostId = defaultHost.Id,
+                    ContainerOrPath = containerName,
+                    AutoImportFolderName = effectiveAutoFolder,
+                    IsDefault = false,
+                    IsActive = true,
+                    ShouldMoveFiles = true,
+                    Description = $"Automatically created for document library container: {containerName}"
+                };
+                dbContext.FileStorageSources.Add(existingSource);
+                await dbContext.SaveChangesAsync();
+            }
+
+            // Check if association already exists
+            var existsAssociation = await dbContext.DocumentLibraryFileStorageSources
+                .AnyAsync(a => a.DocumentLibraryId == libraryId && a.FileStorageSourceId == existingSource.Id);
+
+            if (!existsAssociation)
+            {
+                // Create association with AcceptsUploads=true
+                var assoc = new Shared.Models.FileStorage.DocumentLibraryFileStorageSource
+                {
+                    Id = Guid.NewGuid(),
+                    DocumentLibraryId = libraryId,
+                    FileStorageSourceId = existingSource.Id,
+                    Priority = 1,
+                    IsActive = true,
+                    AcceptsUploads = true
+                };
+                dbContext.DocumentLibraryFileStorageSources.Add(assoc);
+                await dbContext.SaveChangesAsync();
+            }
         }
     }
 }

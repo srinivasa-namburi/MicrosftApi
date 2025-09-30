@@ -424,17 +424,16 @@ public class BlobStorageFileStorageService : FileStorageServiceBase
             // Use the specified folder path or default to the auto-import folder
             var targetFolder = folderPath ?? _sourceInfo.AutoImportFolderName ?? "ingest-auto";
 
-            // Generate a unique blob name to avoid conflicts
-            var blobName = Guid.NewGuid() + Path.GetExtension(fileName);
-            var relativePath = $"{targetFolder}/{blobName}";
+            // Preserve the original filename - folder structure already provides uniqueness via GUID-based paths in DocumentFileCopyGrain
+            var relativePath = $"{targetFolder}/{fileName}";
 
             var containerClient = _blobServiceClient.GetBlobContainerClient(_sourceInfo.ContainerOrPath);
             await containerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
 
             var blobClient = containerClient.GetBlobClient(relativePath);
 
-            _logger.LogDebug("Uploading file {FileName} as {BlobName} to container {Container}/{Folder}",
-                fileName, blobName, _sourceInfo.ContainerOrPath, targetFolder);
+            _logger.LogDebug("Uploading file {FileName} to container {Container}/{Folder}",
+                fileName, _sourceInfo.ContainerOrPath, targetFolder);
 
             // Upload the blob with overwrite enabled
             await blobClient.UploadAsync(stream, overwrite: true, cancellationToken: cancellationToken);

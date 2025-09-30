@@ -799,7 +799,7 @@ if [[ "$CLUSTER_MODE" != "private" ]]; then
                 --set controller.service.externalTrafficPolicy=Local \
                 --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz \
                 --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-dns-label-name"="$DNS_NAME_PREFIX-ingress" \
-                --output none
+                > /dev/null 2>&1
             print_success "NGINX Ingress Controller installed with Azure DNS name: $DNS_NAME_PREFIX-ingress.$LOCATION.cloudapp.azure.com"
             print_info "Additional services can use path-based routing (e.g., /api, /mcp) or separate load balancer services"
         else
@@ -809,7 +809,7 @@ if [[ "$CLUSTER_MODE" != "private" ]]; then
                 --namespace ingress-nginx \
                 --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-internal"="true" \
                 --set controller.service.externalTrafficPolicy=Local \
-                --output none
+                > /dev/null 2>&1
             print_success "NGINX Ingress Controller installed (internal load balancer)"
             print_info "Configure Application Gateway or Azure Front Door for external access"
         fi
