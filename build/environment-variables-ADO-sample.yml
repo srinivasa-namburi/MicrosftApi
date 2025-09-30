@@ -1,0 +1,111 @@
+# Azure DevOps Environment Configuration Sample
+# Copy this file and customize for your environment:
+# cp build/environment-variables-ADO-sample.yml build/environment-variables-ADO-dev.yml
+
+environment:
+  name: dev  # ADO environment name for deployment gates and approvals
+
+variableGroup:
+  name: greenlight-modern-dev  # ADO variable group name - will be created by bootstrap script
+  variables:
+    AZURE_SERVICE_CONNECTION: "Azure-Greenlight-Dev"               # Name of Azure Resource Manager service connection
+    AZURE_SUBSCRIPTION_ID: "00000000-0000-0000-0000-000000000000"  # Replace with your Azure subscription ID
+    AZURE_RESOURCE_GROUP: "rg-greenlight-dev"                      # Resource group for deployment
+    AZURE_LOCATION: "eastus"                                       # Azure region (eastus, westus2, usgovvirginia, etc.)
+    AKS_CLUSTER_NAME: "aks-greenlight-dev"                         # AKS cluster name (provision with build/scripts/provision-aks-cluster.sh)
+    AKS_RESOURCE_GROUP: "rg-greenlight-dev"                        # Resource group containing AKS cluster (can be same or different)
+    AKS_NAMESPACE: "greenlight-dev"                                # Kubernetes namespace for deployment
+    HELM_RELEASE: "greenlight-dev"                                 # Helm release name (should match environment)
+    ENVIRONMENT_NAME: "dev"                                        # Must match ADO environment name above
+    
+    # Recommended Kubernetes resource configuration (based on current Container Apps sizing)
+    # This matches the production sizing from src/deploy/postdeploy.sh but adapted for Kubernetes
+    # Current Container Apps: D4 workload profile = 1CPU/1GB, D8+ = 2CPU/2GB, Silo = 4-10 replicas
+    # Kubernetes defaults: 512MB/1vcpu baseline with appropriate requests/limits
+    KUBERNETES_RESOURCES_CONFIG: |
+      {
+        "api-main": {
+          "resources": {
+            "requests": {"memory": "512Mi", "cpu": "500m"},
+            "limits": {"memory": "1Gi", "cpu": "1"}
+          }
+        },
+        "web-main": {
+          "resources": {
+            "requests": {"memory": "256Mi", "cpu": "250m"},
+            "limits": {"memory": "512Mi", "cpu": "500m"}
+          }
+        },
+        "silo": {
+          "resources": {
+            "requests": {"memory": "1Gi", "cpu": "1"},
+            "limits": {"memory": "2Gi", "cpu": "2"}
+          },
+          "autoscaling": {
+            "minReplicas": 4,
+            "maxReplicas": 10
+          }
+        },
+        "mcp-server": {
+          "resources": {
+            "requests": {"memory": "256Mi", "cpu": "250m"},
+            "limits": {"memory": "512Mi", "cpu": "500m"}
+          }
+        }
+      }
+
+# Additional variables that can be added to the variable group:
+# MEMORY_BACKEND: "aisearch"              # aisearch (default) or postgres
+# DEPLOYMENT_MODEL: "public"              # public, private, or hybrid
+# ENABLE_AZURE_SIGNALR: "true"           # true (default) or false
+# AKS_SUBSCRIPTION_ID: "00000000-0000-0000-0000-000000000000"  # Optional override if AKS cluster lives in a different subscription
+#
+# For private/hybrid networking mode, also add:
+# AZURE_SUBNET_AKS: "/subscriptions/{id}/resourceGroups/{rg}/providers/Microsoft.Network/virtualNetworks/{vnet}/subnets/snet-aks"
+#   Purpose: Dedicated subnet for AKS cluster nodes (required for hybrid/private mode)
+#   IMPORTANT: This subnet must NOT have any delegation configured. AKS will fail with SubnetIsDelegated error.
+#   Example: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-network/providers/Microsoft.Network/virtualNetworks/vnet-greenlight/subnets/snet-aks"
+#
+# AZURE_SUBNET_PE: "/subscriptions/{id}/resourceGroups/{rg}/providers/Microsoft.Network/virtualNetworks/{vnet}/subnets/snet-pe"
+#   Purpose: Subnet for private endpoints of Azure PaaS services (SQL, Redis, Storage, etc.)
+#   Note: No delegation required for this subnet
+#   Example: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-network/providers/Microsoft.Network/virtualNetworks/vnet-greenlight/subnets/snet-pe"
+#
+# AZURE_SUBNET_POSTGRES: "/subscriptions/{id}/resourceGroups/{rg}/providers/Microsoft.Network/virtualNetworks/{vnet}/subnets/snet-postgres"
+#   Purpose: Delegated subnet for PostgreSQL Flexible Server (only if using postgres backend)
+#   IMPORTANT: This subnet MUST be delegated to Microsoft.DBforPostgreSQL/flexibleServers
+#   Example: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-network/providers/Microsoft.Network/virtualNetworks/vnet-greenlight/subnets/snet-postgres"
+#
+# POSTGRES_DNSZONE_RESOURCEID: "/subscriptions/{id}/resourceGroups/{rg}/providers/Microsoft.Network/privateDnsZones/privatelink.postgres.database.azure.com"
+#   Purpose: Resource ID of private DNS zone for PostgreSQL (only if using postgres backend in private/hybrid mode)
+#   Note: DNS zones often reside in a different subscription (hub subscription in hub-spoke architecture)
+#
+# AKS_PRIVATE_DNS_ZONE: "/subscriptions/{id}/resourceGroups/{rg}/providers/Microsoft.Network/privateDnsZones/privatelink.{region}.azmk8s.io"
+#   Purpose: Resource ID of private DNS zone for AKS private clusters (only needed when creating private AKS clusters)
+#   Example: "/subscriptions/hub-sub-id/resourceGroups/rg-dns-hub/providers/Microsoft.Network/privateDnsZones/privatelink.swedencentral.azmk8s.io"
+#   Note: One zone per region. Often in hub subscription. Leave unset to use system-managed DNS zones (not recommended for production)
+
+# REQUIRED secrets to be added manually in ADO after bootstrap:
+# PVICO_ENTRA_CREDENTIALS: JSON from '.\build\scripts\sp-create.ps1' script (REQUIRED for authentication)
+#   Format: {"TenantId": "87654321-4321-4321-4321-210987654321", "ClientId": "12345678-1234-1234-1234-123456789012", "Scopes": "https://graph.microsoft.com/.default", "ClientSecret": "<SECRET>"}
+#   Example with placeholders: {"TenantId": "<YOUR-TENANT-ID>", "ClientId": "<YOUR-APP-CLIENT-ID>", "Scopes": "https://graph.microsoft.com/.default", "ClientSecret": "<SECRET>"}
+#   Note: This is REQUIRED for the application to function. Run .\build\scripts\sp-create.ps1 to generate these credentials.
+#
+# OPTIONAL secrets that can be configured post-deployment or added to ADO:
+# PVICO_AZUREMAPS_KEY: Azure Maps API key (optional - can be configured post-deployment)
+#   Format: "your-azure-maps-key-here"
+#   Example: "<SECRET>"
+#   Note: Can be left empty initially and configured later via Configuration UI at /admin/configuration?section=secrets
+#   The application will start without Azure Maps features until configured
+#
+# PVICO_OPENAI_CONNECTIONSTRING: Azure OpenAI connection string (optional - can be configured post-deployment)
+#   Format: "Endpoint=https://your-resource.openai.azure.com/;Key=<SECRET>"
+#   Example: "Endpoint=https://my-openai.openai.azure.com/;Key=<SECRET>"
+#   Note: Can be left empty initially and configured later via Configuration UI at /admin/configuration?section=secrets
+#   The application will start without OpenAI features until configured
+#
+# HOSTNAME_OVERRIDE: JSON for custom domains (optional)
+#   Format: {"WebApplicationUrl": "https://myapp.example.com", "ApiBaseUrl": "https://api.myapp.example.com"}
+
+# Note: Complex JSON variables should be added manually in ADO Library > Variable Groups
+# after running the bootstrap script, as YAML cannot represent the required escaping properly.

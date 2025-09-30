@@ -1,0 +1,66 @@
+# CI Pipeline
+
+trigger:
+  - main
+  - features/*
+  - feature/*
+  - release/*
+  - releases/*
+  - hotfix/*
+  - tasks/*
+  - stories/*
+
+pool:
+  #vmImage: ubuntu-latest
+  name: "ipsenergy-v6ds-pool"
+
+variables:
+  buildConfiguration: "Release"
+  isMain: $[eq(variables['Build.SourceBranchName'], 'main')]
+
+steps:
+  - task: UseDotNet@2
+    inputs:
+      packageType: "sdk"
+      version: "9.0.x"
+
+  # Add a task that renames src/Nuget.ADOArtifacts.config to Nuget.config with bash
+  - script: |
+      echo "Renaming Nuget.ADOArtifacts.config to Nuget.config"
+      mv src/Nuget.ADOArtifacts.config src/NuGet.config
+    displayName: "Rename Nuget.ADOArtifacts.config to NuGet.config"
+
+  - task: NuGetAuthenticate@1
+
+  - task: DotNetCoreCLI@2
+    displayName: "DotNet Solution Build"
+    inputs:
+      command: "build"
+      arguments: "--configuration $(buildConfiguration)"
+      projects: "src/Microsoft.Greenlight.slnx"
+      workingDirectory: "src/"
+
+  - task: DotNetCoreCLI@2
+    displayName: "Run Unit Tests"
+    inputs:
+      command: "test"
+      projects: "src/Microsoft.Greenlight.slnx"
+      workingDirectory: "src/"
+      publishTestResults: true
+      arguments: '--no-build --configuration $(buildConfiguration) --collect "Code coverage"'
+
+  - task: CopyFiles@2
+    displayName: "Copy Build Files to Staging Directory"
+    condition: and(succeeded(), eq(variables.isMain, true))
+    inputs:
+      SourceFolder: "src/"
+      Contents: "**/bin/**"
+      TargetFolder: "$(Build.ArtifactStagingDirectory)"
+
+  - task: PublishPipelineArtifact@1
+    condition: and(succeeded(), eq(variables.isMain, true))
+    displayName: "Publish Pipeline Artifacts"
+    inputs:
+      targetPath: "src/"
+      publishLocation: "pipeline"
+      artifactName: "ProjectGreenlightArtifacts"

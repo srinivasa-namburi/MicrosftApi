@@ -1,0 +1,89 @@
+environment:
+  name: IntegrationTest
+variableGroup:
+  name: greenlight-modern-integrationtest
+  variables:
+    # Core environment settings
+    ENVIRONMENT_NAME: "IntegrationTest"
+    AZURE_SUBSCRIPTION_ID: "00000000-0000-0000-0000-000000000000"
+    AZURE_RESOURCE_GROUP: "rg-greenlight-integrationtest"
+    AZURE_LOCATION: "eastus"
+    
+    # Kubernetes/AKS settings
+    AKS_NAMESPACE: "greenlight-integrationtest"
+    HELM_RELEASE: "greenlight-integrationtest"
+    
+    # Azure Container Registry
+    AZURE_CONTAINER_REGISTRY_ENDPOINT: "acr-greenlight-integrationtest.azurecr.io"
+    
+    # Environment naming
+    AZURE_ENV_NAME: "integrationtest"
+    
+    # Deployment model (public/private/hybrid)
+    PVICO_DEPLOYMENT_MODE: "public"
+    DEPLOYMENT_MODEL: "public"
+    
+    # Memory backend (sql/postgres)
+    MEMORY_BACKEND: "sql"
+    
+    # Feature toggles
+    UsePostgresMemory: "false"
+    UseAzureSignalR: "true"
+    
+    # Database settings
+    SQL_SERVER_NAME: "sqldocgen-integrationtest"
+    SQL_DATABASE_NAME: "sqldocgen"
+    
+    # Storage settings
+    STORAGE_ACCOUNT_NAME: "docingintegrationtest"
+    
+    # Redis settings
+    REDIS_NAME: "redis-integrationtest"
+    
+    # SignalR settings (if enabled)
+    SIGNALR_NAME: "signalr-integrationtest"
+    
+    # Event Hubs settings
+    EVENTHUB_NAMESPACE: "eventhub-integrationtest"
+    EVENTHUB_STREAM_NAME: "greenlight-cg-streams"
+    
+    # AI Search settings
+    AI_SEARCH_NAME: "aisearch-integrationtest"
+    
+    # Postgres settings (if using postgres backend)
+    POSTGRES_SERVER_NAME: "postgres-integrationtest"
+    POSTGRES_DATABASE_NAME: "kmvectordb"
+    
+    # Private network settings (for private/hybrid modes)
+    PVICO_VNET_ID: ""
+    PRIVATE_ENDPOINT_SUBNET_ID: ""
+    
+    # Host override settings
+    HOSTNAMEOVERRIDE: ""
+    
+    # Orleans clustering
+    ORLEANS_CLUSTER_ID: "greenlight-integrationtest"
+    ORLEANS_SERVICE_ID: "greenlight"
+    
+    # Application Insights
+    APPINSIGHTS_INSTRUMENTATIONKEY: ""
+    
+    # MCP Server settings
+    MCP_SERVER_ENABLED: "true"
+    
+    # Web DocGen settings
+    WEB_DOCGEN_ENABLED: "true"
+    
+    # Setup Manager settings
+    SETUP_MANAGER_ENABLED: "true"
+    
+    # API settings
+    API_CORS_ORIGINS: "*"
+    
+    # Authentication/Authorization (if applicable)
+    AAD_TENANT_ID: ""
+    AAD_CLIENT_ID: ""
+    
+    # Monitoring and logging
+    LOG_LEVEL: "Information"
+    ENABLE_TELEMETRY: "true"

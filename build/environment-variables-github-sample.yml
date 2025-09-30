@@ -1,0 +1,77 @@
+# GitHub Environment Configuration Sample
+# Copy this file and customize for your environment:
+# cp build/environment-variables-github-sample.yml build/environment-variables-github-dev.yml
+
+environment:
+  name: dev  # Environment name - must match GitHub environment name
+
+# Environment-specific variables (visible in GitHub Actions logs)
+variables:
+  AZURE_SUBSCRIPTION_ID: "00000000-0000-0000-0000-000000000000"  # Replace with your Azure subscription ID
+  AZURE_RESOURCE_GROUP: "rg-greenlight-dev"                      # Resource group for deployment
+  AZURE_LOCATION: "eastus"                                       # Azure region (eastus, westus2, etc.)
+  AKS_NAMESPACE: "greenlight-dev"                                # Kubernetes namespace for deployment
+  HELM_RELEASE: "greenlight-dev"                                 # Helm release name (should match environment)
+  
+  # Recommended Kubernetes resource configuration (based on current Container Apps sizing)
+  # This matches the production sizing from src/deploy/postdeploy.sh but adapted for Kubernetes
+  # Current Container Apps: D4 workload profile = 1CPU/1GB, D8+ = 2CPU/2GB, Silo = 4-10 replicas
+  # Kubernetes defaults: 512MB/1vcpu baseline with appropriate requests/limits
+  KUBERNETES_RESOURCES_CONFIG: |
+    {
+      "api-main": {
+        "resources": {
+          "requests": {"memory": "512Mi", "cpu": "500m"},
+          "limits": {"memory": "1Gi", "cpu": "1"}
+        }
+      },
+      "web-main": {
+        "resources": {
+          "requests": {"memory": "256Mi", "cpu": "250m"},
+          "limits": {"memory": "512Mi", "cpu": "500m"}
+        }
+      },
+      "silo": {
+        "resources": {
+          "requests": {"memory": "1Gi", "cpu": "1"},
+          "limits": {"memory": "2Gi", "cpu": "2"}
+        },
+        "autoscaling": {
+          "minReplicas": 4,
+          "maxReplicas": 10
+        }
+      },
+      "mcp-server": {
+        "resources": {
+          "requests": {"memory": "256Mi", "cpu": "250m"},
+          "limits": {"memory": "512Mi", "cpu": "500m"}
+        }
+      }
+    }
+
+# REQUIRED Environment secrets (encrypted in GitHub)
+secrets:
+  # AZURE_CREDENTIALS: JSON from 'az ad sp create-for-rbac' command (REQUIRED for deployment)
+  # Must be valid JSON on a single line, with escaped quotes:
+  AZURE_CREDENTIALS: "{ \"clientId\": \"<YOUR-SP-CLIENT-ID>\", \"clientSecret\": \"<SECRET>\", \"subscriptionId\": \"<YOUR-SUBSCRIPTION-ID>\", \"tenantId\": \"<YOUR-TENANT-ID>\" }"
+
+  # PVICO_ENTRA_CREDENTIALS: JSON from '.\build\scripts\sp-create.ps1' script (REQUIRED for authentication)
+  # Must be valid JSON on a single line, with escaped quotes:
+  PVICO_ENTRA_CREDENTIALS: "{\"TenantId\": \"<YOUR-TENANT-ID>\", \"ClientId\": \"<YOUR-APP-CLIENT-ID>\", \"Scopes\": \"https://graph.microsoft.com/.default\", \"ClientSecret\": \"<SECRET>\"}"
+
+# OPTIONAL Environment secrets (can be configured post-deployment via Configuration UI)
+  # PVICO_AZUREMAPS_KEY: Azure Maps API key (optional - can be configured post-deployment)
+  # Note: Can be left empty initially and configured later via Configuration UI at /admin/configuration?section=secrets
+  # The application will start without Azure Maps features until configured
+  # PVICO_AZUREMAPS_KEY: "<SECRET>"
+
+  # PVICO_OPENAI_CONNECTIONSTRING: Azure OpenAI connection string (optional - can be configured post-deployment)
+  # Format: "Endpoint=https://your-resource.openai.azure.com/;Key=<SECRET>"
+  # Note: Can be left empty initially and configured later via Configuration UI at /admin/configuration?section=secrets
+  # The application will start without OpenAI features until configured
+  # PVICO_OPENAI_CONNECTIONSTRING: "Endpoint=https://my-openai.openai.azure.com/;Key=<SECRET>"
+
+# Additional optional variables can be added here:
+# HOSTNAME_OVERRIDE: "{\"WebApplicationUrl\": \"https://myapp.example.com\", \"ApiBaseUrl\": \"https://api.myapp.example.com\"}"
+# DEPLOYMENT_MODEL: "public"  # public, private, or hybrid
+# MEMORY_BACKEND: "aisearch"  # aisearch (default) or postgres

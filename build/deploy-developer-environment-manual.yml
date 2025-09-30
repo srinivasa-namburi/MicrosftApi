@@ -1,0 +1,95 @@
+trigger: none
+
+pr: none
+
+parameters:
+  - name: objectId
+    type: string
+    default: ""
+    displayName: "Object ID of the User"
+
+  - name: msAlias
+    type: string
+    default: ""
+    displayName: "MS Alias"
+
+  - name: resourceGroupName
+    type: string
+    default: ""
+    displayName: "Resource Group Name"
+
+  - name: azureRegion
+    type: string
+    default: ""
+    displayName: "Azure Region"
+
+# Set the build number format, removing invalid characters (colon)
+name: "Developer_Environment_Deploy_rg-${{ parameters.resourceGroupName }}"
+
+jobs:
+  - job: CreateAzureResources
+    displayName: "Create Azure Resources"
+    pool:
+      vmImage: "ubuntu-latest"
+
+    steps:
+      - checkout: none
+
+      - task: AzureCLI@2
+        inputs:
+          azureSubscription: "IPS-Energy-PowerAndUtilities-Auto-SP"
+          scriptType: "bash"
+          scriptLocation: "inlineScript"
+          inlineScript: |
+            set -euo pipefail
+
+            echo "Starting resource creation process..."
+
+            # Use the provided parameters
+            OBJECT_ID="${{ parameters.objectId }}"
+            MS_ALIAS="${{ parameters.msAlias }}"
+            RESOURCE_GROUP="${{ parameters.resourceGroupName }}"
+            AZURE_REGION="${{ parameters.azureRegion }}"
+
+            echo "Using the following inputs:"
+            echo "Object ID: ${OBJECT_ID}"
+            echo "MS Alias: ${MS_ALIAS}"
+            echo "Resource Group: ${RESOURCE_GROUP}"
+            echo "Azure Region: ${AZURE_REGION}"
+
+            # Convert MS_ALIAS to lowercase
+            MS_ALIAS=$(echo $MS_ALIAS | tr '[:upper:]' '[:lower:]')
+            echo "Converted MS Alias to lowercase: ${MS_ALIAS}"
+
+            # Generate a consistent hash code based on the resource group name
+            HASH_CODE=$(echo -n "${RESOURCE_GROUP}" | md5sum | tr -dc 'a-z0-9' | head -c 5)
+            # Ensure the first character is a letter
+            FIRST_CHAR=$(echo $HASH_CODE | head -c 1)
+            if [[ $FIRST_CHAR =~ [0-9] ]]; then
+              HASH_CODE="a${HASH_CODE:1:4}"
+            fi
+            echo "Generated hash code: ${HASH_CODE}"
+
+            # Set the service names
+            SIGNALR_SERVICE_NAME="${MS_ALIAS}devsignalr${HASH_CODE}"
+            echo "SignalR Service Name: ${SIGNALR_SERVICE_NAME}"
+
+            # Check if the resource group exists, create it if it doesn't
+            echo "Checking if the resource group ${RESOURCE_GROUP} exists..."
+            RG_EXISTS=$(az group exists --name ${RESOURCE_GROUP})
+            if [ "$RG_EXISTS" = false ]; then
+              echo "Resource group does not exist. Creating resource group ${RESOURCE_GROUP}..."
+              az group create --name ${RESOURCE_GROUP} --location ${AZURE_REGION} > /dev/null 2>&1
+            else
+              echo "Resource Group ${RESOURCE_GROUP} already exists."
+            fi
+
+            # Create or update SignalR Service
+            echo "Creating or updating SignalR service ${SIGNALR_SERVICE_NAME}..."
+            az signalr create --name ${SIGNALR_SERVICE_NAME} --resource-group ${RESOURCE_GROUP} --sku Standard_S1 --unit-count 1 --location ${AZURE_REGION} --tags Owner=${OBJECT_ID} > /dev/null 2>&1
+
+            echo "Assigning SignalR Service Owner role to Object ID ${OBJECT_ID}..."
+            az role assignment create --assignee ${OBJECT_ID} --role "SignalR Service Owner" --scope $(az signalr show --name ${SIGNALR_SERVICE_NAME} --resource-group ${RESOURCE_GROUP} --query id -o tsv) > /dev/null 2>&1 || true
+
+            echo "Resource creation process completed."
+            echo "SignalR Service created with name: ${SIGNALR_SERVICE_NAME}"
