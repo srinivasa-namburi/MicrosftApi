@@ -42,8 +42,6 @@ jobs:
           export PATH="$HOME/.aspire/bin:$PATH"
           # Verify installation
           aspire --version
-      - name: Build
-        run: dotnet build src/Microsoft.Greenlight.slnx -v minimal
       - name: Aspire publish
         run: |
           # Ensure aspire is in PATH
@@ -103,46 +101,92 @@ jobs:
         uses: azure/login@v2
         with:
           creds: ${{ steps.convert-creds.outputs.azure-credentials }}
-      - name: Build and Push Docker Images to ACR
+      - name: Validate AKS access (post-login)
+        if: ${{ vars.DEPLOY_AKS != 'true' }}
         uses: azure/CLI@v2
         with:
           inlineScript: |
             set -euo pipefail
 
-            # Determine ACR name
-            ACR_NAME="${AZURE_CONTAINER_REGISTRY_NAME:-${ACR_NAME:-acr$(echo $AZURE_RESOURCE_GROUP | tr -d '-')}}"
-            echo "[GitHub] Building and pushing images to ACR: $ACR_NAME"
+            echo "Validating Existing AKS Cluster Access:"
+            echo "────────────────────────────────────────"
 
-            # Export variables for the script
-            export AZURE_RESOURCE_GROUP="$AZURE_RESOURCE_GROUP"
-            export AKS_CLUSTER_NAME="${AKS_CLUSTER_NAME:-aks-$AZURE_RESOURCE_GROUP}"
-            export WORKLOAD_IDENTITY_PRINCIPAL_ID="${WORKLOAD_IDENTITY_PRINCIPAL_ID:-}"
-            export BUILD_BUILDNUMBER="${GITHUB_RUN_NUMBER}-${GITHUB_SHA:0:7}"
+            AKS_RG="${AKS_RESOURCE_GROUP:-${AZURE_RESOURCE_GROUP}}"
+            AKS_NAME="${AKS_CLUSTER_NAME:-aks-${AZURE_RESOURCE_GROUP}}"
 
-            # Use optimized build with cached base image (1-2 min builds)
-            if [ -f "build/scripts/pipeline-internal/build-modern-build-push-images-optimized.sh" ]; then
-              echo "[GitHub] Using optimized build with cached base image (fastest)"
-              build/scripts/pipeline-internal/build-modern-build-push-images-optimized.sh \
-                "$ACR_NAME" \
-                "$(pwd)"
-            elif [ -f "build/scripts/pipeline-internal/build-modern-build-push-images-parallel.sh" ]; then
-              echo "[GitHub] Using parallel build script (fast fallback)"
-              build/scripts/pipeline-internal/build-modern-build-push-images-parallel.sh \
-                "$ACR_NAME" \
-                "$(pwd)"
+            echo "  Cluster: $AKS_NAME"
+            echo "  Resource Group: $AKS_RG"
+            echo ""
+
+            echo "  Checking cluster existence and permissions..."
+            set +e
+            AKS_SHOW_OUTPUT=$(az aks show --name "$AKS_NAME" --resource-group "$AKS_RG" --query "name" -o tsv 2>&1)
+            AKS_SHOW_EXIT=$?
+            set -e
+
+            if [[ $AKS_SHOW_EXIT -eq 0 ]] && [[ -n "$AKS_SHOW_OUTPUT" ]]; then
+              echo "  ✅ Cluster exists and accessible via Azure API"
+
+              CLUSTER_MODE=$(az aks show --name "$AKS_NAME" --resource-group "$AKS_RG" --query "apiServerAccessProfile.enablePrivateCluster" -o tsv 2>/dev/null || echo "false")
+
+              if [[ "$CLUSTER_MODE" == "true" ]]; then
+                echo "  ⚠️  Private cluster detected - API server not publicly accessible"
+                echo "     Ensure GitHub Actions runners can reach the cluster via VNET connectivity"
+              else
+                echo "  ✅ Public cluster - API server is accessible"
+              fi
+
+              echo ""
+              echo "  Testing credential retrieval..."
+              if az aks get-credentials --resource-group "$AKS_RG" --name "$AKS_NAME" --overwrite-existing >/dev/null 2>&1; then
+                echo "  ✅ Successfully retrieved cluster credentials"
+
+                echo ""
+                echo "  Testing kubectl connectivity..."
+                if timeout 10 kubectl cluster-info >/dev/null 2>&1; then
+                  echo "  ✅ Successfully connected to cluster API server"
+
+                  NAMESPACE="${AKS_NAMESPACE:-greenlight-${GITHUB_EVENT_INPUTS_ENVIRONMENT:-dev}}"
+                  if kubectl get namespace "$NAMESPACE" >/dev/null 2>&1; then
+                    echo "  ✅ Namespace '$NAMESPACE' exists"
+                  else
+                    echo "  ℹ️  Namespace '$NAMESPACE' will be created during deployment"
+                  fi
+                else
+                  if [[ "$CLUSTER_MODE" == "true" ]]; then
+                    echo "  ❌ Cannot connect to private cluster API server"
+                    echo "     GitHub Actions runners must have network access to private clusters"
+                    exit 1
+                  else
+                    echo "  ❌ Cannot connect to cluster API server (timeout)"
+                    echo "     Possible issues: network/firewall or API server availability"
+                    exit 1
+                  fi
+                fi
+              else
+                echo "  ❌ Failed to retrieve cluster credentials"
+                echo "     Ensure the service principal has required AKS roles"
+                exit 1
+              fi
             else
-              echo "[GitHub] ERROR: Build scripts not found"
+              echo "  ❌ Cluster does not exist or no access permissions"
+              echo "     az aks show exit code: $AKS_SHOW_EXIT"
+              echo "     az aks show output:"
+              echo "$AKS_SHOW_OUTPUT"
+              echo ""
+              echo "     To create the cluster, set DEPLOY_AKS=true in your GitHub environment variables"
               exit 1
             fi
 
-            # Export ACR endpoint
-            echo "AZURE_CONTAINER_REGISTRY_ENDPOINT=${ACR_NAME}.azurecr.io" >> $GITHUB_ENV
+            echo ""
+            echo "  AKS cluster validation completed"
+            echo "  ────────────────────────────────────────"
         env:
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
-          AZURE_CONTAINER_REGISTRY_NAME: ${{ vars.AZURE_CONTAINER_REGISTRY_NAME }}
-          ACR_NAME: ${{ vars.ACR_NAME }}
           AKS_CLUSTER_NAME: ${{ vars.AKS_CLUSTER_NAME }}
-          WORKLOAD_IDENTITY_PRINCIPAL_ID: ${{ vars.WORKLOAD_IDENTITY_PRINCIPAL_ID }}
+          AKS_RESOURCE_GROUP: ${{ vars.AKS_RESOURCE_GROUP }}
+          AKS_NAMESPACE: ${{ vars.AKS_NAMESPACE }}
+          GITHUB_EVENT_INPUTS_ENVIRONMENT: ${{ github.event.inputs.environment }}
       - name: Deploy Azure Resources
         id: azure-deploy
         uses: azure/CLI@v2
@@ -153,12 +197,59 @@ jobs:
             # Clean up any existing outputs file
             rm -f azure-outputs.env
 
+            # Optional AKS provisioning (idempotent) when DEPLOY_AKS=true
+            if [ "${DEPLOY_AKS:-false}" = "true" ]; then
+              echo "[GitHub] DEPLOY_AKS=true - ensuring AKS cluster exists before infra deployment"
+              chmod +x build/scripts/provision-aks-cluster.sh
+
+              AKS_RG="${AKS_RESOURCE_GROUP:-${AZURE_RESOURCE_GROUP}}"
+              AKS_NAME="${AKS_CLUSTER_NAME:-aks-${AZURE_RESOURCE_GROUP}}"
+              DEPLOYMENT_MODEL="${DEPLOYMENT_MODEL:-public}"
+
+              # Provision cluster non-interactively (will no-op if exists)
+              PROVISION_ARGS=()
+              PROVISION_ARGS+=("$AKS_RG")
+              PROVISION_ARGS+=("$AZURE_LOCATION")
+              PROVISION_ARGS+=("$AKS_NAME")
+              PROVISION_ARGS+=("--deployment-model" "$DEPLOYMENT_MODEL")
+
+              # Add subnet parameters for private/hybrid modes
+              if [[ "$DEPLOYMENT_MODEL" == "private" ]] || [[ "$DEPLOYMENT_MODEL" == "hybrid" ]]; then
+                if [ -n "${AKS_SUBNET:-}" ]; then
+                  PROVISION_ARGS+=("--subnet-id" "$AKS_SUBNET")
+                fi
+              fi
+
+              ACCEPT_DEFAULTS=true \
+              AKS_DIAGNOSTICLOGS="${AKS_DIAGNOSTICLOGS:-false}" \
+              build/scripts/provision-aks-cluster.sh "${PROVISION_ARGS[@]}" || echo "[GitHub] AKS provisioning step completed (or skipped)"
+
+              # Capture workload identity variables if summary exists
+              if [ -f "aks-provision-summary.json" ]; then
+                echo "[GitHub] Capturing workload identity values from provisioning summary"
+                WI_CLIENT_ID=$(jq -r '.workloadIdentity.clientId // empty' aks-provision-summary.json || true)
+                WI_PRINCIPAL_ID=$(jq -r '.workloadIdentity.principalId // empty' aks-provision-summary.json || true)
+                WI_RESOURCE_ID=$(jq -r '.workloadIdentity.resourceId // empty' aks-provision-summary.json || true)
+                WI_NAME=$(echo "$WI_RESOURCE_ID" | sed 's|.*/||' || true)
+
+                if [ -n "$WI_CLIENT_ID" ]; then
+                  echo "WORKLOAD_IDENTITY_CLIENT_ID=$WI_CLIENT_ID" >> $GITHUB_ENV
+                  echo "WORKLOAD_IDENTITY_PRINCIPAL_ID=$WI_PRINCIPAL_ID" >> $GITHUB_ENV
+                  echo "WORKLOAD_IDENTITY_NAME=$WI_NAME" >> $GITHUB_ENV
+                  echo "[GitHub] Updated environment with workload identity values"
+                fi
+              fi
+            else
+              echo "[GitHub] DEPLOY_AKS not enabled (DEPLOY_AKS=${DEPLOY_AKS:-false}) - expecting cluster to pre-exist"
+            fi
+
             # Set up paths
             SCRIPTS_DIR="build/scripts/pipeline-internal"
             PUB_DIR="out/publish"
 
             # Make scripts executable
             chmod +x "$SCRIPTS_DIR"/*.sh
+            chmod +x build/scripts/*.sh
 
             # Run deploy-stage fixes (principal type, subscription scope, role alignment)
             echo "[GitHub] Applying deploy-stage fixes..."
@@ -204,6 +295,52 @@ jobs:
           AZURE_PRINCIPAL_ID: ${{ vars.AZURE_PRINCIPAL_ID }}
           WORKLOAD_IDENTITY_PRINCIPAL_ID: ${{ vars.WORKLOAD_IDENTITY_PRINCIPAL_ID }}
           WORKLOAD_IDENTITY_NAME: ${{ vars.WORKLOAD_IDENTITY_NAME }}
+          AKS_RESOURCE_GROUP: ${{ vars.AKS_RESOURCE_GROUP }}
+          AKS_CLUSTER_NAME: ${{ vars.AKS_CLUSTER_NAME }}
+          DEPLOY_AKS: ${{ vars.DEPLOY_AKS }}
+          DEPLOYMENT_MODEL: ${{ vars.DEPLOYMENT_MODEL }}
+          AKS_SUBNET: ${{ vars.AKS_SUBNET }}
+          AKS_DIAGNOSTICLOGS: ${{ vars.AKS_DIAGNOSTICLOGS }}
+      - name: Build and Push Docker Images to ACR
+        uses: azure/CLI@v2
+        with:
+          inlineScript: |
+            set -euo pipefail
+
+            # Determine ACR name
+            ACR_NAME="${AZURE_CONTAINER_REGISTRY_NAME:-${ACR_NAME:-acr$(echo $AZURE_RESOURCE_GROUP | tr -d '-')}}"
+            echo "[GitHub] Building and pushing images to ACR: $ACR_NAME"
+
+            # Export variables for the script
+            export AZURE_RESOURCE_GROUP="$AZURE_RESOURCE_GROUP"
+            export AKS_CLUSTER_NAME="${AKS_CLUSTER_NAME:-aks-$AZURE_RESOURCE_GROUP}"
+            export WORKLOAD_IDENTITY_PRINCIPAL_ID="${WORKLOAD_IDENTITY_PRINCIPAL_ID:-}"
+            export BUILD_BUILDNUMBER="${GITHUB_RUN_NUMBER}-${GITHUB_SHA:0:7}"
+
+            # Use optimized build with cached base image (1-2 min builds)
+            if [ -f "build/scripts/pipeline-internal/build-modern-build-push-images-optimized.sh" ]; then
+              echo "[GitHub] Using optimized build with cached base image (fastest)"
+              build/scripts/pipeline-internal/build-modern-build-push-images-optimized.sh \
+                "$ACR_NAME" \
+                "$(pwd)"
+            elif [ -f "build/scripts/pipeline-internal/build-modern-build-push-images-parallel.sh" ]; then
+              echo "[GitHub] Using parallel build script (fast fallback)"
+              build/scripts/pipeline-internal/build-modern-build-push-images-parallel.sh \
+                "$ACR_NAME" \
+                "$(pwd)"
+            else
+              echo "[GitHub] ERROR: Build scripts not found"
+              exit 1
+            fi
+
+            # Export ACR endpoint
+            echo "AZURE_CONTAINER_REGISTRY_ENDPOINT=${ACR_NAME}.azurecr.io" >> $GITHUB_ENV
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_CONTAINER_REGISTRY_NAME: ${{ vars.AZURE_CONTAINER_REGISTRY_NAME }}
+          ACR_NAME: ${{ vars.ACR_NAME }}
+          AKS_CLUSTER_NAME: ${{ vars.AKS_CLUSTER_NAME }}
+          WORKLOAD_IDENTITY_PRINCIPAL_ID: ${{ vars.WORKLOAD_IDENTITY_PRINCIPAL_ID }}
       - name: Configure AKS credentials
         uses: azure/CLI@v2
         with:
