@@ -568,7 +568,7 @@ For Kubernetes resource sizing, add:
       },
       "autoscaling": { "minReplicas": 4, "maxReplicas": 10 }
     },
-    "mcp-server": {
+    "mcpserver-core":{"requests":{"cpu":"100m","memory":"128Mi"},"limits":{"cpu":"500m","memory":"512Mi"},"replicas":{"min":1,"max":5}},"mcpserver-flow": {
       "resources": {
         "requests": { "memory": "256Mi", "cpu": "250m" },
         "limits": { "memory": "512Mi", "cpu": "500m" }

@@ -37,5 +37,10 @@ public static class SystemIndexes
     /// Vector index for Flow document process metadata intent detection.
     /// </summary>
     public const string DocumentProcessMetadataIntentIndex = "system-index-documentprocessmetadata";
+
+    /// <summary>
+    /// Vector index for Flow Task template metadata intent detection.
+    /// </summary>
+    public const string FlowTaskTemplateIntentIndex = "system-index-flowtasktemplate";
 }
 

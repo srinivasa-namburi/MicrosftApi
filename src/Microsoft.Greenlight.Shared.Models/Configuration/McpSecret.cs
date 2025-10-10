@@ -28,9 +28,10 @@ public sealed class McpSecret : EntityBase
     public string SecretSalt { get; set; } = string.Empty;
 
     /// <summary>
-    /// The impersonated user OID associated with this secret.
+    /// The ProviderSubjectId (from "sub" claim) associated with this secret.
+    /// This is the stable user identifier used throughout the system.
     /// </summary>
-    public string UserOid { get; set; } = string.Empty;
+    public string ProviderSubjectId { get; set; } = string.Empty;
 
     /// <summary>
     /// Whether the secret is active and allowed for authentication.

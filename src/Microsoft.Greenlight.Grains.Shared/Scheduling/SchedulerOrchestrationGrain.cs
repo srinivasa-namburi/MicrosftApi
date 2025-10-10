@@ -22,7 +22,8 @@ public class SchedulerOrchestrationGrain : Grain, ISchedulerOrchestrationGrain, 
     private const string ScheduledFileDiscoveryAndImportReminder = "ScheduledFileDiscoveryAndImport";
     private const string RepositoryIndexMaintenanceReminder = "RepositoryIndexMaintenance";
     private const string VectorStoreIdFixReminder = "VectorStoreIdFix"; // monthly heavy job
-    private const string DocumentProcessMetadataReindexingReminder = "DocumentProcessMetadataReindexing"; // 30-minute reindexing for Flow intent detection
+    private const string DocumentProcessMetadataReindexingReminder = "DocumentProcessMetadataReindexing"; // 30-minute reindexing for document process metadata intent detection
+    private const string FlowTaskTemplateReindexingReminder = "FlowTaskTemplateReindexing"; // 30-minute reindexing for Flow Task template intent detection
 
     // Centralized set of valid reminder names
     private static readonly HashSet<string> ValidReminderNames = new()
@@ -32,7 +33,8 @@ public class SchedulerOrchestrationGrain : Grain, ISchedulerOrchestrationGrain, 
         ScheduledFileDiscoveryAndImportReminder,
         RepositoryIndexMaintenanceReminder,
         VectorStoreIdFixReminder,
-        DocumentProcessMetadataReindexingReminder
+        DocumentProcessMetadataReindexingReminder,
+        FlowTaskTemplateReindexingReminder
     };
 
     // Heavy job running flag
@@ -131,6 +133,7 @@ public class SchedulerOrchestrationGrain : Grain, ISchedulerOrchestrationGrain, 
             await ExecuteRepositoryIndexMaintenanceJobAsync();
             await ExecuteScheduledFileDiscoveryAndImportJobAsync();
             await ExecuteDocumentProcessMetadataReindexingJobAsync();
+            await ExecuteFlowTaskTemplateReindexingJobAsync();
 
             if (_serviceConfigOptions.GreenlightServices.Global.EnableVectorStoreIdFixJob)
             {
@@ -253,6 +256,7 @@ public class SchedulerOrchestrationGrain : Grain, ISchedulerOrchestrationGrain, 
         await RegisterOrUpdateReminderAsync(ScheduledFileDiscoveryAndImportReminder, TimeSpan.FromMinutes(15));
         await RegisterOrUpdateReminderAsync(RepositoryIndexMaintenanceReminder, TimeSpan.FromMinutes(2));
         await RegisterOrUpdateReminderAsync(DocumentProcessMetadataReindexingReminder, TimeSpan.FromMinutes(30));
+        await RegisterOrUpdateReminderAsync(FlowTaskTemplateReindexingReminder, TimeSpan.FromMinutes(30));
 
         if (_serviceConfigOptions.GreenlightServices.Global.EnableVectorStoreIdFixJob)
         {
@@ -433,6 +437,9 @@ public class SchedulerOrchestrationGrain : Grain, ISchedulerOrchestrationGrain, 
                 case DocumentProcessMetadataReindexingReminder:
                     await ExecuteDocumentProcessMetadataReindexingJobAsync();
                     break;
+                case FlowTaskTemplateReindexingReminder:
+                    await ExecuteFlowTaskTemplateReindexingJobAsync();
+                    break;
                 default:
                     _logger.LogWarning("Unrecognized reminder received: {ReminderName}. Ignoring.", reminderName);
                     break;
@@ -493,6 +500,20 @@ public class SchedulerOrchestrationGrain : Grain, ISchedulerOrchestrationGrain, 
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error executing Document Process Metadata Reindexing job");
+        }
+    }
+
+    private async Task ExecuteFlowTaskTemplateReindexingJobAsync()
+    {
+        try
+        {
+            _logger.LogInformation("Executing Flow Task Template Reindexing job");
+            var grain = GrainFactory.GetGrain<IFlowTaskTemplateReindexingGrain>(Guid.NewGuid());
+            await grain.ExecuteAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error executing Flow Task Template Reindexing job");
         }
     }
 }

@@ -2,7 +2,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using Microsoft.Greenlight.McpServer.Options;
+using Microsoft.Greenlight.Shared.Configuration;
 
 namespace Microsoft.Greenlight.McpServer.Tests;
 
@@ -11,7 +11,7 @@ public class McpOptionsTests
     [Fact]
     public void DefaultValues_AreSetCorrectly()
     {
-        var options = new McpOptions();
+        var options = new ServiceConfigurationOptions.McpOptions();
         
         Assert.False(options.DisableAuth);
         Assert.False(options.SecretEnabled);
@@ -35,10 +35,10 @@ public class McpOptionsTests
             .Build();
 
         var services = new ServiceCollection();
-        services.Configure<McpOptions>(configuration.GetSection("ServiceConfiguration:Mcp"));
-        
+        services.Configure<ServiceConfigurationOptions.McpOptions>(configuration.GetSection("ServiceConfiguration:Mcp"));
+
         var serviceProvider = services.BuildServiceProvider();
-        var options = serviceProvider.GetRequiredService<IOptions<McpOptions>>().Value;
+        var options = serviceProvider.GetRequiredService<IOptions<ServiceConfigurationOptions.McpOptions>>().Value;
 
         Assert.True(options.DisableAuth);
         Assert.True(options.SecretEnabled);
@@ -60,10 +60,10 @@ public class McpOptionsTests
             .Build();
 
         var services = new ServiceCollection();
-        services.Configure<McpOptions>(configuration.GetSection("ServiceConfiguration:Mcp"));
-        
+        services.Configure<ServiceConfigurationOptions.McpOptions>(configuration.GetSection("ServiceConfiguration:Mcp"));
+
         var serviceProvider = services.BuildServiceProvider();
-        var options = serviceProvider.GetRequiredService<IOptions<McpOptions>>().Value;
+        var options = serviceProvider.GetRequiredService<IOptions<ServiceConfigurationOptions.McpOptions>>().Value;
 
         Assert.False(options.DisableAuth); // Should remain default
         Assert.True(options.SecretEnabled);
@@ -77,10 +77,10 @@ public class McpOptionsTests
         var configuration = new ConfigurationBuilder().Build();
 
         var services = new ServiceCollection();
-        services.Configure<McpOptions>(configuration.GetSection("ServiceConfiguration:Mcp"));
-        
+        services.Configure<ServiceConfigurationOptions.McpOptions>(configuration.GetSection("ServiceConfiguration:Mcp"));
+
         var serviceProvider = services.BuildServiceProvider();
-        var options = serviceProvider.GetRequiredService<IOptions<McpOptions>>().Value;
+        var options = serviceProvider.GetRequiredService<IOptions<ServiceConfigurationOptions.McpOptions>>().Value;
 
         Assert.False(options.DisableAuth);
         Assert.False(options.SecretEnabled);
@@ -108,10 +108,10 @@ public class McpOptionsTests
             .Build();
 
         var services = new ServiceCollection();
-        services.Configure<McpOptions>(configuration.GetSection("ServiceConfiguration:Mcp"));
-        
+        services.Configure<ServiceConfigurationOptions.McpOptions>(configuration.GetSection("ServiceConfiguration:Mcp"));
+
         var serviceProvider = services.BuildServiceProvider();
-        var options = serviceProvider.GetRequiredService<IOptions<McpOptions>>().Value;
+        var options = serviceProvider.GetRequiredService<IOptions<ServiceConfigurationOptions.McpOptions>>().Value;
 
         Assert.Equal(expectedValue, options.DisableAuth);
         Assert.Equal(expectedValue, options.SecretEnabled);
@@ -131,12 +131,12 @@ public class McpOptionsTests
             .Build();
 
         var services = new ServiceCollection();
-        services.Configure<McpOptions>(configuration.GetSection("ServiceConfiguration:Mcp"));
-        
+        services.Configure<ServiceConfigurationOptions.McpOptions>(configuration.GetSection("ServiceConfiguration:Mcp"));
+
         var serviceProvider = services.BuildServiceProvider();
-        
+
         // Configuration binding should throw for invalid boolean values
-        var optionsAccessor = serviceProvider.GetRequiredService<IOptions<McpOptions>>();
+        var optionsAccessor = serviceProvider.GetRequiredService<IOptions<ServiceConfigurationOptions.McpOptions>>();
         Assert.Throws<InvalidOperationException>(() => optionsAccessor.Value);
     }
 }

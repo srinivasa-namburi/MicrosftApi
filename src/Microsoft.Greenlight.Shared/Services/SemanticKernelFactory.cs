@@ -755,7 +755,102 @@ namespace Microsoft.Greenlight.Shared.Services
                 }
             }
 
-            await Task.CompletedTask;
+            // Load MCP plugins that have ExposeToFlow = true
+            await AddFlowMcpPluginsToPluginCollectionAsync(kernelPlugins, serviceProvider);
+        }
+
+        /// <summary>
+        /// Adds MCP plugins exposed to Flow to the kernel plugin collection.
+        /// </summary>
+        private async Task AddFlowMcpPluginsToPluginCollectionAsync(KernelPluginCollection kernelPlugins, IServiceProvider serviceProvider)
+        {
+            try
+            {
+                await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+
+                // Get all MCP plugins with ExposeToFlow = true
+                var flowMcpPlugins = await dbContext.McpPlugins
+                    .Include(p => p.Versions)
+                    .Where(p => p.ExposeToFlow)
+                    .AsNoTracking()
+                    .ToListAsync();
+
+                if (!flowMcpPlugins.Any())
+                {
+                    _logger.LogDebug("No MCP plugins are currently exposed to Flow");
+                    return;
+                }
+
+                _logger.LogInformation("Found {Count} MCP plugins exposed to Flow", flowMcpPlugins.Count);
+
+                // Get the MCP plugin manager
+                var mcpPluginManager = serviceProvider.GetService<McpPluginManager>();
+                if (mcpPluginManager == null)
+                {
+                    _logger.LogWarning("McpPluginManager not available - cannot load Flow MCP plugins");
+                    return;
+                }
+
+                // Load each exposed MCP plugin
+                foreach (var pluginEntity in flowMcpPlugins)
+                {
+                    try
+                    {
+                        var version = pluginEntity.LatestVersion;
+                        if (version == null)
+                        {
+                            _logger.LogWarning("MCP plugin {PluginName} has no versions available", pluginEntity.Name);
+                            continue;
+                        }
+
+                        // Try to get the plugin from the container
+                        if (mcpPluginManager.PluginContainer.TryGetPlugin(pluginEntity.Name, version.ToString()!, out var mcpPlugin) && mcpPlugin != null)
+                        {
+                            // Create a synthetic DocumentProcessInfo for Flow context
+                            var flowContext = new DocumentProcessInfo
+                            {
+                                Id = Guid.Empty,
+                                ShortName = "Flow",
+                                Description = "Flow conversational orchestration"
+                            };
+
+                            // Get kernel functions from the MCP plugin
+                            var kernelFunctions = await mcpPlugin.GetKernelFunctionsAsync(flowContext);
+
+                            if (kernelFunctions.Any())
+                            {
+                                // Create a kernel plugin from the functions
+                                var kernelPlugin = KernelPluginFactory.CreateFromFunctions(
+                                    pluginEntity.Name,
+                                    pluginEntity.Description,
+                                    kernelFunctions);
+
+                                kernelPlugins.Add(kernelPlugin);
+
+                                _logger.LogInformation("Added MCP plugin to Flow kernel: {PluginName} ({FunctionCount} functions)",
+                                    pluginEntity.Name, kernelFunctions.Count);
+                            }
+                            else
+                            {
+                                _logger.LogWarning("MCP plugin {PluginName} has no functions available", pluginEntity.Name);
+                            }
+                        }
+                        else
+                        {
+                            _logger.LogWarning("MCP plugin {PluginName} v{Version} not found in container - skipping",
+                                pluginEntity.Name, version);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error loading MCP plugin {PluginName} for Flow", pluginEntity.Name);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error loading Flow MCP plugins");
+            }
         }
 
         /// <summary>

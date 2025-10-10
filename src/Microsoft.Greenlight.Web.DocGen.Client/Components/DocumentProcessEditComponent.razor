@@ -14,6 +14,7 @@
 @inject IDialogService DialogService
 @inject SignalRConnectionService SignalRConnectionService
 @inject SignalRSubscriptionFactory SignalRSubscriptionFactory
+@inject NavigationManager Navigation
 @using Microsoft.Greenlight.Shared.Contracts.Messages.Reindexing.Events
 @implements IAsyncDisposable
 
@@ -122,75 +123,6 @@ else
                     </MudItem>
                 </MudGrid>
 
-                <MudExpansionPanels Class="mt-2">
-                    <MudExpansionPanel Text="Storage & Index" Expanded="true">
-                        <MudTextField @bind-Value="_indexName" Label="Repository Index Name" Disabled="_isEditMode" OnInternalInputChanged="UpdateRepositories" />
-
-                        <!-- File Storage Sources -->
-                        <div class="mt-4">
-                            <PermissionView Permission="@Microsoft.Greenlight.Shared.Contracts.Authorization.PermissionKeys.AlterDocumentProcessesAndLibraries">
-                                <ChildContent>
-                                    <FileStorageSourceListComponent DocumentProcessId="@ProcessId"
-                                                                    LegacyContainerName="@_process.BlobStorageContainerName"
-                                                                    LegacyAutoImportFolder="@_process.BlobStorageAutoImportFolderName"
-                                                                    ShowBackwardCompatibility="true"
-                                                                    OnMigrateLegacy="HandleMigrateLegacyStorage" />
-                                </ChildContent>
-                                <NotAuthorized>
-                                    <MudAlert Severity="Severity.Info">
-                                        You need the "Alter Document Processes and Libraries" permission to manage file storage sources.
-                                    </MudAlert>
-                                </NotAuthorized>
-                            </PermissionView>
-                        </div>
-
-                        <!-- Legacy fields - shown as read-only for reference -->
-                        @if (_isEditMode && !string.IsNullOrEmpty(_process.BlobStorageContainerName))
-                        {
-                            <MudDivider Class="mt-5 mb-4" />
-                            <MudText Typo="Typo.subtitle2" Class="mb-2">Legacy Configuration (Read-Only)</MudText>
-                            <MudTextField Value="_process.BlobStorageContainerName" Label="Legacy Blob Storage Container Name" Disabled="true" />
-                            <MudTextField Value="_process.BlobStorageAutoImportFolderName" Label="Legacy Auto Import Folder Name" Disabled="true" />
-                        }
-                    </MudExpansionPanel>
-
-                    <MudExpansionPanel Text="Vector Store Configuration" Expanded="true">
-                        @if (_process.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
-                        {
-                            <MudSelect T="TextChunkingMode?" @bind-Value="_process.VectorStoreChunkingMode" Label="Chunking Mode">
-                                @foreach (var mode in Enum.GetValues<TextChunkingMode>())
-                                {
-                                    <MudSelectItem Value="@(mode as TextChunkingMode?)">@mode.ToString()</MudSelectItem>
-                                }
-                            </MudSelect>
-
-                            <MudNumericField T="int?" @bind-Value="_process.VectorStoreChunkSize" Label="Chunk Size (tokens)" Min="100" Max="8000" HelperText="Number of tokens per chunk. Leave empty to use global default." />
-                            <MudNumericField T="int?" @bind-Value="_process.VectorStoreChunkOverlap" Label="Chunk Overlap (tokens)" Min="0" Max="2000" HelperText="Number of overlapping tokens between chunks. Leave empty to use global default." />
-
-                            <MudDivider Class="mt-2 mb-3" />
-
-                            <MudSelect T="AiModelDeploymentInfo" Label="Embedding Model Deployment" @bind-Value="SelectedEmbeddingDeployment" ToStringFunc="@(d => d.DeploymentName)">
-                                @foreach (var deployment in _aiModelDeployments.Where(d => d.AiModel?.ModelType == AiModelType.Embedding))
-                                {
-                                    <MudSelectItem Value="@deployment">@deployment.DeploymentName</MudSelectItem>
-                                }
-                            </MudSelect>
-
-                            <MudSelect T="int?" @bind-Value="_process.EmbeddingDimensionsOverride" Label="Embedding Size Override (dimensions)">
-                                <MudSelectItem T="int?" Value="@(default(int?))">Use deployment default</MudSelectItem>
-                                <MudSelectItem T="int?" Value="256">256</MudSelectItem>
-                                <MudSelectItem T="int?" Value="512">512</MudSelectItem>
-                                <MudSelectItem T="int?" Value="1024">1024</MudSelectItem>
-                                <MudSelectItem T="int?" Value="1536">1536</MudSelectItem>
-                                <MudSelectItem T="int?" Value="3072">3072</MudSelectItem>
-                            </MudSelect>
-
-                            <MudAlert Severity="Severity.Info" Class="mt-2">
-                                <strong>Note:</strong> Changing chunk size or overlap will only apply to newly ingested documents. You can reindex existing documents to apply new settings.
-                            </MudAlert>
-                        }
-                    </MudExpansionPanel>
-                </MudExpansionPanels>
 
                 <!-- File Upload Section -->
                 @if (ProcessId != null && _isEditMode)
@@ -253,6 +185,24 @@ else
                         </MudItem>
                     </MudGrid>
 
+                    @if (_process.FlowTaskTemplateId != null)
+                    {
+                        <MudDivider Class="my-3" />
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
+                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" />
+                            <MudText Typo="Typo.subtitle2">Flow Task: <strong>Enabled</strong></MudText>
+                            <MudSpacer />
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" StartIcon="@Icons.Material.Filled.Chat" OnClick="TestFlowTaskInChat">
+                                Test in Chat
+                            </MudButton>
+                            <MudTooltip Text="Flow Task management UI coming soon">
+                                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" StartIcon="@Icons.Material.Filled.Visibility" Disabled="true">
+                                    View Flow Task
+                                </MudButton>
+                            </MudTooltip>
+                        </MudStack>
+                    }
+
                 }
                 <MudSpacer />
 
@@ -284,59 +234,140 @@ else
             </MudItem>
 
             <MudItem xs="12" md="6">
-                <MudGrid Spacing="3">
-                    <MudItem xs="12">
-                        <MudText Typo="Typo.subtitle2" Class="mb-2">Document Retrieval Settings</MudText>
-                    </MudItem>
+                <MudExpansionPanels>
+                    <MudExpansionPanel Text="Advanced Settings" Expanded="false">
+                        <MudGrid Spacing="3">
+                            <!-- Storage & Index -->
+                            <MudItem xs="12">
+                                <MudText Typo="Typo.subtitle2" Class="mb-2">Storage & Index</MudText>
+                                <MudTextField @bind-Value="_indexName" Label="Repository Index Name" Disabled="_isEditMode" OnInternalInputChanged="UpdateRepositories" />
 
-                    <MudItem xs="12">
-                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                            <MudSlider T="int" @bind-Value="_process.PrecedingSearchPartitionInclusionCount" Min="0" Max="10" TickMarks="true" ValueLabel="true" Immediate="true">
-                                # of Preceding Partitions to retrieve
-                            </MudSlider>
-                            <MudNumericField @bind-Value="_process.PrecedingSearchPartitionInclusionCount" Min="0" Max="10" Immediate="true" Style="width:80px;" />
-                        </MudStack>
-                    </MudItem>
+                                <!-- File Storage Sources -->
+                                <div class="mt-4">
+                                    <PermissionView Permission="@Microsoft.Greenlight.Shared.Contracts.Authorization.PermissionKeys.AlterDocumentProcessesAndLibraries">
+                                        <ChildContent>
+                                            <FileStorageSourceListComponent DocumentProcessId="@ProcessId"
+                                                                            LegacyContainerName="@_process.BlobStorageContainerName"
+                                                                            LegacyAutoImportFolder="@_process.BlobStorageAutoImportFolderName"
+                                                                            ShowBackwardCompatibility="true"
+                                                                            OnMigrateLegacy="HandleMigrateLegacyStorage" />
+                                        </ChildContent>
+                                        <NotAuthorized>
+                                            <MudAlert Severity="Severity.Info">
+                                                You need the "Alter Document Processes and Libraries" permission to manage file storage sources.
+                                            </MudAlert>
+                                        </NotAuthorized>
+                                    </PermissionView>
+                                </div>
 
-                    <MudItem xs="12">
-                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                            <MudSlider T="int" @bind-Value="_process.FollowingSearchPartitionInclusionCount" Min="0" Max="10" TickMarks="true" ValueLabel="true" Immediate="true">
-                                # of Following Partitions to retrieve
-                            </MudSlider>
-                            <MudNumericField @bind-Value="_process.FollowingSearchPartitionInclusionCount" Min="0" Max="10" Immediate="true" Style="width:80px;" />
-                        </MudStack>
-                    </MudItem>
+                                <!-- Legacy fields - shown as read-only for reference -->
+                                @if (_isEditMode && !string.IsNullOrEmpty(_process.BlobStorageContainerName))
+                                {
+                                    <MudDivider Class="mt-5 mb-4" />
+                                    <MudText Typo="Typo.subtitle2" Class="mb-2">Legacy Configuration (Read-Only)</MudText>
+                                    <MudTextField Value="_process.BlobStorageContainerName" Label="Legacy Blob Storage Container Name" Disabled="true" />
+                                    <MudTextField Value="_process.BlobStorageAutoImportFolderName" Label="Legacy Auto Import Folder Name" Disabled="true" />
+                                }
+                            </MudItem>
 
-                    <MudItem xs="12">
-                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                            <MudSlider T="int" @bind-Value="_process.NumberOfCitationsToGetFromRepository" Min="0" Max="100" TickMarks="false" ValueLabel="true" Immediate="true">
-                                # Number of Citations to retrieve
-                            </MudSlider>
-                            <MudNumericField @bind-Value="_process.NumberOfCitationsToGetFromRepository" Min="0" Max="100" Immediate="true" Style="width:80px;" />
-                        </MudStack>
-                    </MudItem>
+                            <!-- Vector Store Configuration -->
+                            @if (_process.LogicType == DocumentProcessLogicType.SemanticKernelVectorStore)
+                            {
+                                <MudItem xs="12">
+                                    <MudDivider Class="my-3" />
+                                    <MudText Typo="Typo.subtitle2" Class="mb-2">Vector Store Configuration</MudText>
 
-                    <MudItem xs="12" Class="mb-4">
-                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                            <MudSlider T="double" @bind-Value="_minimumRelevancePercentage" Min="0" Max="100" Step="10" TickMarks="true" TickMarkLabels="@_minimumRelevanceStepLabels" ValueLabel="true" Immediate="true">
-                                Minimum Relevance (%)
-                            </MudSlider>
-                            <MudNumericField @bind-Value="_minimumRelevancePercentage" Min="0" Max="100" Step="10" Immediate="true" Style="width:80px;" />
-                        </MudStack>
-                    </MudItem>
+                                    <MudSelect T="TextChunkingMode?" @bind-Value="_process.VectorStoreChunkingMode" Label="Chunking Mode">
+                                        @foreach (var mode in Enum.GetValues<TextChunkingMode>())
+                                        {
+                                            <MudSelectItem Value="@(mode as TextChunkingMode?)">@mode.ToString()</MudSelectItem>
+                                        }
+                                    </MudSelect>
 
-                    @if (_isEditMode)
-                    {
-                        <MudItem xs="12">
-                            <MudDivider Class="my-3" />
-                            <MudText Typo="Typo.subtitle2" Class="mb-2">Validation Pipeline Settings</MudText>
-                            <ValidationStepsEditorComponent Steps="@_validationSteps"
-                                                            StepsChanged="@HandleValidationStepsChanged"
-                                                            RunValidationAutomatically="@_runValidationAutomatically"
-                                                            RunValidationAutomaticallyChanged="@HandleRunValidationAutomaticallyChanged" />
-                        </MudItem>
-                    }
-                </MudGrid>
+                                    <MudNumericField T="int?" @bind-Value="_process.VectorStoreChunkSize" Label="Chunk Size (tokens)" Min="100" Max="8000" HelperText="Number of tokens per chunk. Leave empty to use global default." />
+                                    <MudNumericField T="int?" @bind-Value="_process.VectorStoreChunkOverlap" Label="Chunk Overlap (tokens)" Min="0" Max="2000" HelperText="Number of overlapping tokens between chunks. Leave empty to use global default." />
+
+                                    <MudDivider Class="mt-2 mb-3" />
+
+                                    <MudSelect T="AiModelDeploymentInfo" Label="Embedding Model Deployment" @bind-Value="SelectedEmbeddingDeployment" ToStringFunc="@(d => d.DeploymentName)">
+                                        @foreach (var deployment in _aiModelDeployments.Where(d => d.AiModel?.ModelType == AiModelType.Embedding))
+                                        {
+                                            <MudSelectItem Value="@deployment">@deployment.DeploymentName</MudSelectItem>
+                                        }
+                                    </MudSelect>
+
+                                    <MudSelect T="int?" @bind-Value="_process.EmbeddingDimensionsOverride" Label="Embedding Size Override (dimensions)">
+                                        <MudSelectItem T="int?" Value="@(default(int?))">Use deployment default</MudSelectItem>
+                                        <MudSelectItem T="int?" Value="256">256</MudSelectItem>
+                                        <MudSelectItem T="int?" Value="512">512</MudSelectItem>
+                                        <MudSelectItem T="int?" Value="1024">1024</MudSelectItem>
+                                        <MudSelectItem T="int?" Value="1536">1536</MudSelectItem>
+                                        <MudSelectItem T="int?" Value="3072">3072</MudSelectItem>
+                                    </MudSelect>
+
+                                    <MudAlert Severity="Severity.Info" Class="mt-2">
+                                        <strong>Note:</strong> Changing chunk size or overlap will only apply to newly ingested documents. You can reindex existing documents to apply new settings.
+                                    </MudAlert>
+                                </MudItem>
+                            }
+
+                            <!-- Document Retrieval Settings -->
+                            <MudItem xs="12">
+                                <MudDivider Class="my-3" />
+                                <MudText Typo="Typo.subtitle2" Class="mb-2">Document Retrieval Settings</MudText>
+                            </MudItem>
+
+                            <MudItem xs="12">
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                    <MudSlider T="int" @bind-Value="_process.PrecedingSearchPartitionInclusionCount" Min="0" Max="10" TickMarks="true" ValueLabel="true" Immediate="true">
+                                        # of Preceding Partitions to retrieve
+                                    </MudSlider>
+                                    <MudNumericField @bind-Value="_process.PrecedingSearchPartitionInclusionCount" Min="0" Max="10" Immediate="true" Style="width:80px;" />
+                                </MudStack>
+                            </MudItem>
+
+                            <MudItem xs="12">
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                    <MudSlider T="int" @bind-Value="_process.FollowingSearchPartitionInclusionCount" Min="0" Max="10" TickMarks="true" ValueLabel="true" Immediate="true">
+                                        # of Following Partitions to retrieve
+                                    </MudSlider>
+                                    <MudNumericField @bind-Value="_process.FollowingSearchPartitionInclusionCount" Min="0" Max="10" Immediate="true" Style="width:80px;" />
+                                </MudStack>
+                            </MudItem>
+
+                            <MudItem xs="12">
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                    <MudSlider T="int" @bind-Value="_process.NumberOfCitationsToGetFromRepository" Min="0" Max="100" TickMarks="false" ValueLabel="true" Immediate="true">
+                                        # Number of Citations to retrieve
+                                    </MudSlider>
+                                    <MudNumericField @bind-Value="_process.NumberOfCitationsToGetFromRepository" Min="0" Max="100" Immediate="true" Style="width:80px;" />
+                                </MudStack>
+                            </MudItem>
+
+                            <MudItem xs="12">
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                    <MudSlider T="double" @bind-Value="_minimumRelevancePercentage" Min="0" Max="100" Step="10" TickMarks="true" TickMarkLabels="@_minimumRelevanceStepLabels" ValueLabel="true" Immediate="true">
+                                        Minimum Relevance (%)
+                                    </MudSlider>
+                                    <MudNumericField @bind-Value="_minimumRelevancePercentage" Min="0" Max="100" Step="10" Immediate="true" Style="width:80px;" />
+                                </MudStack>
+                            </MudItem>
+
+                            <!-- Validation Pipeline Settings -->
+                            @if (_isEditMode)
+                            {
+                                <MudItem xs="12">
+                                    <MudDivider Class="my-3" />
+                                    <MudText Typo="Typo.subtitle2" Class="mb-2">Validation Pipeline Settings</MudText>
+                                    <ValidationStepsEditorComponent Steps="@_validationSteps"
+                                                                    StepsChanged="@HandleValidationStepsChanged"
+                                                                    RunValidationAutomatically="@_runValidationAutomatically"
+                                                                    RunValidationAutomaticallyChanged="@HandleRunValidationAutomaticallyChanged" />
+                                </MudItem>
+                            }
+                        </MudGrid>
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
             </MudItem>
         </MudGrid>
     </MudPaper>
@@ -1386,5 +1417,16 @@ else
         };
         var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
         await DialogService.ShowAsync<ExportDefinitionDialog>("Export Definition", parameters, options);
+    }
+
+    private void TestFlowTaskInChat()
+    {
+        if (!_isEditMode || _process.FlowTaskTemplateId == null)
+        {
+            return;
+        }
+
+        // Navigate to AI Assistant chat for this document process
+        Navigation.NavigateTo($"/ai-assistant/{_process.ShortName}");
     }
 }

@@ -314,6 +314,7 @@ PRINT 'SQL Server database user configuration completed successfully';
         await Seed2025_09_04_RebuildAllFileAcknowledgmentRecords(dbContext, cancellationToken);
         await Seed2025_09_08_BackfillFileStorageSourceDataType(dbContext, cancellationToken);
         await Seed2025_09_15_BackfillDisplayFileName(dbContext, cancellationToken);
+        await Seed2025_10_07_CreateFlowTasksForDocumentProcesses(scope.ServiceProvider, dbContext, cancellationToken);
 
 
         sw.Stop();
@@ -1593,5 +1594,48 @@ PRINT 'SQL Server database user configuration completed successfully';
             _logger.LogError(ex, "Error during DisplayFileName backfill. Some records may not have been updated.");
             // Don't rethrow - this is a best-effort migration that should fail gracefully
         }
+    }
+
+    private async Task Seed2025_10_07_CreateFlowTasksForDocumentProcesses(IServiceProvider serviceProvider, DocGenerationDbContext dbContext, CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Starting Flow Task sync for all Document Processes");
+
+        // Get ALL Document Processes (not just those without templates)
+        // This ensures existing templates get updated with new fields like DocumentTitle
+        var allProcesses = await dbContext.DynamicDocumentProcessDefinitions
+            .ToListAsync(cancellationToken);
+
+        if (allProcesses.Count == 0)
+        {
+            _logger.LogInformation("No Document Processes found. Skipping Flow Task seeding.");
+            return;
+        }
+
+        _logger.LogInformation("Found {Count} Document Processes. Syncing Flow Task templates...", allProcesses.Count);
+
+        // Get the FlowTaskTemplateService from DI
+        var flowTaskService = serviceProvider.GetRequiredService<IFlowTaskTemplateService>();
+
+        int successCount = 0;
+        int failCount = 0;
+
+        foreach (var process in allProcesses)
+        {
+            try
+            {
+                var templateId = await flowTaskService.SyncFlowTaskFromDocumentProcessAsync(process.Id, cancellationToken);
+                successCount++;
+                _logger.LogInformation("Synced Flow Task template {TemplateId} for Document Process '{ProcessName}' ({ProcessId})",
+                    templateId, process.ShortName, process.Id);
+            }
+            catch (Exception ex)
+            {
+                failCount++;
+                _logger.LogError(ex, "Failed to sync Flow Task template for Document Process '{ProcessName}' ({ProcessId})",
+                    process.ShortName, process.Id);
+            }
+        }
+
+        _logger.LogInformation("Flow Task seeding completed. Success: {SuccessCount}, Failed: {FailCount}", successCount, failCount);
     }
 }

@@ -560,3 +560,4 @@ build/environment-variables-ADO-dev.yml
 # Aspire generated output (created during build/publish)
 aspire-output/
 aspire-output-test/
+/.claude

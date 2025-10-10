@@ -26,7 +26,7 @@ namespace Microsoft.Greenlight.Shared.Plugins
         /// <summary>
         /// Gets the MCP client used to communicate with the MCP server.
         /// </summary>
-        public override IMcpClient? McpClient { get; protected set; }
+        public override McpClient? McpClient { get; protected set; }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="StdioMcpPlugin"/> class.
@@ -210,12 +210,12 @@ namespace Microsoft.Greenlight.Shared.Plugins
                 _lock.Release();
 
                 StdioClientTransportOptions transportOptions = stdioConfig;
-                IMcpClient mcpClient;
+                McpClient mcpClient;
 
                 // --- TRY: normal launch ---
                 try
                 {
-                    mcpClient = await McpClientFactory.CreateAsync(new StdioClientTransport(transportOptions));
+                    mcpClient = await McpClient.CreateAsync(new StdioClientTransport(transportOptions));
                 }
                 // Catch the *specific* IOException that is triggered when an execute bit is not set (EACCES on Unix systems)
                 catch (IOException ioe)
@@ -253,7 +253,7 @@ namespace Microsoft.Greenlight.Shared.Plugins
                     }
 
                     // --- RETRY ---
-                    mcpClient = await McpClientFactory.CreateAsync(new StdioClientTransport(transportOptions));
+                    mcpClient = await McpClient.CreateAsync(new StdioClientTransport(transportOptions));
                 }
 
                 // Re-acquire lock to set state

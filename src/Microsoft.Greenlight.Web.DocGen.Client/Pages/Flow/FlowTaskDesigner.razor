@@ -1,0 +1,458 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+
+@page "/flow/templates/new"
+@page "/flow/templates/{id}/edit"
+
+@using Microsoft.Greenlight.Shared.Contracts.FlowTasks
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@using Microsoft.Greenlight.Web.DocGen.Client.Components.Flow
+
+@inject IFlowTaskApiClient FlowTaskApiClient
+@inject IPluginApiClient PluginApiClient
+@inject ISnackbar Snackbar
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+
+<MudPaper Class="pa-4">
+    <MudText Typo="Typo.h5">@(_isEditMode ? "Edit Flow Task Template" : "Create Flow Task Template")</MudText>
+    <MudDivider Class="mt-2 mb-3" />
+
+    @if (_isLoading)
+    {
+        <MudProgressCircular Indeterminate="true" Size="Size.Large" Class="ma-4" />
+    }
+    else
+    {
+        <MudForm @ref="_form" @bind-IsValid="@_isValid">
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudExpansionPanels MultiExpansion="true">
+                        <!-- Template Metadata -->
+                        <FlowTaskMetadataEditor @ref="_metadataEditor"
+                                              @bind-Name="_template.Name"
+                                              @bind-DisplayName="_template.DisplayName"
+                                              @bind-Description="_template.Description"
+                                              @bind-Category="_template.Category"
+                                              @bind-Version="_template.Version"
+                                              @bind-IsActive="_template.IsActive"
+                                              @bind-TriggerPhrases="_template.TriggerPhrases"
+                                              @bind-InitialPrompt="_template.InitialPrompt"
+                                              @bind-CompletionMessage="_template.CompletionMessage"
+                                              Disabled="@_isSaving" />
+
+                        <!-- Data Sources -->
+                        <MudExpansionPanel Text="@($"Data Sources ({_template.DataSources?.Count ?? 0})")">
+                            <MudStack Spacing="3">
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                         StartIcon="@Icons.Material.Filled.Add" OnClick="AddDataSource"
+                                         Disabled="@_isSaving">
+                                    Add Data Source
+                                </MudButton>
+
+                                @if (_template.DataSources != null && _template.DataSources.Count > 0)
+                                {
+                                    @foreach (var dataSource in _template.DataSources)
+                                    {
+                                        <FlowTaskDataSourceEditor DataSource="@dataSource"
+                                                                FlowExposedPlugins="@_flowExposedPlugins"
+                                                                OnDelete="@(() => RemoveDataSource(dataSource))"
+                                                                Disabled="@_isSaving" />
+                                    }
+                                }
+                                else
+                                {
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary">No data sources defined.</MudText>
+                                }
+                            </MudStack>
+                        </MudExpansionPanel>
+
+                        <!-- Sections -->
+                        <MudExpansionPanel Text="@($"Sections ({_template.Sections?.Count ?? 0})")" InitiallyExpanded="true">
+                            <MudStack Spacing="3">
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                         StartIcon="@Icons.Material.Filled.Add" OnClick="AddSection"
+                                         Disabled="@_isSaving">
+                                    Add Section
+                                </MudButton>
+
+                                @if (_template.Sections != null && _template.Sections.Count > 0)
+                                {
+                                    @for (int i = 0; i < _template.Sections.Count; i++)
+                                    {
+                                        var sectionIndex = i;
+                                        <FlowTaskSectionEditor Index="@sectionIndex"
+                                                             Section="@_template.Sections[sectionIndex]"
+                                                             AvailableDataSources="@(_template.DataSources ?? new List<FlowTaskDataSourceDto>())"
+                                                             CanMoveDown="@(sectionIndex < _template.Sections.Count - 1)"
+                                                             OnMoveUp="@(() => MoveSectionUp(sectionIndex))"
+                                                             OnMoveDown="@(() => MoveSectionDown(sectionIndex))"
+                                                             OnDelete="@(() => RemoveSection(sectionIndex))"
+                                                             Disabled="@_isSaving" />
+                                    }
+                                }
+                                else
+                                {
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary">No sections defined. Add a section to get started.</MudText>
+                                }
+                            </MudStack>
+                        </MudExpansionPanel>
+
+                        <!-- Output Templates -->
+                        <MudExpansionPanel Text="@($"Output Templates ({_template.OutputTemplates?.Count ?? 0})")">
+                            <MudStack Spacing="3">
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                         StartIcon="@Icons.Material.Filled.Add" OnClick="AddOutputTemplate"
+                                         Disabled="@_isSaving">
+                                    Add Output Template
+                                </MudButton>
+
+                                @if (_template.OutputTemplates != null && _template.OutputTemplates.Count > 0)
+                                {
+                                    @foreach (var output in _template.OutputTemplates)
+                                    {
+                                        <FlowTaskOutputTemplateEditor OutputTemplate="@output"
+                                                                    FlowExposedPlugins="@_flowExposedPlugins"
+                                                                    OnDelete="@(() => RemoveOutputTemplate(output))"
+                                                                    Disabled="@_isSaving" />
+                                    }
+                                }
+                                else
+                                {
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary">No output templates defined.</MudText>
+                                }
+                            </MudStack>
+                        </MudExpansionPanel>
+                    </MudExpansionPanels>
+                </MudItem>
+
+                <!-- Action Buttons -->
+                <MudItem xs="12" Class="mt-4">
+                    <MudStack Row="true" Spacing="2">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                 OnClick="SaveTemplate"
+                                 Disabled="@(!_isValid || _isSaving)"
+                                 StartIcon="@Icons.Material.Filled.Save">
+                            @(_isSaving ? "Saving..." : "Save Template")
+                        </MudButton>
+                        @if (_isEditMode && _template.Id != Guid.Empty)
+                        {
+                            <MudButton Variant="Variant.Outlined" Color="Color.Secondary"
+                                     OnClick="ExportTemplate"
+                                     Disabled="@_isSaving"
+                                     StartIcon="@Icons.Material.Filled.Download">
+                                Export
+                            </MudButton>
+                        }
+                        <MudButton Variant="Variant.Outlined" Color="Color.Default"
+                                 OnClick="Cancel"
+                                 Disabled="@_isSaving">
+                            Cancel
+                        </MudButton>
+                    </MudStack>
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    }
+</MudPaper>
+
+@code {
+    [Parameter]
+    public string? Id { get; set; }
+
+    private MudForm? _form;
+    private FlowTaskMetadataEditor? _metadataEditor;
+    private bool _isValid;
+    private bool _isLoading = true;
+    private bool _isSaving = false;
+    private bool _isEditMode => !string.IsNullOrEmpty(Id);
+
+    private FlowTaskTemplateDetailDto _template = new()
+    {
+        Id = Guid.Empty,
+        Name = "",
+        DisplayName = "",
+        IsActive = true,
+        Category = "DocumentGeneration",
+        Version = "1.0.0",
+        InitialPrompt = "",
+        TriggerPhrases = Array.Empty<string>(),
+        Sections = new List<FlowTaskSectionDto>(),
+        DataSources = new List<FlowTaskDataSourceDto>(),
+        OutputTemplates = new List<FlowTaskOutputTemplateDto>()
+    };
+
+    private List<McpPluginInfo> _flowExposedPlugins = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadFlowExposedPlugins();
+
+        if (_isEditMode && Guid.TryParse(Id, out var templateId))
+        {
+            await LoadTemplate(templateId);
+        }
+        else
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task LoadFlowExposedPlugins()
+    {
+        try
+        {
+            _flowExposedPlugins = await PluginApiClient.GetFlowExposedPluginsAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading plugins: {ex.Message}", Severity.Warning);
+            _flowExposedPlugins = new List<McpPluginInfo>();
+        }
+    }
+
+    private async Task LoadTemplate(Guid templateId)
+    {
+        _isLoading = true;
+        try
+        {
+            var template = await FlowTaskApiClient.GetFlowTaskTemplateByIdAsync(templateId);
+            if (template != null)
+            {
+                _template = template;
+            }
+            else
+            {
+                Snackbar.Add("Template not found", Severity.Error);
+                NavigationManager.NavigateTo("/flow/templates");
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading template: {ex.Message}", Severity.Error);
+            NavigationManager.NavigateTo("/flow/templates");
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SaveTemplate()
+    {
+        if (_form != null)
+        {
+            await _form.Validate();
+            if (!_isValid)
+            {
+                Snackbar.Add("Please fix validation errors", Severity.Warning);
+                return;
+            }
+        }
+
+        _isSaving = true;
+        try
+        {
+            // Parse trigger phrases from metadata editor
+            if (_metadataEditor != null)
+            {
+                _template.TriggerPhrases = _metadataEditor.GetParsedTriggerPhrases();
+            }
+
+            // Update section sort orders based on list position
+            if (_template.Sections != null)
+            {
+                for (int i = 0; i < _template.Sections.Count; i++)
+                {
+                    _template.Sections[i].SortOrder = i;
+                    // Update requirement sort orders
+                    if (_template.Sections[i].Requirements != null)
+                    {
+                        for (int j = 0; j < _template.Sections[i].Requirements.Count; j++)
+                        {
+                            _template.Sections[i].Requirements[j].SortOrder = j;
+                        }
+                    }
+                }
+            }
+
+            // Update output execution orders
+            if (_template.OutputTemplates != null)
+            {
+                for (int i = 0; i < _template.OutputTemplates.Count; i++)
+                {
+                    if (_template.OutputTemplates[i].ExecutionOrder == 0)
+                    {
+                        _template.OutputTemplates[i].ExecutionOrder = i;
+                    }
+                }
+            }
+
+            FlowTaskTemplateDetailDto result;
+            if (_isEditMode)
+            {
+                result = await FlowTaskApiClient.UpdateFlowTaskTemplateAsync(_template.Id, _template);
+                Snackbar.Add("Template updated successfully", Severity.Success);
+            }
+            else
+            {
+                result = await FlowTaskApiClient.CreateFlowTaskTemplateAsync(_template);
+                Snackbar.Add("Template created successfully", Severity.Success);
+            }
+
+            NavigationManager.NavigateTo($"/flow/templates/{result.Id}/edit");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving template: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private void Cancel()
+    {
+        NavigationManager.NavigateTo("/flow/templates");
+    }
+
+    private async Task ExportTemplate()
+    {
+        if (!_isEditMode || _template.Id == Guid.Empty) { return; }
+
+        try
+        {
+            var exportedTemplate = await FlowTaskApiClient.ExportFlowTaskTemplateAsync(_template.Id);
+            if (exportedTemplate == null)
+            {
+                Snackbar.Add("Template not found", Severity.Error);
+                return;
+            }
+
+            var json = System.Text.Json.JsonSerializer.Serialize(exportedTemplate, new System.Text.Json.JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+
+            var fileName = $"{_template.Name}_{DateTime.UtcNow:yyyyMMdd}.json";
+            await JSRuntime.InvokeVoidAsync("downloadFileFromText", fileName, json, "application/json;charset=utf-8");
+
+            Snackbar.Add("Template exported successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error exporting template: {ex.Message}", Severity.Error);
+        }
+    }
+
+    // Data source management
+    private void AddDataSource()
+    {
+        if (_template.DataSources == null)
+        {
+            _template.DataSources = new List<FlowTaskDataSourceDto>();
+        }
+
+        var newDataSource = new FlowTaskMcpToolDataSourceDto
+        {
+            Id = Guid.NewGuid(),
+            Name = $"Data Source {_template.DataSources.Count + 1}",
+            SourceType = "McpTool",
+            IsActive = true,
+            CacheDurationSeconds = 0,
+            FlowTaskTemplateId = _template.Id,
+            Parameters = new List<FlowTaskMcpToolParameterDto>()
+        };
+
+        _template.DataSources.Add(newDataSource);
+        StateHasChanged();
+    }
+
+    private void RemoveDataSource(FlowTaskDataSourceDto dataSource)
+    {
+        _template.DataSources?.Remove(dataSource);
+        StateHasChanged();
+    }
+
+    // Section management
+    private void AddSection()
+    {
+        if (_template.Sections == null)
+        {
+            _template.Sections = new List<FlowTaskSectionDto>();
+        }
+
+        _template.Sections.Add(new FlowTaskSectionDto
+        {
+            Id = Guid.NewGuid(),
+            FlowTaskTemplateId = _template.Id,
+            Name = $"section{_template.Sections.Count + 1}",
+            DisplayName = $"Section {_template.Sections.Count + 1}",
+            SortOrder = _template.Sections.Count,
+            IsRequired = true,
+            Requirements = new List<FlowTaskRequirementDto>()
+        });
+        StateHasChanged();
+    }
+
+    private void RemoveSection(int index)
+    {
+        if (_template.Sections != null && index >= 0 && index < _template.Sections.Count)
+        {
+            _template.Sections.RemoveAt(index);
+            StateHasChanged();
+        }
+    }
+
+    private void MoveSectionUp(int index)
+    {
+        if (_template.Sections != null && index > 0)
+        {
+            var section = _template.Sections[index];
+            _template.Sections.RemoveAt(index);
+            _template.Sections.Insert(index - 1, section);
+            StateHasChanged();
+        }
+    }
+
+    private void MoveSectionDown(int index)
+    {
+        if (_template.Sections != null && index < _template.Sections.Count - 1)
+        {
+            var section = _template.Sections[index];
+            _template.Sections.RemoveAt(index);
+            _template.Sections.Insert(index + 1, section);
+            StateHasChanged();
+        }
+    }
+
+    // Output template management
+    private void AddOutputTemplate()
+    {
+        if (_template.OutputTemplates == null)
+        {
+            _template.OutputTemplates = new List<FlowTaskOutputTemplateDto>();
+        }
+
+        _template.OutputTemplates.Add(new FlowTaskOutputTemplateDto
+        {
+            Id = Guid.NewGuid(),
+            FlowTaskTemplateId = _template.Id,
+            Name = $"Output {_template.OutputTemplates.Count + 1}",
+            OutputType = "TextSummary",
+            TemplateContent = "",
+            ContentType = "text/plain",
+            ExecutionOrder = _template.OutputTemplates.Count,
+            IsRequired = true
+        });
+        StateHasChanged();
+    }
+
+    private void RemoveOutputTemplate(FlowTaskOutputTemplateDto output)
+    {
+        _template.OutputTemplates?.Remove(output);
+        StateHasChanged();
+    }
+}

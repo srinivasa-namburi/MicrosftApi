@@ -12,42 +12,58 @@ variables:
   AZURE_LOCATION: "eastus"                                       # Azure region (eastus, westus2, etc.)
   AKS_NAMESPACE: "greenlight-dev"                                # Kubernetes namespace for deployment
   HELM_RELEASE: "greenlight-dev"                                 # Helm release name (should match environment)
-  
-  # Recommended Kubernetes resource configuration (based on current Container Apps sizing)
-  # This matches the production sizing from src/deploy/postdeploy.sh but adapted for Kubernetes
-  # Current Container Apps: D4 workload profile = 1CPU/1GB, D8+ = 2CPU/2GB, Silo = 4-10 replicas
-  # Kubernetes defaults: 512MB/1vcpu baseline with appropriate requests/limits
-  KUBERNETES_RESOURCES_CONFIG: |
-    {
-      "api-main": {
-        "resources": {
-          "requests": {"memory": "512Mi", "cpu": "500m"},
-          "limits": {"memory": "1Gi", "cpu": "1"}
-        }
-      },
-      "web-main": {
-        "resources": {
-          "requests": {"memory": "256Mi", "cpu": "250m"},
-          "limits": {"memory": "512Mi", "cpu": "500m"}
-        }
-      },
-      "silo": {
-        "resources": {
-          "requests": {"memory": "1Gi", "cpu": "1"},
-          "limits": {"memory": "2Gi", "cpu": "2"}
-        },
-        "autoscaling": {
-          "minReplicas": 4,
-          "maxReplicas": 10
-        }
-      },
-      "mcp-server": {
-        "resources": {
-          "requests": {"memory": "256Mi", "cpu": "250m"},
-          "limits": {"memory": "512Mi", "cpu": "500m"}
-        }
-      }
-    }
+
+  # KUBERNETES_RESOURCES_CONFIG: Kubernetes resource requests/limits and autoscaling configuration
+  # IMPORTANT: This variable MUST be added manually in GitHub Environment variables
+  # GitHub Actions cannot properly handle multiline JSON in YAML variable sections
+  #
+  # Recommended production configuration (adapt based on your workload):
+  # - API Main: 3-8 replicas, 500m CPU / 1GB RAM per pod
+  # - Silo (Orleans): 3-10 replicas, 2-4 CPU / 2-4GB RAM per pod (higher for background processing)
+  # - Web DocGen: 1-3 replicas, 250m CPU / 256-512MB RAM per pod
+  # - MCP Server: 1 replica only (does not scale horizontally), 250m CPU / 256-512MB RAM per pod
+  # - DB Setup Manager: Job (no autoscaling, single instance), 250m CPU / 256-512MB RAM
+  #
+  # To add this variable in GitHub:
+  # 1. Go to Settings > Environments > <your-environment-name> > Environment variables
+  # 2. Click "Add variable"
+  # 3. Name: KUBERNETES_RESOURCES_CONFIG
+  # 4. Value: Copy the SINGLE-LINE JSON below (as-is, no modifications):
+  #
+  # {"api-main":{"requests":{"cpu":"500m","memory":"512Mi"},"limits":{"cpu":"1","memory":"1Gi"},"replicas":{"min":1,"max":1}},"web-docgen":{"requests":{"cpu":"250m","memory":"256Mi"},"limits":{"cpu":"500m","memory":"512Mi"},"replicas":{"min":1,"max":3}},"silo":{"requests":{"cpu":"2","memory":"2Gi"},"limits":{"cpu":"4","memory":"4Gi"},"replicas":{"min":3,"max":10}},"mcpserver-core":{"requests":{"cpu":"100m","memory":"128Mi"},"limits":{"cpu":"500m","memory":"512Mi"},"replicas":{"min":1,"max":5}},"mcpserver-flow":{"requests":{"cpu":"250m","memory":"256Mi"},"limits":{"cpu":"500m","memory":"512Mi"},"replicas":{"min":1,"max":1}},"db-setupmanager":{"requests":{"cpu":"250m","memory":"256Mi"},"limits":{"cpu":"500m","memory":"512Mi"}}}
+  #
+  # For easier editing, here's the formatted version (for reference only - DO NOT copy with newlines):
+  # {
+  #   "api-main": {
+  #     "requests": {"cpu": "500m", "memory": "512Mi"},
+  #     "limits": {"cpu": "1", "memory": "1Gi"},
+  #     "replicas": {"min": 1, "max": 1}
+  #   },
+  #   "web-docgen": {
+  #     "requests": {"cpu": "250m", "memory": "256Mi"},
+  #     "limits": {"cpu": "500m", "memory": "512Mi"},
+  #     "replicas": {"min": 1, "max": 3}
+  #   },
+  #   "silo": {
+  #     "requests": {"cpu": "2", "memory": "2Gi"},
+  #     "limits": {"cpu": "4", "memory": "4Gi"},
+  #     "replicas": {"min": 3, "max": 10}
+  #   },
+  #   "mcpserver-core": {
+  #     "requests":{"cpu":"100m","memory":"128Mi"},
+  #     "limits":{"cpu":"500m","memory":"512Mi"},
+  #     "replicas":{"min":1,"max":5}
+  #   },
+  # "mcpserver-flow": {
+  #     "requests": {"cpu": "250m", "memory": "256Mi"},
+  #     "limits": {"cpu": "500m", "memory": "512Mi"},
+  #     "replicas": {"min": 1, "max": 1}
+  #   },
+  #   "db-setupmanager": {
+  #     "requests": {"cpu": "250m", "memory": "256Mi"},
+  #     "limits": {"cpu": "500m", "memory": "512Mi"}
+  #   }
+  # }
 
 # REQUIRED Environment secrets (encrypted in GitHub)
 secrets:

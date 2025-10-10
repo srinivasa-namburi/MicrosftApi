@@ -221,15 +221,14 @@ internal static partial class Program
             .WithEnvironment("Orleans__Endpoints__GatewayPort", "30000");
         }
 
-        // MCP Server exposes Greenlight operations via Model Context Protocol over HTTP
-        // In publish mode, exclude launch profile and manually specify HTTP endpoint to avoid duplicate ports
-        var mcpServerBuilder = builder.ExecutionContext.IsPublishMode
-            ? builder.AddProject<Projects.Microsoft_Greenlight_McpServer>("mcp-server", launchProfileName: null)
+        // MCP Core Server - Business document processing tools via Model Context Protocol over HTTP
+        var mcpServerCoreBuilder = builder.ExecutionContext.IsPublishMode
+            ? builder.AddProject<Projects.Microsoft_Greenlight_McpServer_Core>("mcpserver-core", launchProfileName: null)
                 .WithHttpEndpoint(port: 8080, name: "http")
-            : builder.AddProject<Projects.Microsoft_Greenlight_McpServer>("mcp-server")
+            : builder.AddProject<Projects.Microsoft_Greenlight_McpServer_Core>("mcpserver-core")
                 .WithExternalHttpEndpoints();
 
-        mcpServerBuilder
+        mcpServerCoreBuilder
             .WithComputeEnvironment(k8s)
             .WithDotNetContainerDefaults()
             .WithConfigSection(envMcpConfigurationSection)
@@ -248,43 +247,43 @@ internal static partial class Program
             .WithReference(orleans.ClusteringTable)
             .WaitForCompletion(dbSetupManager);
 
-        // Add EventHub reference only if it exists (production or configured locally)
+        // Add EventHub reference to Core server if it exists
         if (azureDependencies.EventHub != null)
         {
-            mcpServerBuilder.WithReference(azureDependencies.EventHub);
+            mcpServerCoreBuilder.WithReference(azureDependencies.EventHub);
         }
-        
-        // Add Azure AI Search reference only if it exists (when not using Postgres)
+
+        // Add Azure AI Search reference to Core server if it exists
         if (azureDependencies.AzureAiSearch != null)
         {
-            mcpServerBuilder.WithReference(azureDependencies.AzureAiSearch);
+            mcpServerCoreBuilder.WithReference(azureDependencies.AzureAiSearch);
         }
 
         if (usePostgres && azureDependencies.KmVectorDb != null)
         {
-            mcpServerBuilder.WithReference(azureDependencies.KmVectorDb);
+            mcpServerCoreBuilder.WithReference(azureDependencies.KmVectorDb);
         }
         if (azureDependencies.SignalR != null)
         {
-            mcpServerBuilder.WithReference(azureDependencies.SignalR);
+            mcpServerCoreBuilder.WithReference(azureDependencies.SignalR);
         }
 
         if (builder.ExecutionContext.IsRunMode)
         {
-            mcpServerBuilder.WithEnvironment("DOTNET_LAUNCH_PROFILE", "https");
+            mcpServerCoreBuilder.WithEnvironment("DOTNET_LAUNCH_PROFILE", "https");
         }
 
-        // Stable Kubernetes Service name for MCP in publish mode
+        // Stable Kubernetes Service name for Core MCP in publish mode
         if (builder.ExecutionContext.IsPublishMode)
         {
-            mcpServerBuilder.PublishAsKubernetesService(res =>
+            mcpServerCoreBuilder.PublishAsKubernetesService(res =>
             {
                 if (res.Service is null)
                 {
                     return;
                 }
 
-                res.Service.Metadata.Name = "mcp-server";
+                res.Service.Metadata.Name = "mcpserver-core";
                 res.Service.Spec ??= new ServiceSpecV1();
                 res.Service.Spec.Type = "ClusterIP";
 
@@ -300,7 +299,87 @@ internal static partial class Program
             });
         }
 
-        var mcpServer = mcpServerBuilder;
+        // MCP Flow Server - AI Assistant conversational tools via Model Context Protocol
+        var mcpServerFlowBuilder = builder.ExecutionContext.IsPublishMode
+            ? builder.AddProject<Projects.Microsoft_Greenlight_McpServer_Flow>("mcpserver-flow", launchProfileName: null)
+                .WithHttpEndpoint(port: 8080, name: "http")
+            : builder.AddProject<Projects.Microsoft_Greenlight_McpServer_Flow>("mcpserver-flow")
+                .WithExternalHttpEndpoints();
+
+        mcpServerFlowBuilder
+            .WithComputeEnvironment(k8s)
+            .WithDotNetContainerDefaults()
+            .WithConfigSection(envMcpConfigurationSection)
+            .WithConfigSection(envAzureAdConfigurationSection)
+            .WithConfigSection(envServiceConfigurationConfigurationSection)
+            .WithConfigSection(envConnectionStringsConfigurationSection)
+            .WithConfigSection(envAzureConfigurationSection)
+            .WithConfigSection(envKestrelConfigurationSection)
+            .WithReference(apiMain)
+            .WithReference(azureDependencies.BlobStorage)
+            .WithReference(azureDependencies.RedisResource)
+            .WithReference(azureDependencies.DocGenSql)
+            .WithReference(orleans.Orleans.AsClient())
+            .WithReference(orleans.Checkpointing)
+            .WithReference(orleans.BlobStorage)
+            .WithReference(orleans.ClusteringTable)
+            .WaitForCompletion(dbSetupManager);
+
+        // Add EventHub reference to Flow server if it exists
+        if (azureDependencies.EventHub != null)
+        {
+            mcpServerFlowBuilder.WithReference(azureDependencies.EventHub);
+        }
+
+        // Add Azure AI Search reference to Flow server if it exists
+        if (azureDependencies.AzureAiSearch != null)
+        {
+            mcpServerFlowBuilder.WithReference(azureDependencies.AzureAiSearch);
+        }
+
+        if (usePostgres && azureDependencies.KmVectorDb != null)
+        {
+            mcpServerFlowBuilder.WithReference(azureDependencies.KmVectorDb);
+        }
+        if (azureDependencies.SignalR != null)
+        {
+            mcpServerFlowBuilder.WithReference(azureDependencies.SignalR);
+        }
+
+        if (builder.ExecutionContext.IsRunMode)
+        {
+            mcpServerFlowBuilder.WithEnvironment("DOTNET_LAUNCH_PROFILE", "https");
+        }
+
+        // Stable Kubernetes Service name for Flow MCP in publish mode
+        if (builder.ExecutionContext.IsPublishMode)
+        {
+            mcpServerFlowBuilder.PublishAsKubernetesService(res =>
+            {
+                if (res.Service is null)
+                {
+                    return;
+                }
+
+                res.Service.Metadata.Name = "mcpserver-flow";
+                res.Service.Spec ??= new ServiceSpecV1();
+                res.Service.Spec.Type = "ClusterIP";
+
+                foreach (var port in res.Service.Spec.Ports)
+                {
+                    if (port.Name == "http")
+                    {
+                        port.Port = 8080;
+                        port.TargetPort = 8080;
+                        port.Protocol = string.IsNullOrEmpty(port.Protocol) ? "TCP" : port.Protocol;
+                    }
+                }
+            });
+        }
+
+        var mcpServer = mcpServerCoreBuilder;  // Legacy variable for backward compat
+        var mcpServerCore = mcpServerCoreBuilder;
+        var mcpServerFlow = mcpServerFlowBuilder;
 
         // Setup Silo
         var siloBuilder = builder.AddProject<Projects.Microsoft_Greenlight_Silo>("silo")
@@ -474,7 +553,8 @@ internal static partial class Program
         // Apply Kubernetes resource configurations if specified
         ApplyResourceConfigurations(resourceConfigs, "db-setupmanager", dbSetupManager);
         ApplyResourceConfigurations(resourceConfigs, "api-main", apiMain);
-        ApplyResourceConfigurations(resourceConfigs, "mcp-server", mcpServer);
+        ApplyResourceConfigurations(resourceConfigs, "mcpserver-core", mcpServerCore);
+        ApplyResourceConfigurations(resourceConfigs, "mcpserver-flow", mcpServerFlow);
         ApplyResourceConfigurations(resourceConfigs, "silo", silo);
         ApplyResourceConfigurations(resourceConfigs, "web-docgen", docGenFrontend);
 
@@ -543,21 +623,69 @@ internal static partial class Program
     {
         if (!resourceConfigs.TryGetValue(serviceName, out var config))
             return;
-            
+
         try
         {
             // Convert to Kubernetes resource requirements
             var k8sRequirements = ToK8sResourceRequirements(config);
-            
-            // NOTE: Kubernetes resource configuration via annotations (placeholder approach)
-            // The actual implementation depends on how Aspire exposes Kubernetes resource configuration
-            // For now, we parse and validate the configuration but apply via future Aspire capabilities
+
             var requestsCpu = k8sRequirements.Requests?["cpu"]?.ToString() ?? "";
             var requestsMemory = k8sRequirements.Requests?["memory"]?.ToString() ?? "";
             var limitsCpu = k8sRequirements.Limits?["cpu"]?.ToString() ?? "";
             var limitsMemory = k8sRequirements.Limits?["memory"]?.ToString() ?? "";
-            
-            Console.WriteLine($"Kubernetes resources configured for {serviceName}: CPU({requestsCpu}/{limitsCpu}), Memory({requestsMemory}/{limitsMemory})");
+
+            Console.WriteLine($"Applying Kubernetes resources for {serviceName}: CPU({requestsCpu}/{limitsCpu}), Memory({requestsMemory}/{limitsMemory})");
+
+            // Log replica configuration if present
+            if (config.Replicas != null)
+            {
+                Console.WriteLine($"Replica configuration for {serviceName}: Min={config.Replicas.Min}, Max={config.Replicas.Max}");
+            }
+
+            // Apply resource configurations via PublishAsKubernetesService callback
+            // This modifies the generated Kubernetes Deployment manifests during aspire publish
+            projectBuilder.PublishAsKubernetesService(resource =>
+            {
+                // Get the workload (can be Deployment or StatefulSet)
+                if (resource.Workload is not Aspire.Hosting.Kubernetes.Resources.Deployment deployment)
+                    return;
+
+                if (deployment.Spec?.Template?.Spec?.Containers == null || deployment.Spec.Template.Spec.Containers.Count == 0)
+                    return;
+
+                var container = deployment.Spec.Template.Spec.Containers[0];
+
+                // Ensure Resources object exists
+                container.Resources ??= new Aspire.Hosting.Kubernetes.Resources.ResourceRequirementsV1();
+
+                // Add requests to the existing dictionary
+                if (k8sRequirements.Requests != null && k8sRequirements.Requests.Count > 0)
+                {
+                    foreach (var kvp in k8sRequirements.Requests)
+                    {
+                        container.Resources.Requests[kvp.Key] = kvp.Value.ToString();
+                    }
+                }
+
+                // Add limits to the existing dictionary
+                if (k8sRequirements.Limits != null && k8sRequirements.Limits.Count > 0)
+                {
+                    foreach (var kvp in k8sRequirements.Limits)
+                    {
+                        container.Resources.Limits[kvp.Key] = kvp.Value.ToString();
+                    }
+                }
+
+                // Apply replica count (use Min as the base replica count)
+                // Note: HPA (Horizontal Pod Autoscaler) would be needed for actual min/max scaling
+                if (config.Replicas?.Min != null && config.Replicas.Min > 0)
+                {
+                    deployment.Spec.Replicas = config.Replicas.Min;
+                    Console.WriteLine($"Set replicas for {serviceName} to {config.Replicas.Min} (min from config)");
+                }
+
+                Console.WriteLine($"✅ Kubernetes resource requirements applied to {serviceName} deployment");
+            });
         }
         catch (Exception ex)
         {
@@ -600,11 +728,13 @@ internal static partial class Program
     /// </summary>
     /// <param name="Requests">Resource requests</param>
     /// <param name="Limits">Resource limits</param>
+    /// <param name="Replicas">Replica configuration for scaling</param>
     internal record ResourceConfig(
         ResourceSpec? Requests,
-        ResourceSpec? Limits
+        ResourceSpec? Limits,
+        ReplicaSpec? Replicas
     );
-    
+
     /// <summary>
     /// Resource specification for CPU and memory
     /// </summary>
@@ -613,5 +743,15 @@ internal static partial class Program
     internal record ResourceSpec(
         string? Cpu,
         string? Memory
+    );
+
+    /// <summary>
+    /// Replica specification for horizontal scaling
+    /// </summary>
+    /// <param name="Min">Minimum number of replicas</param>
+    /// <param name="Max">Maximum number of replicas</param>
+    internal record ReplicaSpec(
+        int? Min,
+        int? Max
     );
 }

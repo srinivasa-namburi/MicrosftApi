@@ -1,0 +1,78 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+@using Microsoft.Greenlight.Web.DocGen.Client.Components.Configuration.Infrastructure
+
+<MudStack Spacing="2">
+    @if (SaveResult?.HasChanges == true)
+    {
+        <MudText Typo="Typo.subtitle2" Class="font-weight-bold">Configuration saved successfully</MudText>
+        @foreach (var configSection in SaveResult.Sections)
+        {
+            <MudStack Row="true" AlignItems="AlignItems.Start" Spacing="1">
+                <MudIcon Icon="@GetIconForSection(configSection.Title)" Size="Size.Small" Class="mt-1" />
+                <MudStack Spacing="0">
+                    <MudText Typo="Typo.body2" Class="font-weight-medium">
+                        @configSection.Title
+                        @if (configSection.Changes.Count > 0)
+                        {
+                            <span class="ml-1">(@configSection.Changes.Count change@(configSection.Changes.Count == 1 ? "" : "s"))</span>
+                        }
+                        else
+                        {
+                            <span class="ml-1">(updated)</span>
+                        }
+                    </MudText>
+                    @if (configSection.Changes.Count > 0)
+                    {
+                        @foreach (var change in configSection.Changes.Take(3))
+                        {
+                            <MudText Typo="Typo.body2" Class="ml-2" Style="opacity: 0.8;">• @change</MudText>
+                        }
+                        @if (configSection.Changes.Count > 3)
+                        {
+                            <MudText Typo="Typo.body2" Class="ml-2" Style="opacity: 0.8;">• … @(configSection.Changes.Count - 3) more</MudText>
+                        }
+                    }
+                </MudStack>
+            </MudStack>
+        }
+    }
+    else
+    {
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+            <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" />
+            <MudText Typo="Typo.body2">No changes to save.</MudText>
+        </MudStack>
+    }
+</MudStack>
+
+@code {
+    /// <summary>
+    /// Gets or sets the save result to display.
+    /// </summary>
+    [Parameter]
+    public ConfigurationSaveResult? SaveResult { get; set; }
+
+    /// <summary>
+    /// Gets the icon for a configuration section based on its title.
+    /// </summary>
+    private string GetIconForSection(string sectionTitle)
+    {
+        return sectionTitle switch
+        {
+            "Features" => Icons.Material.Filled.ToggleOn,
+            "Feature Flags" => Icons.Material.Filled.ToggleOn,
+            "VectorStore" => Icons.Material.Filled.Storage,
+            "Vector Store" => Icons.Material.Filled.Storage,
+            "Flow" => Icons.Material.Filled.AccountTree,
+            "MCP" => Icons.Material.Filled.Extension,
+            "AI Models" => Icons.Material.Filled.Psychology,
+            "OCR" => Icons.Material.Filled.Scanner,
+            "File Storage" => Icons.Material.Filled.Folder,
+            "Frontend" => Icons.Material.Filled.Web,
+            "Hostname" => Icons.Material.Filled.Language,
+            "Scalability" => Icons.Material.Filled.Speed,
+            "Secrets" => Icons.Material.Filled.Key,
+            _ => Icons.Material.Filled.Settings
+        };
+    }
+}

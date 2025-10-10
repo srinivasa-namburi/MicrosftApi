@@ -253,7 +253,9 @@ public static class BuilderExtensions
         builder.Services.AddTransient<IFileUrlResolverService, FileUrlResolverService>();
 
         builder.Services.AddTransient<IDocumentProcessInfoService, DocumentProcessInfoService>();
+        builder.Services.AddTransient<IFlowTaskTemplateService, FlowTaskTemplateService>();
         builder.Services.AddTransient<IPromptInfoService, PromptInfoService>();
+        builder.Services.AddTransient<ISystemPromptInfoService, SystemPromptInfoService>();
         builder.Services.AddTransient<IDocumentLibraryInfoService, DocumentLibraryInfoService>();
 
         // Register the Kernel Memory Instance Factory for Document Libraries and text extraction

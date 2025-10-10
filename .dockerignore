@@ -1,0 +1,38 @@
+# Exclude build output
+**/bin/
+**/obj/
+**/out/
+
+# Exclude IDE/editor folders
+**/.vs/
+**/.vscode/
+**/.idea/
+**/.fleet/
+**/.git/
+
+# Exclude test results
+**/TestResults/
+**/*.trx
+
+# Exclude packages
+**/packages/
+**/.nuget/
+
+# Exclude OS files
+**/.DS_Store
+**/Thumbs.db
+
+# Exclude temp files
+**/*.tmp
+**/*.log
+**/*.cache
+
+# Exclude node modules (if any)
+**/node_modules/
+
+# Exclude publish folders
+**/publish/
+**/PublishProfiles/
+
+# Keep Dockerfiles
+!**/Dockerfile

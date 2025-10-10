@@ -7,6 +7,6 @@ namespace Microsoft.Greenlight.Shared.Contracts.DTO.McpSecrets;
 public sealed class CreateMcpSecretRequest
 {
     public string Name { get; set; } = string.Empty;
-    public string UserOid { get; set; } = string.Empty;
+    public string ProviderSubjectId { get; set; } = string.Empty;
 }
 

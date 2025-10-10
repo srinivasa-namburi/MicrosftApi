@@ -13,6 +13,11 @@ if ! command -v az >/dev/null 2>&1; then
   exit 1
 fi
 
+if [[ -z "${AZURE_DEVOPS_EXT_PAT:-}" ]]; then
+  echo "[wi-vg-update] AZURE_DEVOPS_EXT_PAT not set; skipping variable group sync"
+  exit 0
+fi
+
 az devops configure --defaults organization="$ADO_ORG" project="$ADO_PROJECT" >/dev/null
 VG_ID=$(az pipelines variable-group list --query "[?name=='$VG_NAME'].id | [0]" -o tsv)
 if [[ -z "$VG_ID" ]]; then

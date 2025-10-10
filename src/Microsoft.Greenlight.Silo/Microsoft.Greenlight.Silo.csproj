@@ -7,6 +7,11 @@
 		<UserSecretsId>dotnet-Microsoft.Greenlight.Silo-82897ad0-6e79-456f-9c9b-6af3c4104e50</UserSecretsId>
 		<ServerGarbageCollection>true</ServerGarbageCollection>
 		<ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+
+		<!-- Use custom Dockerfile with MCP execution environment (node, npx, uv, python) -->
+		<ContainerImageBuildMethod>Dockerfile</ContainerImageBuildMethod>
+		<DockerfilePath>$(MSBuildProjectDirectory)\Dockerfile</DockerfilePath>
+		<DockerfileContext>$(MSBuildProjectDirectory)\..\..\..</DockerfileContext>
 	</PropertyGroup>
 
 	<ItemGroup>

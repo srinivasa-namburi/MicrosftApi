@@ -6,6 +6,7 @@
 		<EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 		<CodeAnalysisTreatWarningsAsErrors>true</CodeAnalysisTreatWarningsAsErrors>
+		<NoWarn>SKEXP0110</NoWarn>
 	</PropertyGroup>
 	<ItemGroup>
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
@@ -47,7 +48,8 @@
 		<PackageReference Include="Microsoft.Orleans.Server" Version="9.1.2" />
 		<PackageReference Include="Microsoft.Orleans.Streaming" Version="9.1.2" />
 		<PackageReference Include="Microsoft.Orleans.Streaming.EventHubs" Version="9.1.2" />
-		<PackageReference Include="ModelContextProtocol" Version="0.3.0-preview.4" />
+		<PackageReference Include="Microsoft.SemanticKernel.Agents.Runtime.InProcess" Version="1.65.0-preview" />
+		<PackageReference Include="ModelContextProtocol" Version="0.4.0-preview.1" />
 		<PackageReference Include="Pgvector" Version="0.3.2" />
 		<PackageReference Include="Scrutor" Version="6.0.1" />
 		<PackageReference Include="System.Net.Http" Version="4.3.4" />
@@ -91,6 +93,7 @@
 		<PackageReference Include="Microsoft.SemanticKernel.Agents.Abstractions" Version="1.65.0" />
 		<PackageReference Include="Microsoft.SemanticKernel.Agents.Core" Version="1.65.0" />
 		<PackageReference Include="Microsoft.SemanticKernel.Agents.OpenAI" Version="1.65.0-preview" />
+		<PackageReference Include="Microsoft.SemanticKernel.Agents.Orchestration" Version="1.65.0-preview" />
 		<PackageReference Include="Microsoft.SemanticKernel.Connectors.AzureOpenAI" Version="1.65.0" />
 		<PackageReference Include="Microsoft.SemanticKernel.Connectors.OpenAI" Version="1.65.0" />
 		<PackageReference Include="Microsoft.SemanticKernel.Connectors.PgVector" Version="1.65.0-preview" />

@@ -1,0 +1,178 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+
+@using Microsoft.Greenlight.Shared.Contracts.FlowTasks
+
+<MudExpansionPanel Text="Template Metadata" InitiallyExpanded="true">
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudTextField T="string" @bind-Value="Name"
+                        Label="Template Name (Identifier)"
+                        Required="true"
+                        Variant="Variant.Outlined"
+                        HelperText="Unique identifier for the template (lowercase, no spaces)"
+                        Disabled="@Disabled" />
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudTextField T="string" @bind-Value="DisplayName"
+                        Label="Display Name"
+                        Required="true"
+                        Variant="Variant.Outlined"
+                        HelperText="Human-readable name shown in UI"
+                        Disabled="@Disabled" />
+        </MudItem>
+        <MudItem xs="12">
+            <MudTextField T="string" @bind-Value="Description"
+                        Label="Description"
+                        Variant="Variant.Outlined"
+                        Lines="3"
+                        HelperText="Describe what this template does"
+                        Disabled="@Disabled" />
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudSelect T="string" @bind-Value="Category"
+                     Label="Category"
+                     Variant="Variant.Outlined"
+                     AnchorOrigin="Origin.BottomCenter"
+                     Disabled="@Disabled">
+                <MudSelectItem T="string" Value="@("DocumentGeneration")">Document Generation</MudSelectItem>
+                <MudSelectItem T="string" Value="@("DataExtraction")">Data Extraction</MudSelectItem>
+                <MudSelectItem T="string" Value="@("Research")">Research</MudSelectItem>
+                <MudSelectItem T="string" Value="@("Analysis")">Analysis</MudSelectItem>
+                <MudSelectItem T="string" Value="@("Other")">Other</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudTextField T="string" @bind-Value="Version"
+                        Label="Version"
+                        Variant="Variant.Outlined"
+                        HelperText="Template version (e.g., 1.0.0)"
+                        Disabled="@Disabled" />
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudSwitch T="bool" @bind-Value="IsActive"
+                     Label="Active"
+                     Color="Color.Primary"
+                     Disabled="@Disabled" />
+            <MudText Typo="Typo.caption" Class="mud-input-helper-text">Only active templates are available for use</MudText>
+        </MudItem>
+        <MudItem xs="12">
+            <MudTextField T="string" @bind-Value="_triggerPhrasesInput"
+                        Label="Trigger Phrases (comma-separated)"
+                        Variant="Variant.Outlined"
+                        HelperText="Phrases that trigger this template in chat"
+                        Disabled="@Disabled" />
+            @if (TriggerPhrases != null && TriggerPhrases.Length > 0)
+            {
+                <MudChipSet T="string" Class="mt-2">
+                    @foreach (var phrase in TriggerPhrases)
+                    {
+                        <MudChip T="string" Text="@phrase" OnClose="() => RemoveTriggerPhrase(phrase)" Disabled="@Disabled" />
+                    }
+                </MudChipSet>
+            }
+        </MudItem>
+        <MudItem xs="12">
+            <MudTextField T="string" @bind-Value="InitialPrompt"
+                        Label="Initial Prompt"
+                        Variant="Variant.Outlined"
+                        Lines="3"
+                        HelperText="Initial message shown to users when this template is triggered"
+                        Disabled="@Disabled" />
+        </MudItem>
+        <MudItem xs="12">
+            <MudTextField T="string" @bind-Value="CompletionMessage"
+                        Label="Completion Message"
+                        Variant="Variant.Outlined"
+                        Lines="2"
+                        HelperText="Message shown when the task completes successfully"
+                        Disabled="@Disabled" />
+        </MudItem>
+    </MudGrid>
+</MudExpansionPanel>
+
+@code {
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter]
+    public string Name { get; set; } = "";
+
+    [Parameter]
+    public EventCallback<string> NameChanged { get; set; }
+
+    [Parameter]
+    public string DisplayName { get; set; } = "";
+
+    [Parameter]
+    public EventCallback<string> DisplayNameChanged { get; set; }
+
+    [Parameter]
+    public string? Description { get; set; }
+
+    [Parameter]
+    public EventCallback<string?> DescriptionChanged { get; set; }
+
+    [Parameter]
+    public string Category { get; set; } = "DocumentGeneration";
+
+    [Parameter]
+    public EventCallback<string> CategoryChanged { get; set; }
+
+    [Parameter]
+    public string? Version { get; set; }
+
+    [Parameter]
+    public EventCallback<string?> VersionChanged { get; set; }
+
+    [Parameter]
+    public bool IsActive { get; set; } = true;
+
+    [Parameter]
+    public EventCallback<bool> IsActiveChanged { get; set; }
+
+    [Parameter]
+    public string[]? TriggerPhrases { get; set; }
+
+    [Parameter]
+    public EventCallback<string[]?> TriggerPhrasesChanged { get; set; }
+
+    [Parameter]
+    public string? InitialPrompt { get; set; }
+
+    [Parameter]
+    public EventCallback<string?> InitialPromptChanged { get; set; }
+
+    [Parameter]
+    public string? CompletionMessage { get; set; }
+
+    [Parameter]
+    public EventCallback<string?> CompletionMessageChanged { get; set; }
+
+    private string _triggerPhrasesInput = "";
+
+    protected override void OnParametersSet()
+    {
+        _triggerPhrasesInput = string.Join(", ", TriggerPhrases ?? Array.Empty<string>());
+    }
+
+    private async Task RemoveTriggerPhrase(string phrase)
+    {
+        if (TriggerPhrases != null)
+        {
+            TriggerPhrases = TriggerPhrases.Where(p => p != phrase).ToArray();
+            await TriggerPhrasesChanged.InvokeAsync(TriggerPhrases);
+            _triggerPhrasesInput = string.Join(", ", TriggerPhrases);
+            StateHasChanged();
+        }
+    }
+
+    public string[] GetParsedTriggerPhrases()
+    {
+        return _triggerPhrasesInput
+            .Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(p => p.Trim())
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Distinct()
+            .ToArray();
+    }
+}

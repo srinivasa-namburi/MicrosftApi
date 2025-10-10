@@ -77,6 +77,11 @@ public class ServiceConfigurationOptions
     public SQLOptions SQL { get; set; } = new SQLOptions();
 
     /// <summary>
+    /// Options for MCP (Model Context Protocol) server configuration.
+    /// </summary>
+    public McpOptions Mcp { get; set; } = new McpOptions();
+
+    /// <summary>
     /// Options for Azure Maps service.
     /// </summary>
     public class AzureMapsOptions
@@ -452,16 +457,6 @@ public class ServiceConfigurationOptions
         public int ConversationHistoryLimit { get; set; } = 10;
 
         /// <summary>
-        /// Custom system prompt for Flow conversations (empty means use default).
-        /// </summary>
-        public string SystemPrompt { get; set; } = string.Empty;
-
-        /// <summary>
-        /// Additional prompt for conversational responses when no intent is detected.
-        /// </summary>
-        public string ConversationalPrompt { get; set; } = string.Empty;
-
-        /// <summary>
         /// Minimum relevance score (0.0 to 1.0) required for a document process to be engaged.
         /// Higher values mean stricter matching. 0.0 means any match is accepted.
         /// </summary>
@@ -472,5 +467,35 @@ public class ServiceConfigurationOptions
         /// Flow will fall back to conversational response instead of forcing the best match.
         /// </summary>
         public bool RequireMinimumRelevanceForEngagement { get; set; } = true;
+    }
+
+    /// <summary>
+    /// Options for configuring the MCP server security and behavior.
+    /// Binds to configuration section: ServiceConfiguration:Mcp
+    /// </summary>
+    public class McpOptions
+    {
+        /// <summary>
+        /// When true, disables authentication requirements for MCP routes.
+        /// Use only for local diagnostics. Bound from 'ServiceConfiguration:Mcp:DisableAuth'.
+        /// </summary>
+        public bool DisableAuth { get; set; }
+
+        /// <summary>
+        /// When true, enables secret-based access using a configured header and secret value.
+        /// Bound from 'ServiceConfiguration:Mcp:SecretEnabled'.
+        /// </summary>
+        public bool SecretEnabled { get; set; }
+
+        /// <summary>
+        /// The HTTP header name carrying the secret. Defaults to 'X-MCP-Secret' when empty.
+        /// Bound from 'ServiceConfiguration:Mcp:SecretHeaderName'.
+        /// </summary>
+        public string? SecretHeaderName { get; set; }
+
+        /// <summary>
+        /// The expected secret value. Bound from 'ServiceConfiguration:Mcp:SecretValue'.
+        /// </summary>
+        public string? SecretValue { get; set; }
     }
 }

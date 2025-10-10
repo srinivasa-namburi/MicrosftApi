@@ -3,8 +3,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Greenlight.McpServer.Services;
-using Microsoft.Greenlight.McpServer.Tools;
+using Microsoft.Greenlight.McpServer.Flow.Services;
+using Microsoft.Greenlight.McpServer.Flow.Tools;
 using Moq;
 using Orleans;
 

@@ -1,0 +1,112 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject ILogger<EmptyLayout> Logger
+@inject IAuthorizationApiClient AuthorizationApiClient
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Auth
+@using Microsoft.Greenlight.Web.DocGen.Client.ServiceClients
+
+<MyMudThemeProvider />
+<MyMudProviders />
+
+@Body
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        Logger.LogInformation("EmptyLayout initialization starting");
+
+        try
+        {
+            // Push user access token to backend for Orleans/MCP usage
+            await PushUserTokenAsync();
+
+            Logger.LogInformation("EmptyLayout initialization completed");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error during EmptyLayout initialization");
+        }
+
+        // Listen for auth state changes for future updates
+        AuthenticationStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
+    }
+
+    private async Task PushUserTokenAsync()
+    {
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user.Identity?.IsAuthenticated != true)
+            {
+                Logger.LogInformation("User not authenticated, skipping token push");
+                return;
+            }
+
+            Logger.LogInformation("Pushing user access token to backend for Orleans/MCP usage");
+
+            // Get the access token from the client-side authentication state
+            var accessToken = await ((AuthorizationApiClient)AuthorizationApiClient).GetAccessTokenAsync();
+
+            // Get user information from authentication state
+            var providerSubjectId = user.FindFirst("sub")?.Value;
+
+            if (string.IsNullOrWhiteSpace(providerSubjectId))
+            {
+                Logger.LogWarning("Cannot push user token - missing subject ID");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(accessToken))
+            {
+                Logger.LogWarning("Cannot push user token - missing access token");
+                return;
+            }
+
+            // Create the token DTO
+            var tokenDto = new UserTokenDTO
+            {
+                ProviderSubjectId = providerSubjectId,
+                AccessToken = accessToken,
+                ExpiresOnUtc = null // We don't have expiry information from the client-side token
+            };
+
+            // Use the client-side API client with proper authorization
+            await AuthorizationApiClient.SetUserTokenAsync(tokenDto);
+
+            Logger.LogInformation("Successfully pushed user access token for subject {Subject}", providerSubjectId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to push user token to backend - will retry on next authentication state change");
+        }
+    }
+
+    private async void OnAuthenticationStateChanged(Task<AuthenticationState> task)
+    {
+        try
+        {
+            var state = await task;
+            if (state.User.Identity?.IsAuthenticated == true)
+            {
+                Logger.LogInformation("Auth state changed: user signed in; pushing token");
+
+                // Push user access token to backend for Orleans/MCP usage
+                await PushUserTokenAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Authentication state changed handler failed");
+        }
+    }
+
+    public void Dispose()
+    {
+        AuthenticationStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
+    }
+}

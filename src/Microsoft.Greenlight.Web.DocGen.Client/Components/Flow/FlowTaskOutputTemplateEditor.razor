@@ -1,0 +1,105 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+
+@using Microsoft.Greenlight.Shared.Contracts.FlowTasks
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Plugins
+
+<MudPaper Class="pa-3" Outlined="true">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start" Class="mb-2">
+        <MudText Typo="Typo.subtitle1">@(string.IsNullOrWhiteSpace(OutputTemplate.Name) ? "Unnamed Output" : OutputTemplate.Name)</MudText>
+        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                     OnClick="OnDelete"
+                     Disabled="@Disabled" />
+    </MudStack>
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudTextField T="string" @bind-Value="OutputTemplate.Name"
+                        Label="Name"
+                        Required="true"
+                        Variant="Variant.Outlined"
+                        Margin="Margin.Dense"
+                        Disabled="@Disabled" />
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudSelect T="string" @bind-Value="OutputTemplate.OutputType"
+                     Label="Output Type"
+                     Required="true"
+                     Variant="Variant.Outlined"
+                     Margin="Margin.Dense"
+                     Disabled="@Disabled">
+                <MudSelectItem T="string" Value="@("TextSummary")">Text Summary</MudSelectItem>
+                <MudSelectItem T="string" Value="@("DocumentGeneration")">Document Generation</MudSelectItem>
+                <MudSelectItem T="string" Value="@("McpTool")">MCP Tool</MudSelectItem>
+                <MudSelectItem T="string" Value="@("Link")">Link</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12">
+            <MudTextField T="string" @bind-Value="OutputTemplate.TemplateContent"
+                        Label="Template Content"
+                        Variant="Variant.Outlined"
+                        Margin="Margin.Dense"
+                        Lines="5"
+                        HelperText="Template with placeholders (e.g., {{fieldName}})"
+                        Disabled="@Disabled" />
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudTextField T="string" @bind-Value="OutputTemplate.ContentType"
+                        Label="Content Type"
+                        Variant="Variant.Outlined"
+                        Margin="Margin.Dense"
+                        Disabled="@Disabled" />
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudNumericField T="int" @bind-Value="OutputTemplate.ExecutionOrder"
+                           Label="Execution Order"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense"
+                           Disabled="@Disabled" />
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudCheckBox T="bool" @bind-Value="OutputTemplate.IsRequired"
+                       Label="Required"
+                       Color="Color.Primary"
+                       Disabled="@Disabled" />
+        </MudItem>
+        @if (OutputTemplate.OutputType == "McpTool")
+        {
+            <MudItem xs="12" md="6">
+                <MudSelect T="Guid?" @bind-Value="OutputTemplate.McpPluginId"
+                         Label="MCP Plugin"
+                         Variant="Variant.Outlined"
+                         Margin="Margin.Dense"
+                         Disabled="@Disabled">
+                    <MudSelectItem T="Guid?" Value="@((Guid?)null)">Select a plugin...</MudSelectItem>
+                    @foreach (var plugin in FlowExposedPlugins)
+                    {
+                        <MudSelectItem T="Guid?" Value="@((Guid?)plugin.Id)">@plugin.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField T="string" @bind-Value="OutputTemplate.McpToolName"
+                            Label="Tool Name"
+                            Variant="Variant.Outlined"
+                            Margin="Margin.Dense"
+                            Disabled="@Disabled" />
+            </MudItem>
+        }
+    </MudGrid>
+</MudPaper>
+
+@code {
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter]
+    public FlowTaskOutputTemplateDto OutputTemplate { get; set; } = null!;
+
+    [Parameter]
+    public EventCallback<FlowTaskOutputTemplateDto> OutputTemplateChanged { get; set; }
+
+    [Parameter]
+    public List<McpPluginInfo> FlowExposedPlugins { get; set; } = new();
+
+    [Parameter]
+    public EventCallback OnDelete { get; set; }
+}

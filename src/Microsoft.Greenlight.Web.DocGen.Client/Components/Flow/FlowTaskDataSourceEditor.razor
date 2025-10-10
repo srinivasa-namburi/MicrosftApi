@@ -1,0 +1,218 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+
+@using Microsoft.Greenlight.Shared.Contracts.FlowTasks
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Plugins
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+
+<MudPaper Class="pa-3" Outlined="true">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start" Class="mb-2">
+        <MudText Typo="Typo.subtitle1">@(string.IsNullOrWhiteSpace(DataSource.Name) ? "Unnamed Data Source" : DataSource.Name)</MudText>
+        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                     OnClick="OnDelete"
+                     Disabled="@Disabled" />
+    </MudStack>
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudTextField T="string" @bind-Value="DataSource.Name"
+                        Label="Name"
+                        Required="true"
+                        Variant="Variant.Outlined"
+                        Margin="Margin.Dense"
+                        Disabled="@Disabled" />
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudTextField T="string" @bind-Value="DataSource.SourceType"
+                     Label="Source Type (McpTool or Static)"
+                     Required="true"
+                     Variant="Variant.Outlined"
+                     Margin="Margin.Dense"
+                     HelperText="Enter 'McpTool' or 'Static'"
+                     Disabled="@Disabled" />
+        </MudItem>
+        <MudItem xs="12">
+            <MudTextField T="string" @bind-Value="DataSource.Description"
+                        Label="Description"
+                        Variant="Variant.Outlined"
+                        Margin="Margin.Dense"
+                        Lines="2"
+                        Disabled="@Disabled" />
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudSwitch T="bool" @bind-Value="DataSource.IsActive"
+                     Label="Active"
+                     Color="Color.Primary"
+                     Disabled="@Disabled" />
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudNumericField T="int" @bind-Value="DataSource.CacheDurationSeconds"
+                           Label="Cache Duration (seconds)"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense"
+                           HelperText="0 = no cache"
+                           Disabled="@Disabled" />
+        </MudItem>
+
+        @if (DataSource.SourceType == "McpTool" && DataSource is FlowTaskMcpToolDataSourceDto)
+        {
+            var mcpDs = (FlowTaskMcpToolDataSourceDto)DataSource;
+            <MudItem xs="12">
+                <MudDivider Class="my-2" />
+                <MudText Typo="Typo.subtitle2" Class="mb-2">MCP Tool Configuration</MudText>
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudSelect T="Guid?" Value="mcpDs.McpPluginId"
+                         ValueChanged="@(value => { mcpDs.McpPluginId = value; StateHasChanged(); })"
+                         Label="MCP Plugin"
+                         Required="true"
+                         Variant="Variant.Outlined"
+                         Margin="Margin.Dense"
+                         Disabled="@Disabled">
+                    <MudSelectItem T="Guid?" Value="@((Guid?)null)">Select a plugin...</MudSelectItem>
+                    @foreach (var plugin in FlowExposedPlugins)
+                    {
+                        <MudSelectItem T="Guid?" Value="@((Guid?)plugin.Id)">@plugin.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField T="string" Value="mcpDs.ToolName"
+                            ValueChanged="@(value => { mcpDs.ToolName = value; StateHasChanged(); })"
+                            Label="Tool Name"
+                            Required="true"
+                            Variant="Variant.Outlined"
+                            Margin="Margin.Dense"
+                            Disabled="@Disabled" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField T="string" Value="mcpDs.TransformPrompt"
+                            ValueChanged="@(value => { mcpDs.TransformPrompt = value; StateHasChanged(); })"
+                            Label="Transform Prompt"
+                            Variant="Variant.Outlined"
+                            Margin="Margin.Dense"
+                            Lines="3"
+                            HelperText="Optional LLM prompt for transforming tool response"
+                            Disabled="@Disabled" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudText Typo="Typo.body2" Class="mb-2">Tool Parameters</MudText>
+                <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                         StartIcon="@Icons.Material.Filled.Add"
+                         OnClick="AddMcpToolParameter"
+                         Disabled="@Disabled">
+                    Add Parameter
+                </MudButton>
+                @if (mcpDs.Parameters != null && mcpDs.Parameters.Count > 0)
+                {
+                    <MudStack Spacing="2" Class="mt-2">
+                        @for (int i = 0; i < mcpDs.Parameters.Count; i++)
+                        {
+                            var paramIndex = i;
+                            var param = mcpDs.Parameters[paramIndex];
+                            <MudPaper Class="pa-2" Outlined="true" Elevation="0">
+                                <MudStack Row="true" Spacing="2">
+                                    <MudTextField T="string" Value="param.ParameterName"
+                                                ValueChanged="@(value => { mcpDs.Parameters[paramIndex].ParameterName = value; StateHasChanged(); })"
+                                                Label="Name"
+                                                Variant="Variant.Outlined"
+                                                Margin="Margin.Dense"
+                                                Style="flex: 1"
+                                                Disabled="@Disabled" />
+                                    <MudTextField T="string" Value="param.ParameterValue"
+                                                ValueChanged="@(value => { mcpDs.Parameters[paramIndex].ParameterValue = value; StateHasChanged(); })"
+                                                Label="Value"
+                                                Variant="Variant.Outlined"
+                                                Margin="Margin.Dense"
+                                                Style="flex: 1"
+                                                Disabled="@Disabled" />
+                                    <MudTextField T="string" Value="param.DataType"
+                                                ValueChanged="@(value => { mcpDs.Parameters[paramIndex].DataType = value; StateHasChanged(); })"
+                                                Label="Type"
+                                                Variant="Variant.Outlined"
+                                                Margin="Margin.Dense"
+                                                Style="flex: 1"
+                                                Disabled="@Disabled" />
+                                    <MudCheckBox T="bool" Value="param.IsTemplate"
+                                               ValueChanged="@(value => { mcpDs.Parameters[paramIndex].IsTemplate = value; StateHasChanged(); })"
+                                               Label="Template"
+                                               Disabled="@Disabled" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                 Color="Color.Error" Size="Size.Small"
+                                                 OnClick="() => RemoveMcpToolParameter(param)"
+                                                 Disabled="@Disabled" />
+                                </MudStack>
+                            </MudPaper>
+                        }
+                    </MudStack>
+                }
+            </MudItem>
+        }
+        else if (DataSource.SourceType == "Static" && DataSource is FlowTaskStaticDataSourceDto)
+        {
+            var staticDs = (FlowTaskStaticDataSourceDto)DataSource;
+            <MudItem xs="12">
+                <MudDivider Class="my-2" />
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Static Values Configuration</MudText>
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField T="string" Value="staticDs.ValuesJson"
+                            ValueChanged="@(value => { staticDs.ValuesJson = value; StateHasChanged(); })"
+                            Label="Values (JSON Array)"
+                            Variant="Variant.Outlined"
+                            Margin="Margin.Dense"
+                            Lines="5"
+                            HelperText="JSON array of values, e.g., [&quot;value1&quot;, &quot;value2&quot;]"
+                            Disabled="@Disabled" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField T="string" Value="staticDs.DisplayFormat"
+                            ValueChanged="@(value => { staticDs.DisplayFormat = value; StateHasChanged(); })"
+                            Label="Display Format"
+                            Variant="Variant.Outlined"
+                            Margin="Margin.Dense"
+                            HelperText="Optional format string for displaying values"
+                            Disabled="@Disabled" />
+            </MudItem>
+        }
+    </MudGrid>
+</MudPaper>
+
+@code {
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter]
+    public FlowTaskDataSourceDto DataSource { get; set; } = null!;
+
+    [Parameter]
+    public EventCallback<FlowTaskDataSourceDto> DataSourceChanged { get; set; }
+
+    [Parameter]
+    public List<McpPluginInfo> FlowExposedPlugins { get; set; } = new();
+
+    [Parameter]
+    public EventCallback OnDelete { get; set; }
+
+    private void AddMcpToolParameter()
+    {
+        if (DataSource is FlowTaskMcpToolDataSourceDto mcpDs)
+        {
+            mcpDs.Parameters.Add(new FlowTaskMcpToolParameterDto
+            {
+                Id = Guid.NewGuid(),
+                ParameterName = "",
+                ParameterValue = "",
+                IsTemplate = false
+            });
+            StateHasChanged();
+        }
+    }
+
+    private void RemoveMcpToolParameter(FlowTaskMcpToolParameterDto parameter)
+    {
+        if (DataSource is FlowTaskMcpToolDataSourceDto mcpDs)
+        {
+            mcpDs.Parameters.Remove(parameter);
+            StateHasChanged();
+        }
+    }
+}

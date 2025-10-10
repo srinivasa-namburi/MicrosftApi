@@ -450,6 +450,47 @@ stages:
               export PATH="$HOME/.aspire/bin:$PATH"
               chmod +x build/scripts/*.sh
               chmod +x build/scripts/pipeline-internal/*.sh
+
+              # Set default KUBERNETES_RESOURCES_CONFIG if not provided or invalid
+              if [ -z "${KUBERNETES_RESOURCES_CONFIG:-}" ] || ! echo "${KUBERNETES_RESOURCES_CONFIG}" | jq empty 2>/dev/null; then
+                echo "[Pipeline] KUBERNETES_RESOURCES_CONFIG not set or invalid, using system defaults"
+                export KUBERNETES_RESOURCES_CONFIG='[
+                  {
+                    "name": "silo",
+                    "requests": { "cpu": "500m", "memory": "512Mi" },
+                    "limits": { "cpu": "2000m", "memory": "2048Mi" },
+                    "replicas": { "min": 2, "max": 10 }
+                  },
+                  {
+                    "name": "api-main",
+                    "requests": { "cpu": "250m", "memory": "256Mi" },
+                    "limits": { "cpu": "1000m", "memory": "1024Mi" },
+                    "replicas": { "min": 1, "max": 1 }
+                  },
+                  {
+                    "name": "web-docgen",
+                    "requests": { "cpu": "250m", "memory": "256Mi" },
+                    "limits": { "cpu": "1000m", "memory": "1024Mi" },
+                    "replicas": { "min": 2, "max": 10 }
+                  },
+                  {
+                    "name": "mcpserver-core",
+                    "requests": { "cpu": "100m", "memory": "128Mi" },
+                    "limits": { "cpu": "500m", "memory": "512Mi" },
+                    "replicas": { "min": 1, "max": 5 }
+                  },
+                  {
+                    "name": "mcpserver-flow",
+                    "requests": { "cpu": "250m", "memory": "256Mi" },
+                    "limits": { "cpu": "500m", "memory": "512Mi" },
+                    "replicas": { "min": 1, "max": 1 }
+                  }
+                ]'
+              else
+                echo "[Pipeline] Using KUBERNETES_RESOURCES_CONFIG from variable group"
+                export KUBERNETES_RESOURCES_CONFIG="${KUBERNETES_RESOURCES_CONFIG}"
+              fi
+
               echo "[Pipeline] Running aspire publish to $(Pipeline.Workspace)/publish"
               build/scripts/pipeline-internal/build-modern-aspire-publish.sh "$(Pipeline.Workspace)/publish"
               if [ ! -d "$(Pipeline.Workspace)/publish" ] || [ -z "$(ls -A $(Pipeline.Workspace)/publish 2>/dev/null)" ]; then
@@ -457,6 +498,8 @@ stages:
                 exit 1
               fi
             displayName: Aspire publish
+            env:
+              KUBERNETES_RESOURCES_CONFIG: $(KUBERNETES_RESOURCES_CONFIG)
 
           - task: AzureCLI@2
             displayName: Deploy Azure Resources
@@ -738,6 +781,10 @@ stages:
 
           - task: AzureCLI@2
             displayName: Build and Push Docker Images to ACR
+            env:
+              # Pass System.AccessToken for Azure Artifacts authentication (internal builds only)
+              # The build script checks INTERNAL_MICROSOFT and only uses this when set to 'true'
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
             inputs:
               azureSubscription: $(AZURE_SERVICE_CONNECTION)
               scriptType: bash
@@ -745,100 +792,39 @@ stages:
               inlineScript: |
                       set -euo pipefail
 
-                      # Verify .NET 9.0 is available
                       echo "[ADO] .NET SDK version:"
                       dotnet --version
 
-                      # Determine ACR name (remove hyphens as ACR names don't support them)
-                      ACR_NAME="${AZURE_CONTAINER_REGISTRY_NAME:-${ACR_NAME:-acr$(echo $AZURE_RESOURCE_GROUP | tr -d '-')}}"
-                      echo "[ADO] Building and pushing images to ACR: $ACR_NAME"
+                      SCRIPTS_DIR="$(Build.SourcesDirectory)/build/scripts/pipeline-internal"
+                      chmod +x "$SCRIPTS_DIR"/*.sh
 
-                      # Create ACR if it doesn't exist (but use local builds, not ACR Tasks)
-                      echo "[ADO] Ensuring ACR exists for local Docker builds..."
-                      az acr show --name "$ACR_NAME" --resource-group "$(AZURE_RESOURCE_GROUP)" 2>/dev/null || {
-                        echo "[ADO] ACR doesn't exist, creating: $ACR_NAME"
-                        az acr create --name "$ACR_NAME" \
-                          --resource-group "$(AZURE_RESOURCE_GROUP)" \
-                          --sku Standard \
-                          --admin-enabled true
-                        echo "[ADO] ACR created successfully"
-                      }
+                      # Determine ACR login server/name (favor explicit endpoint)
+                      if [ -n "${AZURE_CONTAINER_REGISTRY_ENDPOINT:-}" ]; then
+                        ACR_LOGIN_SERVER="$AZURE_CONTAINER_REGISTRY_ENDPOINT"
+                        ACR_NAME="${AZURE_CONTAINER_REGISTRY_ENDPOINT%%.azurecr.io}"
+                        ACR_NAME="${ACR_NAME##https://}"
+                      else
+                        ACR_NAME="${AZURE_CONTAINER_REGISTRY_NAME:-${ACR_NAME:-acr$(echo $(AZURE_RESOURCE_GROUP) | tr -d '-')}}"
+                        ACR_LOGIN_SERVER="${ACR_NAME}.azurecr.io"
+                      fi
 
-                      # Ensure ACR is attached to AKS for image pulls
-                      AKS_RG="${AKS_RESOURCE_GROUP:-$(AZURE_RESOURCE_GROUP)}"
-                      AKS_NAME="${AKS_CLUSTER_NAME:-aks-$(AZURE_RESOURCE_GROUP)}"
-                      echo "[ADO] Ensuring ACR is attached to AKS cluster: $AKS_NAME"
-                      az aks update --resource-group "$AKS_RG" --name "$AKS_NAME" --attach-acr "$ACR_NAME" || {
-                        echo "[ADO] WARNING: Failed to attach ACR to AKS - check permissions and cluster status"
-                      }
+                      echo "[ADO] Building and pushing images to ACR: $ACR_NAME ($ACR_LOGIN_SERVER)"
 
-                      # Export variables for the script
+                      # Export variables for helper script
                       export AZURE_RESOURCE_GROUP="$(AZURE_RESOURCE_GROUP)"
+                      export AKS_RESOURCE_GROUP="${AKS_RESOURCE_GROUP:-$(AZURE_RESOURCE_GROUP)}"
                       export AKS_CLUSTER_NAME="${AKS_CLUSTER_NAME:-aks-$(AZURE_RESOURCE_GROUP)}"
                       export WORKLOAD_IDENTITY_PRINCIPAL_ID="${WORKLOAD_IDENTITY_PRINCIPAL_ID:-}"
                       export BUILD_BUILDNUMBER="$(Build.BuildNumber)"
+                      # Pass INTERNAL_MICROSOFT flag (must be explicitly set to 'true' in variable group for internal builds)
+                      export INTERNAL_MICROSOFT="${INTERNAL_MICROSOFT:-}"
 
-                      # Set up ACR authentication (platform-neutral approach)
-                      echo "[ADO] Setting up ACR authentication for local .NET container publishing"
+                      # Run parallel container build/push using Docker with per-project Dockerfiles
+                      "$SCRIPTS_DIR/build-modern-build-push-images-parallel.sh" "$ACR_NAME" "$(Build.SourcesDirectory)"
 
-                      # Test if docker commands work without sudo, if not try to fix permissions
-                      if ! docker ps >/dev/null 2>&1; then
-                        echo "[ADO] Docker permission issue detected, attempting to fix..."
-                        # Try to start docker service and fix permissions
-                        sudo systemctl start docker 2>/dev/null || true
-                        sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
-                      fi
-
-                      # Use az acr login to configure Docker credentials automatically
-                      az acr login --name "$ACR_NAME" || {
-                        echo "[ADO] ERROR: Failed to authenticate with ACR: $ACR_NAME"
-                        exit 1
-                      }
-
-                      echo "[ADO] Successfully authenticated with ACR: $ACR_NAME"
-
-                      # Use local sequential containerization (will build each project on ADO agent)
-                      echo "[ADO] Containerizing and pushing Docker images sequentially (local builds)..."
-
-                      # List of services to build
-                      SERVICES=(
-                        "db-setupmanager:src/Microsoft.Greenlight.SetupManager.DB"
-                        "api-main:src/Microsoft.Greenlight.API.Main"
-                        "mcp-server:src/Microsoft.Greenlight.McpServer"
-                        "silo:src/Microsoft.Greenlight.Silo"
-                        "web-docgen:src/Microsoft.Greenlight.Web.DocGen"
-                      )
-
-                      # Build each image sequentially
-                      for SERVICE_ENTRY in "${SERVICES[@]}"; do
-                        IFS=':' read -r IMAGE_NAME PROJECT_PATH <<< "$SERVICE_ENTRY"
-                        echo "[ADO] Building and containerizing $IMAGE_NAME from $PROJECT_PATH"
-
-                        # Sanitize build number for container tags (replace dots with hyphens)
-                        BUILD_TAG=$(echo "$(Build.BuildNumber)" | tr '.' '-')
-
-                        # Set container image tags as environment variable to avoid MSBuild escaping issues
-                        export ContainerImageTags="latest;${BUILD_TAG}"
-
-                        dotnet publish "$(Build.SourcesDirectory)/$PROJECT_PATH" \
-                          --os linux \
-                          --arch x64 \
-                          /t:PublishContainer \
-                          /p:ContainerRegistry="${ACR_NAME}.azurecr.io" \
-                          /p:ContainerRepository="$IMAGE_NAME" \
-                          -c Release \
-                          --verbosity minimal || {
-                            echo "[ADO] ERROR: Failed to build $IMAGE_NAME"
-                            exit 1
-                          }
-                        echo "[ADO] Successfully built and pushed $IMAGE_NAME"
-                      done
-
-                      echo "[ADO] All images built and pushed successfully (local builds)"
-
-                      # Export ACR endpoint for subsequent tasks
-                      echo "##vso[task.setvariable variable=AZURE_CONTAINER_REGISTRY_ENDPOINT]${ACR_NAME}.azurecr.io"
-                      echo "[ADO] Exported ACR endpoint: ${ACR_NAME}.azurecr.io"
+                      # Export endpoint for downstream tasks
+                      echo "##vso[task.setvariable variable=AZURE_CONTAINER_REGISTRY_ENDPOINT]${ACR_LOGIN_SERVER}"
+                      echo "[ADO] Exported ACR endpoint: ${ACR_LOGIN_SERVER}"
 
           - task: AzureCLI@2
             displayName: Deploy to AKS with Helm
@@ -986,6 +972,40 @@ stages:
                       export DB_SETUP_JOB_MODE=postpone
                       "$(Build.SourcesDirectory)/build/scripts/build-modern-helm-deploy-clean.sh" "$PUB_DIR" "${HELM_RELEASE:-$(GREENLIGHT_HELM_RELEASE)}" "${AKS_NAMESPACE:-$(GREENLIGHT_NAMESPACE)}"
                       echo "[ADO] Clean deployment completed - workload identity handled via Helm values"
+
+          - task: AzureCLI@2
+            displayName: Apply Kubernetes resource configuration
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |-
+                      set -euo pipefail
+                      SCRIPTS_DIR="$(Build.SourcesDirectory)/build/scripts/pipeline-internal"
+                      chmod +x "$SCRIPTS_DIR"/*.sh
+                      # Ensure we have cluster context
+                      AKS_RG="${AKS_RESOURCE_GROUP:-$(AZURE_RESOURCE_GROUP)}"
+                      AKS_NAME="${AKS_CLUSTER_NAME:-aks-$(AZURE_RESOURCE_GROUP)}"
+                      az aks get-credentials --resource-group "$AKS_RG" --name "$AKS_NAME" --overwrite-existing
+
+                      # Apply resource configuration if provided
+                      if [[ -n "${KUBERNETES_RESOURCES_CONFIG:-}" ]]; then
+                        echo "[ADO] Applying KUBERNETES_RESOURCES_CONFIG via kubectl patch"
+                        "$SCRIPTS_DIR/build-modern-apply-k8s-resources.sh" "${AKS_NAMESPACE:-$(GREENLIGHT_NAMESPACE)}" || {
+                          echo "[ADO] WARNING: Failed to apply some resource configurations (non-fatal)"
+                        }
+                      else
+                        echo "[ADO] No KUBERNETES_RESOURCES_CONFIG provided, using Aspire defaults"
+                      fi
+            env:
+              KUBERNETES_RESOURCES_CONFIG: $(KUBERNETES_RESOURCES_CONFIG)
+              ENABLE_SPOTNODES: $(ENABLE_SPOTNODES)
+              AZURE_RESOURCE_GROUP: $(AZURE_RESOURCE_GROUP)
+              AKS_RESOURCE_GROUP: $(AKS_RESOURCE_GROUP)
+              AKS_CLUSTER_NAME: $(AKS_CLUSTER_NAME)
+              AKS_NAMESPACE: $(AKS_NAMESPACE)
+              ENVIRONMENT_NAME: ${{ parameters.environment }}
+              GREENLIGHT_NAMESPACE: $(GREENLIGHT_NAMESPACE)
 
           - task: AzureCLI@2
             displayName: Expose endpoints (AKS LB) and setup Front Door (public)

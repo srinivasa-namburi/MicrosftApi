@@ -382,7 +382,7 @@ For service toggles, add:
 For Kubernetes resource sizing, add:
 - **KUBERNETES_RESOURCES_CONFIG** - JSON configuration for pod resource requests/limits
   ```json
-  {"api-main": {"resources": {"requests": {"memory": "512Mi", "cpu": "500m"}, "limits": {"memory": "1Gi", "cpu": "1"}}}, "web-main": {"resources": {"requests": {"memory": "256Mi", "cpu": "250m"}, "limits": {"memory": "512Mi", "cpu": "500m"}}}, "silo": {"resources": {"requests": {"memory": "1Gi", "cpu": "1"}, "limits": {"memory": "2Gi", "cpu": "2"}}, "autoscaling": {"minReplicas": 4, "maxReplicas": 10}}, "mcp-server": {"resources": {"requests": {"memory": "256Mi", "cpu": "250m"}, "limits": {"memory": "512Mi", "cpu": "500m"}}}}
+  {"api-main": {"resources": {"requests": {"memory": "512Mi", "cpu": "500m"}, "limits": {"memory": "1Gi", "cpu": "1"}}}, "web-main": {"resources": {"requests": {"memory": "256Mi", "cpu": "250m"}, "limits": {"memory": "512Mi", "cpu": "500m"}}}, "silo": {"resources": {"requests": {"memory": "1Gi", "cpu": "1"}, "limits": {"memory": "2Gi", "cpu": "2"}}, "autoscaling": {"minReplicas": 4, "maxReplicas": 10}}, "mcpserver-core":{"requests":{"cpu":"100m","memory":"128Mi"},"limits":{"cpu":"500m","memory":"512Mi"},"replicas":{"min":1,"max":5}},"mcpserver-flow": {"resources": {"requests": {"memory": "256Mi", "cpu": "250m"}, "limits": {"memory": "512Mi", "cpu": "500m"}}}}
   ```
   **Note**: The sample configuration file (`build/environment-variables-github-sample.yml`) includes a recommended configuration based on current Container Apps production sizing.
 

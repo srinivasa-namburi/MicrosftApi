@@ -40,6 +40,11 @@ namespace Microsoft.Greenlight.Shared.Models.Plugins
         public ICollection<McpPluginDocumentProcess>? DocumentProcesses { get; set; } = new List<McpPluginDocumentProcess>();
 
         /// <summary>
+        /// Gets or sets whether this plugin is exposed to Flow for use in Flow Tasks and conversational orchestration.
+        /// </summary>
+        public bool ExposeToFlow { get; set; }
+
+        /// <summary>
         /// Gets the latest version of the plugin.
         /// </summary>
         public McpPluginVersion? LatestVersion

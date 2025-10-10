@@ -47,6 +47,7 @@
                 <MudTh>Latest Version</MudTh>
                 <MudTh>Source Type</MudTh>
                 <MudTh>Versions</MudTh>
+                <MudTh>Expose to Flow</MudTh>
                 <MudTh>Actions</MudTh>
             </HeaderContent>
             <RowTemplate>
@@ -60,6 +61,11 @@
                 </MudTd>
                 <MudTd DataLabel="Versions">
                     <MudChip T="string" Size="Size.Small">@context.Versions.Count</MudChip>
+                </MudTd>
+                <MudTd DataLabel="Expose to Flow">
+                    <MudCheckBox T="bool" Value="@context.ExposeToFlow"
+                               ValueChanged="@(async (bool newValue) => await ToggleExposeToFlow(context, newValue))"
+                               Color="Color.Primary" />
                 </MudTd>
                 <MudTd>
                     <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" 
@@ -219,5 +225,24 @@
     private void ViewPluginDetails(McpPluginInfo plugin)
     {
         NavigationManager.NavigateTo($"/plugins/{plugin.Id}");
+    }
+
+    private async Task ToggleExposeToFlow(McpPluginInfo plugin, bool newValue)
+    {
+        var errorMessage = await PluginApiClient.UpdateExposeToFlowAsync(plugin.Id, newValue);
+
+        if (errorMessage == null)
+        {
+            // Success - update the local state
+            plugin.ExposeToFlow = newValue;
+            var action = newValue ? "enabled" : "disabled";
+            Snackbar.Add($"Flow integration {action} for plugin '{plugin.Name}'.", Severity.Success);
+        }
+        else
+        {
+            // Error - show the error message and keep the checkbox at its original state
+            Snackbar.Add(errorMessage, Severity.Error);
+            StateHasChanged(); // Force re-render to reset checkbox
+        }
     }
 }

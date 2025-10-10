@@ -60,7 +60,10 @@
     <Project Path="Microsoft.Greenlight.API.Main/Microsoft.Greenlight.API.Main.csproj">
       <BuildType Solution="Publish|*" Project="Release" />
     </Project>
-    <Project Path="Microsoft.Greenlight.McpServer/Microsoft.Greenlight.McpServer.csproj">
+    <Project Path="Microsoft.Greenlight.McpServer.Core/Microsoft.Greenlight.McpServer.Core.csproj">
+      <BuildType Solution="Publish|*" Project="Release" />
+    </Project>
+    <Project Path="Microsoft.Greenlight.McpServer.Flow/Microsoft.Greenlight.McpServer.Flow.csproj">
       <BuildType Solution="Publish|*" Project="Release" />
     </Project>
     <Project Path="Microsoft.Greenlight.Silo/Microsoft.Greenlight.Silo.csproj">

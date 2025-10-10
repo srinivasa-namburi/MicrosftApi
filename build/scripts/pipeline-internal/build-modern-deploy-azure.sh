@@ -22,6 +22,9 @@ if ! command -v az >/dev/null 2>&1; then
   exit 1
 fi
 
+# Allow the CLI to pull required extensions without prompting (GitHub/Azure DevOps parity)
+az config set extension.use_dynamic_install=yes_without_prompt >/dev/null 2>&1 || true
+
 echo "[modern] Deploying Azure infrastructure from Aspire publish"
 echo "[modern] Output directory: $OUT_DIR"
 echo "[modern] Resource group: $RESOURCE_GROUP"
@@ -223,12 +226,22 @@ if [[ "${COSTCONTROL_IGNORE:-false}" == "true" ]] || [[ -f "$OUT_DIR/.apply_cost
   if [[ -n "$RG_ID" ]]; then
     az tag update --resource-id "$RG_ID" --operation Merge --tags CostControl=ignore ManagedBy=Aspire >/dev/null 2>&1 || true
   fi
-  # Tag each resource in the group (merge to preserve existing tags)
-  az resource list -g "$RESOURCE_GROUP" --query "[].id" -o tsv | while read -r rid; do
-    if [[ -n "$rid" ]]; then
-      az tag update --resource-id "$rid" --operation Merge --tags CostControl=ignore ManagedBy=Aspire >/dev/null 2>&1 || true
+  # Tag resources in bulk (merge to preserve existing tags)
+  mapfile -t _COSTCONTROL_RESOURCE_IDS < <(az resource list -g "$RESOURCE_GROUP" --query "[].id" -o tsv 2>/dev/null | awk 'NF') || true
+  if [[ ${#_COSTCONTROL_RESOURCE_IDS[@]} -gt 0 ]]; then
+    _cc_chunk=()
+    _cc_chunk_size=15
+    for _rid in "${_COSTCONTROL_RESOURCE_IDS[@]}"; do
+      _cc_chunk+=("$_rid")
+      if [[ ${#_cc_chunk[@]} -ge ${_cc_chunk_size} ]]; then
+        az tag update --operation Merge --tags CostControl=ignore ManagedBy=Aspire --ids "${_cc_chunk[@]}" >/dev/null 2>&1 || true
+        _cc_chunk=()
+      fi
+    done
+    if [[ ${#_cc_chunk[@]} -gt 0 ]]; then
+      az tag update --operation Merge --tags CostControl=ignore ManagedBy=Aspire --ids "${_cc_chunk[@]}" >/dev/null 2>&1 || true
     fi
-  done
+  fi
   echo "[modern] Post-deployment tagging complete."
 fi
 

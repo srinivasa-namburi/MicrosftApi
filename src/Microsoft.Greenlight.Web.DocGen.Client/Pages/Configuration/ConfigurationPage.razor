@@ -517,17 +517,28 @@ else
         try
         {
             _suppressSnapshot = true;
-            var summaryLines = new List<string>();
-            var compMessage = await _coordinator.BuildUnifiedSnackbarAsync();
-            if (!string.IsNullOrWhiteSpace(compMessage) && compMessage != "No changes to save.")
-            {
-                summaryLines.Add(compMessage);
-            }
-            await _coordinator.SaveAllAsync(new[] { "MCP" });
+
+            // Capture save results BEFORE SaveAllAsync (which clears dirty state)
+            var saveResult = _coordinator.GetSaveResults();
+
+            await _coordinator.SaveAllAsync();
             _suppressSnapshot = false;
             SnapshotInitialState();
-            var message = summaryLines.Count == 0 ? "No changes to save." : string.Join("\n", summaryLines);
-            SnackBar.Add(message, Severity.Success);
+
+            // Check if MCP has unsaved changes (MCP saves independently via its own Save button)
+            if (_coordinator.IsDirty("MCP"))
+            {
+                SnackBar.Add("Note: MCP configuration has unsaved changes. Use the MCP Save button to save MCP settings.", Severity.Info);
+            }
+
+            // Show custom snackbar with structured save results
+            var parameters = new Dictionary<string, object>
+            {
+                { nameof(ConfigurationSaveResultSnackbar.SaveResult), saveResult }
+            };
+            SnackBar.Add<ConfigurationSaveResultSnackbar>(
+                parameters,
+                saveResult.HasChanges ? Severity.Success : Severity.Info);
         }
         catch (OperationCanceledException)
         {

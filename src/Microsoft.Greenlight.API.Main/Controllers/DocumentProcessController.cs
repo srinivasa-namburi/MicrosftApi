@@ -34,6 +34,8 @@ public class DocumentProcessController : BaseController
     private readonly IDocumentIngestionService _documentIngestionService;
     private readonly IDbContextFactory<DocGenerationDbContext> _dbContextFactory;
     private readonly IClusterClient _clusterClient;
+    private readonly IFlowTaskTemplateService _flowTaskTemplateService;
+    private readonly ILogger<DocumentProcessController> _logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DocumentProcessController"/> class.
@@ -46,7 +48,9 @@ public class DocumentProcessController : BaseController
         AzureFileHelper fileHelper,
         IDocumentIngestionService documentIngestionService,
         IDbContextFactory<DocGenerationDbContext> dbContextFactory,
-        IClusterClient clusterClient)
+        IClusterClient clusterClient,
+        IFlowTaskTemplateService flowTaskTemplateService,
+        ILogger<DocumentProcessController> logger)
     {
         _dbContext = dbContext;
         _documentProcessInfoService = documentProcessInfoService;
@@ -56,6 +60,8 @@ public class DocumentProcessController : BaseController
         _documentIngestionService = documentIngestionService;
         _dbContextFactory = dbContextFactory;
         _clusterClient = clusterClient;
+        _flowTaskTemplateService = flowTaskTemplateService;
+        _logger = logger;
     }
 
     /// <summary>
@@ -525,6 +531,19 @@ public class DocumentProcessController : BaseController
 
         await _dbContext.DynamicDocumentProcessMetaDataFields.AddRangeAsync(newMetadataFields);
         await _dbContext.SaveChangesAsync();
+
+        // Auto-sync Flow Task template from metadata fields
+        try
+        {
+            await _flowTaskTemplateService.SyncFlowTaskFromDocumentProcessAsync(id);
+            _logger.LogInformation("Successfully synced Flow Task template for Document Process {ProcessId}", id);
+        }
+        catch (Exception ex)
+        {
+            // Log error but don't fail the metadata field save operation
+            _logger.LogError(ex, "Failed to sync Flow Task template for Document Process {ProcessId}", id);
+        }
+
         return Created($"/api/document-process/{id}/metadata-fields", metadataFields);
     }
 

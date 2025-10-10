@@ -46,23 +46,18 @@ public class McpConfigurationController : BaseController
     [Produces("application/json")]
     public ActionResult<McpConfigurationModel> Get()
     {
+        // Read from IConfiguration to reflect persisted values reliably
+        var mcpOptions = _configuration
+            .GetSection("ServiceConfiguration:Mcp")
+            .Get<ServiceConfigurationOptions.McpOptions>()
+            ?? new ServiceConfigurationOptions.McpOptions();
+
         var model = new McpConfigurationModel
         {
             Common = new CommonSection
             {
-                DisableAuth = GetBool("ServiceConfiguration:Mcp:DisableAuth"),
-                SecretEnabled = GetBool("ServiceConfiguration:Mcp:SecretEnabled"),
-                SecretHeaderName = _configuration["ServiceConfiguration:Mcp:SecretHeaderName"]
-            },
-            Core = new EndpointSection
-            {
-                SecretEnabled = GetBool("ServiceConfiguration:Mcp:Core:SecretEnabled"),
-                SecretHeaderName = _configuration["ServiceConfiguration:Mcp:Core:SecretHeaderName"]
-            },
-            Flow = new EndpointSection
-            {
-                SecretEnabled = GetBool("ServiceConfiguration:Mcp:Flow:SecretEnabled"),
-                SecretHeaderName = _configuration["ServiceConfiguration:Mcp:Flow:SecretHeaderName"]
+                DisableAuth = mcpOptions.DisableAuth,
+                SecretEnabled = mcpOptions.SecretEnabled
             }
         };
 
@@ -80,43 +75,7 @@ public class McpConfigurationController : BaseController
             return BadRequest("Model is required");
         }
 
-        // Server-side validation
-        var errors = new List<string>();
-
-        static bool IsValidHeaderName(string? name)
-        {
-            if (string.IsNullOrWhiteSpace(name)) return false;
-            if (name.Length > 100) return false;
-            // RFC7230 tchar set simplified
-            const string pattern = @"^[!#$%&'*+.^_`|~0-9A-Za-z-]+$";
-            return System.Text.RegularExpressions.Regex.IsMatch(name, pattern);
-        }
-
-        // Normalize and validate header names where required
-        model.Common.SecretHeaderName = model.Common.SecretHeaderName?.Trim();
-        model.Core.SecretHeaderName = model.Core.SecretHeaderName?.Trim();
-        model.Flow.SecretHeaderName = model.Flow.SecretHeaderName?.Trim();
-
-        if (model.Common.SecretEnabled && !IsValidHeaderName(model.Common.SecretHeaderName))
-        {
-            errors.Add("Common: Secret is enabled, but Secret Header Name is invalid or missing.");
-        }
-
-        if (model.Core.SecretEnabled && !IsValidHeaderName(model.Core.SecretHeaderName ?? model.Common.SecretHeaderName))
-        {
-            errors.Add("Core: Secret is enabled, but no valid header name (Core or Common) is provided.");
-        }
-
-        if (model.Flow.SecretEnabled && !IsValidHeaderName(model.Flow.SecretHeaderName ?? model.Common.SecretHeaderName))
-        {
-            errors.Add("Flow: Secret is enabled, but no valid header name (Flow or Common) is provided.");
-        }
-
-        if (errors.Count > 0)
-        {
-            return BadRequest(new { errors });
-        }
-
+        // Load or create config document
         var config = await _dbContext.Configurations.FindAsync(Microsoft.Greenlight.Shared.Models.Configuration.DbConfiguration.DefaultId);
         if (config is null)
         {
@@ -132,24 +91,14 @@ public class McpConfigurationController : BaseController
         var dict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(config.ConfigurationValues)
                    ?? new Dictionary<string, string>();
 
-        var updates = new Dictionary<string, string>();
-        updates["ServiceConfiguration:Mcp:DisableAuth"] = model.Common.DisableAuth.ToString();
-        updates["ServiceConfiguration:Mcp:SecretEnabled"] = model.Common.SecretEnabled.ToString();
-        if (!string.IsNullOrWhiteSpace(model.Common.SecretHeaderName))
+        // Build updates with defaults
+        var updates = new Dictionary<string, string>
         {
-            updates["ServiceConfiguration:Mcp:SecretHeaderName"] = model.Common.SecretHeaderName!;
-        }
-        // optional endpoint-specific settings
-        updates["ServiceConfiguration:Mcp:Core:SecretEnabled"] = model.Core.SecretEnabled.ToString();
-        if (!string.IsNullOrWhiteSpace(model.Core.SecretHeaderName))
-        {
-            updates["ServiceConfiguration:Mcp:Core:SecretHeaderName"] = model.Core.SecretHeaderName!;
-        }
-        updates["ServiceConfiguration:Mcp:Flow:SecretEnabled"] = model.Flow.SecretEnabled.ToString();
-        if (!string.IsNullOrWhiteSpace(model.Flow.SecretHeaderName))
-        {
-            updates["ServiceConfiguration:Mcp:Flow:SecretHeaderName"] = model.Flow.SecretHeaderName!;
-        }
+            ["ServiceConfiguration:Mcp:DisableAuth"] = model.Common.DisableAuth.ToString(),
+            ["ServiceConfiguration:Mcp:SecretEnabled"] = model.Common.SecretEnabled.ToString(),
+            // Always use default header name
+            ["ServiceConfiguration:Mcp:SecretHeaderName"] = "X-MCP-Secret"
+        };
 
         foreach (var kvp in updates)
         {
@@ -165,7 +114,7 @@ public class McpConfigurationController : BaseController
         // Update runtime configuration
         _configProvider.UpdateOptions(updates);
 
-        // Broadcast
+        // Broadcast configuration update to all services
         var configurationUpdatedMessage = new ConfigurationUpdated(Guid.NewGuid());
         var streamProvider = _clusterClient.GetStreamProvider("StreamProvider");
         var stream = streamProvider.GetStream<ConfigurationUpdated>(
@@ -199,13 +148,9 @@ public class McpConfigurationController : BaseController
         [FromServices] Microsoft.Greenlight.Shared.Services.Security.ISecretHashingService hashing,
         [FromServices] AutoMapper.IMapper mapper)
     {
-        if (request == null || string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.UserOid))
+        if (request == null || string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.ProviderSubjectId))
         {
-            return BadRequest("Name and UserOid are required");
-        }
-        if (!Guid.TryParse(request.UserOid, out _))
-        {
-            return BadRequest("UserOid must be a valid GUID");
+            return BadRequest("Name and ProviderSubjectId are required");
         }
         var name = request.Name.Trim();
         if (name.Length > 128)
@@ -223,7 +168,7 @@ public class McpConfigurationController : BaseController
         var entity = new Microsoft.Greenlight.Shared.Models.Configuration.McpSecret
         {
             Name = name,
-            UserOid = request.UserOid.Trim(),
+            ProviderSubjectId = request.ProviderSubjectId.Trim(),
             SecretSalt = salt,
             SecretHash = hash,
             IsActive = true
@@ -246,62 +191,8 @@ public class McpConfigurationController : BaseController
         return NoContent();
     }
 
-    [HttpGet("sessions")]
-    [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [Produces("application/json")]
-    public async Task<ActionResult<List<McpSessionRow>>> ListSessions([FromServices] Microsoft.Greenlight.Shared.Services.Caching.IAppCache cache)
-    {
-        var index = await LoadIndexAsync(cache, HttpContext.RequestAborted);
-        var rows = new List<McpSessionRow>();
-        foreach (var id in index)
-        {
-            var s = await cache.GetOrCreateAsync<McpSessionMirror>(
-                GetKey(id), _ => Task.FromResult<McpSessionMirror?>(null!)!, TimeSpan.FromMinutes(30), allowDistributed: true, HttpContext.RequestAborted);
-            if (s != null && s.SessionId != Guid.Empty)
-            {
-                rows.Add(new McpSessionRow { SessionId = s.SessionId, ExpiresUtc = s.ExpiresUtc });
-            }
-        }
-        rows = rows.OrderBy(r => r.ExpiresUtc).ToList();
-        return Ok(rows);
-    }
-
-    [HttpDelete("sessions/{id:guid}")]
-    [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public async Task<IActionResult> InvalidateSession(Guid id, [FromServices] Microsoft.Greenlight.Shared.Services.Caching.IAppCache cache)
-    {
-        // remove session and update index
-        await cache.RemoveAsync(GetKey(id), HttpContext.RequestAborted);
-        var index = await LoadIndexAsync(cache, HttpContext.RequestAborted);
-        if (index.Remove(id))
-        {
-            await SaveIndexAsync(cache, index, HttpContext.RequestAborted);
-        }
-        return NoContent();
-    }
-
     private bool GetBool(string key)
     {
         return bool.TryParse(_configuration[key], out var b) && b;
-    }
-
-    private static string GetKey(Guid id) => $"mcp:sessions:{id}";
-    private const string IndexKey = "mcp:sessions:index";
-    private static async Task<HashSet<Guid>> LoadIndexAsync(Microsoft.Greenlight.Shared.Services.Caching.IAppCache cache, CancellationToken ct)
-    {
-        var set = await cache.GetOrCreateAsync<HashSet<Guid>>(IndexKey, _ => Task.FromResult(new HashSet<Guid>()), TimeSpan.FromHours(12), allowDistributed: true, ct);
-        return set ?? new HashSet<Guid>();
-    }
-    private static Task SaveIndexAsync(Microsoft.Greenlight.Shared.Services.Caching.IAppCache cache, HashSet<Guid> index, CancellationToken ct)
-        => cache.SetAsync(IndexKey, index, TimeSpan.FromHours(12), allowDistributed: true, ct);
-
-    private sealed class McpSessionMirror
-    {
-        public Guid SessionId { get; set; }
-        public string UserObjectId { get; set; } = string.Empty;
-        public DateTime CreatedUtc { get; set; }
-        public DateTime ExpiresUtc { get; set; }
     }
 }

@@ -35,8 +35,8 @@
         <MudGrid>
           <MudItem xs="12" md="6">
             <MudStack Spacing="2">
-              <MudSwitch T="bool" @bind-Checked="_model.Common.DisableAuth" Color="Color.Primary" Label="Disable OIDC (user authentication)" @onchange="_ => MarkDirty()" />
-              <MudSwitch T="bool" @bind-Checked="_model.Common.SecretEnabled" Color="Color.Primary" Label="Enable API secrets" @onchange="_ => MarkDirty()" />
+              <MudSwitch T="bool" Value="_model.Common.DisableAuth" ValueChanged="(bool val) => { _model.Common.DisableAuth = val; MarkDirty(); }" Color="Color.Primary" Label="Disable OIDC (user authentication)" />
+              <MudSwitch T="bool" Value="_model.Common.SecretEnabled" ValueChanged="(bool val) => { _model.Common.SecretEnabled = val; MarkDirty(); }" Color="Color.Primary" Label="Enable API secrets" />
             </MudStack>
           </MudItem>
           <MudItem xs="12" md="6">
@@ -90,21 +90,21 @@
                        Clearable="true"
                        AdornmentIcon="@Icons.Material.Filled.Search"
                        AdornmentColor="Color.Secondary"
-                       ValueChanged="@(u => { _selectedUser = u; _newSecretUserOid = u?.ProviderSubjectId ?? string.Empty; StateHasChanged(); })" />
-      <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="string.IsNullOrWhiteSpace(_newSecretName) || string.IsNullOrWhiteSpace(_newSecretUserOid) || _busy" OnClick="CreateSecret">Create</MudButton>
+                       ValueChanged="@(u => { _selectedUser = u; _newSecretProviderSubjectId = u?.ProviderSubjectId ?? string.Empty; StateHasChanged(); })" />
+      <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="string.IsNullOrWhiteSpace(_newSecretName) || string.IsNullOrWhiteSpace(_newSecretProviderSubjectId) || _busy" OnClick="CreateSecret">Create</MudButton>
     </MudStack>
 
     <MudTable Items="_secrets" Dense="true" Hover="true">
       <HeaderContent>
         <MudTh>Name</MudTh>
-        <MudTh>User OID</MudTh>
+        <MudTh>Provider Subject ID</MudTh>
         <MudTh>Active</MudTh>
         <MudTh>Last Used (UTC)</MudTh>
         <MudTh></MudTh>
       </HeaderContent>
       <RowTemplate>
         <MudTd>@context.Name</MudTd>
-        <MudTd>@context.UserOid</MudTd>
+        <MudTd>@context.ProviderSubjectId</MudTd>
         <MudTd>@(context.IsActive ? "Yes" : "No")</MudTd>
         <MudTd>@(context.LastUsedUtc?.ToString("u") ?? "—")</MudTd>
         <MudTd Class="text-right">
@@ -113,25 +113,6 @@
       </RowTemplate>
     </MudTable>
   </MudPaper>
-
-    <!-- Sessions -->
-    <MudPaper Class="pa-3 mt-4" Elevation="0">
-      <MudText Typo="Typo.subtitle2">Active Sessions</MudText>
-      <MudTable Items="_sessions" Dense="true" Class="mt-2">
-        <HeaderContent>
-          <MudTh>Session Id</MudTh>
-          <MudTh>Expires (UTC)</MudTh>
-          <MudTh></MudTh>
-        </HeaderContent>
-        <RowTemplate>
-          <MudTd>@context.SessionId</MudTd>
-          <MudTd>@context.ExpiresUtc.ToString("u")</MudTd>
-          <MudTd Class="text-right">
-            <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small" OnClick="() => Invalidate(context.SessionId)">Invalidate</MudButton>
-          </MudTd>
-        </RowTemplate>
-      </MudTable>
-    </MudPaper>
 
     <!-- Actions -->
   <MudStack Direction="Row" Spacing="2" Class="mt-4">
@@ -146,11 +127,10 @@
     public override string Title => "MCP";
 
     private McpConfigurationModel _model = new();
-    private List<McpSessionRow> _sessions = new();
     private SecretOverrideInfo? _secretInfo;
     private List<Microsoft.Greenlight.Shared.Contracts.DTO.McpSecrets.McpSecretInfo> _secrets = new();
     private string _newSecretName = string.Empty;
-    private string _newSecretUserOid = string.Empty;
+    private string _newSecretProviderSubjectId = string.Empty;
     private UserSearchResult? _selectedUser;
 
     protected override async Task OnInitializedAsync()
@@ -166,7 +146,6 @@
         try
         {
             _model = await Api.GetAsync();
-            _sessions = await Api.ListSessionsAsync();
             _secretInfo = await ConfigApi.GetSecretOverrideInfoAsync("ServiceConfiguration:Mcp:SecretValue");
             _secrets = await Api.ListSecretsAsync();
             _initialSnapshot = System.Text.Json.JsonSerializer.Serialize(_model);
@@ -202,7 +181,7 @@
         return;
       }
 
-      var userOid = _selectedUser.ProviderSubjectId.Trim();
+      var providerSubjectId = _selectedUser.ProviderSubjectId.Trim();
 
       _busy = true;
       try
@@ -210,10 +189,10 @@
         var resp = await Api.CreateSecretAsync(new Microsoft.Greenlight.Shared.Contracts.DTO.McpSecrets.CreateMcpSecretRequest
         {
           Name = name,
-          UserOid = userOid
+          ProviderSubjectId = providerSubjectId
         });
         _newSecretName = string.Empty;
-        _newSecretUserOid = string.Empty;
+        _newSecretProviderSubjectId = string.Empty;
         _selectedUser = null;
         _secrets = await Api.ListSecretsAsync();
         
@@ -258,8 +237,7 @@
         _busy = true;
         try
         {
-            await SaveAsync();
-            _sessions = await Api.ListSessionsAsync();
+            await SaveInternalAsync();
             _secretInfo = await ConfigApi.GetSecretOverrideInfoAsync("ServiceConfiguration:Mcp:SecretValue");
         }
         finally
@@ -267,15 +245,6 @@
             _busy = false;
         }
     }
-
-
-    private async Task Invalidate(Guid id)
-    {
-        await Api.InvalidateSessionAsync(id);
-        _sessions = await Api.ListSessionsAsync();
-    }
-
-
 
     private Task<IEnumerable<UserSearchResult>> SearchUsers(string value, CancellationToken _)
     {
@@ -332,7 +301,17 @@
         SetDirty(!string.Equals(current, _initialSnapshot, StringComparison.Ordinal));
     }
 
-    public override async Task SaveAsync(CancellationToken cancellationToken = default)
+    /// <summary>
+    /// MCP configuration is NOT saved via coordinator - it uses only the local Save button.
+    /// This prevents MCP's confirmation dialogs from canceling the entire Save All operation.
+    /// </summary>
+    public override Task SaveAsync(CancellationToken cancellationToken = default)
+    {
+        // No-op: MCP saves only through the local Save button below
+        return Task.CompletedTask;
+    }
+
+    private async Task SaveInternalAsync()
     {
         // Detect auth-impacting changes and prompt the user with a concise summary
         var before = System.Text.Json.JsonSerializer.Deserialize<McpConfigurationModel>(_initialSnapshot) ?? new McpConfigurationModel();
@@ -345,7 +324,7 @@
             {
                 { "ContentText", summary },
                 { "ButtonText", "Apply" },
-                { "CancelText", "Cancel" },
+                { "CancelButtonText", "Cancel" },
                 { "DialogColor", noAuth ? Color.Error : Color.Warning }
             };
             var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
@@ -353,12 +332,18 @@
             var result = await dialog.Result;
             if (result.Canceled)
             {
-                // Cancel the entire save pipeline (including Save All)
-                throw new OperationCanceledException("User canceled MCP auth-impacting changes");
+                // User canceled - just return without saving
+                return;
             }
         }
 
+        // NOTE: Server-side defaults SecretHeaderName to "X-MCP-Secret" if not provided
+        // No need to set it here as it's no longer part of the model
+
         await Api.UpdateAsync(_model);
+
+        // Reload model from server to ensure UI reflects persisted values
+        _model = await Api.GetAsync();
         _initialSnapshot = System.Text.Json.JsonSerializer.Serialize(_model);
         SetDirty(false);
     }
@@ -391,7 +376,7 @@
         }
         // Header and endpoint-specific settings are fixed/unsupported and not changeable here
         lines.Add("Note: If both a user bearer token and an API secret are present, the user token takes precedence.");
-        return string.Join("\n", lines);
+        return string.Join("<br />", lines);
     }
 
     // modeling classes live in Microsoft.Greenlight.Web.DocGen.Client.Models

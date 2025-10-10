@@ -6,6 +6,7 @@ using Microsoft.Greenlight.Shared.Models.DomainGroups;
 using Microsoft.Greenlight.Shared.Models.Validation;
 using Microsoft.Greenlight.Shared.Models.Plugins;
 using Microsoft.Greenlight.Shared.Models.FileStorage;
+using Microsoft.Greenlight.Shared.Models.FlowTasks;
 using System.Text.Json.Serialization;
 
 namespace Microsoft.Greenlight.Shared.Models.DocumentProcess;
@@ -140,6 +141,17 @@ public class DynamicDocumentProcessDefinition : EntityBase, IDocumentProcessInfo
     /// </summary>
     [JsonIgnore]
     public DocumentProcessValidationPipeline? ValidationPipeline { get; set; }
+
+    /// <summary>
+    /// Flow Task template ID associated with the document process for conversational document generation.
+    /// </summary>
+    public Guid? FlowTaskTemplateId { get; set; }
+
+    /// <summary>
+    /// Flow Task template associated with the document process for conversational document generation.
+    /// </summary>
+    [JsonIgnore]
+    public FlowTaskTemplate? FlowTaskTemplate { get; set; }
 
     /// <summary>
     /// Unique identifier of the AI model deployment used for regular tasks

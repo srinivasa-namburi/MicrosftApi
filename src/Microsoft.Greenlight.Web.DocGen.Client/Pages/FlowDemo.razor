@@ -1,0 +1,124 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+
+@page "/demo/flow"
+@layout EmptyLayout
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.Greenlight.Web.DocGen.Client.Components.AiAssistant
+@using Microsoft.Greenlight.Web.DocGen.Client.Layout
+
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JSRuntime
+@inject ILogger<FlowDemo> Logger
+
+<PageTitle>Flow AI Assistant - Demo</PageTitle>
+
+<div class="flow-demo-container">
+    <MudToolBar Dense="false" Class="flow-demo-header" Style="padding: 0 24px;">
+        <MudIcon Icon="fas fa-brain" Color="Color.Info" Class="mr-2" />
+        <MudText Typo="Typo.h6">Flow AI Assistant</MudText>
+        <MudSpacer />
+        <MudButton Variant="Variant.Outlined"
+                   Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Refresh"
+                   OnClick="StartNewConversation">
+            New Conversation
+        </MudButton>
+    </MudToolBar>
+
+    <div class="flow-demo-content">
+        @if (_isInitialized)
+        {
+            <AiAssistantComponent @ref="_aiAssistantComponent"
+                                  ConversationId="@_conversationId"
+                                  DocumentProcessName="flow"
+                                  UseFlow="true"
+                                  IsEmbedded="false"
+                                  FillContainer="true"
+                                  HideInitialContentDisplay="false"
+                                  StartWithCompactUI="false" />
+        }
+    </div>
+</div>
+
+@code {
+    private string? _userId;
+    private bool _isInitialized = false;
+    private AiAssistantComponent? _aiAssistantComponent;
+    private Guid _conversationId = Guid.NewGuid();
+    private const string FlowConversationStorageKeySuffix = "_flow_demo_conversationId";
+
+    /// <summary>
+    /// Initializes the component by loading user authentication state and saved conversation.
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            _userId = authState.User?.FindFirst("sub")?.Value ?? "anonymous";
+            await LoadSavedState();
+            _isInitialized = true;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error initializing FlowDemo");
+        }
+    }
+
+    /// <summary>
+    /// Loads the saved conversation ID from localStorage or creates a new one.
+    /// </summary>
+    private async Task LoadSavedState()
+    {
+        try
+        {
+            var savedConversationId = await JSRuntime.InvokeAsync<string?>(
+                "localStorage.getItem",
+                $"flowDemo_{_userId}{FlowConversationStorageKeySuffix}");
+            if (!string.IsNullOrEmpty(savedConversationId) && Guid.TryParse(savedConversationId, out var convId))
+            {
+                _conversationId = convId;
+            }
+            else
+            {
+                _conversationId = Guid.NewGuid();
+                await JSRuntime.InvokeVoidAsync(
+                    "localStorage.setItem",
+                    $"flowDemo_{_userId}{FlowConversationStorageKeySuffix}",
+                    _conversationId.ToString());
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error loading saved state");
+        }
+    }
+
+    /// <summary>
+    /// Starts a new conversation by generating a new conversation ID and updating the component.
+    /// </summary>
+    private async Task StartNewConversation()
+    {
+        try
+        {
+            _conversationId = Guid.NewGuid();
+            await JSRuntime.InvokeVoidAsync(
+                "localStorage.setItem",
+                $"flowDemo_{_userId}{FlowConversationStorageKeySuffix}",
+                _conversationId.ToString());
+
+            if (_aiAssistantComponent != null)
+            {
+                _aiAssistantComponent.ConversationId = _conversationId;
+                _aiAssistantComponent.StartNewConversation();
+            }
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error starting new flow conversation");
+        }
+    }
+}

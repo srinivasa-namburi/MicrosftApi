@@ -12,7 +12,7 @@ namespace Microsoft.Greenlight.Grains.Chat.Contracts.State
         public Guid SessionId { get; init; }
         public DateTime CreatedUtc { get; init; } = DateTime.UtcNow;
         public DateTime LastActivityUtc { get; init; } = DateTime.UtcNow;
-        public string? UserOid { get; init; }
+        public string? ProviderSubjectId { get; init; }
         public string? UserName { get; init; }
 
         // User-facing conversation state (what user sees)
@@ -32,6 +32,10 @@ namespace Microsoft.Greenlight.Grains.Chat.Contracts.State
 
         // Orchestration metadata
         public Dictionary<string, object> OrchestrationMetadata { get; init; } = new();
+
+        // Flow Task execution state
+        public Guid? ActiveFlowTaskExecutionId { get; init; }
+        public Guid? ActiveFlowTaskTemplateId { get; init; }
 
         // Message superseding tracking (for Flow aggregation messages)
         // Key is the superseded message ID, value is the superseding message ID

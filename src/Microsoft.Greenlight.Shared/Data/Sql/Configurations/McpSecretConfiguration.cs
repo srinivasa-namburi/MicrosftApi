@@ -17,7 +17,7 @@ public sealed class McpSecretConfiguration : IEntityTypeConfiguration<McpSecret>
         builder.Property(x => x.Name).IsRequired().HasMaxLength(128);
         builder.Property(x => x.SecretHash).IsRequired();
         builder.Property(x => x.SecretSalt).IsRequired();
-        builder.Property(x => x.UserOid).IsRequired().HasMaxLength(64);
+        builder.Property(x => x.ProviderSubjectId).IsRequired().HasMaxLength(64);
         builder.Property(x => x.IsActive).IsRequired();
         builder.Property(x => x.LastUsedUtc).IsRequired(false);
 

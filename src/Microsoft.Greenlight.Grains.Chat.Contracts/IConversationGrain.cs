@@ -16,6 +16,12 @@ public interface IConversationGrain : IGrainWithGuidKey
     /// <param name="documentProcessName">The document process short name.</param>
     /// <param name="updateSystemPrompt">Whether to also update the conversation's system prompt to the default for the new process.</param>
     Task<bool> SetDocumentProcessAsync(string documentProcessName, bool updateSystemPrompt = true);
+    /// <summary>
+    /// Sets the user context (provider subject ID) for this conversation.
+    /// Used by Flow backend conversations where user messages are not directly sent.
+    /// </summary>
+    /// <param name="providerSubjectId">The provider subject ID of the user who started this conversation.</param>
+    Task SetUserContextAsync(string providerSubjectId);
     Task<bool> RemoveConversationReference(Guid conversationReferenceId);
     Task<List<ChatMessageDTO>> GetMessagesAsync();
     Task<ChatMessageDTO> ProcessMessageAsync(ChatMessageDTO userMessage);

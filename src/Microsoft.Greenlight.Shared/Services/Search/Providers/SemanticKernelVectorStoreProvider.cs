@@ -156,7 +156,9 @@ public sealed class SemanticKernelVectorStoreProvider : ISemanticKernelVectorSto
         try
         {
             await collection.EnsureCollectionExistsAsync(cancellationToken).ConfigureAwait(false);
+            _logger.LogDebug("Upserting {Count} records into collection {IndexName}", unifiedRecords.Count, indexName);
             await collection.UpsertAsync(unifiedRecords, cancellationToken).ConfigureAwait(false);
+            _logger.LogDebug("Upsert completed for {Count} records into collection {IndexName}", unifiedRecords.Count, indexName);
         }
         catch (Exception ex) when (IsCollectionNotFoundError(ex))
         {
@@ -333,9 +335,15 @@ public sealed class SemanticKernelVectorStoreProvider : ISemanticKernelVectorSto
         var matches = new List<VectorSearchMatch>(top);
         await foreach (var r in results.WithCancellation(cancellationToken))
         {
-            if (r.Score.HasValue && r.Score.Value >= minRelevance)
+            if (r.Score.HasValue)
             {
-                matches.Add(new VectorSearchMatch(Unmap(r.Record), r.Score.Value));
+                // Normalize score based on provider type
+                var normalizedScore = NormalizeScore(r.Score.Value);
+
+                if (normalizedScore >= minRelevance)
+                {
+                    matches.Add(new VectorSearchMatch(Unmap(r.Record), normalizedScore));
+                }
             }
         }
 
@@ -796,6 +804,28 @@ public sealed class SemanticKernelVectorStoreProvider : ISemanticKernelVectorSto
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Normalizes similarity scores across different vector store providers.
+    /// PostgreSQL pgvector returns cosine distance (0..2, lower is better),
+    /// while Azure AI Search returns similarity scores (0..1, higher is better).
+    /// We convert pgvector distance to similarity using: similarity = 1 - distance
+    /// </summary>
+    private double NormalizeScore(double rawScore)
+    {
+        if (_options.StoreType == VectorStoreType.PostgreSQL)
+        {
+            // PostgreSQL pgvector returns cosine distance (0 = identical, 2 = opposite)
+            // Convert to similarity score (1 = identical, 0 = opposite): similarity = 1 - distance
+            // Clamp to [0, 1] range for safety (distances > 1 are rare but theoretically possible)
+            var similarity = Math.Clamp(1.0 - rawScore, 0.0, 1.0);
+            _logger.LogDebug("Converted PostgreSQL distance to similarity: {Distance} -> {Similarity}", rawScore, similarity);
+            return similarity;
+        }
+
+        // AI Search returns similarity score directly (0..1, higher is better)
+        return rawScore;
     }
 
     private static string Normalize(string s) => s.Trim().ToLowerInvariant();

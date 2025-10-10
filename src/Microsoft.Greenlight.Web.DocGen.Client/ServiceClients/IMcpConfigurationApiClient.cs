@@ -23,16 +23,6 @@ public interface IMcpConfigurationApiClient : Microsoft.Greenlight.Web.Shared.Se
     Task UpdateAsync(McpConfigurationModel model, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Lists active sessions.
-    /// </summary>
-    Task<List<McpSessionRow>> ListSessionsAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Invalidates a session by id.
-    /// </summary>
-    Task InvalidateSessionAsync(Guid sessionId, CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// Lists all MCP API secrets (no plaintext values).
     /// </summary>
     Task<List<Microsoft.Greenlight.Shared.Contracts.DTO.McpSecrets.McpSecretInfo>> ListSecretsAsync(CancellationToken cancellationToken = default);

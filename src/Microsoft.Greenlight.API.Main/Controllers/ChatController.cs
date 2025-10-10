@@ -58,10 +58,15 @@ namespace Microsoft.Greenlight.API.Main.Controllers
                     // Route through Flow orchestration grain using new conversation-based approach
                     var flowGrain = _clusterClient.GetGrain<IFlowOrchestrationGrain>(chatMessageDto.ConversationId);
 
-                    // Initialize the Flow grain if needed (with user info from claims)
-                    var userOid = User.FindFirst("oid")?.Value ?? User.FindFirst("sub")?.Value;
+                    // First check if the chat message has a UserId; if not, try to get from the current user context
+                    // In the current user context, check "sub" (JWT), then ClaimTypes.NameIdentifier (OIDC), then "oid" (fallback)
+                    var userProviderSubjectId = chatMessageDto.UserId
+                                             ?? User.FindFirst("sub")?.Value
+                                             ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                                             ?? User.FindFirst("oid")?.Value;
+
                     var userName = User.FindFirst("name")?.Value;
-                    await flowGrain.InitializeAsync(userOid ?? "unknown", userName);
+                    await flowGrain.InitializeAsync(userProviderSubjectId ?? "unknown", userName);
 
                     // Process via Flow conversation (fire and forget) - this will manage its own conversation
                     _ = flowGrain.ProcessMessageAsync(chatMessageDto);
@@ -114,15 +119,19 @@ namespace Microsoft.Greenlight.API.Main.Controllers
                 // Flow mode - get user-facing conversation messages from Flow grain
                 var flowGrain = _clusterClient.GetGrain<IFlowOrchestrationGrain>(conversationId);
 
+                
                 // Initialize Flow session if needed
-                var userOid = User.FindFirst("oid")?.Value ?? User.FindFirst("sub")?.Value;
+                // Check "sub" (JWT), then ClaimTypes.NameIdentifier (OIDC), then "oid" (fallback)
+                var userProviderSubjectId = User.FindFirst("sub")?.Value
+                                         ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                                         ?? User.FindFirst("oid")?.Value;
                 var userName = User.FindFirst("name")?.Value;
-                await flowGrain.InitializeAsync(userOid ?? "unknown", userName);
+                await flowGrain.InitializeAsync(userProviderSubjectId ?? "unknown", userName);
 
                 // Get the user-facing conversation messages (not backend orchestration)
                 var messages = await flowGrain.GetMessagesAsync();
 
-                if (messages == null || !messages.Any())
+                if (!messages.Any())
                 {
                     return NotFound();
                 }

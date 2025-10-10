@@ -1,0 +1,226 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+@using MudBlazor
+@using Microsoft.Greenlight.Web.DocGen.Client.ServiceClients
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Configuration
+@inject IConfigurationApiClient ConfigApi
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudAlert Severity="Severity.Info" Dense="true">
+                Editing system prompt: <strong>@GetPromptDisplayName(PromptName)</strong>
+            </MudAlert>
+
+            @if (_isLoading)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+            }
+            else
+            {
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudChip T="string" Color="@(_isModified ? Color.Warning : Color.Success)" Variant="Variant.Filled" Size="Size.Small">
+                        @(_isModified ? "Modified" : "Unchanged")
+                    </MudChip>
+                    @if (_isCustomized)
+                    {
+                        <MudChip T="string" Color="Color.Secondary" Variant="Variant.Outlined" Size="Size.Small">
+                            Customized
+                        </MudChip>
+                    }
+                </MudStack>
+
+                <MudTextField @bind-Value="_currentText"
+                             Label="Prompt Text"
+                             Lines="20"
+                             Variant="Variant.Outlined"
+                             Immediate="true"
+                             OnBlur="OnTextChanged" />
+
+                @if (!string.IsNullOrEmpty(_validationError))
+                {
+                    <MudAlert Severity="Severity.Error" Dense="true">
+                        @_validationError
+                    </MudAlert>
+                }
+
+                @if (_requiredVariables.Any())
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true">
+                        <strong>Required variables:</strong> @string.Join(", ", _requiredVariables.Select(v => $"{{{v}}}"))
+                    </MudAlert>
+                }
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="ResetToDefault" Disabled="_isSaving || !_isCustomized">
+            Reset to Default
+        </MudButton>
+        <MudSpacer />
+        <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="_isSaving || !_isModified || !string.IsNullOrEmpty(_validationError)">
+            @if (_isSaving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-2" />
+                @:Saving...
+            }
+            else
+            {
+                @:Save
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public string PromptName { get; set; } = string.Empty;
+
+    private string _originalText = string.Empty;
+    private string _defaultText = string.Empty;
+    private string _currentText = string.Empty;
+    private bool _isCustomized = false;
+    private bool _isModified = false;
+    private bool _isLoading = true;
+    private bool _isSaving = false;
+    private string? _validationError = null;
+    private List<string> _requiredVariables = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _isLoading = true;
+
+            // Load current prompt
+            var currentPrompt = await ConfigApi.GetSystemPromptAsync(PromptName);
+            _originalText = currentPrompt.Text;
+            _currentText = currentPrompt.Text;
+            _isCustomized = currentPrompt.IsCustomized;
+
+            // Load default prompt
+            var defaultPrompt = await ConfigApi.GetDefaultSystemPromptAsync(PromptName);
+            _defaultText = defaultPrompt.Text;
+
+            // Determine required variables based on prompt name
+            _requiredVariables = GetRequiredVariablesForPrompt(PromptName);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load prompt: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void OnTextChanged()
+    {
+        _isModified = !string.Equals(_currentText, _originalText, StringComparison.Ordinal);
+        ValidatePrompt();
+    }
+
+    private async void ValidatePrompt()
+    {
+        try
+        {
+            var result = await ConfigApi.ValidateSystemPromptAsync(PromptName, _currentText);
+            _validationError = result.IsValid ? null : result.ErrorMessage;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _validationError = $"Validation failed: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    private async Task Save()
+    {
+        _isSaving = true;
+        try
+        {
+            await ConfigApi.UpdateSystemPromptAsync(PromptName, _currentText);
+            Snackbar.Add("Prompt saved successfully", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to save prompt: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task ResetToDefault()
+    {
+        var parameters = new DialogParameters
+        {
+            { "ContentText", "Are you sure you want to reset this prompt to its default value? This will delete your customizations." },
+            { "ButtonText", "Reset" },
+            { "DialogColor", Color.Warning }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<ConfirmationDialog>("Reset to Default", parameters, options);
+        var result = await dialog.Result;
+
+        if (result.Canceled)
+        {
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            await ConfigApi.DeleteSystemPromptOverrideAsync(PromptName);
+            _currentText = _defaultText;
+            _originalText = _defaultText;
+            _isCustomized = false;
+            _isModified = false;
+            Snackbar.Add("Prompt reset to default", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to reset prompt: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+
+    private static string GetPromptDisplayName(string promptName)
+    {
+        return promptName switch
+        {
+            "FlowUserConversationSystemPrompt" => "Flow User Conversation System Prompt",
+            "FlowBackendConversationSystemPrompt" => "Flow Backend Conversation System Prompt",
+            "FlowIntentDetectionPrompt" => "Flow Intent Detection Prompt",
+            "FlowResponseSynthesisPrompt" => "Flow Response Synthesis Prompt",
+            "FlowConversationalFallbackPrompt" => "Flow Conversational Fallback Prompt",
+            _ => promptName
+        };
+    }
+
+    private static List<string> GetRequiredVariablesForPrompt(string promptName)
+    {
+        return promptName switch
+        {
+            "FlowIntentDetectionPrompt" => new List<string> { "query", "availableProcesses" },
+            "FlowResponseSynthesisPrompt" => new List<string> { "query", "responses" },
+            _ => new List<string>()
+        };
+    }
+}

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using Microsoft.Greenlight.Grains.Chat.Extensions;
 using Microsoft.Greenlight.Grains.Shared.Scheduling;
 using Microsoft.Greenlight.ServiceDefaults;
 using Microsoft.Greenlight.Shared.Configuration;
@@ -25,6 +26,7 @@ builder.AddGreenlightDbContextAndConfiguration();
 var serviceConfigurationOptions = builder.Configuration.GetSection(ServiceConfigurationOptions.PropertyName).Get<ServiceConfigurationOptions>()!;
 
 builder.AddGreenlightServices(credentialHelper, serviceConfigurationOptions);
+builder.Services.AddGreenlightChatServices();
 
 if (!serviceConfigurationOptions.GreenlightServices.DocumentGeneration.CreateBodyTextNodes)
 {

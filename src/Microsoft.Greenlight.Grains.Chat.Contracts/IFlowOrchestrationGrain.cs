@@ -43,7 +43,7 @@ public interface IFlowOrchestrationGrain : IGrainWithGuidKey
     /// <param name="message">The user's message/query.</param>
     /// <param name="context">Optional context or additional instructions.</param>
     /// <returns>A unified response from potentially multiple conversations.</returns>
-    Task<FlowQueryResult> ProcessQueryAsync(string message, string context);
+    Task<FlowQueryResult> ProcessDocumentQueryAsync(string message, string context);
 
     /// <summary>
     /// Process a chat message and add it to the user-facing Flow conversation.
@@ -68,9 +68,9 @@ public interface IFlowOrchestrationGrain : IGrainWithGuidKey
     /// <summary>
     /// Initialize or update the Flow orchestration with user information.
     /// </summary>
-    /// <param name="userOid">The authenticated user's object identifier.</param>
+    /// <param name="providerSubjectId">The authenticated user's provider subject identifier (from "sub" claim).</param>
     /// <param name="userName">The user's display name.</param>
-    Task InitializeAsync(string userOid, string? userName = null);
+    Task InitializeAsync(string providerSubjectId, string? userName = null);
 
     /// <summary>
     /// Engage a specific document process, making its tools/plugins available to Flow.
@@ -98,7 +98,7 @@ public interface IFlowOrchestrationGrain : IGrainWithGuidKey
     /// <param name="message">The user's message/query.</param>
     /// <param name="context">Optional context or additional instructions.</param>
     /// <returns>Processing task ID for tracking.</returns>
-    Task<string> StartProcessingAsync(string message, string context);
+    Task<string> StartStreamingMessageProcessingAsync(string message, string context);
 
     /// <summary>
     /// Cancel any active processing and clean up resources.
@@ -108,14 +108,14 @@ public interface IFlowOrchestrationGrain : IGrainWithGuidKey
     /// <summary>
     /// Process a query for MCP clients with synchronous-like behavior.
     /// This method waits for all backend conversations to complete before returning.
-    /// Unlike ProcessQueryAsync, this does NOT emit SignalR updates during processing.
+    /// Unlike ProcessDocumentQueryAsync, this does NOT emit SignalR updates during processing.
     /// MCP clients receive only the final, synthesized response.
     /// </summary>
     /// <param name="message">The user's message/query.</param>
     /// <param name="context">Optional context or additional instructions.</param>
     /// <param name="timeoutSeconds">Maximum seconds to wait for backends to complete (default: 60).</param>
     /// <returns>The final, complete response after all backends have finished.</returns>
-    Task<FlowQueryResult> ProcessQueryForMcpAsync(
+    Task<FlowQueryResult> ProcessMessageForMcpAsync(
         string message,
         string context,
         int timeoutSeconds = 60);

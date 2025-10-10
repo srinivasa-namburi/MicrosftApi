@@ -3,11 +3,13 @@ namespace Microsoft.Greenlight.Web.Shared.ViewModels.MCP;
 
 /// <summary>
 /// View model for MCP admin configuration.
+/// Simplified to only include global settings (no per-endpoint config).
 /// </summary>
 public sealed class McpConfigurationModel
 {
+    /// <summary>
+    /// Gets or sets the global MCP configuration settings.
+    /// </summary>
     public CommonSection Common { get; set; } = new();
-    public EndpointSection Core { get; set; } = new();
-    public EndpointSection Flow { get; set; } = new();
 }
 

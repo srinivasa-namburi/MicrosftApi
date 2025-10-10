@@ -1,0 +1,233 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Greenlight.McpServer.Auth;
+using Microsoft.Greenlight.McpServer.Servers;
+using Microsoft.Greenlight.McpServer.Services;
+using Microsoft.Greenlight.ServiceDefaults;
+using Microsoft.Greenlight.Shared.Configuration;
+using Microsoft.Greenlight.Shared.DocumentProcess.Shared;
+using Microsoft.Greenlight.Shared.Extensions;
+using Microsoft.Greenlight.Shared.Helpers;
+using Microsoft.Greenlight.Shared.Services.Security;
+using Microsoft.IdentityModel.Tokens;
+using Yarp.ReverseProxy.Configuration;
+using Yarp.ReverseProxy.Forwarder;
+
+// ============================================================================
+// MCP Server Architecture (YARP + Dual Servers)
+// ============================================================================
+// This implementation uses a YARP reverse proxy to route requests between two
+// separate MCP servers, providing clean separation between Flow and Business tools.
+//
+// Architecture:
+// - YARP Proxy (port 6005): Routes /flow/mcp/* to Flow server, /mcp/* to Business server
+// - Flow MCP Server (port 6007): Serves Flow AI Assistant tools
+// - Business MCP Server (port 6008): Serves business document process tools
+// ============================================================================
+
+// ------------ Start the backend MCP servers ------------
+var businessMcpApp = BusinessMcpServer.CreateServer(args, port: 6008);
+var flowMcpApp = FlowMcpServer.CreateServer(args, port: 6007);
+
+// ------------ Configure YARP Proxy (port 6005) ------------
+var proxyBuilder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ApplicationName = typeof(Program).Assembly.FullName,
+    EnvironmentName = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? Environments.Development
+});
+
+// Configure Kestrel with long timeouts for MCP streaming
+var proxyPort = proxyBuilder.Configuration.GetValue<int?>("Mcp:HttpPort") ?? 6005;
+proxyBuilder.WebHost.UseUrls($"http://localhost:{proxyPort}");
+proxyBuilder.WebHost.ConfigureKestrel(serverOptions =>
+{
+    // Very high KeepAlive for long-running MCP connections
+    serverOptions.Limits.KeepAliveTimeout = TimeSpan.FromMinutes(120);
+    serverOptions.Limits.RequestHeadersTimeout = TimeSpan.FromMinutes(10);
+});
+
+// Add core services
+proxyBuilder.AddServiceDefaults();
+proxyBuilder.Logging.AddConsole();
+
+var credentialHelper = new AzureCredentialHelper(proxyBuilder.Configuration);
+proxyBuilder.Services.AddSingleton(credentialHelper);
+AdminHelper.Initialize(proxyBuilder.Configuration);
+AdminHelper.ValidateDeveloperSetup("MCP Server Proxy");
+
+// Add required services for transform providers
+proxyBuilder.Services.AddHttpContextAccessor();
+proxyBuilder.AddGreenlightDbContextAndConfiguration();
+proxyBuilder.Services.AddSingleton<ISecretHashingService, SecretHashingService>();
+proxyBuilder.Services.AddSingleton<IMcpAuthenticationService, McpAuthenticationService>();
+
+// Get service configuration
+var serviceConfigurationOptions = proxyBuilder.Configuration
+    .GetSection(ServiceConfigurationOptions.PropertyName)
+    .Get<ServiceConfigurationOptions>()!;
+
+// Add Greenlight services (needed for MCP auth service dependencies)
+proxyBuilder.AddGreenlightServices(credentialHelper, serviceConfigurationOptions);
+proxyBuilder.AddGreenlightOrleansClient(credentialHelper);
+proxyBuilder.RegisterStaticPlugins(serviceConfigurationOptions);
+proxyBuilder.RegisterConfiguredDocumentProcesses(serviceConfigurationOptions);
+
+// Session management (needed by SecurityTransformProvider)
+proxyBuilder.Services.AddSingleton<IMcpSessionManager, McpSessionManager>();
+proxyBuilder.Services.Configure<ServiceConfigurationOptions.McpOptions>(
+    proxyBuilder.Configuration.GetSection("ServiceConfiguration:Mcp"));
+
+// Add hosted services for configuration refresh
+proxyBuilder.Services.AddGreenlightHostedServices(addSignalrNotifiers: false);
+
+// Configure authentication
+var azureAdSection = proxyBuilder.Configuration.GetSection("AzureAd");
+proxyBuilder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        var instance = azureAdSection["Instance"] ?? "https://login.microsoftonline.com/";
+        var tenantId = azureAdSection["TenantId"]!;
+        var authority = $"{instance.TrimEnd('/')}/{tenantId}/v2.0";
+        var audience = azureAdSection["Audience"] ?? azureAdSection["ClientId"];
+
+        options.Authority = authority;
+        options.Audience = audience;
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidAudience = audience,
+            ValidateAudience = true,
+            ValidateIssuerSigningKey = true,
+            ValidateLifetime = true,
+        };
+    });
+
+// Configure authorization with dynamic policy
+proxyBuilder.Services.AddAuthorization();
+proxyBuilder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, DynamicMcpAuthHandler>();
+proxyBuilder.Services.AddAuthorizationBuilder()
+    .AddPolicy("DynamicMcpAuth", policy => policy.Requirements.Add(new DynamicMcpAuthRequirement()));
+
+// Configure YARP routes and clusters
+var routes = new[]
+{
+    new RouteConfig
+    {
+        RouteId = "flow-mcp",
+        ClusterId = "flow-cluster",
+        Match = new RouteMatch { Path = "/flow/mcp/{**catch-all}" },
+        AuthorizationPolicy = "DynamicMcpAuth",
+        Transforms = new[]
+        {
+            new Dictionary<string, string> { ["PathRemovePrefix"] = "/flow/mcp" }
+        }
+    },
+    new RouteConfig
+    {
+        RouteId = "business-mcp",
+        ClusterId = "business-cluster",
+        Match = new RouteMatch { Path = "/mcp/{**catch-all}" },
+        AuthorizationPolicy = "DynamicMcpAuth",
+        Transforms = new[]
+        {
+            new Dictionary<string, string> { ["PathRemovePrefix"] = "/mcp" }
+        }
+    }
+};
+
+var clusters = new[]
+{
+    new ClusterConfig
+    {
+        ClusterId = "flow-cluster",
+        Destinations = new Dictionary<string, DestinationConfig>
+        {
+            { "flow1", new DestinationConfig { Address = "http://localhost:6007/" } }
+        },
+        HttpRequest = new ForwarderRequestConfig
+        {
+            ActivityTimeout = TimeSpan.FromHours(2) // 2 hour timeout for MCP streaming
+        }
+    },
+    new ClusterConfig
+    {
+        ClusterId = "business-cluster",
+        Destinations = new Dictionary<string, DestinationConfig>
+        {
+            { "business1", new DestinationConfig { Address = "http://localhost:6008/" } }
+        },
+        HttpRequest = new ForwarderRequestConfig
+        {
+            ActivityTimeout = TimeSpan.FromHours(2) // 2 hour timeout for MCP streaming
+        }
+    }
+};
+
+// Add YARP with transform providers
+// Path transforms are now handled inline in the route configuration
+proxyBuilder.Services.AddReverseProxy()
+    .LoadFromMemory(routes, clusters)
+    .AddTransforms<SecurityTransformProvider>();
+
+// Build the proxy application
+var proxyApp = proxyBuilder.Build();
+
+// Configure middleware pipeline
+proxyApp.UseAuthentication();
+proxyApp.UseAuthorization();
+
+// Map YARP proxy endpoints
+proxyApp.MapReverseProxy();
+
+// OAuth metadata endpoint
+var tenantId = proxyBuilder.Configuration.GetSection("AzureAd")["TenantId"]!;
+var authorityHost = new Uri(credentialHelper.DiscoveredAuthorityHost);
+var issuer = authorityHost.AbsoluteUri.TrimEnd('/') + $"/{tenantId}";
+
+proxyApp.MapGet("/.well-known/oauth-authorization-server", () => Results.Json(new
+{
+    issuer,
+    authorization_endpoint = $"{issuer}/oauth2/v2.0/authorize",
+    token_endpoint = $"{issuer}/oauth2/v2.0/token",
+    jwks_uri = $"{issuer}/discovery/v2.0/keys",
+    response_types_supported = (string[])["code"],
+    grant_types_supported = (string[])["authorization_code", "refresh_token"],
+    code_challenge_methods_supported = (string[])["S256"]
+}));
+
+// ------------ Run all three servers in parallel ------------
+using var cts = new CancellationTokenSource();
+Console.CancelKeyPress += (sender, e) =>
+{
+    e.Cancel = true;
+    cts.Cancel();
+};
+
+var runTasks = new[]
+{
+    businessMcpApp.RunAsync(cts.Token),
+    flowMcpApp.RunAsync(cts.Token),
+    proxyApp.RunAsync(cts.Token)
+};
+
+proxyApp.Logger.LogInformation("Starting MCP servers:");
+proxyApp.Logger.LogInformation("  - Proxy (YARP) on port {ProxyPort}", proxyPort);
+proxyApp.Logger.LogInformation("  - Business MCP on port 6008 (internal)");
+proxyApp.Logger.LogInformation("  - Flow MCP on port 6007 (internal)");
+
+try
+{
+    await Task.WhenAll(runTasks);
+}
+catch (TaskCanceledException)
+{
+    // Normal shutdown
+    proxyApp.Logger.LogInformation("MCP servers shutting down...");
+}
+catch (Exception ex)
+{
+    proxyApp.Logger.LogError(ex, "Error running MCP servers");
+    throw;
+}

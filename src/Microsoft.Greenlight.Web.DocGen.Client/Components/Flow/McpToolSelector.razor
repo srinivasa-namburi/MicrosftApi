@@ -1,0 +1,196 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+
+@using Microsoft.Greenlight.Shared.Contracts.DTO.Plugins
+@using Microsoft.Greenlight.Shared.Contracts.FlowTasks
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+
+@inject IPluginApiClient PluginApiClient
+@inject ISnackbar Snackbar
+
+<MudPaper Class="pa-4">
+    <MudText Typo="Typo.h6">MCP Tool Configuration</MudText>
+    <MudDivider Class="mt-2 mb-3" />
+
+    @if (_isLoading)
+    {
+        <MudProgressCircular Indeterminate="true" Size="Size.Small" />
+    }
+    else
+    {
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudSelect T="Guid?" @bind-Value="SelectedPluginId" Label="MCP Plugin"
+                          Required="true" Variant="Variant.Outlined"
+                          Disabled="Disabled">
+                    <MudSelectItem T="Guid?" Value="@((Guid?)null)">Select a plugin...</MudSelectItem>
+                    @foreach (var plugin in _plugins)
+                    {
+                        <MudSelectItem T="Guid?" Value="@plugin.Id">@plugin.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <MudTextField T="string" @bind-Value="ToolName" Label="Tool Name"
+                            Required="true" Variant="Variant.Outlined"
+                            Disabled="Disabled || SelectedPluginId == null" />
+            </MudItem>
+
+            <MudItem xs="12">
+                <MudTextField T="string" @bind-Value="TransformPrompt" Label="Transform Prompt (Optional)"
+                            Variant="Variant.Outlined" Lines="3"
+                            Disabled="Disabled"
+                            HelperText="Optional LLM prompt for transforming the tool response" />
+            </MudItem>
+
+            <MudItem xs="12">
+                <MudText Typo="Typo.subtitle1" Class="mt-2">Parameters</MudText>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                          StartIcon="@Icons.Material.Filled.Add" OnClick="AddParameter"
+                          Disabled="Disabled || SelectedPluginId == null">
+                    Add Parameter
+                </MudButton>
+            </MudItem>
+
+            @foreach (var parameter in Parameters)
+            {
+                <MudItem xs="12">
+                    <MudPaper Class="pa-3" Outlined="true">
+                        <MudGrid>
+                            <MudItem xs="12" md="4">
+                                <MudTextField T="string" @bind-Value="parameter.ParameterName"
+                                            Label="Parameter Name" Required="true"
+                                            Variant="Variant.Outlined" Margin="Margin.Dense"
+                                            Disabled="Disabled" />
+                            </MudItem>
+                            <MudItem xs="12" md="6">
+                                <MudTextField T="string" @bind-Value="parameter.ParameterValue"
+                                            Label="Value" Required="true"
+                                            Variant="Variant.Outlined" Margin="Margin.Dense"
+                                            Disabled="Disabled" />
+                            </MudItem>
+                            <MudItem xs="12" md="2">
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                                             Size="Size.Small" OnClick="() => RemoveParameter(parameter)"
+                                             Disabled="Disabled" />
+                            </MudItem>
+                            <MudItem xs="12" md="4">
+                                <MudTextField T="string" @bind-Value="parameter.DataType"
+                                            Label="Data Type (Optional)"
+                                            Variant="Variant.Outlined" Margin="Margin.Dense"
+                                            Disabled="Disabled" />
+                            </MudItem>
+                            <MudItem xs="12" md="8">
+                                <MudCheckBox T="bool" @bind-Value="parameter.IsTemplate"
+                                           Label="Is Template (resolve at runtime)"
+                                           Color="Color.Primary"
+                                           Disabled="Disabled" />
+                            </MudItem>
+                        </MudGrid>
+                    </MudPaper>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+</MudPaper>
+
+@code {
+    private List<McpPluginInfo> _plugins = new();
+    private bool _isLoading = true;
+
+    /// <summary>
+    /// Gets or sets whether the component is disabled.
+    /// </summary>
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    /// <summary>
+    /// Gets or sets the selected plugin ID.
+    /// </summary>
+    [Parameter]
+    public Guid? SelectedPluginId { get; set; }
+
+    /// <summary>
+    /// Event callback for when the selected plugin changes.
+    /// </summary>
+    [Parameter]
+    public EventCallback<Guid?> SelectedPluginIdChanged { get; set; }
+
+    /// <summary>
+    /// Gets or sets the tool name.
+    /// </summary>
+    [Parameter]
+    public string ToolName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Event callback for when the tool name changes.
+    /// </summary>
+    [Parameter]
+    public EventCallback<string> ToolNameChanged { get; set; }
+
+    /// <summary>
+    /// Gets or sets the optional transform prompt.
+    /// </summary>
+    [Parameter]
+    public string? TransformPrompt { get; set; }
+
+    /// <summary>
+    /// Event callback for when the transform prompt changes.
+    /// </summary>
+    [Parameter]
+    public EventCallback<string?> TransformPromptChanged { get; set; }
+
+    /// <summary>
+    /// Gets or sets the list of parameters.
+    /// </summary>
+    [Parameter]
+    public List<FlowTaskMcpToolParameterDto> Parameters { get; set; } = new();
+
+    /// <summary>
+    /// Event callback for when parameters change.
+    /// </summary>
+    [Parameter]
+    public EventCallback<List<FlowTaskMcpToolParameterDto>> ParametersChanged { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPlugins();
+    }
+
+    private async Task LoadPlugins()
+    {
+        _isLoading = true;
+        try
+        {
+            _plugins = await PluginApiClient.GetFlowExposedPluginsAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading plugins: {ex.Message}", Severity.Error);
+            _plugins = new List<McpPluginInfo>();
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void AddParameter()
+    {
+        Parameters.Add(new FlowTaskMcpToolParameterDto
+        {
+            Id = Guid.NewGuid(),
+            ParameterName = "",
+            ParameterValue = "",
+            IsTemplate = false
+        });
+        StateHasChanged();
+    }
+
+    private void RemoveParameter(FlowTaskMcpToolParameterDto parameter)
+    {
+        Parameters.Remove(parameter);
+        StateHasChanged();
+    }
+}

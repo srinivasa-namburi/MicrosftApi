@@ -132,6 +132,27 @@ public class ConversationGrain : Grain, IConversationGrain
     }
 
     /// <summary>
+    /// Sets the user context (provider subject ID) for this conversation.
+    /// Used by Flow backend conversations where user messages are not directly sent.
+    /// </summary>
+    /// <param name="providerSubjectId">The provider subject ID of the user who started this conversation.</param>
+    public async Task SetUserContextAsync(string providerSubjectId)
+    {
+        if (string.IsNullOrWhiteSpace(providerSubjectId))
+        {
+            _logger.LogWarning("Attempted to set empty user context for conversation {ConversationId}", _state.State.Id);
+            return;
+        }
+
+        _state.State.StartedByProviderSubjectId = providerSubjectId;
+        _state.State.ModifiedUtc = DateTime.UtcNow;
+        await SafeWriteStateAsync();
+
+        _logger.LogInformation("Set user context for conversation {ConversationId} to {ProviderSubjectId}",
+            _state.State.Id, providerSubjectId);
+    }
+
+    /// <summary>
     /// Remove a conversation reference from the conversation
     /// </summary>
     /// <param name="conversationReferenceId"></param>

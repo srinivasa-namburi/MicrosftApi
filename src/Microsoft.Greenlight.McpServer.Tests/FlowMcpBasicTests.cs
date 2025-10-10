@@ -2,9 +2,9 @@
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Greenlight.Grains.Chat.Contracts;
-using Microsoft.Greenlight.McpServer.Contracts.Requests;
-using Microsoft.Greenlight.McpServer.Services;
-using Microsoft.Greenlight.McpServer.Tools;
+using Microsoft.Greenlight.McpServer.Flow.Contracts.Requests;
+using Microsoft.Greenlight.McpServer.Flow.Services;
+using Microsoft.Greenlight.McpServer.Flow.Tools;
 using Microsoft.Greenlight.Shared.Contracts.Messages.Chat.Events;
 using Moq;
 using Orleans;
@@ -68,12 +68,12 @@ public class FlowMcpBasicTests
         {
             message = "Test query",
             context = "Test context",
-            sessionId = Guid.NewGuid().ToString()
+            flowConversationId = Guid.NewGuid().ToString()
         };
 
         Assert.NotNull(request.message);
         Assert.NotNull(request.context);
-        Assert.NotNull(request.sessionId);
+        Assert.NotNull(request.flowConversationId);
     }
 
     [Fact]
@@ -81,10 +81,10 @@ public class FlowMcpBasicTests
     {
         var request = new FlowQueryStatusRequest
         {
-            sessionId = Guid.NewGuid().ToString()
+            flowConversationId = Guid.NewGuid().ToString()
         };
 
-        Assert.NotNull(request.sessionId);
+        Assert.NotNull(request.flowConversationId);
     }
 
     [Fact]
@@ -92,11 +92,11 @@ public class FlowMcpBasicTests
     {
         var request = new FlowQueryCancelRequest
         {
-            sessionId = Guid.NewGuid().ToString(),
+            flowConversationId = Guid.NewGuid().ToString(),
             reason = "Test cancellation"
         };
 
-        Assert.NotNull(request.sessionId);
+        Assert.NotNull(request.flowConversationId);
         Assert.NotNull(request.reason);
     }
 

@@ -39,4 +39,18 @@ public interface IPluginApiClient : IServiceClient
     /// <param name="pluginId">The plugin ID.</param>
     /// <param name="update">The update data.</param>
     Task UpdateMcpPluginAssociationAsync(Guid documentProcessId, Guid pluginId, McpPluginAssociationInfo update);
+
+    /// <summary>
+    /// Updates the ExposeToFlow flag for an MCP plugin.
+    /// </summary>
+    /// <param name="pluginId">The plugin identifier.</param>
+    /// <param name="exposeToFlow">Whether to expose the plugin to Flow.</param>
+    /// <returns>Error message if the operation failed; null if successful.</returns>
+    Task<string?> UpdateExposeToFlowAsync(Guid pluginId, bool exposeToFlow);
+
+    /// <summary>
+    /// Gets all plugins that are exposed to Flow for use in Flow Tasks.
+    /// </summary>
+    /// <returns>List of Flow-exposed plugins.</returns>
+    Task<List<McpPluginInfo>> GetFlowExposedPluginsAsync();
 }

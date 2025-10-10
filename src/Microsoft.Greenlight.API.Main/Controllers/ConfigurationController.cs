@@ -111,7 +111,8 @@ public class ConfigurationController : BaseController
     [Produces("application/json")]
     public ActionResult<string> GetAzureMapsKey()
     {
-        return Ok(_serviceConfigurationOptionsMonitor.CurrentValue.AzureMaps.Key);
+        var key = _configuration.GetValue<string>("ServiceConfiguration:AzureMaps:Key") ?? string.Empty;
+        return Ok(key);
     }
 
     /// <summary>
@@ -204,9 +205,10 @@ public class ConfigurationController : BaseController
     [Produces("application/json")]
     public ActionResult<VectorStoreOptions> GetVectorStoreOptions()
     {
-        // Use the service configuration options monitor to get the properly configured VectorStoreOptions
-        // This ensures that the post-configuration logic that sets StoreType based on UsePostgresMemory is applied
-        var vectorStoreOptions = _serviceConfigurationOptionsMonitor.CurrentValue.GreenlightServices.VectorStore;
+        var vectorStoreOptions = _configuration
+            .GetSection("ServiceConfiguration:GreenlightServices:VectorStore")
+            .Get<VectorStoreOptions>()
+            ?? new VectorStoreOptions();
         return Ok(vectorStoreOptions);
     }
 
@@ -218,7 +220,10 @@ public class ConfigurationController : BaseController
     [Produces("application/json")]
     public ActionResult<ServiceConfigurationOptions.FlowOptions> GetFlowOptions()
     {
-        var flowOptions = _serviceConfigurationOptionsMonitor.CurrentValue.GreenlightServices.Flow;
+        var flowOptions = _configuration
+            .GetSection("ServiceConfiguration:GreenlightServices:Flow")
+            .Get<ServiceConfigurationOptions.FlowOptions>()
+            ?? new ServiceConfigurationOptions.FlowOptions();
         return Ok(flowOptions);
     }
 
@@ -1022,7 +1027,7 @@ public class ConfigurationController : BaseController
     [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
     public IActionResult StartIndexExport([FromBody] IndexExportRequest request)
     {
-        if (!_serviceConfigurationOptionsMonitor.CurrentValue.GreenlightServices.Global.UsePostgresMemory)
+        if (!_configuration.GetValue<bool>("ServiceConfiguration:GreenlightServices:Global:UsePostgresMemory"))
             return BadRequest("Export is only available when UsePostgresMemory is enabled.");
         if (string.IsNullOrWhiteSpace(request.TableName) || string.IsNullOrWhiteSpace(request.Schema))
             return BadRequest("TableName and Schema are required.");
@@ -1052,7 +1057,7 @@ public class ConfigurationController : BaseController
     [RequiresPermission(PermissionKeys.AlterSystemConfiguration)]
     public IActionResult StartIndexImport([FromBody] IndexImportRequest request)
     {
-        if (!_serviceConfigurationOptionsMonitor.CurrentValue.GreenlightServices.Global.UsePostgresMemory)
+        if (!_configuration.GetValue<bool>("ServiceConfiguration:GreenlightServices:Global:UsePostgresMemory"))
             return BadRequest("Import is only available when UsePostgresMemory is enabled.");
         if (string.IsNullOrWhiteSpace(request.TableName) || string.IsNullOrWhiteSpace(request.Schema) || string.IsNullOrWhiteSpace(request.BlobUrl))
             return BadRequest("TableName, Schema, and BlobUrl are required.");

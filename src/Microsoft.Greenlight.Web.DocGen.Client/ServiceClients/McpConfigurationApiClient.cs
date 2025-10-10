@@ -25,19 +25,6 @@ public class McpConfigurationApiClient : WebAssemblyBaseServiceClient<McpConfigu
         response.EnsureSuccessStatusCode();
     }
 
-    public async Task<List<McpSessionRow>> ListSessionsAsync(CancellationToken cancellationToken = default)
-    {
-        var response = await SendGetRequestMessage("/api/mcp-config/sessions");
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<List<McpSessionRow>>(cancellationToken: cancellationToken) ?? new List<McpSessionRow>();
-    }
-
-    public async Task InvalidateSessionAsync(Guid sessionId, CancellationToken cancellationToken = default)
-    {
-        var response = await SendDeleteRequestMessage($"/api/mcp-config/sessions/{sessionId}");
-        response.EnsureSuccessStatusCode();
-    }
-
     public async Task<List<Microsoft.Greenlight.Shared.Contracts.DTO.McpSecrets.McpSecretInfo>> ListSecretsAsync(CancellationToken cancellationToken = default)
     {
         var response = await SendGetRequestMessage("/api/mcp-config/secrets");

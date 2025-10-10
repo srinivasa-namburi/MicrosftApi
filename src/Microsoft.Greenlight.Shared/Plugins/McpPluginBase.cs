@@ -33,7 +33,7 @@ namespace Microsoft.Greenlight.Shared.Plugins
         /// <summary>
         /// Gets the MCP client used to communicate with the MCP server.
         /// </summary>
-        public virtual IMcpClient? McpClient { get; protected set; }
+        public virtual McpClient? McpClient { get; protected set; }
 
         /// <summary>
         /// Gets the plugin manifest.

@@ -144,8 +144,10 @@ parameters:
     db_setupmanager_image: "${IMG_PREFIX}db-setupmanager:${IMAGE_TAG}"
   api_main:
     api_main_image: "${IMG_PREFIX}api-main:${IMAGE_TAG}"
-  mcp_server:
-    mcp_server_image: "${IMG_PREFIX}mcp-server:${IMAGE_TAG}"
+  mcpserver_core:
+    mcpserver_core_image: "${IMG_PREFIX}mcpserver-core:${IMAGE_TAG}"
+  mcpserver_flow:
+    mcpserver_flow_image: "${IMG_PREFIX}mcpserver-flow:${IMAGE_TAG}"
   silo:
     silo_image: "${IMG_PREFIX}silo:${IMAGE_TAG}"
     # Ensure distinct Orleans ports to avoid duplicate-name errors in Service/Deployment
@@ -173,7 +175,7 @@ EOF
 CLIENT_SECRET=$(echo "$PVICO_ENTRA_CREDENTIALS" | jq -r '.ClientSecret // empty')
 
 # Add ALL secrets for each service in one block (redis + optional secrets)
-for SERVICE in api_main silo web_docgen mcp_server db_setupmanager; do
+for SERVICE in api_main silo web_docgen mcpserver_core mcpserver_flow db_setupmanager; do
   cat >> "$OVERRIDE_VALUES" <<EOF
   $SERVICE:
     redis_password: "${REDIS_PASSWORD}"
@@ -232,11 +234,13 @@ config:
     "services:api-main:http:0": "http://api-main:8080"
     "services:web-docgen:http:0": "http://web-docgen:8080"
     "services:silo:http:0": "http://silo:8080"
-    "services:mcp-server:http:0": "http://mcp-server:8080"
+    "services:mcpserver-core:http:0": "http://mcpserver-core:8080"
+    "services:mcpserver-flow:http:0": "http://mcpserver-flow:8080"
     services__api_main__http__0: "http://api-main:8080"
     services__web_docgen__http__0: "http://web-docgen:8080"
     services__silo__http__0: "http://silo:8080"
-    services__mcp_server__http__0: "http://mcp-server:8080"
+    services__mcpserver_core__http__0: "http://mcpserver-core:8080"
+    services__mcpserver_flow__http__0: "http://mcpserver-flow:8080"
 EOF
 
 # (Removed) Do not add AzureAd keys to common config; they are injected directly
@@ -248,7 +252,8 @@ cat >> "$OVERRIDE_VALUES" <<EOF
   # Apply to each service
   db_setupmanager: *common_config
   api_main: *common_config
-  mcp_server: *common_config
+  mcpserver_core: *common_config
+  mcpserver_flow: *common_config
   silo:
     <<: *common_config
     # Silo-specific Orleans configuration (quote keys with dashes)
@@ -349,7 +354,7 @@ $YQ -i 'select(.kind=="Deployment").spec.template.spec.containers[0].ports |= ma
 $YQ -i 'select(.kind=="ConfigMap" and .metadata.name=="api-main-config").data.ASPNETCORE_URLS = "http://+:8080"' "$TMP"
 
 # Force ASPNETCORE_URLS=http://+:8080 to avoid "$8080" placeholders overriding HTTP_PORTS
-for dep in api-main-deployment mcp-server-deployment web-docgen-deployment; do
+for dep in api-main-deployment mcpserver-core-deployment mcpserver-flow-deployment web-docgen-deployment; do
   $YQ -i 'select(.kind=="Deployment" and .metadata.name=="'"$dep"'").spec.template.spec.containers[0].env |= (
     ( . // [] ) | map(select(.name != "ASPNETCORE_URLS")) + [{"name":"ASPNETCORE_URLS","value":"http://+:8080"}]
   )' "$TMP"
@@ -388,7 +393,7 @@ if [[ -n "${PVICO_OPENAI_CONNECTIONSTRING:-}" ]]; then
   echo "[clean] Ensuring ConnectionStrings__openai-planner exists in per-app secrets"
   # Base64-encode once for merge patch (portable: no line wraps)
   OAI_B64=$(printf '%s' "$PVICO_OPENAI_CONNECTIONSTRING" | base64 | tr -d '\n')
-  for app in api-main db-setupmanager mcp-server silo web-docgen; do
+  for app in api-main db-setupmanager mcpserver-core mcpserver-flow silo web-docgen; do
     secret="${app}-secrets"
     if kubectl -n "$NAMESPACE" get secret "$secret" >/dev/null 2>&1; then
       if kubectl -n "$NAMESPACE" get secret "$secret" -o json | jq -e '.data["ConnectionStrings__openai-planner"]' >/dev/null 2>&1; then
@@ -415,7 +420,7 @@ if [[ -n "${PVICO_AZUREMAPS_KEY:-}" ]]; then
   echo "[clean] Ensuring ServiceConfiguration__AzureMaps__Key exists in per-app secrets"
   # Base64-encode once for merge patch (portable: no line wraps)
   AZUREMAPS_B64=$(printf '%s' "$PVICO_AZUREMAPS_KEY" | base64 | tr -d '\n')
-  for app in api-main db-setupmanager mcp-server silo web-docgen; do
+  for app in api-main db-setupmanager mcpserver-core mcpserver-flow silo web-docgen; do
     secret="${app}-secrets"
     if kubectl -n "$NAMESPACE" get secret "$secret" >/dev/null 2>&1; then
       if kubectl -n "$NAMESPACE" get secret "$secret" -o json | jq -e '.data["ServiceConfiguration__AzureMaps__Key"]' >/dev/null 2>&1; then
@@ -440,7 +445,7 @@ fi
 # IMPORTANT: Patch connection strings FIRST before restarting pods
 # Force-correct critical connection string keys in ConfigMaps with sanitized values
 echo "[clean] Patching critical connection strings in ConfigMaps with sanitized values"
-for app in api-main db-setupmanager mcp-server silo web-docgen; do
+for app in api-main db-setupmanager mcpserver-core mcpserver-flow silo web-docgen; do
   APP_CFG_CM="${app}-config"
   # Build patch JSON safely via jq to avoid quoting issues
   PATCH_JSON=$(jq -n \
@@ -469,11 +474,13 @@ for app in api-main db-setupmanager mcp-server silo web-docgen; do
       "services__api-main__http__0": "http://api-main:8080",
       "services__web-docgen__http__0": "http://web-docgen:8080",
       "services__silo__http__0": "http://silo:8080",
-      "services__mcp-server__http__0": "http://mcp-server:8080",
+      "services__mcpserver-core__http__0": "http://mcpserver-core:8080",
+      "services__mcpserver-flow__http__0": "http://mcpserver-flow:8080",
       "services__api_main__http__0": "http://api-main:8080",
       "services__web_docgen__http__0": "http://web-docgen:8080",
       "services__silo__http__0": "http://silo:8080",
-      "services__mcp_server__http__0": "http://mcp-server:8080"
+      "services__mcpserver_core__http__0": "http://mcpserver-core:8080",
+      "services__mcpserver_flow__http__0": "http://mcpserver-flow:8080"
     }}
     | if ($app == "silo" or $app == "api-main") then
         .data += {
@@ -505,7 +512,7 @@ if [[ -n "$AZ_JSON" ]] && echo "$AZ_JSON" | jq empty >/dev/null 2>&1; then
   AZ_SCOPES=$(echo "$AZ_JSON" | jq -r '.Scopes // "api://greenlight/.default"')
   AZ_AUDIENCE=$(echo "$AZ_JSON" | jq -r '.Audience // empty')
 
-  for app in api-main db-setupmanager mcp-server silo web-docgen; do
+  for app in api-main db-setupmanager mcpserver-core mcpserver-flow silo web-docgen; do
     APP_CFG_CM="${app}-config"
     PATCH_JSON=$(jq -n \
       --arg tenant "$AZ_TENANT" \
@@ -538,7 +545,7 @@ CONFIG_VERSION="${BUILD_BUILDNUMBER:-$(date +%s)}"
 
 # Ensure envFrom includes both app config/secret and WI env, and force a rollout
 echo "[clean] Ensuring envFrom (config, secrets, WI) on deployments + bumping config versions"
-for app in api-main db-setupmanager mcp-server silo web-docgen; do
+for app in api-main db-setupmanager mcpserver-core mcpserver-flow silo web-docgen; do
   DEP="${app}-deployment"
   APP_CFG_CM="${app}-config"
   APP_SEC="${app}-secrets"

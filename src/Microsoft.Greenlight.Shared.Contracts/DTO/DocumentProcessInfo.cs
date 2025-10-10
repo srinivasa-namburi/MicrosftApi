@@ -110,6 +110,11 @@ public class DocumentProcessInfo : IDocumentProcessInfo
     public Guid? ValidationPipelineId { get; set; }
 
     /// <summary>
+    /// ID of the Flow Task template associated with the document process for conversational document generation. May be null.
+    /// </summary>
+    public Guid? FlowTaskTemplateId { get; set; }
+
+    /// <summary>
     /// Unique identifier of the AI model deployment.
     /// </summary>
     public Guid? AiModelDeploymentId { get; set; }

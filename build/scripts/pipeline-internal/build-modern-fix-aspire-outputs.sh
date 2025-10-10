@@ -142,7 +142,7 @@ find "$OUT_DIR/templates" -name "*.yaml" -type f 2>/dev/null | while read -r yam
   fi
 done
 
-# Fix 4: Use Helm's quote filter for config values to avoid YAML parsing issues
+# Fix 5: Use Helm's quote filter for config values to avoid YAML parsing issues
 echo "[aspire-fix] Ensuring all ConfigMap values use Helm | quote for safe YAML"
 find "$OUT_DIR/templates" -name "config.yaml" -type f 2>/dev/null | while read -r cfg; do
   # Two-pass sed to avoid issues with inner quotes inside the template expression
@@ -152,7 +152,12 @@ find "$OUT_DIR/templates" -name "config.yaml" -type f 2>/dev/null | while read -
   sed -E -i 's/\s*\}\}\"\s*$/) | quote }}/' "$cfg"
 done
 
-# Fix 5: Ensure Service/Deployment ports are integers, not strings
+# Fix 6: KUBERNETES_RESOURCES_CONFIG is now applied post-deployment via kubectl patch
+# This avoids template corruption and Helm lint failures
+echo "[aspire-fix] Note: KUBERNETES_RESOURCES_CONFIG will be applied post-deployment via kubectl"
+echo "[aspire-fix] Skipping template modification to avoid Helm compatibility issues"
+
+# Fix 7: Ensure Service/Deployment ports are integers, not strings
 echo "[aspire-fix] Normalizing Service/Deployment port fields to integers"
 # Service ports: port / targetPort should be ints
 find "$OUT_DIR/templates" -name "service.yaml" -type f 2>/dev/null | while read -r svc; do

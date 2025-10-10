@@ -1,0 +1,122 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+
+@using System.Text.Json
+@using Microsoft.Greenlight.Shared.Contracts.FlowTasks
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@inject IFlowTaskApiClient FlowTaskApiClient
+@inject ISnackbar Snackbar
+
+<MudDialog Options="new DialogOptions { MaxWidth = MaxWidth.Small }">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Import Flow Task Template</MudText>
+    </TitleContent>
+
+    <DialogContent>
+        <MudStack Spacing="2">
+            <MudAlert Severity="Severity.Info" Dense="true">
+                Upload a JSON export of a Flow Task template. The template will be imported with a unique name if a conflict exists.
+            </MudAlert>
+
+            <MudFileUpload T="IReadOnlyList<IBrowserFile>" MaximumFileCount="1" Accept=".json" FilesChanged="OnFilesChanged">
+                <ActivatorContent>
+                    <MudButton HtmlTag="label" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.UploadFile">
+                        @(HasFile ? "Replace File" : "Choose File")
+                    </MudButton>
+                </ActivatorContent>
+            </MudFileUpload>
+            @if (HasFile)
+            {
+                <MudText Typo="Typo.caption">Selected: @SelectedFileName</MudText>
+            }
+
+            @if (_template != null)
+            {
+                <MudDivider />
+                <MudText Typo="Typo.subtitle2">Template Summary</MudText>
+                <MudStack Spacing="1">
+                    <MudText Typo="Typo.body2"><strong>Name:</strong> @_template.DisplayName</MudText>
+                    <MudText Typo="Typo.body2"><strong>Category:</strong> @_template.Category</MudText>
+                    <MudText Typo="Typo.body2"><strong>Version:</strong> @_template.Version</MudText>
+                    <MudStack Row="true" Spacing="2">
+                        <MudChip T="string" Color="Color.Primary" Size="Size.Small">Sections: @(_template.Sections?.Count ?? 0)</MudChip>
+                        <MudChip T="string" Color="Color.Primary" Size="Size.Small">Data Sources: @(_template.DataSources?.Count ?? 0)</MudChip>
+                        <MudChip T="string" Color="Color.Primary" Size="Size.Small">Outputs: @(_template.OutputTemplates?.Count ?? 0)</MudChip>
+                    </MudStack>
+                </MudStack>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(_errorMessage))
+            {
+                <MudAlert Severity="Severity.Error" Dense="true">@_errorMessage</MudAlert>
+            }
+        </MudStack>
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ImportAsync" Disabled="@(!CanImport)">Import</MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="Cancel">Cancel</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    private bool HasFile => !string.IsNullOrWhiteSpace(SelectedFileName);
+    private string? SelectedFileName { get; set; }
+    private FlowTaskTemplateDetailDto? _template;
+    private string? _errorMessage;
+
+    private bool CanImport => HasFile && _template != null && string.IsNullOrWhiteSpace(_errorMessage);
+
+    private async Task OnFilesChanged(IReadOnlyList<IBrowserFile> files)
+    {
+        if (files is null || files.Count == 0) { return; }
+
+        var file = files[0];
+        SelectedFileName = file.Name;
+        _template = null;
+        _errorMessage = null;
+
+        try
+        {
+            using var stream = file.OpenReadStream(long.MaxValue);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var json = System.Text.Encoding.UTF8.GetString(ms.ToArray());
+
+            _template = JsonSerializer.Deserialize<FlowTaskTemplateDetailDto>(json, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            if (_template == null)
+            {
+                _errorMessage = "Invalid template file format.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to read file: {ex.Message}";
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task ImportAsync()
+    {
+        if (!CanImport || _template == null) { return; }
+
+        try
+        {
+            var imported = await FlowTaskApiClient.ImportFlowTaskTemplateAsync(_template);
+            Snackbar.Add($"Template '{imported.DisplayName}' imported successfully.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(imported));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Import failed: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

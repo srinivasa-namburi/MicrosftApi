@@ -4,6 +4,7 @@
 @using Microsoft.Greenlight.Shared.Enums
 @using Microsoft.Greenlight.Web.DocGen.Client.ServiceClients
 @inject IConfigurationApiClient ConfigApi
+@inject IDialogService DialogService
 @inherits Microsoft.Greenlight.Web.DocGen.Client.Components.Configuration.Infrastructure.ConfigurationSectionBase
 
 <MudPaper Class="pa-4">
@@ -45,17 +46,15 @@
                 <MudCardContent>
                     <MudText Typo="Typo.h6" Class="mb-3">Conversation Settings</MudText>
 
-                    <MudSwitch @bind-Value="EnableIntentDetection"
+                    <MudSwitch T="bool" @bind-Value="EnableIntentDetection"
                               Label="Enable Intent Detection"
                               Color="Color.Primary"
-                              Immediate="true"
                               Class="mb-3" />
                     <MudText Typo="Typo.caption" Class="mb-3">Automatically detect when users need specific document processes</MudText>
 
-                    <MudSwitch @bind-Value="EnableConversationalFallback"
+                    <MudSwitch T="bool" @bind-Value="EnableConversationalFallback"
                               Label="Enable Conversational Fallback"
                               Color="Color.Primary"
-                              Immediate="true"
                               Class="mb-3" />
                     <MudText Typo="Typo.caption" Class="mb-3">Respond conversationally when no specific intent is detected</MudText>
 
@@ -83,10 +82,9 @@
                         Document processes must score above this threshold to be engaged (0.0 = any match, 1.0 = perfect match)
                     </MudText>
 
-                    <MudSwitch @bind-Value="RequireMinimumRelevanceForEngagement"
+                    <MudSwitch T="bool" @bind-Value="RequireMinimumRelevanceForEngagement"
                               Label="Require Minimum Relevance"
                               Color="Color.Secondary"
-                              Immediate="true"
                               Class="mb-1" />
                     <MudText Typo="Typo.caption" Class="mb-3">
                         When enabled, if no document process meets the threshold, Flow will respond conversationally instead
@@ -99,22 +97,69 @@
             <MudCard Outlined>
                 <MudCardContent>
                     <MudText Typo="Typo.h6" Class="mb-3">System Prompts</MudText>
+                    <MudText Typo="Typo.body2" Class="mb-3">
+                        Configure the AI prompts used by Flow for different scenarios. Click "Edit" to customize each prompt.
+                    </MudText>
 
-                    <MudTextField @bind-Value="SystemPrompt"
-                                 Label="Flow System Prompt"
-                                 Lines="4"
-                                 Variant="Variant.Outlined"
-                                 HelperText="Custom system prompt for Flow conversations (leave empty to use default)"
-                                 Immediate="true"
-                                 Class="mb-3" />
+                    <MudText Typo="Typo.subtitle1" Class="mt-4 mb-2">Orchestration Prompts</MudText>
+                    <MudText Typo="Typo.body2" Class="mb-3">
+                        Prompts used for Flow orchestration, intent detection, and response synthesis.
+                    </MudText>
+                    <MudStack Spacing="2" Class="mb-4">
+                        @foreach (var promptName in _systemPromptNames)
+                        {
+                            <MudPaper Outlined="true" Class="pa-3">
+                                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                    <MudStack Spacing="1">
+                                        <MudText Typo="Typo.subtitle2">@GetPromptDisplayName(promptName)</MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">@GetPromptDescription(promptName)</MudText>
+                                    </MudStack>
+                                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                                        @if (_promptStatuses.TryGetValue(promptName, out var isCustomized))
+                                        {
+                                            <MudChip T="string" Color="@(isCustomized ? Color.Secondary : Color.Default)" Variant="Variant.Outlined" Size="Size.Small">
+                                                @(isCustomized ? "Customized" : "Default")
+                                            </MudChip>
+                                        }
+                                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" OnClick="@(() => EditPrompt(promptName))">
+                                            Edit
+                                        </MudButton>
+                                    </MudStack>
+                                </MudStack>
+                            </MudPaper>
+                        }
+                    </MudStack>
 
-                    <MudTextField @bind-Value="ConversationalPrompt"
-                                 Label="Conversational Fallback Prompt"
-                                 Lines="3"
-                                 Variant="Variant.Outlined"
-                                 HelperText="Additional prompt for conversational responses when no intent is detected"
-                                 Immediate="true"
-                                 Class="mb-3" />
+                    <MudDivider Class="my-4" />
+
+                    <MudText Typo="Typo.subtitle1" Class="mb-2">Task Execution Prompts</MudText>
+                    <MudText Typo="Typo.body2" Class="mb-3">
+                        Prompts used during Flow Task execution for field extraction, requirement prompting, validation, and output generation.
+                    </MudText>
+                    <MudStack Spacing="2">
+                        @foreach (var promptName in _flowTaskPromptNames)
+                        {
+                            <MudPaper Outlined="true" Class="pa-3">
+                                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                    <MudStack Spacing="1">
+                                        <MudText Typo="Typo.subtitle2">@GetPromptDisplayName(promptName)</MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">@GetPromptDescription(promptName)</MudText>
+                                    </MudStack>
+                                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                                        @if (_promptStatuses.TryGetValue(promptName, out var taskIsCustomized))
+                                        {
+                                            <MudChip T="string" Color="@(taskIsCustomized ? Color.Secondary : Color.Default)" Variant="Variant.Outlined" Size="Size.Small">
+                                                @(taskIsCustomized ? "Customized" : "Default")
+                                            </MudChip>
+                                        }
+                                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" OnClick="@(() => EditPrompt(promptName))">
+                                            Edit
+                                        </MudButton>
+                                    </MudStack>
+                                </MudStack>
+                            </MudPaper>
+                        }
+                    </MudStack>
                 </MudCardContent>
             </MudCard>
         </MudItem>
@@ -126,11 +171,30 @@
     private string _initial = string.Empty;
     private List<AiModelDeploymentInfo> _aiModelDeployments = new();
     private List<AiModelDeploymentInfo> _chatModelDeployments = new();
+    private readonly List<string> _systemPromptNames = new()
+    {
+        "FlowUserConversationSystemPrompt",
+        "FlowBackendConversationSystemPrompt",
+        "FlowIntentDetectionPrompt",
+        "FlowResponseSynthesisPrompt",
+        "FlowConversationalFallbackPrompt"
+    };
+    private readonly List<string> _flowTaskPromptNames = new()
+    {
+        "FlowTaskFieldExtractionPrompt",
+        "FlowTaskRequirementPromptingPrompt",
+        "FlowTaskValidationRepromptPrompt",
+        "FlowTaskOutputSummaryPrompt",
+        "FlowTaskOptionalFieldsPrompt",
+        "FlowTaskOptionalFieldSelectionPrompt"
+    };
+    private Dictionary<string, bool> _promptStatuses = new();
     public override string Title => "Flow Assistant";
 
     protected override async Task OnInitializedAsync()
     {
         await LoadAsync();
+        await LoadPromptStatusesAsync();
     }
 
     public override async Task LoadAsync(CancellationToken cancellationToken = default)
@@ -174,8 +238,6 @@
     private bool EnableIntentDetection { get => _options.EnableIntentDetection; set { _options.EnableIntentDetection = value; MarkDirty(); } }
     private bool EnableConversationalFallback { get => _options.EnableConversationalFallback; set { _options.EnableConversationalFallback = value; MarkDirty(); } }
     private int ConversationHistoryLimit { get => _options.ConversationHistoryLimit; set { _options.ConversationHistoryLimit = value; MarkDirty(); } }
-    private string SystemPrompt { get => _options.SystemPrompt; set { _options.SystemPrompt = value; MarkDirty(); } }
-    private string ConversationalPrompt { get => _options.ConversationalPrompt; set { _options.ConversationalPrompt = value; MarkDirty(); } }
     private double MinimumIntentRelevanceThreshold { get => _options.MinimumIntentRelevanceThreshold; set { _options.MinimumIntentRelevanceThreshold = value; MarkDirty(); } }
     private bool RequireMinimumRelevanceForEngagement { get => _options.RequireMinimumRelevanceForEngagement; set { _options.RequireMinimumRelevanceForEngagement = value; MarkDirty(); } }
 
@@ -187,8 +249,6 @@
             ["ServiceConfiguration:GreenlightServices:Flow:EnableIntentDetection"] = _options.EnableIntentDetection.ToString(),
             ["ServiceConfiguration:GreenlightServices:Flow:EnableConversationalFallback"] = _options.EnableConversationalFallback.ToString(),
             ["ServiceConfiguration:GreenlightServices:Flow:ConversationHistoryLimit"] = _options.ConversationHistoryLimit.ToString(),
-            ["ServiceConfiguration:GreenlightServices:Flow:SystemPrompt"] = _options.SystemPrompt ?? string.Empty,
-            ["ServiceConfiguration:GreenlightServices:Flow:ConversationalPrompt"] = _options.ConversationalPrompt ?? string.Empty,
             ["ServiceConfiguration:GreenlightServices:Flow:MinimumIntentRelevanceThreshold"] = _options.MinimumIntentRelevanceThreshold.ToString("F2"),
             ["ServiceConfiguration:GreenlightServices:Flow:RequireMinimumRelevanceForEngagement"] = _options.RequireMinimumRelevanceForEngagement.ToString()
         };
@@ -210,7 +270,86 @@
         if (_options.ConversationHistoryLimit != before.ConversationHistoryLimit) yield return $"History Limit: {before.ConversationHistoryLimit} → {_options.ConversationHistoryLimit}";
         if (Math.Abs(_options.MinimumIntentRelevanceThreshold - before.MinimumIntentRelevanceThreshold) > 0.001) yield return $"Min Relevance: {before.MinimumIntentRelevanceThreshold:F2} → {_options.MinimumIntentRelevanceThreshold:F2}";
         if (_options.RequireMinimumRelevanceForEngagement != before.RequireMinimumRelevanceForEngagement) yield return $"Require Min Relevance: {before.RequireMinimumRelevanceForEngagement} → {_options.RequireMinimumRelevanceForEngagement}";
-        if (_options.SystemPrompt != before.SystemPrompt) yield return $"System Prompt: {(string.IsNullOrEmpty(before.SystemPrompt) ? "(default)" : "customized")} → {(string.IsNullOrEmpty(_options.SystemPrompt) ? "(default)" : "customized")}";
-        if (_options.ConversationalPrompt != before.ConversationalPrompt) yield return $"Conversational Prompt: {(string.IsNullOrEmpty(before.ConversationalPrompt) ? "(default)" : "customized")} → {(string.IsNullOrEmpty(_options.ConversationalPrompt) ? "(default)" : "customized")}";
+    }
+
+    private async Task LoadPromptStatusesAsync()
+    {
+        _promptStatuses.Clear();
+        var allPromptNames = _systemPromptNames.Concat(_flowTaskPromptNames);
+        foreach (var promptName in allPromptNames)
+        {
+            try
+            {
+                var prompt = await ConfigApi.GetSystemPromptAsync(promptName);
+                _promptStatuses[promptName] = prompt.IsCustomized;
+            }
+            catch
+            {
+                // Default to false if we can't load the prompt status
+                _promptStatuses[promptName] = false;
+            }
+        }
+    }
+
+    private async Task EditPrompt(string promptName)
+    {
+        var parameters = new DialogParameters
+        {
+            { nameof(EditSystemPromptDialog.PromptName), promptName }
+        };
+
+        var options = new DialogOptions
+        {
+            CloseButton = true,
+            MaxWidth = MaxWidth.Large,
+            FullWidth = true
+        };
+
+        var dialog = await DialogService.ShowAsync<EditSystemPromptDialog>($"Edit {GetPromptDisplayName(promptName)}", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            // Reload prompt statuses after editing
+            await LoadPromptStatusesAsync();
+        }
+    }
+
+    private static string GetPromptDisplayName(string promptName)
+    {
+        return promptName switch
+        {
+            "FlowUserConversationSystemPrompt" => "User Conversation System Prompt",
+            "FlowBackendConversationSystemPrompt" => "Backend Conversation System Prompt",
+            "FlowIntentDetectionPrompt" => "Intent Detection Prompt",
+            "FlowResponseSynthesisPrompt" => "Response Synthesis Prompt",
+            "FlowConversationalFallbackPrompt" => "Conversational Fallback Prompt",
+            "FlowTaskFieldExtractionPrompt" => "Task Field Extraction Prompt",
+            "FlowTaskRequirementPromptingPrompt" => "Task Requirement Prompting",
+            "FlowTaskValidationRepromptPrompt" => "Task Validation Reprompt",
+            "FlowTaskOutputSummaryPrompt" => "Task Output Summary",
+            "FlowTaskOptionalFieldsPrompt" => "Optional Fields Offer",
+            "FlowTaskOptionalFieldSelectionPrompt" => "Optional Field Selection Parser",
+            _ => promptName
+        };
+    }
+
+    private static string GetPromptDescription(string promptName)
+    {
+        return promptName switch
+        {
+            "FlowUserConversationSystemPrompt" => "System prompt used when conversing directly with users",
+            "FlowBackendConversationSystemPrompt" => "System prompt used for backend AI reasoning and orchestration",
+            "FlowIntentDetectionPrompt" => "Prompt for detecting user intent and matching to document processes",
+            "FlowResponseSynthesisPrompt" => "Prompt for synthesizing final responses from process outputs",
+            "FlowConversationalFallbackPrompt" => "Prompt used when no specific document process intent is detected",
+            "FlowTaskFieldExtractionPrompt" => "Prompt for extracting field values from user messages during Flow Task execution",
+            "FlowTaskRequirementPromptingPrompt" => "Prompt for generating conversational requests for required field values",
+            "FlowTaskValidationRepromptPrompt" => "Prompt for handling validation failures and reprompting users",
+            "FlowTaskOutputSummaryPrompt" => "Prompt for generating completion summaries when Flow Tasks finish",
+            "FlowTaskOptionalFieldsPrompt" => "Prompt for offering optional fields after required fields are collected",
+            "FlowTaskOptionalFieldSelectionPrompt" => "Prompt for parsing user's optional field selection intent",
+            _ => "System prompt configuration"
+        };
     }
 }

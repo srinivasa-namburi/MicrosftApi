@@ -569,6 +569,10 @@ else
             return;
 
         ConversationReferences = obj.ReferenceItems;
+
+        // Clear pending references once they're confirmed in conversation references
+        _pendingAttachedReferences.Clear();
+
         await InvokeAsync(StateHasChanged);
     }
 
@@ -643,8 +647,11 @@ else
     private async Task HubReceiveGlobalStatusNotificationHandler(ChatMessageStatusNotification notification)
     {
         // Show global status for any message status updates
+        // Always set an auto-hide timer to prevent persistent messages from Flow
+        // - Completed: 5 seconds (matching HandleStatusMessage behavior)
+        // - In-progress: 10 seconds fallback (in case completion notification never arrives)
         ShowGlobalStatus(notification.StatusMessage, !notification.ProcessingComplete,
-            notification.ProcessingComplete ? 3000 : null);
+            notification.ProcessingComplete ? 5000 : 10000);
     }
 
     private async Task HubReceiveChatMessageResponseReceivedNotificationHandler(ChatMessageResponseReceived obj)

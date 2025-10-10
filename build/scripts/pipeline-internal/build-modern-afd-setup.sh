@@ -49,7 +49,8 @@ fi
 
 API_EP="${ENDPOINT_PREFIX}-api"
 WEB_EP="${ENDPOINT_PREFIX}-web"
-MCP_EP="${ENDPOINT_PREFIX}-mcp"
+MCP_CORE_EP="${ENDPOINT_PREFIX}-mcp-core"
+MCP_FLOW_EP="${ENDPOINT_PREFIX}-mcp-flow"
 
 echo "[afd] Ensuring AFD profile $PROFILE_NAME in $RG/$LOC"
 if az afd profile show -g "$RG" -n "$PROFILE_NAME" >/dev/null 2>&1; then
@@ -66,7 +67,8 @@ fi
 # Extract IPs from exposed endpoints
 API_IP=${EXPOSED_API_MAIN#http://}
 WEB_IP=${EXPOSED_WEB_DOCGEN#http://}
-MCP_IP=${EXPOSED_MCP_SERVER#http://}
+MCP_CORE_IP=${EXPOSED_MCP_CORE#http://}
+MCP_FLOW_IP=${EXPOSED_MCP_FLOW#http://}
 
 if [[ "$DEPLOYMENT_MODEL" == "hybrid" ]]; then
   AKS_NODE_RG=${EXPOSED_AKS_NODE_RESOURCE_GROUP:-${AKS_NODE_RESOURCE_GROUP:-}}
@@ -84,9 +86,10 @@ if [[ "$DEPLOYMENT_MODEL" == "hybrid" ]]; then
 
   API_FRONTEND_ID=${EXPOSED_API_MAIN_FRONTEND_ID:-}
   WEB_FRONTEND_ID=${EXPOSED_WEB_DOCGEN_FRONTEND_ID:-}
-  MCP_FRONTEND_ID=${EXPOSED_MCP_SERVER_FRONTEND_ID:-}
+  MCP_CORE_FRONTEND_ID=${EXPOSED_MCP_CORE_FRONTEND_ID:-}
+  MCP_FLOW_FRONTEND_ID=${EXPOSED_MCP_FLOW_FRONTEND_ID:-}
 
-  if [[ -z "$API_FRONTEND_ID" || -z "$WEB_FRONTEND_ID" || -z "$MCP_FRONTEND_ID" ]]; then
+  if [[ -z "$API_FRONTEND_ID" || -z "$WEB_FRONTEND_ID" || -z "$MCP_CORE_FRONTEND_ID" || -z "$MCP_FLOW_FRONTEND_ID" ]]; then
     echo "[afd] ERROR: Hybrid deployment requires frontend IDs from expose script" >&2
     exit 1
   fi
@@ -174,19 +177,56 @@ ensure_private_link_service() {
   echo "$pls_id|"
 }
 
+approve_private_endpoint_connections() {
+  local pls_id=$1
+  if [[ -z "$pls_id" || "$pls_id" == "null" ]]; then
+    return 0
+  fi
+
+  local pending_connections
+  pending_connections=$(az network private-link-service show --ids "$pls_id" \
+    --query "privateEndpointConnections[?privateLinkServiceConnectionState.status!='Approved'].id" \
+    -o tsv 2>/dev/null || true)
+
+  if [[ -z "$pending_connections" ]]; then
+    echo "[afd] No pending private endpoint approvals for $pls_id" >&2
+    return 0
+  fi
+
+  while IFS= read -r connection_id; do
+    if [[ -z "$connection_id" ]]; then
+      continue
+    fi
+
+    echo "[afd] Approving private endpoint connection: $connection_id" >&2
+    if ! az network private-endpoint-connection approve --id "$connection_id" \
+      --description "Approved by build-modern-afd-setup.sh" >/dev/null; then
+      echo "[afd] WARNING: Failed to approve connection $connection_id (manual approval may be required)" >&2
+    fi
+  done <<< "$pending_connections"
+}
+
   IFS='|' read -r API_PLS_ID API_PLS_GROUP <<< "$(ensure_private_link_service api "$API_FRONTEND_ID")"
   IFS='|' read -r WEB_PLS_ID WEB_PLS_GROUP <<< "$(ensure_private_link_service web "$WEB_FRONTEND_ID")"
-  IFS='|' read -r MCP_PLS_ID MCP_PLS_GROUP <<< "$(ensure_private_link_service mcp "$MCP_FRONTEND_ID")"
+  IFS='|' read -r MCP_CORE_PLS_ID MCP_CORE_PLS_GROUP <<< "$(ensure_private_link_service mcp-core "$MCP_CORE_FRONTEND_ID")"
+  IFS='|' read -r MCP_FLOW_PLS_ID MCP_FLOW_PLS_GROUP <<< "$(ensure_private_link_service mcp-flow "$MCP_FLOW_FRONTEND_ID")"
+
+  approve_private_endpoint_connections "$API_PLS_ID"
+  approve_private_endpoint_connections "$WEB_PLS_ID"
+  approve_private_endpoint_connections "$MCP_CORE_PLS_ID"
+  approve_private_endpoint_connections "$MCP_FLOW_PLS_ID"
 else
   AKS_NODE_RG=""
   AKS_LOCATION="$LOC"
   SUBSCRIPTION_ID=$(az account show --query id -o tsv 2>/dev/null || echo "")
   API_PLS_ID=""
   WEB_PLS_ID=""
-  MCP_PLS_ID=""
+  MCP_CORE_PLS_ID=""
+  MCP_FLOW_PLS_ID=""
   API_PLS_GROUP=""
   WEB_PLS_GROUP=""
-  MCP_PLS_GROUP=""
+  MCP_CORE_PLS_GROUP=""
+  MCP_FLOW_PLS_GROUP=""
 fi
 
 # Check if origin-group needs update based on actual configuration
@@ -327,21 +367,54 @@ wait_for_private_endpoint_connection() {
   local initial_status
   initial_status=$(az network private-link-service show --ids "$pls_id" --query "privateEndpointConnections[?properties.connectionState.status=='Approved'].length(@)" -o tsv 2>/dev/null || echo "0")
 
-  if [[ "$initial_status" != "" && "$initial_status" -gt 0 ]]; then
+  if [[ -n "$initial_status" && "$initial_status" -gt 0 ]]; then
     echo "[afd] Private Link $pls_id already has $initial_status approved connection(s) - skipping wait" >&2
     return 0
   fi
 
-  # If no approved connections yet, wait for first approval (new deployment scenario)
-  echo "[afd] Waiting for Private Link connection approval on $pls_id..." >&2
+  local total_connections
+  total_connections=$(az network private-link-service show --ids "$pls_id" --query "length(privateEndpointConnections)" -o tsv 2>/dev/null || echo "")
+  if [[ -z "$total_connections" ]]; then
+    total_connections="0"
+  fi
+
+  if [[ "$total_connections" == "0" ]]; then
+    echo "[afd] Private Link $pls_id has no private endpoint connections - skipping wait" >&2
+    return 0
+  fi
+
+  local pending_connections
+  pending_connections=$(az network private-link-service show --ids "$pls_id" --query "privateEndpointConnections[?properties.connectionState.status=='PendingApproval' || properties.connectionState.status=='Pending'].length(@)" -o tsv 2>/dev/null || echo "")
+  if [[ -z "$pending_connections" ]]; then
+    pending_connections="0"
+  fi
+
+  if [[ "$pending_connections" == "0" ]]; then
+    echo "[afd] Private Link $pls_id has $total_connections connection(s) but none pending approval - skipping wait" >&2
+    return 0
+  fi
+
+  # If we have pending connections but none approved yet, wait for first approval (new deployment scenario)
+  echo "[afd] Waiting for Private Link connection approval on $pls_id ($pending_connections pending)..." >&2
   local attempt=0
   while [[ $attempt -lt $retries ]]; do
     local status
     status=$(az network private-link-service show --ids "$pls_id" --query "privateEndpointConnections[?properties.connectionState.status=='Approved'].length(@)" -o tsv 2>/dev/null || echo "0")
-    if [[ "$status" != "" && "$status" -gt 0 ]]; then
-      echo "[afd] Private Link connection approved after $attempt attempts" >&2
+    if [[ -n "$status" && "$status" -gt 0 ]]; then
+      echo "[afd] Private Link connection approved after $attempt attempt(s)" >&2
       return 0
     fi
+
+    local pending_remaining
+    pending_remaining=$(az network private-link-service show --ids "$pls_id" --query "privateEndpointConnections[?properties.connectionState.status=='PendingApproval' || properties.connectionState.status=='Pending'].length(@)" -o tsv 2>/dev/null || echo "")
+    if [[ -z "$pending_remaining" ]]; then
+      pending_remaining="0"
+    fi
+    if [[ "$pending_remaining" == "0" ]]; then
+      echo "[afd] Pending Private Link approvals cleared on $pls_id without an approval event - skipping remaining wait" >&2
+      return 0
+    fi
+
     sleep "$delay"
     attempt=$((attempt+1))
   done
@@ -369,31 +442,44 @@ fi
 create_or_update_endpoint "$WEB_EP"
 create_or_update_route "$WEB_EP" web-route web-origins
 
-# MCP
-create_or_update_origin_group mcp-origins
+# MCP Core
+create_or_update_origin_group mcp-core-origins
 if [[ "$DEPLOYMENT_MODEL" == "hybrid" ]]; then
-  create_or_update_origin mcp-origins mcp-origin "$MCP_IP" "$MCP_PLS_ID" "$AKS_LOCATION" "$MCP_PLS_GROUP"
+  create_or_update_origin mcp-core-origins mcp-core-origin "$MCP_CORE_IP" "$MCP_CORE_PLS_ID" "$AKS_LOCATION" "$MCP_CORE_PLS_GROUP"
 else
-  create_or_update_origin mcp-origins mcp-origin "$MCP_IP"
+  create_or_update_origin mcp-core-origins mcp-core-origin "$MCP_CORE_IP"
 fi
-create_or_update_endpoint "$MCP_EP"
-create_or_update_route "$MCP_EP" mcp-route mcp-origins
+create_or_update_endpoint "$MCP_CORE_EP"
+create_or_update_route "$MCP_CORE_EP" mcp-core-route mcp-core-origins
+
+# MCP Flow
+create_or_update_origin_group mcp-flow-origins
+if [[ "$DEPLOYMENT_MODEL" == "hybrid" ]]; then
+  create_or_update_origin mcp-flow-origins mcp-flow-origin "$MCP_FLOW_IP" "$MCP_FLOW_PLS_ID" "$AKS_LOCATION" "$MCP_FLOW_PLS_GROUP"
+else
+  create_or_update_origin mcp-flow-origins mcp-flow-origin "$MCP_FLOW_IP"
+fi
+create_or_update_endpoint "$MCP_FLOW_EP"
+create_or_update_route "$MCP_FLOW_EP" mcp-flow-route mcp-flow-origins
 
 if [[ "$DEPLOYMENT_MODEL" == "hybrid" ]]; then
   wait_for_private_endpoint_connection "$API_PLS_ID" || true
   wait_for_private_endpoint_connection "$WEB_PLS_ID" || true
-  wait_for_private_endpoint_connection "$MCP_PLS_ID" || true
+  wait_for_private_endpoint_connection "$MCP_CORE_PLS_ID" || true
+  wait_for_private_endpoint_connection "$MCP_FLOW_PLS_ID" || true
 fi
 
 # Resolve actual default hostnames assigned by Azure Front Door (include regional suffix)
 API_HOST=$(az afd endpoint show -g "$RG" --profile-name "$PROFILE_NAME" -n "$API_EP" --query "hostName" -o tsv)
 WEB_HOST=$(az afd endpoint show -g "$RG" --profile-name "$PROFILE_NAME" -n "$WEB_EP" --query "hostName" -o tsv)
-MCP_HOST=$(az afd endpoint show -g "$RG" --profile-name "$PROFILE_NAME" -n "$MCP_EP" --query "hostName" -o tsv)
+MCP_CORE_HOST=$(az afd endpoint show -g "$RG" --profile-name "$PROFILE_NAME" -n "$MCP_CORE_EP" --query "hostName" -o tsv)
+MCP_FLOW_HOST=$(az afd endpoint show -g "$RG" --profile-name "$PROFILE_NAME" -n "$MCP_FLOW_EP" --query "hostName" -o tsv)
 
 echo "[afd] Endpoints:"
 echo "  API: https://${API_HOST}"
 echo "  WEB: https://${WEB_HOST}"
-echo "  MCP: https://${MCP_HOST}"
+echo "  MCP Core: https://${MCP_CORE_HOST}"
+echo "  MCP Flow: https://${MCP_FLOW_HOST}"
 
 # Patch HostNameOverride into configmaps (host only)
 kubectl -n "$NS" patch configmap api-main-config --type='merge' -p "{\"data\":{\"ServiceConfiguration__HostNameOverride__Api\":\"$API_HOST\",\"ServiceConfiguration__HostNameOverride__Web\":\"$WEB_HOST\"}}" >/dev/null 2>&1 || true
@@ -406,12 +492,12 @@ TS=$(date +%Y%m%d%H%M%S)
 echo "[afd] Bumping config versions and restarting deployments to pick up HostNameOverride"
 
 # Annotate ConfigMaps to force change detection
-for cm in api-main-config web-docgen-config mcp-server-config; do
+for cm in api-main-config web-docgen-config mcpserver-core-config mcpserver-flow-config; do
   kubectl -n "$NS" annotate configmap "$cm" "greenlight-config-version=$TS" --overwrite >/dev/null 2>&1 || true
 done
 
 # Roll deployments and wait
-for dep in api-main-deployment web-docgen-deployment mcp-server-deployment; do
+for dep in api-main-deployment web-docgen-deployment mcpserver-core-deployment mcpserver-flow-deployment; do
   echo "[afd] Rolling restart: $dep"
   kubectl -n "$NS" rollout restart deployment "$dep" >/dev/null 2>&1 || true
   kubectl -n "$NS" rollout status deployment "$dep" --timeout=180s >/dev/null 2>&1 || true

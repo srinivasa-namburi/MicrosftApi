@@ -32,7 +32,7 @@ namespace Microsoft.Greenlight.Shared.Plugins
         /// <summary>
         /// Gets the underlying MCP client instance, if started.
         /// </summary>
-        public override IMcpClient? McpClient { get; protected set; }
+        public override McpClient? McpClient { get; protected set; }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="HttpMcpPlugin"/> class.
@@ -215,8 +215,17 @@ namespace Microsoft.Greenlight.Shared.Plugins
                             httpEndpointsToTry.Add(new Uri(AppendPath(baseUri, "mcp")));
                         }
                         // Keep SSE fallbacks for backwards-compat
-                        sseEndpointsToTry.Add(new Uri(AppendPath(baseUri, "mcp/sse")));
-                        sseEndpointsToTry.Add(new Uri(AppendPath(baseUri, "sse")));
+                        // If base URL already ends with /mcp, only append /sse
+                        // Otherwise try both /mcp/sse and /sse
+                        if (baseUri.AbsolutePath.TrimEnd('/').EndsWith("/mcp", StringComparison.OrdinalIgnoreCase))
+                        {
+                            sseEndpointsToTry.Add(new Uri(AppendPath(baseUri, "sse")));
+                        }
+                        else
+                        {
+                            sseEndpointsToTry.Add(new Uri(AppendPath(baseUri, "mcp/sse")));
+                            sseEndpointsToTry.Add(new Uri(AppendPath(baseUri, "sse")));
+                        }
                     }
 
                     Exception? lastException = null;
@@ -225,15 +234,15 @@ namespace Microsoft.Greenlight.Shared.Plugins
                     {
                         try
                         {
-                            var httpClient = await CreateHttpClientAsync();
-                            var httpOptions = new SseClientTransportOptions
+                            var httpClient = CreateHttpClientAsync();
+                            var httpOptions = new HttpClientTransportOptions
                             {
                                 Name = Name,
                                 Endpoint = endpoint,
                                 TransportMode = HttpTransportMode.StreamableHttp
                             };
-                            var transport = new SseClientTransport(httpOptions, httpClient, loggerFactory: null, ownsHttpClient: true);
-                            var mcpClient = await McpClientFactory.CreateAsync(transport);
+                            var transport = new HttpClientTransport(httpOptions, httpClient, loggerFactory: null, ownsHttpClient: true);
+                            var mcpClient = await McpClient.CreateAsync(transport);
                             await _lock.WaitAsync();
                             try
                             {
@@ -278,15 +287,15 @@ namespace Microsoft.Greenlight.Shared.Plugins
                         {
                             try
                             {
-                                var httpClient = await CreateHttpClientAsync();
-                                var tryConfig = new SseClientTransportOptions
+                                var httpClient = CreateHttpClientAsync();
+                                var tryConfig = new HttpClientTransportOptions
                                 {
                                     Name = Name,
                                     Endpoint = endpoint,
                                     TransportMode = HttpTransportMode.Sse
                                 };
-                                var transport = new SseClientTransport(tryConfig, httpClient, loggerFactory: null, ownsHttpClient: true);
-                                var mcpClient = await McpClientFactory.CreateAsync(transport);
+                                var transport = new HttpClientTransport(tryConfig, httpClient, loggerFactory: null, ownsHttpClient: true);
+                                var mcpClient = await McpClient.CreateAsync(transport);
                                 await _lock.WaitAsync();
                                 try
                                 {
@@ -378,84 +387,43 @@ namespace Microsoft.Greenlight.Shared.Plugins
         }
 
         /// <summary>
-        /// Creates an HttpClient configured with Authorization if required.
-        /// Builds a fresh instance to ensure token freshness for HTTP transports.
+        /// Creates an HttpClient configured with a delegating handler for runtime user context injection.
+        /// The UserContextHttpHandler will add Authorization headers at request time based on the ambient UserExecutionContext.
+        /// Configures infinite timeout and proper connection settings for long-lived SSE/streaming connections.
         /// </summary>
-        private async Task<HttpClient> CreateHttpClientAsync(string? providerSubjectId = null, CancellationToken cancellationToken = default)
+        private HttpClient CreateHttpClientAsync()
         {
-            var httpClient = new HttpClient();
+            var authType = Manifest?.AuthenticationType ?? McpPluginAuthenticationType.None;
 
-            var authType = Manifest?.AuthenticationType;
-            if (authType == null || authType == McpPluginAuthenticationType.None)
+            // Create inner handler with settings optimized for long-lived streaming connections
+            var innerHandler = new HttpClientHandler
             {
-                return httpClient; // no auth
-            }
+                // Configure connection pooling for streaming
+                MaxConnectionsPerServer = 10,
+                // Allow auto-redirect
+                AllowAutoRedirect = true
+            };
 
-            try
+            // Create the delegating handler that will inject auth at request time
+            var handler = new UserContextHttpHandler(
+                authType,
+                _logger,
+                _credentialHelper,
+                _configuration,
+                _clusterClient,
+                innerHandler);
+
+            // Create HttpClient with infinite timeout for SSE/streaming connections
+            // This prevents the default 100-second timeout from closing long-lived connections
+            var httpClient = new HttpClient(handler, disposeHandler: true)
             {
-                switch (authType)
-                {
-                    case McpPluginAuthenticationType.GreenlightManagedIdentity:
-                        if (_credentialHelper != null)
-                        {
-                            var credential = _credentialHelper.GetAzureCredential();
-                            var audience = _configuration?["Mcp:Audience"] ?? _configuration?["AzureAd:Audience"];
-                            if (!string.IsNullOrWhiteSpace(audience))
-                            {
-                                // Support either bare resource or explicit scope
-                                var scope = audience!.EndsWith("/.default", StringComparison.OrdinalIgnoreCase)
-                                    ? audience!
-                                    : audience!.TrimEnd('/') + "/.default";
-                                var token = await credential.GetTokenAsync(new TokenRequestContext(new[] { scope }), cancellationToken).ConfigureAwait(false);
-                                httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.Token);
-                            }
-                            else
-                            {
-                                _logger?.LogWarning("ManagedIdentity auth requested but no Mcp:Audience/AzureAd:Audience configured. Proceeding without Authorization header.");
-                            }
-                        }
-                        else
-                        {
-                            _logger?.LogWarning("ManagedIdentity auth requested but AzureCredentialHelper is not available.");
-                        }
-                        break;
-                    case McpPluginAuthenticationType.UserBearerToken:
-                        // Allow ambient context to provide the ProviderSubjectId if not explicitly provided
-                        providerSubjectId ??= Microsoft.Greenlight.Shared.Services.UserExecutionContext.ProviderSubjectId;
-                        if (string.IsNullOrWhiteSpace(providerSubjectId))
-                        {
-                            _logger?.LogWarning("UserBearerToken auth requested but no ProviderSubjectId was supplied. Skipping Authorization header.");
-                            break;
-                        }
-                        if (_clusterClient != null)
-                        {
-                            var grain = _clusterClient.GetGrain<Microsoft.Greenlight.Grains.Shared.Contracts.IUserTokenStoreGrain>(providerSubjectId);
-                            var token = await grain.GetTokenAsync().ConfigureAwait(false);
-                            if (!string.IsNullOrWhiteSpace(token?.AccessToken))
-                            {
-                                httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token!.AccessToken);
-                            }
-                            else
-                            {
-                                _logger?.LogWarning("No access token found in UserTokenStore for ProviderSubjectId={ProviderSubjectId}", providerSubjectId);
-                            }
-                        }
-                        else
-                        {
-                            _logger?.LogWarning("UserBearerToken auth requested but Orleans IClusterClient is not available.");
-                        }
-                        break;
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError(ex, "Error setting Authorization header for HTTP MCP plugin {PluginName}", Name);
-            }
+                Timeout = Timeout.InfiniteTimeSpan
+            };
 
             return httpClient;
         }
 
-        // Note: No HttpClientTransportOptions; SseClientTransportOptions is used for both Streamable HTTP and SSE.
+        // Note: HttpClientTransportOptions is used for both Streamable HTTP and SSE (renamed from SseClientTransportOptions in 0.4.0).
 
         /// <summary>
         /// Stops the plugin and disposes the MCP client.

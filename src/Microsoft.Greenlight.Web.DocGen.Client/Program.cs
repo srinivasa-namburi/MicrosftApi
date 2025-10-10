@@ -166,6 +166,11 @@ builder.Services.AddHttpClient<ISystemStatusApiClient, SystemStatusApiClient>(cl
     client.BaseAddress = serverBaseAddress;
 });
 
+builder.Services.AddHttpClient<IFlowTaskApiClient, FlowTaskApiClient>(client =>
+{
+    client.BaseAddress = serverBaseAddress;
+});
+
 // Service used to aid in constructing editors
 builder.Services.AddScoped<ValidationEditorService>();
 

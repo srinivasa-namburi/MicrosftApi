@@ -19,10 +19,10 @@
     <MudItem xs="12" md="3"><MudNumericField T="int" @bind-Value="MinResultsBeforeCutoff" Label="Min Results Before Cutoff" Min="0" Max="100" Immediate="true" /></MudItem>
     <MudItem xs="12" md="3"><MudNumericField T="double" @bind-Value="HybridVectorWeight" Label="Hybrid Vector Weight (0..1)" Min="0" Max="1" Immediate="true" /></MudItem>
     <MudItem xs="12" md="3"><MudNumericField T="int" @bind-Value="MaxChunkTextLength" Label="Max Chunk Text Length" Min="256" Max="65536" Immediate="true" /></MudItem>
-    <MudItem xs="12" md="3"><MudSwitch T="bool" @bind-Checked="EnableHybridScoring" Label="Enable Hybrid Scoring" Color="Color.Primary" Immediate="true" /></MudItem>
-    <MudItem xs="12" md="3"><MudSwitch T="bool" @bind-Checked="EnableFileNameDocIdCacheIndex" Label="FileName→DocId Cache Index" Color="Color.Primary" Immediate="true" /></MudItem>
-    <MudItem xs="12" md="3"><MudSwitch T="bool" @bind-Checked="EnableWarmup" Label="Enable Warmup" Color="Color.Primary" Immediate="true" /></MudItem>
-    <MudItem xs="12" md="3"><MudSwitch T="bool" @bind-Checked="EnableEmbeddingDimensionVerification" Label="Verify Embedding Dimension" Color="Color.Primary" Immediate="true" /></MudItem>
+    <MudItem xs="12" md="3"><MudSwitch T="bool" @bind-Value="EnableHybridScoring" Label="Enable Hybrid Scoring" Color="Color.Primary" /></MudItem>
+    <MudItem xs="12" md="3"><MudSwitch T="bool" @bind-Value="EnableFileNameDocIdCacheIndex" Label="FileName→DocId Cache Index" Color="Color.Primary" /></MudItem>
+    <MudItem xs="12" md="3"><MudSwitch T="bool" @bind-Value="EnableWarmup" Label="Enable Warmup" Color="Color.Primary" /></MudItem>
+    <MudItem xs="12" md="3"><MudSwitch T="bool" @bind-Value="EnableEmbeddingDimensionVerification" Label="Verify Embedding Dimension" Color="Color.Primary" /></MudItem>
   </MudGrid>
 
   <MudDivider Class="mt-4 mb-3" />

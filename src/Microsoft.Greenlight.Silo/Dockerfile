@@ -1,40 +1,74 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-# Use the official .NET 9 ASP.NET runtime as a parent image
-FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS base
+# Copyright (c) Microsoft Corporation. All rights reserved.
 
-# Install dependencies for Python and Node.js
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        curl \
-        ca-certificates \
-        gnupg \
-        lsb-release \
-        software-properties-common \
-        python3-pip \
-        python3-venv \
-        python3-distutils \
-        python3.12 \
-        python3.12-venv \
-        python3.12-distutils \
-    && rm -rf /var/lib/apt/lists/*
+# Global ARG for runtime base image (MCP execution environment)
+# Can be overridden at build time to use custom base image with Python, Node.js, and uv
+ARG MCP_BASE_IMAGE=mcr.microsoft.com/dotnet/aspnet:9.0
 
-# Set python3 to python3.12
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
+# Stage 1: Build the application
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+ARG NUGET_PAT
+WORKDIR /src
 
-# Install uv (Python package manager)
-RUN pip3 install --upgrade pip && pip3 install uv
+# Copy solution and all project files for restore
+COPY src/*.slnx ./
+COPY src/*.sln ./
+COPY src/Directory.Build.props ./
 
-# Install Node.js (latest LTS) and npx
-RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
-    && apt-get update \
-    && apt-get install -y nodejs \
-    && rm -rf /var/lib/apt/lists/*
+# Copy all project files
+COPY src/*/*.csproj ./
+RUN for file in *.csproj; do \
+    dir=$(basename "$file" .csproj); \
+    mkdir -p "$dir" && mv "$file" "$dir/"; \
+    done
 
-# npx is included with nodejs >= 8.2.0
+# Copy nested projects
+COPY src/Extensibility/*/*.csproj ./Extensibility/
+RUN cd Extensibility && \
+    for file in *.csproj; do \
+    dir=$(basename "$file" .csproj); \
+    mkdir -p "$dir" && mv "$file" "$dir/"; \
+    done; \
+    cd ..
+
+COPY src/Plugins/*/*.csproj ./Plugins/
+RUN cd Plugins && \
+    for file in *.csproj; do \
+    dir=$(basename "$file" .csproj); \
+    mkdir -p "$dir" && mv "$file" "$dir/"; \
+    done; \
+    cd ..
+
+# Copy NuGet config
+COPY src/Nuget.ADOArtifacts.config ./nuget.config
+
+# Conditionally add Azure Artifacts source with authentication if NUGET_PAT is provided (internal Microsoft builds)
+RUN if [ -n "$NUGET_PAT" ]; then \
+        dotnet nuget remove source "PublicPackages" || true; \
+        dotnet nuget add source "https://pkgs.dev.azure.com/ipsenergy/industry-permitting/_packaging/industry-permitting_PublicPackages/nuget/v3/index.json" \
+        --name "PublicPackages" \
+        --username "az" \
+        --password "$NUGET_PAT" \
+        --store-password-in-clear-text; \
+    fi
+
+# Restore dependencies
+RUN dotnet restore Microsoft.Greenlight.Silo/Microsoft.Greenlight.Silo.csproj
+
+# Copy full source
+COPY src/ ./
+
+# Build and publish
+WORKDIR /src/Microsoft.Greenlight.Silo
+RUN dotnet publish -c Release -o /app/publish --no-restore
+
+# Stage 2: Runtime with MCP execution environment
+FROM ${MCP_BASE_IMAGE} AS runtime
 
 # Set working directory
 WORKDIR /app
 
-# Copy published app and set entrypoint (Aspire will handle this in build phase)
-# COPY . .
-# ENTRYPOINT ["dotnet", "Microsoft.Greenlight.Silo.dll"]
+# Copy published application from build stage
+COPY --from=build /app/publish .
+
+# Set entrypoint
+ENTRYPOINT ["dotnet", "Microsoft.Greenlight.Silo.dll"]

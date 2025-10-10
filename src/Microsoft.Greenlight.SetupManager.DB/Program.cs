@@ -27,7 +27,9 @@ builder.AddDocGenDbContext(serviceConfigurationOptions);
 
 // Register only the minimal services needed for setup/seeding to avoid pulling in
 // Orleans, AI, and other heavy dependencies during migrations.
+builder.Services.AddAutoMapper(typeof(Microsoft.Greenlight.Shared.Mappings.FlowTaskMappingProfile));
 builder.Services.AddTransient<IPromptDefinitionService, PromptDefinitionService>();
+builder.Services.AddTransient<IFlowTaskTemplateService, FlowTaskTemplateService>();
 
 
 var host = builder.Build();

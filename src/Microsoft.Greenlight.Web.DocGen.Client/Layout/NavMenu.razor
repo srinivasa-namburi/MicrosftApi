@@ -88,13 +88,25 @@
                             IconColor="Color.Secondary">Document Processes</MudNavLink>
             </PermissionView>
             <PermissionView Permission="@PermissionKeys.AlterDocumentProcessesAndLibraries">
-                <MudNavLink Href="/document-libraries" 
-                            Icon="fas fa-book" 
+                <MudNavLink Href="/document-libraries"
+                            Icon="fas fa-book"
                             IconColor="Color.Secondary">Document Libraries</MudNavLink>
             </PermissionView>
+            <PermissionView Permission="@PermissionKeys.AlterDocumentProcessesAndLibraries">
+                <MudNavGroup Title="Flow Tasks"
+                             Icon="fas fa-project-diagram"
+                             IconColor="Color.Secondary">
+                    <MudNavLink Href="/flow/templates"
+                                Icon="fas fa-list"
+                                IconColor="Color.Secondary">Templates</MudNavLink>
+                    <MudNavLink Href="/flow/templates/new"
+                                Icon="fas fa-plus"
+                                IconColor="Color.Secondary">Create Template</MudNavLink>
+                </MudNavGroup>
+            </PermissionView>
             <PermissionView Permission="@PermissionKeys.AlterSystemConfiguration">
-                <MudNavLink Href="/plugins" 
-                            Icon="fas fa-plug" 
+                <MudNavLink Href="/plugins"
+                            Icon="fas fa-plug"
                             IconColor="Color.Secondary">MCP Servers</MudNavLink>
             </PermissionView>
             @if (_featureFlags.EnableExternalDataView)

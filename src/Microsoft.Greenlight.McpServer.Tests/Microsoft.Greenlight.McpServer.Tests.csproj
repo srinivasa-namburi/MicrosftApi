@@ -22,7 +22,8 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.9" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Microsoft.Greenlight.McpServer\Microsoft.Greenlight.McpServer.csproj" />
+    <ProjectReference Include="..\Microsoft.Greenlight.McpServer.Core\Microsoft.Greenlight.McpServer.Core.csproj" />
+    <ProjectReference Include="..\Microsoft.Greenlight.McpServer.Flow\Microsoft.Greenlight.McpServer.Flow.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

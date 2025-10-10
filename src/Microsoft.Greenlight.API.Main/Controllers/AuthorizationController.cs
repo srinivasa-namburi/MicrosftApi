@@ -214,7 +214,10 @@ public class AuthorizationController : BaseController
             return BadRequest("Invalid token payload");
         }
         // Normalize to the caller's current subject claim to avoid mismatches
-        var callerSub = HttpContext.User.FindFirst("sub")?.Value;
+        // Check "sub" (JWT), then ClaimTypes.NameIdentifier (OIDC), then "oid" (fallback)
+        var callerSub = HttpContext.User.FindFirst("sub")?.Value
+                     ?? HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                     ?? HttpContext.User.FindFirst("oid")?.Value;
         if (string.IsNullOrWhiteSpace(callerSub))
         {
             // Fall back to payload's value but this should not normally occur in authenticated calls

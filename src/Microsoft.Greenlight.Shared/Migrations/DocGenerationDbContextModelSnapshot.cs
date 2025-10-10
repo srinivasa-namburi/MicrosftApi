@@ -371,6 +371,11 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("nvarchar(128)");
 
+                    b.Property<string>("ProviderSubjectId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -385,11 +390,6 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<string>("UserOid")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
                     b.HasKey("Id");
 
                     b.HasIndex("Name")
@@ -398,6 +398,46 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.HasIndex("IsActive", "Name");
 
                     b.ToTable("McpSecrets", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Configuration.SystemPrompt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.HasIndex("IsActive", "Name");
+
+                    b.ToTable("SystemPrompts", (string)null);
                 });
 
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.ContentNode", b =>
@@ -942,6 +982,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Property<Guid?>("EmbeddingModelDeploymentId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("FlowTaskTemplateId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<int>("FollowingSearchPartitionInclusionCount")
                         .HasColumnType("int");
 
@@ -996,6 +1039,8 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.HasIndex("AiModelDeploymentId");
 
                     b.HasIndex("EmbeddingModelDeploymentId");
+
+                    b.HasIndex("FlowTaskTemplateId");
 
                     b.HasIndex("LogicType");
 
@@ -1699,6 +1744,383 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.ToTable("IngestedDocumentFileAcknowledgments", (string)null);
                 });
 
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FlowTasks.FlowTaskDataSource", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("CacheDurationSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<Guid?>("FlowTaskTemplateId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SourceType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FlowTaskTemplateId");
+
+                    b.HasIndex("IsActive");
+
+                    b.HasIndex("Name");
+
+                    b.HasIndex("SourceType");
+
+                    b.ToTable("FlowTaskDataSources", (string)null);
+
+                    b.HasDiscriminator<string>("SourceType").HasValue("FlowTaskDataSource");
+
+                    b.UseTphMappingStrategy();
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FlowTasks.FlowTaskMcpToolParameter", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DataType")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<Guid>("FlowTaskDataSourceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsTemplate")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ParameterName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("ParameterValue")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FlowTaskDataSourceId");
+
+                    b.HasIndex("FlowTaskDataSourceId", "ParameterName");
+
+                    b.ToTable("FlowTaskMcpToolParameters", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FlowTasks.FlowTaskOutputTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("ExecutionOrder")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("FlowTaskTemplateId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsRequired")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid?>("McpPluginId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("McpToolName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("OutputType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("TemplateContent")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TransformationRulesJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FlowTaskTemplateId");
+
+                    b.HasIndex("FlowTaskTemplateId", "Name");
+
+                    b.ToTable("FlowTaskOutputTemplates", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FlowTasks.FlowTaskRequirement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ConditionalLogicJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("DataSourceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("DataType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasDefaultValue("text");
+
+                    b.Property<string>("DefaultValue")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("FieldName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid>("FlowTaskSectionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDataSourced")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsRequired")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PromptTemplate")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ValidOptionsJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ValidationRulesJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DataSourceId");
+
+                    b.HasIndex("FlowTaskSectionId");
+
+                    b.HasIndex("FlowTaskSectionId", "FieldName");
+
+                    b.ToTable("FlowTaskRequirements", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FlowTasks.FlowTaskSection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid>("FlowTaskTemplateId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsRequired")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SectionPrompt")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FlowTaskTemplateId");
+
+                    b.HasIndex("FlowTaskTemplateId", "SortOrder");
+
+                    b.ToTable("FlowTaskSections", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FlowTasks.FlowTaskTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("CompletionMessage")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("InitialPrompt")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("MetadataJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.PrimitiveCollection<string>("TriggerPhrases")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IsActive");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("FlowTaskTemplates", (string)null);
+                });
+
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.GeneratedDocument", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1850,6 +2272,9 @@ namespace Microsoft.Greenlight.Shared.Migrations
 
                     b.Property<string>("Description")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("ExposeToFlow")
+                        .HasColumnType("bit");
 
                     b.Property<DateTime>("ModifiedUtc")
                         .HasColumnType("datetime2");
@@ -2538,6 +2963,42 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.ToTable("PromptVariableDefinitions", (string)null);
                 });
 
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FlowTasks.FlowTaskMcpToolDataSource", b =>
+                {
+                    b.HasBaseType("Microsoft.Greenlight.Shared.Models.FlowTasks.FlowTaskDataSource");
+
+                    b.Property<Guid>("McpPluginId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ToolName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("TransformPrompt")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.HasIndex("McpPluginId");
+
+                    b.HasDiscriminator().HasValue("FlowTaskMcpToolDataSource");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FlowTasks.FlowTaskStaticDataSource", b =>
+                {
+                    b.HasBaseType("Microsoft.Greenlight.Shared.Models.FlowTasks.FlowTaskDataSource");
+
+                    b.Property<string>("DisplayFormat")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("ValuesJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasDiscriminator().HasValue("FlowTaskStaticDataSource");
+                });
+
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.SourceReferences.KernelMemoryDocumentSourceReferenceItem", b =>
                 {
                     b.HasBaseType("Microsoft.Greenlight.Shared.Models.SourceReferences.SourceReferenceItem");
@@ -2863,6 +3324,10 @@ namespace Microsoft.Greenlight.Shared.Migrations
                         .WithMany()
                         .HasForeignKey("EmbeddingModelDeploymentId");
 
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.FlowTasks.FlowTaskTemplate", "FlowTaskTemplate")
+                        .WithMany()
+                        .HasForeignKey("FlowTaskTemplateId");
+
                     b.HasOne("Microsoft.Greenlight.Shared.Models.Validation.DocumentProcessValidationPipeline", "ValidationPipeline")
                         .WithOne("DocumentProcess")
                         .HasForeignKey("Microsoft.Greenlight.Shared.Models.DocumentProcess.DynamicDocumentProcessDefinition", "ValidationPipelineId")
@@ -2873,6 +3338,8 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Navigation("AiModelDeploymentForValidation");
 
                     b.Navigation("EmbeddingModelDeployment");
+
+                    b.Navigation("FlowTaskTemplate");
 
                     b.Navigation("ValidationPipeline");
                 });
@@ -3048,6 +3515,67 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Navigation("FileAcknowledgmentRecord");
 
                     b.Navigation("IngestedDocument");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FlowTasks.FlowTaskDataSource", b =>
+                {
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.FlowTasks.FlowTaskTemplate", "FlowTaskTemplate")
+                        .WithMany("DataSources")
+                        .HasForeignKey("FlowTaskTemplateId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("FlowTaskTemplate");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FlowTasks.FlowTaskMcpToolParameter", b =>
+                {
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.FlowTasks.FlowTaskMcpToolDataSource", "FlowTaskMcpToolDataSource")
+                        .WithMany("Parameters")
+                        .HasForeignKey("FlowTaskDataSourceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("FlowTaskMcpToolDataSource");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FlowTasks.FlowTaskOutputTemplate", b =>
+                {
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.FlowTasks.FlowTaskTemplate", "FlowTaskTemplate")
+                        .WithMany("OutputTemplates")
+                        .HasForeignKey("FlowTaskTemplateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("FlowTaskTemplate");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FlowTasks.FlowTaskRequirement", b =>
+                {
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.FlowTasks.FlowTaskDataSource", "DataSource")
+                        .WithMany()
+                        .HasForeignKey("DataSourceId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.FlowTasks.FlowTaskSection", "FlowTaskSection")
+                        .WithMany("Requirements")
+                        .HasForeignKey("FlowTaskSectionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("DataSource");
+
+                    b.Navigation("FlowTaskSection");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FlowTasks.FlowTaskSection", b =>
+                {
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.FlowTasks.FlowTaskTemplate", "FlowTaskTemplate")
+                        .WithMany("Sections")
+                        .HasForeignKey("FlowTaskTemplateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("FlowTaskTemplate");
                 });
 
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Plugins.McpPluginDocumentProcess", b =>
@@ -3255,6 +3783,17 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Navigation("PromptDefinition");
                 });
 
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FlowTasks.FlowTaskMcpToolDataSource", b =>
+                {
+                    b.HasOne("Microsoft.Greenlight.Shared.Models.Plugins.McpPlugin", "McpPlugin")
+                        .WithMany()
+                        .HasForeignKey("McpPluginId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("McpPlugin");
+                });
+
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Authorization.GreenlightRole", b =>
                 {
                     b.Navigation("RolePermissions");
@@ -3346,6 +3885,20 @@ namespace Microsoft.Greenlight.Shared.Migrations
                     b.Navigation("DocumentProcessSources");
                 });
 
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FlowTasks.FlowTaskSection", b =>
+                {
+                    b.Navigation("Requirements");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FlowTasks.FlowTaskTemplate", b =>
+                {
+                    b.Navigation("DataSources");
+
+                    b.Navigation("OutputTemplates");
+
+                    b.Navigation("Sections");
+                });
+
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.GeneratedDocument", b =>
                 {
                     b.Navigation("ContentNodes");
@@ -3407,6 +3960,11 @@ namespace Microsoft.Greenlight.Shared.Migrations
             modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.Validation.ValidationPipelineExecutionStepResult", b =>
                 {
                     b.Navigation("ContentNodeResults");
+                });
+
+            modelBuilder.Entity("Microsoft.Greenlight.Shared.Models.FlowTasks.FlowTaskMcpToolDataSource", b =>
+                {
+                    b.Navigation("Parameters");
                 });
 #pragma warning restore 612, 618
         }

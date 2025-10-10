@@ -1,0 +1,229 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+
+@using Microsoft.Greenlight.Shared.Contracts.FlowTasks
+
+<MudPaper Class="pa-3" Outlined="true">
+    <MudGrid>
+        <MudItem xs="12">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.subtitle1">@($"Section {Index + 1}: {Section.DisplayName}")</MudText>
+                <MudStack Row="true" Spacing="1">
+                    @if (Index > 0)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.ArrowUpward" Size="Size.Small"
+                                     OnClick="OnMoveUp"
+                                     Disabled="@Disabled" />
+                    }
+                    @if (CanMoveDown)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Size="Size.Small"
+                                     OnClick="OnMoveDown"
+                                     Disabled="@Disabled" />
+                    }
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                 OnClick="OnDelete"
+                                 Disabled="@Disabled" />
+                </MudStack>
+            </MudStack>
+        </MudItem>
+        <MudItem xs="12" md="5">
+            <MudTextField T="string" @bind-Value="Section.Name"
+                        Label="Section Name (Identifier)"
+                        Required="true"
+                        Variant="Variant.Outlined"
+                        Margin="Margin.Dense"
+                        Disabled="@Disabled" />
+        </MudItem>
+        <MudItem xs="12" md="5">
+            <MudTextField T="string" @bind-Value="Section.DisplayName"
+                        Label="Display Name"
+                        Required="true"
+                        Variant="Variant.Outlined"
+                        Margin="Margin.Dense"
+                        Disabled="@Disabled" />
+        </MudItem>
+        <MudItem xs="12" md="2">
+            <MudSwitch T="bool" @bind-Value="Section.IsRequired"
+                     Label="Required"
+                     Color="Color.Primary"
+                     Disabled="@Disabled" />
+        </MudItem>
+        <MudItem xs="12">
+            <MudTextField T="string" @bind-Value="Section.Description"
+                        Label="Description"
+                        Variant="Variant.Outlined"
+                        Margin="Margin.Dense"
+                        Lines="2"
+                        Disabled="@Disabled" />
+        </MudItem>
+        <MudItem xs="12">
+            <MudTextField T="string" @bind-Value="Section.SectionPrompt"
+                        Label="Section Prompt"
+                        Variant="Variant.Outlined"
+                        Lines="3"
+                        Margin="Margin.Dense"
+                        HelperText="Prompt shown when collecting requirements from this section"
+                        Disabled="@Disabled" />
+        </MudItem>
+
+        <!-- Requirements for this section -->
+        <MudItem xs="12">
+            <MudDivider Class="my-2" />
+            <MudText Typo="Typo.subtitle2" Class="mb-2">Requirements</MudText>
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small"
+                     StartIcon="@Icons.Material.Filled.Add"
+                     OnClick="AddRequirement"
+                     Disabled="@Disabled">
+                Add Requirement
+            </MudButton>
+
+            @if (Section.Requirements != null && Section.Requirements.Count > 0)
+            {
+                <MudStack Spacing="2" Class="mt-2">
+                    @foreach (var requirement in Section.Requirements)
+                    {
+                        <MudPaper Class="pa-2" Outlined="true" Elevation="0">
+                            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start">
+                                <MudText Typo="Typo.body2" Style="flex: 1">@(string.IsNullOrWhiteSpace(requirement.DisplayName) ? requirement.FieldName : requirement.DisplayName)</MudText>
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                             OnClick="() => RemoveRequirement(requirement)"
+                                             Disabled="@Disabled" />
+                            </MudStack>
+                            <MudGrid>
+                                <MudItem xs="12" md="6">
+                                    <MudTextField T="string" @bind-Value="requirement.FieldName"
+                                                Label="Field Name"
+                                                Required="true"
+                                                Variant="Variant.Outlined"
+                                                Margin="Margin.Dense"
+                                                Disabled="@Disabled" />
+                                </MudItem>
+                                <MudItem xs="12" md="6">
+                                    <MudTextField T="string" @bind-Value="requirement.DisplayName"
+                                                Label="Display Name"
+                                                Required="true"
+                                                Variant="Variant.Outlined"
+                                                Margin="Margin.Dense"
+                                                Disabled="@Disabled" />
+                                </MudItem>
+                                <MudItem xs="12">
+                                    <MudTextField T="string" @bind-Value="requirement.Description"
+                                                Label="Description"
+                                                Variant="Variant.Outlined"
+                                                Margin="Margin.Dense"
+                                                Disabled="@Disabled" />
+                                </MudItem>
+                                <MudItem xs="12" md="4">
+                                    <MudSelect T="string" @bind-Value="requirement.DataType"
+                                             Label="Data Type"
+                                             Variant="Variant.Outlined"
+                                             Margin="Margin.Dense"
+                                             Disabled="@Disabled">
+                                        <MudSelectItem T="string" Value="@("text")">Text</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("number")">Number</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("date")">Date</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("boolean")">Boolean</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("choice")">Choice</MudSelectItem>
+                                    </MudSelect>
+                                </MudItem>
+                                <MudItem xs="12" md="4">
+                                    <MudCheckBox T="bool" @bind-Value="requirement.IsRequired"
+                                               Label="Required"
+                                               Disabled="@Disabled" />
+                                </MudItem>
+                                <MudItem xs="12" md="4">
+                                    <MudCheckBox T="bool" @bind-Value="requirement.IsDataSourced"
+                                               Label="From Data Source"
+                                               Disabled="@Disabled" />
+                                </MudItem>
+                                @if (requirement.IsDataSourced)
+                                {
+                                    <MudItem xs="12">
+                                        <MudSelect T="Guid?" @bind-Value="requirement.DataSourceId"
+                                                 Label="Data Source"
+                                                 Variant="Variant.Outlined"
+                                                 Margin="Margin.Dense"
+                                                 Disabled="@Disabled">
+                                            <MudSelectItem T="Guid?" Value="@((Guid?)null)">Select a data source...</MudSelectItem>
+                                            @foreach (var ds in AvailableDataSources)
+                                            {
+                                                <MudSelectItem T="Guid?" Value="@ds.Id">@ds.Name</MudSelectItem>
+                                            }
+                                        </MudSelect>
+                                    </MudItem>
+                                }
+                                <MudItem xs="12">
+                                    <MudTextField T="string" @bind-Value="requirement.DefaultValue"
+                                                Label="Default Value"
+                                                Variant="Variant.Outlined"
+                                                Margin="Margin.Dense"
+                                                Disabled="@Disabled" />
+                                </MudItem>
+                            </MudGrid>
+                        </MudPaper>
+                    }
+                </MudStack>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">No requirements defined.</MudText>
+            }
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@code {
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter]
+    public int Index { get; set; }
+
+    [Parameter]
+    public bool CanMoveDown { get; set; }
+
+    [Parameter]
+    public FlowTaskSectionDto Section { get; set; } = null!;
+
+    [Parameter]
+    public EventCallback<FlowTaskSectionDto> SectionChanged { get; set; }
+
+    [Parameter]
+    public List<FlowTaskDataSourceDto> AvailableDataSources { get; set; } = new();
+
+    [Parameter]
+    public EventCallback OnMoveUp { get; set; }
+
+    [Parameter]
+    public EventCallback OnMoveDown { get; set; }
+
+    [Parameter]
+    public EventCallback OnDelete { get; set; }
+
+    private void AddRequirement()
+    {
+        if (Section.Requirements == null)
+        {
+            Section.Requirements = new List<FlowTaskRequirementDto>();
+        }
+
+        Section.Requirements.Add(new FlowTaskRequirementDto
+        {
+            Id = Guid.NewGuid(),
+            FlowTaskSectionId = Section.Id,
+            FieldName = $"field{Section.Requirements.Count + 1}",
+            DisplayName = $"Field {Section.Requirements.Count + 1}",
+            DataType = "text",
+            IsRequired = true,
+            IsDataSourced = false,
+            SortOrder = Section.Requirements.Count
+        });
+        StateHasChanged();
+    }
+
+    private void RemoveRequirement(FlowTaskRequirementDto requirement)
+    {
+        Section.Requirements?.Remove(requirement);
+        StateHasChanged();
+    }
+}

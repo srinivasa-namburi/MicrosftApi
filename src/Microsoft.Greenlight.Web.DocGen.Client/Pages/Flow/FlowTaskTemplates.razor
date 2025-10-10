@@ -1,0 +1,327 @@
+@* Copyright (c) Microsoft Corporation. All rights reserved. *@
+
+@page "/flow/templates"
+@using Microsoft.Greenlight.Shared.Contracts.FlowTasks
+@using Microsoft.Greenlight.Web.Shared.ServiceClients
+@using Microsoft.Greenlight.Web.DocGen.Client.Components.Flow
+
+@inject IFlowTaskApiClient FlowTaskApiClient
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+
+<MudPaper Class="pa-4">
+    <MudText Typo="Typo.h5">Flow Task Templates</MudText>
+    <MudDivider Class="mt-2 mb-3" />
+
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" sm="6" md="3">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="NavigateToNewTemplate"
+                     StartIcon="@Icons.Material.Filled.Add" FullWidth="true">
+                Create Template
+            </MudButton>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="ShowImportDialog"
+                     StartIcon="@Icons.Material.Filled.Upload" FullWidth="true">
+                Import Template
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+
+    @if (_isLoading)
+    {
+        <MudProgressCircular Indeterminate="true" Size="Size.Large" Class="ma-4" />
+    }
+    else
+    {
+        <MudTable T="FlowTaskTemplateInfo" Items="_templates" Hover="true" Striped="true" Dense="true"
+                 Filter="new Func<FlowTaskTemplateInfo, bool>(FilterTemplate)"
+                 @bind-RowsPerPage="_rowsPerPage">
+            <ToolBarContent>
+                <MudTextField @bind-Value="_searchString" Placeholder="Search templates" Adornment="Adornment.Start"
+                             AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium"
+                             Class="mt-0" Immediate="true" />
+                <MudSpacer />
+                <MudSelect T="string" @bind-Value="_selectedCategory" Placeholder="All Categories"
+                          Clearable="true" AdornmentIcon="@Icons.Material.Filled.FilterList" Adornment="Adornment.Start">
+                    @foreach (var category in _categories)
+                    {
+                        <MudSelectItem T="string" Value="@category">@category</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudSwitch T="bool" @bind-Value="_activeOnly" Label="Active Only" Color="Color.Primary" Class="ml-2" />
+            </ToolBarContent>
+            <HeaderContent>
+                <MudTh>Template Name</MudTh>
+                <MudTh>Category</MudTh>
+                <MudTh>Description</MudTh>
+                <MudTh>Sections</MudTh>
+                <MudTh>Requirements</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Template Name">
+                    <MudLink Href="@($"/flow/templates/{context.Id}/edit")">@context.DisplayName</MudLink>
+                    <br />
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">@context.Name</MudText>
+                </MudTd>
+                <MudTd DataLabel="Category">
+                    <MudChip T="string" Size="Size.Small" Color="Color.Info">@context.Category</MudChip>
+                </MudTd>
+                <MudTd DataLabel="Description">
+                    <MudText Typo="Typo.body2" Class="text-truncate" Style="max-width: 300px;">
+                        @(context.Description ?? "No description")
+                    </MudText>
+                </MudTd>
+                <MudTd DataLabel="Sections">
+                    <MudChip T="string" Size="Size.Small">@context.SectionCount</MudChip>
+                </MudTd>
+                <MudTd DataLabel="Requirements">
+                    <MudChip T="string" Size="Size.Small">@context.TotalRequirementCount</MudChip>
+                </MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
+                        @(context.IsActive ? "Active" : "Inactive")
+                    </MudChip>
+                </MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary"
+                                 OnClick="() => NavigateToEditTemplate(context.Id)" Size="Size.Small"
+                                 Title="Edit template" />
+                    <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Color="Color.Default"
+                                 OnClick="() => DuplicateTemplate(context)" Size="Size.Small"
+                                 Title="Duplicate template" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Download" Color="Color.Secondary"
+                                 OnClick="() => ExportTemplate(context.Id)" Size="Size.Small"
+                                 Title="Export template" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                                 OnClick="() => ConfirmDeleteTemplate(context)" Size="Size.Small"
+                                 Title="Delete template" />
+                </MudTd>
+            </RowTemplate>
+            <PagerContent>
+                <MudTablePager />
+            </PagerContent>
+            <NoRecordsContent>
+                <MudText>No templates found</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    }
+</MudPaper>
+
+@code {
+    private List<FlowTaskTemplateInfo> _templates = new();
+    private List<string> _categories = new();
+    private bool _isLoading = true;
+    private string _searchString = "";
+    private string? _selectedCategory;
+    private bool _activeOnly = false;
+    private int _rowsPerPage = 10;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTemplatesAndCategories();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_selectedCategory != null || _activeOnly)
+        {
+            await LoadTemplates();
+        }
+    }
+
+    private async Task LoadTemplatesAndCategories()
+    {
+        _isLoading = true;
+        try
+        {
+            var loadTemplatesTask = LoadTemplates();
+            var loadCategoriesTask = LoadCategories();
+
+            await Task.WhenAll(loadTemplatesTask, loadCategoriesTask);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadTemplates()
+    {
+        try
+        {
+            _templates = await FlowTaskApiClient.GetAllFlowTaskTemplatesAsync(
+                category: _selectedCategory,
+                isActive: _activeOnly ? true : null
+            ) ?? new List<FlowTaskTemplateInfo>();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading templates: {ex.Message}", Severity.Error);
+            _templates = new List<FlowTaskTemplateInfo>();
+        }
+    }
+
+    private async Task LoadCategories()
+    {
+        try
+        {
+            _categories = await FlowTaskApiClient.GetCategoriesAsync() ?? new List<string>();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading categories: {ex.Message}", Severity.Error);
+            _categories = new List<string>();
+        }
+    }
+
+    private bool FilterTemplate(FlowTaskTemplateInfo template)
+    {
+        if (string.IsNullOrWhiteSpace(_searchString))
+            return true;
+
+        return template.Name.Contains(_searchString, StringComparison.OrdinalIgnoreCase)
+            || template.DisplayName.Contains(_searchString, StringComparison.OrdinalIgnoreCase)
+            || (template.Description?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false)
+            || template.Category.Contains(_searchString, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void NavigateToNewTemplate()
+    {
+        NavigationManager.NavigateTo("/flow/templates/new");
+    }
+
+    private void NavigateToEditTemplate(Guid templateId)
+    {
+        NavigationManager.NavigateTo($"/flow/templates/{templateId}/edit");
+    }
+
+    private async Task DuplicateTemplate(FlowTaskTemplateInfo template)
+    {
+        try
+        {
+            // Export the template first
+            var exportedTemplate = await FlowTaskApiClient.ExportFlowTaskTemplateAsync(template.Id);
+            if (exportedTemplate == null)
+            {
+                Snackbar.Add("Template not found", Severity.Error);
+                return;
+            }
+
+            // Modify the name for the duplicate
+            exportedTemplate.Name = $"{exportedTemplate.Name}_copy";
+            exportedTemplate.DisplayName = $"{exportedTemplate.DisplayName} (Copy)";
+            exportedTemplate.Id = Guid.Empty;
+
+            // Import as new template
+            var imported = await FlowTaskApiClient.ImportFlowTaskTemplateAsync(exportedTemplate);
+            Snackbar.Add($"Template duplicated successfully: {imported.DisplayName}", Severity.Success);
+
+            await LoadTemplates();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error duplicating template: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ExportTemplate(Guid templateId)
+    {
+        try
+        {
+            var template = await FlowTaskApiClient.ExportFlowTaskTemplateAsync(templateId);
+            if (template == null)
+            {
+                Snackbar.Add("Template not found", Severity.Error);
+                return;
+            }
+
+            var json = System.Text.Json.JsonSerializer.Serialize(template, new System.Text.Json.JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+
+            // Download as JSON file
+            var fileName = $"{template.Name}_{DateTime.UtcNow:yyyyMMdd}.json";
+            await DownloadFileFromText(fileName, json);
+
+            Snackbar.Add("Template exported successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error exporting template: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ShowImportDialog()
+    {
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<ImportFlowTaskDialog>("Import Template", options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            // Reload templates to show the newly imported one
+            await LoadTemplates();
+            StateHasChanged();
+        }
+    }
+
+    private void ConfirmDeleteTemplate(FlowTaskTemplateInfo template)
+    {
+        var parameters = new DialogParameters
+        {
+            { "ContentText", $"Are you sure you want to delete the template '{template.DisplayName}'? This action cannot be undone." },
+            { "ButtonText", "Delete" },
+            { "DialogColor", Color.Error }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = DialogService.Show<ConfirmationDialog>("Delete Template", parameters, options);
+
+        dialog.Result.ContinueWith(async result =>
+        {
+            if (!result.Result.Canceled)
+            {
+                await DeleteTemplate(template);
+            }
+        });
+    }
+
+    private async Task DeleteTemplate(FlowTaskTemplateInfo template)
+    {
+        try
+        {
+            var success = await FlowTaskApiClient.DeleteFlowTaskTemplateAsync(template.Id);
+            if (success)
+            {
+                Snackbar.Add($"Template '{template.DisplayName}' deleted successfully", Severity.Success);
+                await LoadTemplates();
+                StateHasChanged();
+            }
+            else
+            {
+                Snackbar.Add("Template not found", Severity.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error deleting template: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DownloadFileFromText(string fileName, string content)
+    {
+        await JSRuntime.InvokeVoidAsync("downloadFileFromText", fileName, content, "application/json;charset=utf-8");
+    }
+}

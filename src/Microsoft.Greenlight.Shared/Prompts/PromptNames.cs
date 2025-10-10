@@ -59,4 +59,30 @@ public static class PromptNames
     /// Gets the prompt used to generate a section with an agentic approach (ContentWriter Agent).
     /// </summary>
     public const string SectionGenerationAgenticMainPrompt = "SectionGenerationAgenticMainPrompt";
+
+    // System-wide prompts (Flow AI Assistant)
+    /// <summary>
+    /// System prompt for Flow backend conversations (conversations between Flow and document processes).
+    /// </summary>
+    public const string FlowBackendConversationSystemPrompt = "FlowBackendConversationSystemPrompt";
+
+    /// <summary>
+    /// System prompt for Flow user conversations (direct conversations with users).
+    /// </summary>
+    public const string FlowUserConversationSystemPrompt = "FlowUserConversationSystemPrompt";
+
+    /// <summary>
+    /// Prompt for Flow intent detection (determines which document processes to engage).
+    /// </summary>
+    public const string FlowIntentDetectionPrompt = "FlowIntentDetectionPrompt";
+
+    /// <summary>
+    /// Prompt for Flow response synthesis (combines responses from multiple document processes).
+    /// </summary>
+    public const string FlowResponseSynthesisPrompt = "FlowResponseSynthesisPrompt";
+
+    /// <summary>
+    /// Prompt for Flow conversational fallback (used when no specific document process intent is detected).
+    /// </summary>
+    public const string FlowConversationalFallbackPrompt = "FlowConversationalFallbackPrompt";
 }

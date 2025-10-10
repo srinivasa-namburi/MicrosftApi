@@ -15,6 +15,7 @@ using Microsoft.Greenlight.Shared.Models.Plugins;
 using Microsoft.Greenlight.Shared.Models.FileStorage;
 using Microsoft.Greenlight.Shared.Contracts.Components;
 using Microsoft.Greenlight.Shared.Models.Authorization;
+using Microsoft.Greenlight.Shared.Models.FlowTasks;
 
 namespace Microsoft.Greenlight.Shared.Data.Sql;
 
@@ -99,9 +100,17 @@ public class DocGenerationDbContext : DbContext
 
         //Apply configurations for entities inheriting from EntityBase
         //This loop applies configurations for all entities inheriting EntityBase to avoid repeating the same configurations
+        // TPH (Table Per Hierarchy) base types and their derived types are excluded since the key is configured on the base type only
+        var tphExcludedTypes = new[]
+        {
+            typeof(Models.SourceReferences.SourceReferenceItem),
+            typeof(Models.FlowTasks.FlowTaskDataSource)
+        };
+
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())
         {
-            if (entityType.ClrType.IsSubclassOf(typeof(EntityBase)))
+            if (entityType.ClrType.IsSubclassOf(typeof(EntityBase)) &&
+                !tphExcludedTypes.Any(t => t.IsAssignableFrom(entityType.ClrType)))
             {
                 modelBuilder.Entity(entityType.ClrType).HasKey(nameof(EntityBase.Id));
                 modelBuilder.Entity(entityType.ClrType).Property(typeof(byte[]), nameof(EntityBase.RowVersion)).IsRowVersion();
@@ -416,6 +425,80 @@ public class DocGenerationDbContext : DbContext
             .IsRequired()
             .OnDelete(DeleteBehavior.Cascade);
 
+        // FlowTaskDataSource TPH configuration
+        modelBuilder.Entity<FlowTaskDataSource>()
+            .ToTable("FlowTaskDataSources");
+
+        modelBuilder.Entity<FlowTaskDataSource>()
+            .HasDiscriminator<string>(nameof(FlowTaskDataSource.SourceType))
+            .HasValue<FlowTaskMcpToolDataSource>(nameof(FlowTaskMcpToolDataSource))
+            .HasValue<FlowTaskStaticDataSource>(nameof(FlowTaskStaticDataSource));
+
+        modelBuilder.Entity<FlowTaskDataSource>()
+            .Property(e => e.SourceType)
+            .IsRequired()
+            .HasMaxLength(50);
+
+        modelBuilder.Entity<FlowTaskDataSource>()
+            .Property(e => e.Name)
+            .IsRequired()
+            .HasMaxLength(100);
+
+        modelBuilder.Entity<FlowTaskDataSource>()
+            .Property(e => e.Description)
+            .HasMaxLength(500);
+
+        modelBuilder.Entity<FlowTaskDataSource>()
+            .Property(e => e.IsActive)
+            .HasDefaultValue(true);
+
+        modelBuilder.Entity<FlowTaskDataSource>()
+            .HasOne(e => e.FlowTaskTemplate)
+            .WithMany(e => e.DataSources)
+            .HasForeignKey(e => e.FlowTaskTemplateId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<FlowTaskDataSource>()
+            .HasIndex(e => e.Name);
+
+        modelBuilder.Entity<FlowTaskDataSource>()
+            .HasIndex(e => e.IsActive);
+
+        modelBuilder.Entity<FlowTaskDataSource>()
+            .HasIndex(e => e.SourceType);
+
+        modelBuilder.Entity<FlowTaskDataSource>()
+            .HasIndex(e => e.FlowTaskTemplateId);
+
+        // FlowTaskMcpToolDataSource derived type configuration
+        modelBuilder.Entity<FlowTaskMcpToolDataSource>()
+            .Property(e => e.ToolName)
+            .IsRequired()
+            .HasMaxLength(200);
+
+        modelBuilder.Entity<FlowTaskMcpToolDataSource>()
+            .Property(e => e.TransformPrompt)
+            .HasMaxLength(2000);
+
+        modelBuilder.Entity<FlowTaskMcpToolDataSource>()
+            .HasOne(e => e.McpPlugin)
+            .WithMany()
+            .HasForeignKey(e => e.McpPluginId)
+            .IsRequired()
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Note: Parameters relationship is configured via FlowTaskMcpToolParameter configuration
+        // The FK FlowTaskDataSourceId references the base type's Id (TPH pattern)
+
+        // FlowTaskStaticDataSource derived type configuration
+        modelBuilder.Entity<FlowTaskStaticDataSource>()
+            .Property(e => e.ValuesJson)
+            .IsRequired();
+
+        modelBuilder.Entity<FlowTaskStaticDataSource>()
+            .Property(e => e.DisplayFormat)
+            .HasMaxLength(50);
 
         modelBuilder.Entity<SourceReferenceItem>()
              .ToTable("SourceReferenceItems");
@@ -1327,4 +1410,40 @@ public class DocGenerationDbContext : DbContext
     /// Gets or sets the external link assets for URL shortening and file access.
     /// </summary>
     public DbSet<ExternalLinkAsset> ExternalLinkAssets { get; set; }
+
+    /// <summary>
+    /// Gets or sets the system prompts for Flow and other system-wide AI components.
+    /// </summary>
+    public DbSet<SystemPrompt> SystemPrompts { get; set; }
+
+    // Flow Tasks
+    /// <summary>
+    /// Gets or sets the Flow Task templates.
+    /// </summary>
+    public DbSet<FlowTaskTemplate> FlowTaskTemplates { get; set; }
+
+    /// <summary>
+    /// Gets or sets the Flow Task sections.
+    /// </summary>
+    public DbSet<FlowTaskSection> FlowTaskSections { get; set; }
+
+    /// <summary>
+    /// Gets or sets the Flow Task requirements.
+    /// </summary>
+    public DbSet<FlowTaskRequirement> FlowTaskRequirements { get; set; }
+
+    /// <summary>
+    /// Gets or sets the Flow Task data sources (includes all derived types via TPH).
+    /// </summary>
+    public DbSet<FlowTaskDataSource> FlowTaskDataSources { get; set; }
+
+    /// <summary>
+    /// Gets or sets the Flow Task MCP tool parameters.
+    /// </summary>
+    public DbSet<FlowTaskMcpToolParameter> FlowTaskMcpToolParameters { get; set; }
+
+    /// <summary>
+    /// Gets or sets the Flow Task output templates.
+    /// </summary>
+    public DbSet<FlowTaskOutputTemplate> FlowTaskOutputTemplates { get; set; }
 }

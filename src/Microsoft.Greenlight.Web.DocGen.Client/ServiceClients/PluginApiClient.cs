@@ -271,4 +271,54 @@ internal sealed class PluginApiClient : WebAssemblyBaseServiceClient<PluginApiCl
         response?.EnsureSuccessStatusCode();
         return await response!.Content.ReadFromJsonAsync<List<McpPluginAssociationInfo>>() ?? new List<McpPluginAssociationInfo>();
     }
+
+    public async Task<string?> UpdateExposeToFlowAsync(Guid pluginId, bool exposeToFlow)
+    {
+        try
+        {
+            var url = $"/api/mcp-plugins/{pluginId}/expose-to-flow";
+            var response = await SendPutRequestMessage(url, exposeToFlow);
+
+            if (response?.StatusCode == HttpStatusCode.BadRequest)
+            {
+                // Return the error message from the API (e.g., list of templates using the plugin)
+                return await response.Content.ReadAsStringAsync();
+            }
+
+            if (response?.StatusCode == HttpStatusCode.NotFound)
+            {
+                return $"Plugin not found with ID: {pluginId}";
+            }
+
+            response?.EnsureSuccessStatusCode();
+            return null; // Success
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Error updating ExposeToFlow for plugin {pluginId}");
+            return $"Error: {ex.Message}";
+        }
+    }
+
+    public async Task<List<McpPluginInfo>> GetFlowExposedPluginsAsync()
+    {
+        try
+        {
+            var url = "/api/mcp-plugins/flow-exposed";
+            var response = await SendGetRequestMessage(url);
+
+            if (response?.StatusCode == HttpStatusCode.NotFound)
+            {
+                return new List<McpPluginInfo>();
+            }
+
+            response?.EnsureSuccessStatusCode();
+            return await response!.Content.ReadFromJsonAsync<List<McpPluginInfo>>() ?? new List<McpPluginInfo>();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error getting flow-exposed MCP plugins");
+            return new List<McpPluginInfo>();
+        }
+    }
 }

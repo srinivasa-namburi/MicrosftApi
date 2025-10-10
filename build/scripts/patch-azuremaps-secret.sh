@@ -13,7 +13,7 @@ echo "[Patch] Patching Azure Maps key into all service secrets in namespace: $NA
 AZUREMAPS_B64=$(printf '%s' "$AZUREMAPS_KEY" | base64 | tr -d '\n')
 
 # Patch all service secrets
-for app in api-main db-setupmanager mcp-server silo web-docgen; do
+for app in api-main db-setupmanager mcpserver-core mcpserver-flow silo web-docgen; do
   secret="${app}-secrets"
   echo "[Patch] Patching $secret..."
 

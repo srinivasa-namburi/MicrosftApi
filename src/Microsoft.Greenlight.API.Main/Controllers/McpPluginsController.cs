@@ -6,6 +6,7 @@ using Microsoft.Greenlight.Shared.Contracts.DTO.Plugins;
 using Microsoft.Greenlight.Shared.Data.Sql;
 using Microsoft.Greenlight.Shared.Enums;
 using Microsoft.Greenlight.Shared.Helpers;
+using Microsoft.Greenlight.Shared.Models.FlowTasks;
 using Microsoft.Greenlight.Shared.Models.Plugins;
 using Microsoft.Greenlight.Shared.Plugins;
 using Microsoft.Greenlight.Grains.Shared.Contracts;
@@ -1047,6 +1048,80 @@ namespace Microsoft.Greenlight.API.Main.Controllers
                 _logger?.LogError(ex, "Error deleting MCP plugin: {PluginId}", pluginId);
                 return StatusCode(StatusCodes.Status500InternalServerError, $"Error deleting plugin: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Gets all MCP plugins that are exposed to Flow.
+        /// </summary>
+        /// <returns>A list of MCP plugins exposed to Flow.
+        /// Produces Status Codes:
+        ///     200 OK: When completed successfully
+        /// </returns>
+        [HttpGet("flow-exposed")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [Produces("application/json")]
+        [Produces<List<McpPluginInfo>>]
+        public async Task<ActionResult<List<McpPluginInfo>>> GetFlowExposedPlugins()
+        {
+            var plugins = await _dbContext.McpPlugins
+                .Include(p => p.Versions)
+                .Where(p => p.ExposeToFlow)
+                .AsNoTracking()
+                .ToListAsync();
+
+            var pluginInfos = _mapper.Map<List<McpPluginInfo>>(plugins);
+            return Ok(pluginInfos);
+        }
+
+        /// <summary>
+        /// Updates the ExposeToFlow flag for an MCP plugin.
+        /// Prevents disabling Flow integration if the plugin is used in any Flow Task templates.
+        /// </summary>
+        /// <param name="pluginId">The plugin identifier.</param>
+        /// <param name="exposeToFlow">Whether to expose the plugin to Flow.</param>
+        /// <returns>No content if successful.
+        /// Produces Status Codes:
+        ///     204 No Content: When completed successfully
+        ///     400 Bad Request: When trying to disable a plugin that is in use by Flow Task templates
+        ///     404 Not Found: When the plugin was not found
+        /// </returns>
+        [HttpPut("{pluginId:guid}/expose-to-flow")]
+        [RequiresAnyPermission(PermissionKeys.AlterSystemConfiguration, PermissionKeys.AlterDocumentProcessesAndLibraries)]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> UpdateExposeToFlow(Guid pluginId, [FromBody] bool exposeToFlow)
+        {
+            var plugin = await _dbContext.McpPlugins.FindAsync(pluginId);
+            if (plugin == null)
+            {
+                return NotFound($"MCP plugin with ID {pluginId} not found.");
+            }
+
+            // If disabling Flow integration, check if the plugin is used in any Flow Task templates
+            if (!exposeToFlow && plugin.ExposeToFlow)
+            {
+                var usedInTemplates = await _dbContext.Set<FlowTaskMcpToolDataSource>()
+                    .Where(ds => ds.McpPluginId == pluginId)
+                    .Include(ds => ds.FlowTaskTemplate)
+                    .AsNoTracking()
+                    .ToListAsync();
+
+                if (usedInTemplates.Any())
+                {
+                    var templateNames = usedInTemplates
+                        .Select(ds => ds.FlowTaskTemplate?.DisplayName ?? ds.FlowTaskTemplate?.Name ?? "Unknown")
+                        .Distinct()
+                        .ToList();
+
+                    return BadRequest($"Cannot disable Flow integration for this plugin because it is used by the following Flow Task templates: {string.Join(", ", templateNames)}. Please remove the plugin from these templates first.");
+                }
+            }
+
+            plugin.ExposeToFlow = exposeToFlow;
+            await _dbContext.SaveChangesAsync();
+
+            return NoContent();
         }
     }
 }

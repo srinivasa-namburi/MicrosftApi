@@ -261,7 +261,52 @@ public class ConfigurationApiClient : BaseServiceClient<ConfigurationApiClient>,
     {
         var response = await SendDeleteRequestMessage($"/api/configuration/secret-override?configurationKey={Uri.EscapeDataString(configurationKey)}");
         response?.EnsureSuccessStatusCode();
-        return await response?.Content.ReadFromJsonAsync<SecretOverrideInfo>() ?? 
+        return await response?.Content.ReadFromJsonAsync<SecretOverrideInfo>() ??
                throw new IOException("Failed to remove secret override!");
+    }
+
+    public async Task<SystemPromptResponse> GetSystemPromptAsync(string promptName)
+    {
+        var response = await SendGetRequestMessage($"/api/systemprompt/{Uri.EscapeDataString(promptName)}");
+        response?.EnsureSuccessStatusCode();
+        return await response?.Content.ReadFromJsonAsync<SystemPromptResponse>() ??
+               throw new IOException($"Failed to get system prompt '{promptName}'!");
+    }
+
+    public async Task<SystemPromptResponse> GetDefaultSystemPromptAsync(string promptName)
+    {
+        var response = await SendGetRequestMessage($"/api/systemprompt/{Uri.EscapeDataString(promptName)}/default");
+        response?.EnsureSuccessStatusCode();
+        return await response?.Content.ReadFromJsonAsync<SystemPromptResponse>() ??
+               throw new IOException($"Failed to get default system prompt '{promptName}'!");
+    }
+
+    public async Task UpdateSystemPromptAsync(string promptName, string text, bool isActive = true)
+    {
+        var request = new UpdateSystemPromptRequest { Text = text, IsActive = isActive };
+        var response = await SendPutRequestMessage($"/api/systemprompt/{Uri.EscapeDataString(promptName)}", request);
+        response?.EnsureSuccessStatusCode();
+    }
+
+    public async Task DeleteSystemPromptOverrideAsync(string promptName)
+    {
+        var response = await SendDeleteRequestMessage($"/api/systemprompt/{Uri.EscapeDataString(promptName)}");
+        response?.EnsureSuccessStatusCode();
+    }
+
+    public async Task<PromptValidationResult> ValidateSystemPromptAsync(string promptName, string text)
+    {
+        var request = new ValidatePromptRequest { Text = text };
+        var response = await SendPostRequestMessage($"/api/systemprompt/{Uri.EscapeDataString(promptName)}/validate", request);
+        response?.EnsureSuccessStatusCode();
+        return await response?.Content.ReadFromJsonAsync<PromptValidationResult>() ??
+               throw new IOException("Failed to validate prompt!");
+    }
+
+    public async Task<List<string>> GetAvailableSystemPromptsAsync()
+    {
+        var response = await SendGetRequestMessage("/api/systemprompt/available");
+        response?.EnsureSuccessStatusCode();
+        return await response?.Content.ReadFromJsonAsync<List<string>>() ?? new List<string>();
     }
 }

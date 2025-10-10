@@ -129,7 +129,7 @@ case "$DEPLOYMENT_MODEL" in
   public)
     echo "[expose] Public deployment - creating external LoadBalancers..."
     # Ensure all main services are ClusterIP for internal communication
-    for base in api-main web-docgen mcp-server; do
+    for base in api-main web-docgen mcpserver-core mcpserver-flow; do
       kubectl -n "$NS" patch service "$base" --type='merge' -p '{"spec":{"type":"ClusterIP"}}' 2>/dev/null || true
       ensure_lb "$base"
     done
@@ -138,7 +138,7 @@ case "$DEPLOYMENT_MODEL" in
   hybrid)
     echo "[expose] Hybrid deployment - creating internal LoadBalancers for VNET access..."
     # Create internal load balancers for hybrid mode (accessible within VNET)
-    for base in api-main web-docgen mcp-server; do
+    for base in api-main web-docgen mcpserver-core mcpserver-flow; do
       ensure_internal_lb "$base"
     done
     ;;
@@ -162,7 +162,8 @@ if [[ "$DEPLOYMENT_MODEL" == "private" ]]; then
 # Private deployment - no external endpoints
 EXPOSED_API_MAIN=
 EXPOSED_WEB_DOCGEN=
-EXPOSED_MCP_SERVER=
+EXPOSED_MCP_CORE=
+EXPOSED_MCP_FLOW=
 DEPLOYMENT_MODE=private
 EOF
   echo "[expose] Wrote placeholder exposed-endpoints.env for private deployment"
@@ -184,11 +185,13 @@ else
 
   API_IP=$(wait_ip api-main-lb)
   DOCGEN_IP=$(wait_ip web-docgen-lb)
-  MCP_IP=$(wait_ip mcp-server-lb)
+  MCP_CORE_IP=$(wait_ip mcpserver-core-lb)
+  MCP_FLOW_IP=$(wait_ip mcpserver-flow-lb)
 
   echo "[expose] api-main-lb: $API_IP"
   echo "[expose] web-docgen-lb: $DOCGEN_IP"
-  echo "[expose] mcp-server-lb: $MCP_IP"
+  echo "[expose] mcpserver-core-lb: $MCP_CORE_IP"
+  echo "[expose] mcpserver-flow-lb: $MCP_FLOW_IP"
 
   # Export for downstream scripts and persist
   if [[ "$DEPLOYMENT_MODEL" == "hybrid" ]]; then
@@ -240,7 +243,8 @@ else
 
     API_FE_ID=""
     DOCGEN_FE_ID=""
-    MCP_FE_ID=""
+    MCP_CORE_FE_ID=""
+    MCP_FLOW_FE_ID=""
 
     if [[ -n "$API_IP" ]]; then
       API_FE_ID=$(resolve_frontend_id "$API_IP") || true
@@ -248,17 +252,21 @@ else
     if [[ -n "$DOCGEN_IP" ]]; then
       DOCGEN_FE_ID=$(resolve_frontend_id "$DOCGEN_IP") || true
     fi
-    if [[ -n "$MCP_IP" ]]; then
-      MCP_FE_ID=$(resolve_frontend_id "$MCP_IP") || true
+    if [[ -n "$MCP_CORE_IP" ]]; then
+      MCP_CORE_FE_ID=$(resolve_frontend_id "$MCP_CORE_IP") || true
+    fi
+    if [[ -n "$MCP_FLOW_IP" ]]; then
+      MCP_FLOW_FE_ID=$(resolve_frontend_id "$MCP_FLOW_IP") || true
     fi
 
-    if [[ -z "$API_FE_ID" || -z "$DOCGEN_FE_ID" || -z "$MCP_FE_ID" ]]; then
+    if [[ -z "$API_FE_ID" || -z "$DOCGEN_FE_ID" || -z "$MCP_CORE_FE_ID" || -z "$MCP_FLOW_FE_ID" ]]; then
       echo "[expose] WARNING: Unable to resolve one or more load balancer frontend IDs. Downstream private link setup may fail." >&2
     fi
 
     HYBRID_METADATA="EXPOSED_API_MAIN_FRONTEND_ID=$API_FE_ID
 EXPOSED_WEB_DOCGEN_FRONTEND_ID=$DOCGEN_FE_ID
-EXPOSED_MCP_SERVER_FRONTEND_ID=$MCP_FE_ID
+EXPOSED_MCP_CORE_FRONTEND_ID=$MCP_CORE_FE_ID
+EXPOSED_MCP_FLOW_FRONTEND_ID=$MCP_FLOW_FE_ID
 EXPOSED_AKS_NODE_RESOURCE_GROUP=$NODE_RG
 EXPOSED_AKS_CLUSTER_LOCATION=$AKS_LOCATION
 EXPOSED_AZURE_SUBSCRIPTION_ID=$SUBSCRIPTION_ID"
@@ -267,14 +275,16 @@ EXPOSED_AZURE_SUBSCRIPTION_ID=$SUBSCRIPTION_ID"
   {
     echo "EXPOSED_API_MAIN=http://$API_IP"
     echo "EXPOSED_WEB_DOCGEN=http://$DOCGEN_IP"
-    echo "EXPOSED_MCP_SERVER=http://$MCP_IP"
+    echo "EXPOSED_MCP_CORE=http://$MCP_CORE_IP"
+    echo "EXPOSED_MCP_FLOW=http://$MCP_FLOW_IP"
     echo "DEPLOYMENT_MODE=$DEPLOYMENT_MODEL"
     if [[ -n "$HYBRID_METADATA" ]]; then
       echo "$HYBRID_METADATA"
     else
       echo "EXPOSED_API_MAIN_FRONTEND_ID="
       echo "EXPOSED_WEB_DOCGEN_FRONTEND_ID="
-      echo "EXPOSED_MCP_SERVER_FRONTEND_ID="
+      echo "EXPOSED_MCP_CORE_FRONTEND_ID="
+      echo "EXPOSED_MCP_FLOW_FRONTEND_ID="
       echo "EXPOSED_AKS_NODE_RESOURCE_GROUP="
       echo "EXPOSED_AKS_CLUSTER_LOCATION="
       echo "EXPOSED_AZURE_SUBSCRIPTION_ID="

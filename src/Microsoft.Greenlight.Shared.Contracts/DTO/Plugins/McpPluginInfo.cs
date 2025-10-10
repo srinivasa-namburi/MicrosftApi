@@ -48,5 +48,10 @@ namespace Microsoft.Greenlight.Shared.Contracts.DTO.Plugins
         /// Gets or sets the document processes associated with this plugin.
         /// </summary>
         public List<McpPluginDocumentProcessInfo>? DocumentProcesses { get; set; } = new List<McpPluginDocumentProcessInfo>();
+
+        /// <summary>
+        /// Gets or sets whether this plugin is exposed to Flow for use in Flow Tasks and conversational orchestration.
+        /// </summary>
+        public bool ExposeToFlow { get; set; }
     }
 }

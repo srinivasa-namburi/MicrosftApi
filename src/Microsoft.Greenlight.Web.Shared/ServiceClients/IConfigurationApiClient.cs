@@ -70,4 +70,35 @@ public interface IConfigurationApiClient : IServiceClient
     Task<SecretOverrideInfo> GetSecretOverrideInfoAsync(string configurationKey);
     Task<SecretOverrideInfo> SetSecretOverrideAsync(SecretOverrideRequest request);
     Task<SecretOverrideInfo> RemoveSecretOverrideAsync(string configurationKey);
+
+    // System Prompt endpoints
+    /// <summary>
+    /// Gets a system prompt by name (with database override if exists).
+    /// </summary>
+    Task<SystemPromptResponse> GetSystemPromptAsync(string promptName);
+
+    /// <summary>
+    /// Gets the default (non-overridden) prompt text for a system prompt.
+    /// </summary>
+    Task<SystemPromptResponse> GetDefaultSystemPromptAsync(string promptName);
+
+    /// <summary>
+    /// Updates or creates a system prompt override.
+    /// </summary>
+    Task UpdateSystemPromptAsync(string promptName, string text, bool isActive = true);
+
+    /// <summary>
+    /// Deletes a system prompt override (reverts to default).
+    /// </summary>
+    Task DeleteSystemPromptOverrideAsync(string promptName);
+
+    /// <summary>
+    /// Validates that a prompt contains all required Scriban variables.
+    /// </summary>
+    Task<PromptValidationResult> ValidateSystemPromptAsync(string promptName, string text);
+
+    /// <summary>
+    /// Gets all available system prompt names.
+    /// </summary>
+    Task<List<string>> GetAvailableSystemPromptsAsync();
 }

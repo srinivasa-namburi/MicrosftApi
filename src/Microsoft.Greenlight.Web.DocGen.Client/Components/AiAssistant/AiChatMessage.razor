@@ -482,17 +482,18 @@
                 </MudStack>
             }
 
-            @if (_messageReferences.Any())
+            @* Only show attachment references on assistant messages, not user messages *@
+            @if (_messageReferences.Any() && ChatMessage.Source != ChatMessageSource.User)
             {
                 <MudDivider Class="my-2" />
                 <div class="chat-message-attachments">
                     @foreach (var reference in _messageReferences)
                     {
-                        @if (reference.ReferenceType == ContentReferenceType.ExternalFile || 
+                        @if (reference.ReferenceType == ContentReferenceType.ExternalFile ||
                              reference.ReferenceType == ContentReferenceType.ExternalLinkAsset)
                         {
-                            <MudChip T="string" Size="Size.Small" 
-                                     Icon="@GetReferenceIcon(reference.ReferenceType)" 
+                            <MudChip T="string" Size="Size.Small"
+                                     Icon="@GetReferenceIcon(reference.ReferenceType)"
                                      Variant="Variant.Outlined"
                                      Color="Color.Default"
                                      Class="mud-chip-clickable reference-chip"
@@ -503,8 +504,8 @@
                         }
                         else
                         {
-                            <MudChip T="string" Size="Size.Small" 
-                                     Icon="@GetReferenceIcon(reference.ReferenceType)" 
+                            <MudChip T="string" Size="Size.Small"
+                                     Icon="@GetReferenceIcon(reference.ReferenceType)"
                                      Variant="Variant.Outlined"
                                      Color="Color.Default"
                                      Class="reference-chip"
