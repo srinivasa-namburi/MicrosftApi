@@ -428,16 +428,26 @@ jobs:
               "$SCRIPTS_DIR/build-modern-add-wi-serviceaccount.sh" "$PUB_DIR" "$AKS_NAMESPACE" "${WORKLOAD_IDENTITY_SERVICE_ACCOUNT:-greenlight-app}" || echo "[GitHub] ServiceAccount injection skipped"
           fi
 
-          # Deploy with Helm using unified clean deployment script (same as ADO)
-          echo "[GitHub] Starting Helm deployment...rajesh12"
-          echo "[DEBUG] AKS_NAMESPACE from env: '$AKS_NAMESPACE'"
-          DOCING_BLOB_EP="$DOCING_BLOB_EP" \
-          SQLSERVER_FQDN="$SQLSERVER_FQDN" \
-          ORLEANS_TABLE_EP="$ORLEANS_TABLE_EP" \
-          ORLEANS_BLOB_EP="$ORLEANS_BLOB_EP" \
-          AISEARCH_CS="$AISEARCH_CS" \
-          APPINSIGHTS_CS="$APPINSIGHTS_CS" \
+          # ✅ Export variables so child process (Helm script) can see them
+          export DOCING_BLOB_EP SQLSERVER_FQDN ORLEANS_TABLE_EP ORLEANS_BLOB_EP AISEARCH_CS APPINSIGHTS_CS
+          
+          # 🧾 Debug log of what we’re passing
+          echo "[DEBUG] Passing the following env vars into Helm script Rajesh:"
+          echo "  DOCING_BLOB_EP=$DOCING_BLOB_EP"
+          echo "  SQLSERVER_FQDN=$SQLSERVER_FQDN"
+          echo "  ORLEANS_TABLE_EP=$ORLEANS_TABLE_EP"
+          echo "  ORLEANS_BLOB_EP=$ORLEANS_BLOB_EP"
+          echo "  AISEARCH_CS=$AISEARCH_CS"
+          echo "  APPINSIGHTS_CS=$APPINSIGHTS_CS"
+          
+          # Double-check visibility in current shell
+          echo "[DEBUG] env | grep verification:"
+          env | grep -E 'DOCING_|SQLSERVER|ORLEANS_|AISEARCH_|APPINSIGHTS_'
+          
+          # 🚀 Run the Helm deployment script
+          echo "[DEBUG] Executing: build/scripts/build-modern-helm-deploy-clean.sh \"$PUB_DIR\" \"$HELM_RELEASE\" \"$AKS_NAMESPACE\""
           build/scripts/build-modern-helm-deploy-clean.sh "$PUB_DIR" "$HELM_RELEASE" "$AKS_NAMESPACE"
+
         env:
           HELM_RELEASE: ${{ vars.HELM_RELEASE }}
           AKS_NAMESPACE: ${{ vars.AKS_NAMESPACE }}
