@@ -11,7 +11,6 @@ WORKDIR /src
 
 # Copy solution and all project files for restore
 COPY src/*.slnx ./
-COPY src/*.sln ./
 COPY src/Directory.Build.props ./
 
 # Copy all project files
