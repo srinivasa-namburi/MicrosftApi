@@ -404,6 +404,10 @@ jobs:
           export AISEARCH_CS="$AZURE_OUTPUT_AISEARCH_CONNECTIONSTRING"
           export APPINSIGHTS_CS="$AZURE_OUTPUT_INSIGHTS_APPINSIGHTSCONNECTIONSTRING"
 
+          echo "[GitHub] Verifying mapped environment variables..."
+          env | grep -E 'DOCING_|SQLSERVER|ORLEANS_|AISEARCH_|APPINSIGHTS_' || echo "No mapped vars found"
+
+
           # Pass configuration as environment variables to Helm
           export PVICO_OPENAI_CONNECTIONSTRING="${PVICO_OPENAI_CONNECTIONSTRING:-}"
           export PVICO_ENTRA_CREDENTIALS="${PVICO_ENTRA_CREDENTIALS:-}"
