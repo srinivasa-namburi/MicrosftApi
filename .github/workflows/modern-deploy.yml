@@ -395,6 +395,15 @@ jobs:
             echo "[GitHub] WARNING: No azure-outputs.env file found"
           fi
 
+          # 🩵 FIX: Map Azure outputs to Helm variable names
+          echo "[GitHub] Mapping Azure outputs for Helm..."
+          export DOCING_BLOB_EP="$AZURE_OUTPUT_DOCING_BLOBENDPOINT"
+          export SQLSERVER_FQDN="$AZURE_OUTPUT_SQLDOCGEN_SQLSERVERFQDN"
+          export ORLEANS_TABLE_EP="$AZURE_OUTPUT_ORLEANS_STORAGE_TABLEENDPOINT"
+          export ORLEANS_BLOB_EP="$AZURE_OUTPUT_ORLEANS_STORAGE_BLOBENDPOINT"
+          export AISEARCH_CS="$AZURE_OUTPUT_AISEARCH_CONNECTIONSTRING"
+          export APPINSIGHTS_CS="$AZURE_OUTPUT_INSIGHTS_APPINSIGHTSCONNECTIONSTRING"
+
           # Pass configuration as environment variables to Helm
           export PVICO_OPENAI_CONNECTIONSTRING="${PVICO_OPENAI_CONNECTIONSTRING:-}"
           export PVICO_ENTRA_CREDENTIALS="${PVICO_ENTRA_CREDENTIALS:-}"
