@@ -358,7 +358,7 @@ jobs:
       - name: Configure AKS credentials
         run: |
           AKS_RG="${AKS_RESOURCE_GROUP:-$AZURE_RESOURCE_GROUP}"
-          AKS_NAME="${AKS_CLUSTER_NAME:-aks-$AZURE_RESOURCE_GROUP}"
+          AKS_NAME="${AKS_CLUSTER_NAME:-greenlight-aks-dev}"
           echo "[GitHub Actions] Retrieving credentials for AKS: $AKS_NAME in RG: $AKS_RG"
           az aks get-credentials --resource-group "$AKS_RG" --name "$AKS_NAME" --overwrite-existing
           kubectl cluster-info
