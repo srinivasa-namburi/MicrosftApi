@@ -437,7 +437,6 @@ jobs:
           ORLEANS_BLOB_EP="$ORLEANS_BLOB_EP" \
           AISEARCH_CS="$AISEARCH_CS" \
           APPINSIGHTS_CS="$APPINSIGHTS_CS" \
-         
           build/scripts/build-modern-helm-deploy-clean.sh "$PUB_DIR" "$HELM_RELEASE" "$AKS_NAMESPACE"
         env:
           HELM_RELEASE: ${{ vars.HELM_RELEASE }}
