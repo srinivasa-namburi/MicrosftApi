@@ -429,14 +429,15 @@ jobs:
           fi
 
           # Deploy with Helm using unified clean deployment script (same as ADO)
-          echo "[GitHub] Starting Helm deployment...rajesh1"
+          echo "[GitHub] Starting Helm deployment...rajesh12"
+          echo "[DEBUG] AKS_NAMESPACE from env: '$AKS_NAMESPACE'"
           DOCING_BLOB_EP="$DOCING_BLOB_EP" \
           SQLSERVER_FQDN="$SQLSERVER_FQDN" \
           ORLEANS_TABLE_EP="$ORLEANS_TABLE_EP" \
           ORLEANS_BLOB_EP="$ORLEANS_BLOB_EP" \
           AISEARCH_CS="$AISEARCH_CS" \
           APPINSIGHTS_CS="$APPINSIGHTS_CS" \
-          build/scripts/build-modern-helm-deploy-clean.sh "$PUB_DIR" "$HELM_RELEASE" "$AKS_NAMESPACE"
+         
           build/scripts/build-modern-helm-deploy-clean.sh "$PUB_DIR" "$HELM_RELEASE" "$AKS_NAMESPACE"
         env:
           HELM_RELEASE: ${{ vars.HELM_RELEASE }}
