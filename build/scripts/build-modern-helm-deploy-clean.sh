@@ -10,6 +10,17 @@ NAMESPACE=${3:?Missing namespace}
 
 echo "[clean] Clean Helm deployment - no template modifications"
 echo "[clean] Using pure Helm values override approach"
+RAJESH="Hello from Rajesh"
+echo "[test] RAJESH = '${RAJESH}'"
+
+# Check Azure output variables
+echo "[test] AZURE_OUTPUT_DOCING_BLOBENDPOINT = '${AZURE_OUTPUT_DOCING_BLOBENDPOINT:-<not set>}'"
+echo "[test] AZURE_OUTPUT_SQLDOCGEN_SQLSERVERFQDN = '${AZURE_OUTPUT_SQLDOCGEN_SQLSERVERFQDN:-<not set>}'"
+echo "[test] AZURE_OUTPUT_ORLEANS_STORAGE_TABLEENDPOINT = '${AZURE_OUTPUT_ORLEANS_STORAGE_TABLEENDPOINT:-<not set>}'"
+echo "[test] AZURE_OUTPUT_ORLEANS_STORAGE_BLOBENDPOINT = '${AZURE_OUTPUT_ORLEANS_STORAGE_BLOBENDPOINT:-<not set>}'"
+echo "[test] AZURE_OUTPUT_EVENTHUB_EVENTHUBSENDPOINT = '${AZURE_OUTPUT_EVENTHUB_EVENTHUBSENDPOINT:-<not set>}'"
+echo "[test] AZURE_OUTPUT_AISEARCH_CONNECTIONSTRING = '${AZURE_OUTPUT_AISEARCH_CONNECTIONSTRING:-<not set>}'"
+echo "[test] AZURE_OUTPUT_INSIGHTS_APPINSIGHTSCONNECTIONSTRING = '${AZURE_OUTPUT_INSIGHTS_APPINSIGHTSCONNECTIONSTRING:-<not set>}'"
 
 # CRITICAL: Validate required Azure AD credentials
 if [[ -z "${PVICO_ENTRA_CREDENTIALS:-}" ]]; then
