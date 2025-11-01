@@ -110,7 +110,7 @@ jobs:
           echo "────────────────────────────────────────"
 
           AKS_RG="${AKS_RESOURCE_GROUP:-${AZURE_RESOURCE_GROUP}}"
-          AKS_NAME="${AKS_CLUSTER_NAME:-aks-${AZURE_RESOURCE_GROUP}}"
+          AKS_NAME="${AKS_CLUSTER_NAME:-greenlight-aks-dev}"
 
           echo "  Cluster: $AKS_NAME"
           echo "  Resource Group: $AKS_RG"
