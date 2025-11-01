@@ -395,7 +395,7 @@ jobs:
             echo "[GitHub] WARNING: No azure-outputs.env file found"
           fi
 
-          # 🩵 FIX: Map Azure outputs to Helm variable names
+          # 🩵 FIX: Map Azure outputs to Helm variable names Rajesh
           echo "[GitHub] Mapping Azure outputs for Helm..."
           export DOCING_BLOB_EP="$AZURE_OUTPUT_DOCING_BLOBENDPOINT"
           export SQLSERVER_FQDN="$AZURE_OUTPUT_SQLDOCGEN_SQLSERVERFQDN"
