@@ -35,7 +35,7 @@ normalize() {
 RG_NORM=$(normalize "$RG")
 PREFIX=$(normalize "$PREFIX_RAW")
 
-PROFILE_BASE="gl-${RG_NORM}"
+PROFILE_BASE="glraj-${RG_NORM}"
 
 if [[ "$DEPLOYMENT_MODEL" == "hybrid" ]]; then
   PROFILE_NAME="${PROFILE_BASE}-hybrid"
