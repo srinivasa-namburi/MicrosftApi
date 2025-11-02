@@ -469,7 +469,7 @@ jobs:
 
           # Ensure we have cluster context
           AKS_RG="${AKS_RESOURCE_GROUP:-$AZURE_RESOURCE_GROUP}"
-          AKS_NAME="${AKS_CLUSTER_NAME:-aks-$AZURE_RESOURCE_GROUP}"
+          AKS_NAME="${AKS_CLUSTER_NAME:-greenlight-aks-dev}"
           az aks get-credentials --resource-group "$AKS_RG" --name "$AKS_NAME" --overwrite-existing
 
           # Expose services based on deployment model
