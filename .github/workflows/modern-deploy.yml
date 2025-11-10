@@ -459,7 +459,6 @@ jobs:
           WORKLOAD_IDENTITY_CLIENT_ID: ${{ vars.WORKLOAD_IDENTITY_CLIENT_ID }}
           WORKLOAD_IDENTITY_SERVICE_ACCOUNT: ${{ vars.WORKLOAD_IDENTITY_SERVICE_ACCOUNT }}
           AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
           # Azure outputs are loaded from azure-outputs.env file directly
       - name: Expose endpoints and setup Front Door
         run: |
