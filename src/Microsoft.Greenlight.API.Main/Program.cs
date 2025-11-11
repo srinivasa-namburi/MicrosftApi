@@ -83,14 +83,11 @@ builder.Services.AddProblemDetails();
 
 builder.Services.AddEndpointsApiExplorer();
 
-// var entraTenantId = builder.Configuration["AzureAd:TenantId"];
-// var entraScopes = builder.Configuration["AzureAd:Scopes"];
-// var entraClientId = builder.Configuration["AzureAd:ClientId"];
-// var entraInstance = builder.Configuration["AzureAd:Instance"];
-var entraTenantId = "1b16ab3e-b8f6-4fe3-9f3e-2db7fe549f6a";
-var entraScopes = "api://b2c25c68-2fd1-44db-8eec-d31156368a56/access_as_user";
-var entraClientId = "b2c25c68-2fd1-44db-8eec-d31156368a56";
-var entraInstance = "https://login.microsoftonline.com/";
+var entraTenantId = builder.Configuration["AzureAd:TenantId"];
+var entraScopes = builder.Configuration["AzureAd:Scopes"];
+var entraClientId = builder.Configuration["AzureAd:ClientId"];
+var entraInstance = builder.Configuration["AzureAd:Instance"];
+
 
 // If any of the required settings are missing, throw an exception and shut down
 
