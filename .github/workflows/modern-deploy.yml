@@ -31,32 +31,9 @@ jobs:
     environment: ${{ github.event.inputs.environment }}
     steps:
       - uses: actions/checkout@v4
-      # ------------------------------
-      # ✅ 2. Verify preinstalled .NET SDK
-      # ------------------------------
-      - name: Use preinstalled .NET SDK
-        run: |
-          echo "🔍 Checking installed .NET SDK versions..."
-          dotnet --info || (echo "❌ .NET SDK not found on runner" && exit 1)
-
-      # ------------------------------
-      # ✅ 3. Reset and repair Aspire environment
-      # ------------------------------
-      - name: Reset environment
-        run: |
-          echo "🧹 Cleaning previous build artifacts..."
-          rm -rf bin obj out .store .aspire
-
-          echo "🔧 Repairing workloads..."
-          dotnet workload repair
-
-          echo "⬆️ Updating workloads..."
-          dotnet workload update
-
-          echo "📦 Installing Aspire workload..."
-          dotnet workload install aspire
-
-          echo "✅ Aspire workload ready."
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
       - name: Install Aspire CLI
         run: |
           # Install GA version of Aspire CLI
