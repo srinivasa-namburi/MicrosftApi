@@ -33,11 +33,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '9.0.x'
+          dotnet-version: '10.0.x'
       - name: Install Aspire CLI
         run: |
           # Install GA version of Aspire CLI
-          curl -sSL https://aspire.dev/install.sh | bash -s -- --version 9.5.0
+          curl -sSL https://aspire.dev/install.sh | bash
           # Add aspire to PATH for current shell
           export PATH="$HOME/.aspire/bin:$PATH"
           # Verify installation
