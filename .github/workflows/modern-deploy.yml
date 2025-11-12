@@ -36,13 +36,19 @@ jobs:
           dotnet-version: '9.0.x'
       - name: Install Aspire CLI 9.5.2
         run: |
+          # Make sure we do NOT use the old GA CLI
+          if command -v aspire >/dev/null 2>&1; then
+              echo "Removing existing Aspire CLI from PATH"
+              rm -rf "$HOME/.aspire/bin"
+          fi
+      
           # Install Aspire CLI as a dotnet global tool
           dotnet tool install --global Aspire.Cli --version 9.5.2
-          
-          # Add dotnet tools to PATH (if not already)
-          export PATH="$PATH:$HOME/.dotnet/tools"
-          
-          # Verify installation
+      
+          # Add dotnet tools to PATH for this session
+          export PATH="$HOME/.dotnet/tools:$PATH"
+      
+          # Verify we are using the correct version
           aspire --version
         
       - name: Aspire publish
