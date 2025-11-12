@@ -36,6 +36,11 @@ jobs:
           export DOTNET_ROOT=/usr/share/dotnet
           export PATH=$DOTNET_ROOT:$PATH
           dotnet --version  # should show 10.0.100 or later
+
+      - name: Copy Helm templates
+        run: |
+          mkdir -p out/publish/templates
+          cp -r src/HelmTemplates/* out/publish/templates/
         
       - name: Aspire publish
         run: |
