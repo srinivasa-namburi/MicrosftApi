@@ -34,11 +34,12 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.x'
-      - name: Reset environment (clean caches)
-          run: |
-            rm -rf bin obj out .store .aspire
-            dotnet workload repair
-            dotnet workload install aspire
+      - name: Reset environment
+        run: |
+          rm -rf bin obj out .store .aspire
+          dotnet workload repair
+          dotnet workload update
+          dotnet workload install aspire
       - name: Install Aspire CLI
         run: |
           # Install GA version of Aspire CLI
