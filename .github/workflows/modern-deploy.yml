@@ -34,33 +34,38 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.x'
+
       - name: Install Aspire CLI 9.5.2
         run: |
-          # Make sure we do NOT use the old GA CLI
-          if command -v aspire >/dev/null 2>&1; then
-              echo "Removing existing Aspire CLI from PATH"
+          # Remove old GA CLI if present
+          if [ -d "$HOME/.aspire/bin" ]; then
+              echo "Removing old GA Aspire CLI"
               rm -rf "$HOME/.aspire/bin"
           fi
       
-          # Install Aspire CLI as a dotnet global tool
-          dotnet tool install --global Aspire.Cli --version 9.5.2
+          # Install Aspire CLI as a .NET global tool (version 9.5.2)
+          dotnet tool install --global Aspire.Cli --version 9.5.2 || echo "Already installed"
       
           # Add dotnet tools to PATH for this session
           export PATH="$HOME/.dotnet/tools:$PATH"
       
-          # Verify we are using the correct version
+          # Verify correct CLI version
           aspire --version
-        
+
+
       - name: Aspire publish
         run: |
-          # Ensure aspire is in PATH
-          export PATH="$HOME/.aspire/bin:$PATH"
+          # Ensure dotnet tools CLI is first in PATH
+          export PATH="$HOME/.dotnet/tools:$PATH"
+      
           # Set execute permissions for scripts
           chmod +x build/scripts/*.sh
           chmod +x build/scripts/pipeline-internal/*.sh
+      
+          # Run publish scripts using 9.5.2 CLI
           build/scripts/pipeline-internal/build-modern-aspire-publish.sh out/publish
-          # Post-publish fixes now handles all patching
           build/scripts/pipeline-internal/build-modern-post-publish-fixes.sh out/publish publish
+      
       - name: Convert Azure credentials format
         id: convert-creds
         run: |
