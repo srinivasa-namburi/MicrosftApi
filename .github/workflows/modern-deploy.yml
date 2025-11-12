@@ -31,17 +31,12 @@ jobs:
     environment: ${{ github.event.inputs.environment }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
-      - name: Install Aspire CLI
+      - name: Use preinstalled .NET 10
         run: |
-          # Install GA version of Aspire CLI
-          curl -sSL https://aspire.dev/install.sh | bash
-          # Add aspire to PATH for current shell
-          export PATH="$HOME/.aspire/bin:$PATH"
-          # Verify installation
-          aspire --version
+          export DOTNET_ROOT=/usr/share/dotnet
+          export PATH=$DOTNET_ROOT:$PATH
+          dotnet --version  # should show 10.0.100 or later
+        
       - name: Aspire publish
         run: |
           # Ensure aspire is in PATH
