@@ -31,16 +31,17 @@ jobs:
     environment: ${{ github.event.inputs.environment }}
     steps:
       - uses: actions/checkout@v4
-      - name: Use preinstalled .NET 10
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - name: Install Aspire CLI
         run: |
-          export DOTNET_ROOT=/usr/share/dotnet
-          export PATH=$DOTNET_ROOT:$PATH
-          dotnet --version  # should show 10.0.100 or later
-
-      - name: Copy Helm templates
-        run: |
-          mkdir -p out/publish/templates
-          cp -r src/HelmTemplates/* out/publish/templates/
+          # Install GA version of Aspire CLI
+          curl -sSL https://aspire.dev/install.sh | bash -s -- --version 9.4.0 | bash
+          # Add aspire to PATH for current shell
+          export PATH="$HOME/.aspire/bin:$PATH"
+          # Verify installation
+          aspire --version
         
       - name: Aspire publish
         run: |
