@@ -37,7 +37,7 @@ jobs:
       - name: Install Aspire CLI
         run: |
           # Install GA version of Aspire CLI
-          curl -sSL https://aspire.dev/install.sh | bash -s -- --version 9.4.0
+          curl -sSL https://aspire.dev/install.sh | bash -s -- --version 9.5.2
           # Add aspire to PATH for current shell
           export PATH="$HOME/.aspire/bin:$PATH"
           # Verify installation
