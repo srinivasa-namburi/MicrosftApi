@@ -382,7 +382,6 @@ helm upgrade --install "$RELEASE" "$OUT_DIR" \
   -n "$NAMESPACE" \
   -f "$OUT_DIR/values.yaml" \
   -f "$OVERRIDE_VALUES" \
-  --post-renderer "$POST_RENDERER" \
   --force \
   --wait --timeout 10m
 
