@@ -382,17 +382,12 @@ $YQ -i 'select(.kind=="ConfigMap" and .metadata.name=="api-main-config").data.AS
 
 echo "[post-renderer] Forcing correct ASPNETCORE_URLS in Deployments..."
 for dep in api-main-deployment mcpserver-core-deployment mcpserver-flow-deployment web-docgen-deployment; do
-  echo "[post-renderer] - Updating deployment: $dep"
-  $YQ -i '
-    select(.kind=="Deployment" and .metadata.name=="'"$dep"'")
-    .spec.template.spec.containers[0].env
-      |= (
-            (. // [])
-            | map(select(.name != "ASPNETCORE_URLS"))
-            + [{"name":"ASPNETCORE_URLS","value":"http://+:8080"}]
-         )
-  ' "$TMP"
+  echo "[post-renderer] - Rajesh Updating deployment: $dep"
+  $YQ -i 'select(.kind=="Deployment" and .metadata.name=="'"$dep"'").spec.template.spec.containers[0].env |= (
+    ( . // [] ) | map(select(.name != "ASPNETCORE_URLS")) + [{"name":"ASPNETCORE_URLS","value":"http://+:8080"}]
+  )' "$TMP"
 done
+
 
 echo "[post-renderer] Output YAML size: $(wc -l < "$TMP") lines"
 echo "[post-renderer] END --------------------------------"
