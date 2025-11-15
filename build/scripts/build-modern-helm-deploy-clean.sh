@@ -333,23 +333,39 @@ echo "[clean] Deploying with pure Helm approach - no template corruption possibl
 
 # Pre-check: lint and dry-render templates with the same values to surface issues early
 echo "[clean] Helm pre-check: linting chart..."
+# Pre-check: lint and dry-render templates with the same values to surface issues early
+echo "[clean] Helm pre-check: linting chart..."
+echo "[debug] OUT_DIR=$OUT_DIR"
+echo "[debug] NAMESPACE=$NAMESPACE"
+echo "[debug] OVERRIDE_VALUES=$OVERRIDE_VALUES"
+
 if ! helm lint "$OUT_DIR" -n "$NAMESPACE" -f "$OUT_DIR/values.yaml" -f "$OVERRIDE_VALUES"; then
   echo "[clean] ERROR: helm lint failed. Aborting before upgrade."
   exit 1
 fi
 
-# Deploy using Helm with --force flag for idempotent operation
-# The --force flag handles delete/recreate automatically for incompatible changes
+echo "[clean] Creating post renderer script..."
 POST_RENDERER=$(mktemp)
+echo "[debug] POST_RENDERER created at: $POST_RENDERER"
+
 cat > "$POST_RENDERER" <<'PR'
 #!/usr/bin/env bash
 set -euo pipefail
 
+echo "[post-renderer] START ------------------------------"
+echo "[post-renderer] Running post-renderer script"
+echo "[post-renderer] Received YAML from Helm on stdin"
+
 TMP=$(mktemp)
+echo "[post-renderer] TMP workspace: $TMP"
+
 cat > "$TMP"
+
+echo "[post-renderer] Input YAML size: $(wc -l < "$TMP") lines"
 
 # Resolve yq (install to /tmp if missing)
 if ! command -v yq >/dev/null 2>&1; then
+  echo "[post-renderer] yq not found, downloading..."
   curl -sSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /tmp/yq
   chmod +x /tmp/yq
   YQ=/tmp/yq
@@ -357,27 +373,42 @@ else
   YQ=$(command -v yq)
 fi
 
-# Since we're doing clean service deletion, only minimal cleanup needed
-# Remove any stray HTTPS ports if they somehow still exist
+echo "[post-renderer] Using yq: $YQ"
+
+echo "[post-renderer] Cleaning HTTPS ports..."
 $YQ -i 'select(.kind=="Service").spec.ports |= map(select(.name != "https"))' "$TMP"
 $YQ -i 'select(.kind=="Deployment").spec.template.spec.containers[0].ports |= map(select(.name != "https"))' "$TMP"
 
-# Orleans environment variables are now correctly set by AppHost
-# Only ensure ASPNETCORE_URLS is set correctly (not using placeholders)
+echo "[post-renderer] Setting ASPNETCORE_URLS in ConfigMap..."
 $YQ -i 'select(.kind=="ConfigMap" and .metadata.name=="api-main-config").data.ASPNETCORE_URLS = "http://+:8080"' "$TMP"
 
-# Force ASPNETCORE_URLS=http://+:8080 to avoid "$8080" placeholders overriding HTTP_PORTS
+echo "[post-renderer] Forcing correct ASPNETCORE_URLS in Deployments..."
 for dep in api-main-deployment mcpserver-core-deployment mcpserver-flow-deployment web-docgen-deployment; do
+  echo "[post-renderer] - Updating deployment: $dep"
   $YQ -i 'select(.kind=="Deployment" and .metadata.name=="'"$dep"'").spec.template.spec.containers[0].env |= (
     ( . // [] ) | map(select(.name != "ASPNETCORE_URLS")) + [{"name":"ASPNETCORE_URLS","value":"http://+:8080"}]
   )' "$TMP"
 done
 
+echo "[post-renderer] Output YAML size: $(wc -l < "$TMP") lines"
+echo "[post-renderer] END --------------------------------"
+
 cat "$TMP"
 rm -f "$TMP"
 PR
+
+echo "[clean] Setting post-renderer executable..."
 chmod +x "$POST_RENDERER"
 
+echo "[clean] Validating post-renderer file details..."
+ls -l "$POST_RENDERER"
+echo "[clean] File type: $(file "$POST_RENDERER")"
+
+echo "---------- POST RENDERER CONTENT START ----------"
+cat "$POST_RENDERER"
+echo "---------- POST RENDERER CONTENT END ------------"
+
+echo "[clean] Running Helm upgrade with post-renderer..."
 helm upgrade --install "$RELEASE" "$OUT_DIR" \
   -n "$NAMESPACE" \
   -f "$OUT_DIR/values.yaml" \
@@ -388,6 +419,7 @@ helm upgrade --install "$RELEASE" "$OUT_DIR" \
 
 echo "[clean] Clean deployment completed successfully"
 echo "[clean] No template modifications = No YAML corruption"
+
 
 # Port configuration is now handled entirely by the post-renderer above
 # No need for additional kubectl patches as they conflict with Helm's state management
