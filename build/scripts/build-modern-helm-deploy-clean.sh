@@ -333,12 +333,11 @@ echo "[clean] Deploying with pure Helm approach - no template corruption possibl
 
 # Pre-check: lint and dry-render templates with the same values to surface issues early
 echo "[clean] Helm pre-check: linting chart..."
-# Pre-check: lint and dry-render templates with the same values to surface issues early
-echo "[clean] Helm pre-check: linting chart..."
 echo "[debug] OUT_DIR=$OUT_DIR"
 echo "[debug] NAMESPACE=$NAMESPACE"
 echo "[debug] OVERRIDE_VALUES=$OVERRIDE_VALUES"
 
+# Pre-check: lint templates
 if ! helm lint "$OUT_DIR" -n "$NAMESPACE" -f "$OUT_DIR/values.yaml" -f "$OVERRIDE_VALUES"; then
   echo "[clean] ERROR: helm lint failed. Aborting before upgrade."
   exit 1
@@ -360,7 +359,6 @@ TMP=$(mktemp)
 echo "[post-renderer] TMP workspace: $TMP"
 
 cat > "$TMP"
-
 echo "[post-renderer] Input YAML size: $(wc -l < "$TMP") lines"
 
 # Resolve yq (install to /tmp if missing)
@@ -388,7 +386,11 @@ for dep in api-main-deployment mcpserver-core-deployment mcpserver-flow-deployme
   $YQ -i '
     select(.kind=="Deployment" and .metadata.name=="'"$dep"'")
     .spec.template.spec.containers[0].env
-      |= ((. // []) | map(select(.name != "ASPNETCORE_URLS")) + [{"name":"ASPNETCORE_URLS","value":"http://+:8080"}])
+      |= (
+            (. // [])
+            | map(select(.name != "ASPNETCORE_URLS"))
+            + [{"name":"ASPNETCORE_URLS","value":"http://+:8080"}]
+         )
   ' "$TMP"
 done
 
@@ -421,6 +423,7 @@ helm upgrade --install "$RELEASE" "$OUT_DIR" \
 
 echo "[clean] Clean deployment completed successfully"
 echo "[clean] No template modifications = No YAML corruption"
+
 
 
 # Port configuration is now handled entirely by the post-renderer above
