@@ -351,65 +351,98 @@ cat > "$POST_RENDERER" <<'PR'
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "[post-renderer] START ------------------------------"
+echo "[post-renderer] START --------------------------------------------------"
 echo "[post-renderer] Running post-renderer script"
-echo "[post-renderer] Received YAML from Helm on stdin"
+
+echo "[post-renderer] --- Reading YAML from Helm STDIN ---"
 
 TMP=$(mktemp)
-echo "[post-renderer] TMP workspace: $TMP"
+echo "[post-renderer] Using temp file: $TMP"
 
-# Save helm input
+# Save all input from Helm
 cat > "$TMP"
-echo "[post-renderer] Input YAML size: $(wc -l < "$TMP") lines"
+echo "[post-renderer] Input YAML line count: $(wc -l < "$TMP")"
 
-echo "========== [DEBUG] RAW INPUT FROM HELM =========="
+echo ""
+echo "===================== [DEBUG] RAW INPUT FROM HELM ====================="
 cat "$TMP"
-echo "========== [END DEBUG INPUT] ====================="
+echo "===================== [END DEBUG RAW INPUT] ==========================="
+echo ""
 
-# Resolve yq (install to /tmp if missing)
+# -----------------------
+# ensure yq exists
+# -----------------------
+echo "[post-renderer] Checking for yq binary..."
 if ! command -v yq >/dev/null 2>&1; then
-  echo "[post-renderer] yq not found, downloading..."
+  echo "[post-renderer] yq not found -> downloading..."
   curl -sSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /tmp/yq
   chmod +x /tmp/yq
   YQ=/tmp/yq
 else
   YQ=$(command -v yq)
 fi
+echo "[post-renderer] Using yq at: $YQ"
 
-echo "[post-renderer] Using yq: $YQ"
+# -----------------------
+# YAML modifications
+# -----------------------
 
-echo "[post-renderer] Cleaning HTTPS ports..."
+echo "[post-renderer] Removing HTTPS ports from Services..."
 $YQ -i 'select(.kind=="Service").spec.ports |= map(select(.name != "https"))' "$TMP"
+
+echo "[post-renderer] Removing HTTPS container ports from Deployments..."
 $YQ -i 'select(.kind=="Deployment").spec.template.spec.containers[0].ports |= map(select(.name != "https"))' "$TMP"
 
-echo "[post-renderer] Setting ASPNETCORE_URLS in ConfigMap..."
+echo "[post-renderer] Updating ConfigMap: api-main-config → ASPNETCORE_URLS=http://+:8080"
 $YQ -i 'select(.kind=="ConfigMap" and .metadata.name=="api-main-config").data.ASPNETCORE_URLS = "http://+:8080"' "$TMP"
 
-echo "[post-renderer] Forcing correct ASPNETCORE_URLS in Deployments..."
+echo "[post-renderer] Updating Deployments ASPNETCORE_URLS env vars..."
 for dep in api-main-deployment mcpserver-core-deployment mcpserver-flow-deployment web-docgen-deployment; do
-  echo "[post-renderer] - Rajesh Updating deployment: $dep"
-  $YQ -i 'select(.kind=="Deployment" and .metadata.name=="'"$dep"'").spec.template.spec.containers[0].env |= (
-    ( . // [] ) | map(select(.name != "ASPNETCORE_URLS")) 
-    + [{"name":"ASPNETCORE_URLS","value":"http://+:8080"}]
-  )' "$TMP"
+  echo "[post-renderer] - Updating: $dep"
+  $YQ -i '
+    select(.kind=="Deployment" and .metadata.name=="'"$dep"'")
+      .spec.template.spec.containers[0].env |=
+    (
+      (. // []) | map(select(.name != "ASPNETCORE_URLS"))
+      + [{"name": "ASPNETCORE_URLS", "value": "http://+:8080"}]
+    )
+  ' "$TMP"
 done
 
-echo "========== [DEBUG] YAML AFTER YQ MODIFICATIONS =========="
+echo ""
+echo "===================== [DEBUG] YAML AFTER MODIFICATIONS ====================="
 cat "$TMP"
-echo "========== [END DEBUG MODIFIED YAML] ===================="
+echo "===================== [END DEBUG AFTER MODIFICATIONS] ======================"
+echo ""
 
-echo "[post-renderer] Output YAML size: $(wc -l < "$TMP") lines"
-echo "[post-renderer] END --------------------------------"
+echo "[post-renderer] Final YAML line count: $(wc -l < "$TMP")"
+echo "[post-renderer] END ------------------------------------------------------"
 
-# Final output back to Helm
-echo "========== [DEBUG] FINAL YAML TO HELM =========="
+echo ""
+echo "===================== [DEBUG] FINAL YAML BACK TO HELM ====================="
 cat "$TMP"
-echo "========== [END DEBUG FINAL YAML] ======================="
+echo "===================== [END DEBUG FINAL YAML TO HELM] ======================"
+echo ""
 
+# send final YAML to Helm
 cat "$TMP"
 rm -f "$TMP"
 PR
 
+echo "[clean] Making post-renderer executable..."
+chmod +x "$POST_RENDERER"
+
+echo "[clean] post-renderer file info:"
+ls -l "$POST_RENDERER"
+echo "[clean] File type: $(file "$POST_RENDERER")"
+
+echo "----------------- POST RENDERER FILE CONTENT START ------------------"
+cat "$POST_RENDERER"
+echo "------------------ POST RENDERER FILE CONTENT END -------------------"
+
+echo "[clean] OUT_DIR debug:"
+echo "[clean] OUT_DIR raw: [$OUT_DIR]"
+printf "[clean] OUT_DIR quoted: [%q]\n" "$OUT_DIR"
 
 echo "[clean] Setting post-renderer executable..."
 chmod +x "$POST_RENDERER"
