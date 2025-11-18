@@ -358,8 +358,13 @@ echo "[post-renderer] Received YAML from Helm on stdin"
 TMP=$(mktemp)
 echo "[post-renderer] TMP workspace: $TMP"
 
+# Save helm input
 cat > "$TMP"
 echo "[post-renderer] Input YAML size: $(wc -l < "$TMP") lines"
+
+echo "========== [DEBUG] RAW INPUT FROM HELM =========="
+cat "$TMP"
+echo "========== [END DEBUG INPUT] ====================="
 
 # Resolve yq (install to /tmp if missing)
 if ! command -v yq >/dev/null 2>&1; then
@@ -384,17 +389,27 @@ echo "[post-renderer] Forcing correct ASPNETCORE_URLS in Deployments..."
 for dep in api-main-deployment mcpserver-core-deployment mcpserver-flow-deployment web-docgen-deployment; do
   echo "[post-renderer] - Rajesh Updating deployment: $dep"
   $YQ -i 'select(.kind=="Deployment" and .metadata.name=="'"$dep"'").spec.template.spec.containers[0].env |= (
-    ( . // [] ) | map(select(.name != "ASPNETCORE_URLS")) + [{"name":"ASPNETCORE_URLS","value":"http://+:8080"}]
+    ( . // [] ) | map(select(.name != "ASPNETCORE_URLS")) 
+    + [{"name":"ASPNETCORE_URLS","value":"http://+:8080"}]
   )' "$TMP"
 done
 
+echo "========== [DEBUG] YAML AFTER YQ MODIFICATIONS =========="
+cat "$TMP"
+echo "========== [END DEBUG MODIFIED YAML] ===================="
 
 echo "[post-renderer] Output YAML size: $(wc -l < "$TMP") lines"
 echo "[post-renderer] END --------------------------------"
 
+# Final output back to Helm
+echo "========== [DEBUG] FINAL YAML TO HELM =========="
+cat "$TMP"
+echo "========== [END DEBUG FINAL YAML] ======================="
+
 cat "$TMP"
 rm -f "$TMP"
 PR
+
 
 echo "[clean] Setting post-renderer executable..."
 chmod +x "$POST_RENDERER"
