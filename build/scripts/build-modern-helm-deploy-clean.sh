@@ -408,11 +408,13 @@ cat "$POST_RENDERER"
 echo "---------- POST RENDERER CONTENT END ------------"
 
 echo "[clean] Running Helm upgrade with post-renderer..."
+echo "[clean] Using Helm version:"
+helm version
 helm upgrade --install "$RELEASE" "$OUT_DIR" \
   -n "$NAMESPACE" \
   -f "$OUT_DIR/values.yaml" \
   -f "$OVERRIDE_VALUES" \
-  --post-renderer "$POST_RENDERER" \
+  --post-renderer-exec "$POST_RENDERER" \
   --force \
   --wait --timeout 10m
 
