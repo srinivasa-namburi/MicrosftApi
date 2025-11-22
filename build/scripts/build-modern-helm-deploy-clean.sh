@@ -10,19 +10,6 @@ NAMESPACE=${3:?Missing namespace}
 
 echo "[clean] Clean Helm deployment - no template modifications"
 echo "[clean] Using pure Helm values override approach"
-RAJESH="Hello from Rajesh"
-echo "[test] RAJESH = '${RAJESH}'"
-
-# Check Azure output variables
-echo "[test] AZURE_OUTPUT_DOCING_BLOBENDPOINT = '${AZURE_OUTPUT_DOCING_BLOBENDPOINT:-<not set>}'"
-echo "[test] AZURE_OUTPUT_SQLDOCGEN_SQLSERVERFQDN = '${AZURE_OUTPUT_SQLDOCGEN_SQLSERVERFQDN:-<not set>}'"
-echo "[test] AZURE_OUTPUT_ORLEANS_STORAGE_TABLEENDPOINT = '${AZURE_OUTPUT_ORLEANS_STORAGE_TABLEENDPOINT:-<not set>}'"
-echo "[test] AZURE_OUTPUT_ORLEANS_STORAGE_BLOBENDPOINT = '${AZURE_OUTPUT_ORLEANS_STORAGE_BLOBENDPOINT:-<not set>}'"
-echo "[test] AZURE_OUTPUT_EVENTHUB_EVENTHUBSENDPOINT = '${AZURE_OUTPUT_EVENTHUB_EVENTHUBSENDPOINT:-<not set>}'"
-echo "[test] AZURE_OUTPUT_AISEARCH_CONNECTIONSTRING = '${AZURE_OUTPUT_AISEARCH_CONNECTIONSTRING:-<not set>}'"
-echo "[test] AZURE_OUTPUT_INSIGHTS_APPINSIGHTSCONNECTIONSTRING = '${AZURE_OUTPUT_INSIGHTS_APPINSIGHTSCONNECTIONSTRING:-<not set>}'"
-echo "[test] DOCING_BLOB_EP = '${DOCING_BLOB_EP:-<not set>}'"
-
 
 # CRITICAL: Validate required Azure AD credentials
 if [[ -z "${PVICO_ENTRA_CREDENTIALS:-}" ]]; then
@@ -65,6 +52,18 @@ fi
 # Ensure namespace exists
 echo "[clean] Ensuring namespace: $NAMESPACE"
 kubectl get ns "$NAMESPACE" >/dev/null 2>&1 || kubectl create ns "$NAMESPACE"
+
+# Label namespace with environment for load balancer affinity (if multi-LB is enabled on cluster)
+# This is harmless if multi-LB is not enabled - labels are simply ignored
+if [[ -n "${GREENLIGHT_ENVIRONMENT:-}" ]]; then
+  echo "[clean] Labeling namespace with environment=${GREENLIGHT_ENVIRONMENT}"
+  kubectl label namespace "$NAMESPACE" environment="${GREENLIGHT_ENVIRONMENT}" --overwrite 2>/dev/null || true
+elif [[ "$NAMESPACE" =~ greenlight-(.+) ]]; then
+  # Auto-detect environment from namespace name (e.g., greenlight-dev -> dev)
+  ENV_NAME="${BASH_REMATCH[1]}"
+  echo "[clean] Auto-detected environment from namespace: ${ENV_NAME}"
+  kubectl label namespace "$NAMESPACE" environment="${ENV_NAME}" --overwrite 2>/dev/null || true
+fi
 
 # Generate stable Redis passwords (reuse existing if available)
 get_existing_redis_password() {
@@ -333,131 +332,51 @@ echo "[clean] Deploying with pure Helm approach - no template corruption possibl
 
 # Pre-check: lint and dry-render templates with the same values to surface issues early
 echo "[clean] Helm pre-check: linting chart..."
-echo "[debug] OUT_DIR=$OUT_DIR"
-echo "[debug] NAMESPACE=$NAMESPACE"
-echo "[debug] OVERRIDE_VALUES=$OVERRIDE_VALUES"
-
-# Pre-check: lint templates
 if ! helm lint "$OUT_DIR" -n "$NAMESPACE" -f "$OUT_DIR/values.yaml" -f "$OVERRIDE_VALUES"; then
   echo "[clean] ERROR: helm lint failed. Aborting before upgrade."
   exit 1
 fi
 
-echo "[clean] Creating post renderer script..."
+# Deploy using Helm with --force flag for idempotent operation
+# The --force flag handles delete/recreate automatically for incompatible changes
 POST_RENDERER=$(mktemp)
-echo "[debug] POST_RENDERER created at: $POST_RENDERER"
-
 cat > "$POST_RENDERER" <<'PR'
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "[post-renderer] START --------------------------------------------------"
-echo "[post-renderer] Running post-renderer script"
-
-echo "[post-renderer] --- Reading YAML from Helm STDIN ---"
-
 TMP=$(mktemp)
-echo "[post-renderer] Using temp file: $TMP"
-
-# Save all input from Helm
 cat > "$TMP"
-echo "[post-renderer] Input YAML line count: $(wc -l < "$TMP")"
 
-echo ""
-echo "===================== [DEBUG] RAW INPUT FROM HELM ====================="
-cat "$TMP"
-echo "===================== [END DEBUG RAW INPUT] ==========================="
-echo ""
-
-# -----------------------
-# ensure yq exists
-# -----------------------
-echo "[post-renderer] Checking for yq binary..."
+# Resolve yq (install to /tmp if missing)
 if ! command -v yq >/dev/null 2>&1; then
-  echo "[post-renderer] yq not found -> downloading..."
   curl -sSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /tmp/yq
   chmod +x /tmp/yq
   YQ=/tmp/yq
 else
   YQ=$(command -v yq)
 fi
-echo "[post-renderer] Using yq at: $YQ"
 
-# -----------------------
-# YAML modifications
-# -----------------------
-
-echo "[post-renderer] Removing HTTPS ports from Services..."
+# Since we're doing clean service deletion, only minimal cleanup needed
+# Remove any stray HTTPS ports if they somehow still exist
 $YQ -i 'select(.kind=="Service").spec.ports |= map(select(.name != "https"))' "$TMP"
-
-echo "[post-renderer] Removing HTTPS container ports from Deployments..."
 $YQ -i 'select(.kind=="Deployment").spec.template.spec.containers[0].ports |= map(select(.name != "https"))' "$TMP"
 
-echo "[post-renderer] Updating ConfigMap: api-main-config → ASPNETCORE_URLS=http://+:8080"
+# Orleans environment variables are now correctly set by AppHost
+# Only ensure ASPNETCORE_URLS is set correctly (not using placeholders)
 $YQ -i 'select(.kind=="ConfigMap" and .metadata.name=="api-main-config").data.ASPNETCORE_URLS = "http://+:8080"' "$TMP"
 
-echo "[post-renderer] Updating Deployments ASPNETCORE_URLS env vars..."
+# Force ASPNETCORE_URLS=http://+:8080 to avoid "$8080" placeholders overriding HTTP_PORTS
 for dep in api-main-deployment mcpserver-core-deployment mcpserver-flow-deployment web-docgen-deployment; do
-  echo "[post-renderer] - Updating: $dep"
-  $YQ -i '
-    select(.kind=="Deployment" and .metadata.name=="'"$dep"'")
-      .spec.template.spec.containers[0].env |=
-    (
-      (. // []) | map(select(.name != "ASPNETCORE_URLS"))
-      + [{"name": "ASPNETCORE_URLS", "value": "http://+:8080"}]
-    )
-  ' "$TMP"
+  $YQ -i 'select(.kind=="Deployment" and .metadata.name=="'"$dep"'").spec.template.spec.containers[0].env |= (
+    ( . // [] ) | map(select(.name != "ASPNETCORE_URLS")) + [{"name":"ASPNETCORE_URLS","value":"http://+:8080"}]
+  )' "$TMP"
 done
 
-echo ""
-echo "===================== [DEBUG] YAML AFTER MODIFICATIONS ====================="
-cat "$TMP"
-echo "===================== [END DEBUG AFTER MODIFICATIONS] ======================"
-echo ""
-
-echo "[post-renderer] Final YAML line count: $(wc -l < "$TMP")"
-echo "[post-renderer] END ------------------------------------------------------"
-
-echo ""
-echo "===================== [DEBUG] FINAL YAML BACK TO HELM ====================="
-cat "$TMP"
-echo "===================== [END DEBUG FINAL YAML TO HELM] ======================"
-echo ""
-
-# send final YAML to Helm
 cat "$TMP"
 rm -f "$TMP"
 PR
-
-echo "[clean] Making post-renderer executable..."
 chmod +x "$POST_RENDERER"
 
-echo "[clean] post-renderer file info:"
-ls -l "$POST_RENDERER"
-echo "[clean] File type: $(file "$POST_RENDERER")"
-
-echo "----------------- POST RENDERER FILE CONTENT START ------------------"
-cat "$POST_RENDERER"
-echo "------------------ POST RENDERER FILE CONTENT END -------------------"
-
-echo "[clean] OUT_DIR debug:"
-echo "[clean] OUT_DIR raw: [$OUT_DIR]"
-printf "[clean] OUT_DIR quoted: [%q]\n" "$OUT_DIR"
-
-echo "[clean] Setting post-renderer executable..."
-chmod +x "$POST_RENDERER"
-
-echo "[clean] Validating post-renderer file details..."
-ls -l "$POST_RENDERER"
-echo "[clean] File type: $(file "$POST_RENDERER")"
-
-echo "---------- POST RENDERER CONTENT START ----------"
-cat "$POST_RENDERER"
-echo "---------- POST RENDERER CONTENT END ------------"
-
-echo "[clean] Running Helm upgrade with post-renderer..."
-echo "[clean] Using Helm version:"
-helm version
 helm upgrade --install "$RELEASE" "$OUT_DIR" \
   -n "$NAMESPACE" \
   -f "$OUT_DIR/values.yaml" \
@@ -468,8 +387,6 @@ helm upgrade --install "$RELEASE" "$OUT_DIR" \
 
 echo "[clean] Clean deployment completed successfully"
 echo "[clean] No template modifications = No YAML corruption"
-
-
 
 # Port configuration is now handled entirely by the post-renderer above
 # No need for additional kubectl patches as they conflict with Helm's state management
